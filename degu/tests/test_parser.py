@@ -65,12 +65,11 @@ def casefold_headers(headers):
 class TestFunctions(TestCase):
     def test_read_line(self):
         tmp = TempDir()
-        CRLF = b'\r\n'
-        good = (b'G' * (MAX_LINE_BYTES - 2)) + CRLF
+        good = (b'G' * (MAX_LINE_BYTES - 2)) + b'\r\n'
         bad1 = (b'B' * (MAX_LINE_BYTES - 1)) + b'\n'
         bad2 = (b'b' * MAX_LINE_BYTES)
         long1 = (b'L' * (MAX_LINE_BYTES + 1))
-        long2 = (b'l' * (MAX_LINE_BYTES - 1)) + CRLF
+        long2 = (b'l' * (MAX_LINE_BYTES - 1)) + b'\r\n'
         short = b'hello world\r\n'
         short_bad = b'hello naughty nurse\n'
 
@@ -119,7 +118,7 @@ class TestFunctions(TestCase):
             )
             fp = tmp.prepare(short + extra)
             self.assertEqual(parser.read_line(fp), 'hello world')
-            fp = tmp.prepare(CRLF + extra)
+            fp = tmp.prepare(b'\r\n' + extra)
             self.assertEqual(parser.read_line(fp), '')
 
         # With real request lines:
@@ -238,7 +237,7 @@ class TestFunctions(TestCase):
             b'1e61\r\n' + data + b'\r\n'
         )
 
-        # Test random value round trip with read_chunk():
+        # Test random value round-trip with read_chunk():
         for size in range(1776):
             filename = tmp.join(random_id())
             fp = open(filename, 'xb')

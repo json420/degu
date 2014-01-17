@@ -34,6 +34,8 @@ class ParseError(Exception):
 
 
 def read_line(fp):
+    # BufferedReader.readline() will stop at the first \n, so there is no reason
+    # for us the check the length of the line, just the line termination
     line_bytes = fp.readline(MAX_LINE_BYTES)
     if line_bytes[-2:] != b'\r\n':
         raise ParseError('Bad Line Termination')
@@ -79,8 +81,8 @@ def parse_header(line):
     >>> parse_header('Content-Length: 1776')
     ('content-length', 1776)
 
-    If parsing a Transfer-Encoding header, this function enforces "chunked" as
-    the only valid value:
+    If parsing a Transfer-Encoding header, this functions will raise a
+    `ParseError` if the value is anything other than ``'chunked'``.
 
     >>> parse_header('Transfer-Encoding: clumped')
     Traceback (most recent call last):
