@@ -30,7 +30,7 @@ from random import SystemRandom
 from dbase32 import random_id
 
 from .helpers import TempDir
-from degu.parser import MAX_LINE_BYTES
+from degu.parser import MAX_LINE_BYTES, MAX_HEADER_COUNT
 from degu import parser
 
 
@@ -60,6 +60,19 @@ def casefold_headers(headers):
     return dict(
         (key.casefold(), value) for (key, value) in headers.items()
     )
+
+
+class TestConstants(TestCase):
+    def test_MAX_LINE_BYTES(self):
+        self.assertIsInstance(parser.MAX_LINE_BYTES, int)
+        self.assertGreaterEqual(parser.MAX_LINE_BYTES, 1024)
+        self.assertEqual(parser.MAX_LINE_BYTES % 1024, 0)
+        self.assertLessEqual(parser.MAX_LINE_BYTES, 8192)
+
+    def test_MAX_HEADER_COUNT(self):
+        self.assertIsInstance(parser.MAX_HEADER_COUNT, int)
+        self.assertGreaterEqual(parser.MAX_HEADER_COUNT, 5)
+        self.assertLessEqual(parser.MAX_HEADER_COUNT, 20)
 
 
 class TestFunctions(TestCase):
@@ -295,8 +308,8 @@ class TestFunctions(TestCase):
     def test_read_headers(self):
         tmp = TempDir()
 
-        # 10 headers, but missing the final CRLF:
-        headers = random_headers(10)
+        # MAX_HEADER_COUNT headers, but missing the final CRLF:
+        headers = random_headers(MAX_HEADER_COUNT)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
         with self.assertRaises(parser.ParseError) as cm:
@@ -307,8 +320,8 @@ class TestFunctions(TestCase):
         fp = tmp.prepare(lines + b'\r\n')
         self.assertEqual(parser.read_headers(fp), casefold_headers(headers))
 
-        # 11 headers, ParseError should be raised even without final CRLF:
-        headers = random_headers(11)
+        # MAX_HEADER_COUNT headers, ParseError should be raised:
+        headers = random_headers(MAX_HEADER_COUNT + 1)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
         with self.assertRaises(parser.ParseError) as cm:
@@ -327,7 +340,7 @@ class TestFunctions(TestCase):
         headers = random_headers(9)
         dup = random.choice(tuple(headers)).casefold()
         headers[dup] = random_id()
-        self.assertEqual(len(headers), 10)
+        self.assertEqual(len(headers), MAX_HEADER_COUNT)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
         with self.assertRaises(parser.ParseError) as cm:
@@ -374,7 +387,7 @@ class TestFunctions(TestCase):
         self.assertEqual(cm.exception.reason, 'Bad Header Line')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
-        # Test with a bad content-length:
+        # Test with a bad Content-Length:
         lines = b'Content-Type: text/plain\r\nContent-Length: 16.9\r\n\r\n'
         fp = tmp.prepare(lines)
         with self.assertRaises(parser.ParseError) as cm:
@@ -382,7 +395,7 @@ class TestFunctions(TestCase):
         self.assertEqual(cm.exception.reason, 'Bad Content-Length')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
-        # Test with a negative content-length:
+        # Test with a negative Content-Length:
         lines = b'Content-Type: text/plain\r\nContent-Length: -17\r\n\r\n'
         fp = tmp.prepare(lines)
         with self.assertRaises(parser.ParseError) as cm:
