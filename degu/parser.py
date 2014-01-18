@@ -63,6 +63,8 @@ def write_chunk(fp, chunk):
     fp.write(size_line.encode('latin_1'))
     fp.write(chunk)
     fp.write(b'\r\n')
+    # Flush buffer as it could be some time before the next chunk is available:
+    fp.flush()
 
 
 def parse_header(line):
