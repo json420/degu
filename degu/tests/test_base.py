@@ -74,6 +74,25 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.MAX_HEADER_COUNT, 5)
         self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
 
+    def test_STREAM_BUFFER_BYTES(self):
+        self.assertIsInstance(base.STREAM_BUFFER_BYTES, int)
+        self.assertEqual(base.STREAM_BUFFER_BYTES % 4096, 0)
+        self.assertGreaterEqual(base.STREAM_BUFFER_BYTES, 4096)
+
+    def test_FILE_BUFFER_BYTES(self):
+        self.assertIsInstance(base.FILE_BUFFER_BYTES, int)
+        MiB = 1024 * 1024
+        self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
+        self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
+
+
+class TestParseError(TestCase):
+    def test_init(self):
+        inst = base.ParseError('Bad Request')
+        self.assertIsInstance(inst, Exception)
+        self.assertEqual(inst.reason, 'Bad Request')
+        self.assertEqual(str(inst), 'Bad Request')
+
 
 class TestUnderFlowError(TestCase):
     def test_init(self):
