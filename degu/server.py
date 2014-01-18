@@ -23,7 +23,7 @@
 HTTP server.
 """
 
-from .parser import ParseError
+from .base import ParseError
 
 
 def parse_request(line):

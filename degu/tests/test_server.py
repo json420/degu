@@ -30,7 +30,7 @@ from random import SystemRandom
 from dbase32 import random_id
 
 from .helpers import TempDir
-from degu.parser import ParseError
+from degu.base import ParseError
 from degu import server
 
 

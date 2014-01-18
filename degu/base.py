@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Common HTTP parser used by server and client.
+Common HTTP parser used by server and client, plus a few other bits.
 """
 
 MAX_LINE_BYTES = 4096
@@ -89,7 +89,7 @@ def parse_header(line):
     >>> parse_header('Transfer-Encoding: clumped')
     Traceback (most recent call last):
       ...
-    degu.parser.ParseError: Bad Transfer-Encoding
+    degu.base.ParseError: Bad Transfer-Encoding
 
     """
     header_parts = line.split(': ', 1)

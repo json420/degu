@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Unit tests for the `degu.parser` module`
+Unit tests for the `degu.base` module`
 """
 
 from unittest import TestCase
@@ -30,8 +30,8 @@ from random import SystemRandom
 from dbase32 import random_id
 
 from .helpers import TempDir
-from degu.parser import MAX_LINE_BYTES, MAX_HEADER_COUNT
-from degu import parser
+from degu.base import MAX_LINE_BYTES, MAX_HEADER_COUNT
+from degu import base
 
 
 random = SystemRandom()
@@ -64,15 +64,15 @@ def casefold_headers(headers):
 
 class TestConstants(TestCase):
     def test_MAX_LINE_BYTES(self):
-        self.assertIsInstance(parser.MAX_LINE_BYTES, int)
-        self.assertGreaterEqual(parser.MAX_LINE_BYTES, 1024)
-        self.assertEqual(parser.MAX_LINE_BYTES % 1024, 0)
-        self.assertLessEqual(parser.MAX_LINE_BYTES, 8192)
+        self.assertIsInstance(base.MAX_LINE_BYTES, int)
+        self.assertGreaterEqual(base.MAX_LINE_BYTES, 1024)
+        self.assertEqual(base.MAX_LINE_BYTES % 1024, 0)
+        self.assertLessEqual(base.MAX_LINE_BYTES, 8192)
 
     def test_MAX_HEADER_COUNT(self):
-        self.assertIsInstance(parser.MAX_HEADER_COUNT, int)
-        self.assertGreaterEqual(parser.MAX_HEADER_COUNT, 5)
-        self.assertLessEqual(parser.MAX_HEADER_COUNT, 20)
+        self.assertIsInstance(base.MAX_HEADER_COUNT, int)
+        self.assertGreaterEqual(base.MAX_HEADER_COUNT, 5)
+        self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
 
 
 class TestFunctions(TestCase):
@@ -95,44 +95,44 @@ class TestFunctions(TestCase):
 
         # Line too long, missing CRLF:
         fp = tmp.prepare(long1)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Line too long, valid CRLF:
         fp = tmp.prepare(long2)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Max line lenth, but missing CRLF:
         fp = tmp.prepare(bad1)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Max line lenth, has LF, but missing CR:
         fp = tmp.prepare(b'L' * 4096)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Empty line:
         fp = tmp.prepare(b'')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Bunch O permutations:
         for extra in (b'', good, bad1, bad2, long1, long2, short, short_bad):
             fp = tmp.prepare(good + extra)
-            self.assertEqual(parser.read_line(fp),
+            self.assertEqual(base.read_line(fp),
                 ('G' * (MAX_LINE_BYTES - 2))
             )
             fp = tmp.prepare(short + extra)
-            self.assertEqual(parser.read_line(fp), 'hello world')
+            self.assertEqual(base.read_line(fp), 'hello world')
             fp = tmp.prepare(b'\r\n' + extra)
-            self.assertEqual(parser.read_line(fp), '')
+            self.assertEqual(base.read_line(fp), '')
 
         # With real request lines:
         lines = b''.join([
@@ -142,12 +142,12 @@ class TestFunctions(TestCase):
             b'\r\n',
         ])
         fp = tmp.prepare(lines)
-        self.assertEqual(parser.read_line(fp), 'POST /dmedia-1 HTTP/1.1')
-        self.assertEqual(parser.read_line(fp), 'content-type: application/json')
-        self.assertEqual(parser.read_line(fp), 'content-length: 1776')
-        self.assertEqual(parser.read_line(fp), '')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_line(fp)
+        self.assertEqual(base.read_line(fp), 'POST /dmedia-1 HTTP/1.1')
+        self.assertEqual(base.read_line(fp), 'content-type: application/json')
+        self.assertEqual(base.read_line(fp), 'content-length: 1776')
+        self.assertEqual(base.read_line(fp), '')
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
     def test_read_chunk(self):
@@ -160,91 +160,91 @@ class TestFunctions(TestCase):
 
         # No CRLF terminated chunk size line:
         fp = tmp.prepare(termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
         self.assertEqual(fp.tell(), MAX_LINE_BYTES)
 
         # Size line has LF but no CR:
         fp = tmp.prepare(b'1e61\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
         self.assertEqual(fp.tell(), 5)
 
         # Totally empty:
         fp = tmp.prepare(b'')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
         self.assertEqual(fp.tell(), 0)
 
         # Size line is property terminated, but empty value:
         fp = tmp.prepare(b'\r\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
         self.assertEqual(fp.tell(), 2)
 
         # Size isn't a hexidecimal integer:
         fp = tmp.prepare(b'17.6\r\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
         self.assertEqual(fp.tell(), 6)
         fp = tmp.prepare(b'17.6; 1e61\r\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
         self.assertEqual(fp.tell(), 12)
 
         # Size is negative:
         fp = tmp.prepare(b'-1e61\r\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Negative Chunk Size')
         self.assertEqual(fp.tell(), 7)
         fp = tmp.prepare(b'-1e61; 1e61\r\n' + termed)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Negative Chunk Size')
         self.assertEqual(fp.tell(), 13)
 
         # Not enough data:
         fp = tmp.prepare(size + small_data + b'\r\n')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Not Enough Chunk Data Provided')
         self.assertEqual(fp.tell(), 6674)
 
         # Data isn't properly terminated:
         fp = tmp.prepare(size + data + b'TT\r\n')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_chunk(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_chunk(fp)
         self.assertEqual(cm.exception.reason, 'Bad Chunk Termination')
         self.assertEqual(fp.tell(), 7785)
 
         # Test when it's all good:
         fp = tmp.prepare(size + termed)
-        self.assertEqual(parser.read_chunk(fp), data)
+        self.assertEqual(base.read_chunk(fp), data)
         self.assertEqual(fp.tell(), 7785)
 
     def test_write_chunk(self):
         tmp = TempDir()
 
         (filename, fp) = tmp.create('zero')
-        self.assertIsNone(parser.write_chunk(fp, b''))
+        self.assertIsNone(base.write_chunk(fp, b''))
         fp.close()
         self.assertEqual(open(filename, 'rb').read(), b'0\r\n\r\n')
 
         (filename, fp) = tmp.create('one')
-        self.assertIsNone(parser.write_chunk(fp, b'hello'))
+        self.assertIsNone(base.write_chunk(fp, b'hello'))
         fp.close()
         self.assertEqual(open(filename, 'rb').read(), b'5\r\nhello\r\n')
 
         data = b'D' * 7777
         (filename, fp) = tmp.create('two')
-        self.assertIsNone(parser.write_chunk(fp, data))
+        self.assertIsNone(base.write_chunk(fp, data))
         fp.close()
         self.assertEqual(open(filename, 'rb').read(),
             b'1e61\r\n' + data + b'\r\n'
@@ -255,44 +255,44 @@ class TestFunctions(TestCase):
             filename = tmp.join(random_id())
             fp = open(filename, 'xb')
             data = os.urandom(size)
-            self.assertIsNone(parser.write_chunk(fp, data))
+            self.assertIsNone(base.write_chunk(fp, data))
             fp.close()
             fp = open(filename, 'rb')
-            self.assertEqual(parser.read_chunk(fp), data)
+            self.assertEqual(base.read_chunk(fp), data)
             fp.close()
 
     def test_parse_header(self):
         # Bad separator:
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.parse_header('Content-Type:application/json')
+        with self.assertRaises(base.ParseError) as cm:
+            base.parse_header('Content-Type:application/json')
         self.assertEqual(cm.exception.reason, 'Bad Header Line')
 
         # Bad Content-Length:
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.parse_header('Content-Length: 16.9')
+        with self.assertRaises(base.ParseError) as cm:
+            base.parse_header('Content-Length: 16.9')
         self.assertEqual(cm.exception.reason, 'Bad Content-Length')
 
         # Negative Content-Length:
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.parse_header('Content-Length: -17')
+        with self.assertRaises(base.ParseError) as cm:
+            base.parse_header('Content-Length: -17')
         self.assertEqual(cm.exception.reason, 'Negative Content-Length')
 
         # Bad Transfer-Encoding:
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.parse_header('Transfer-Encoding: clumped')
+        with self.assertRaises(base.ParseError) as cm:
+            base.parse_header('Transfer-Encoding: clumped')
         self.assertEqual(cm.exception.reason, 'Bad Transfer-Encoding')
 
         # Test a number of good values:
-        self.assertEqual(parser.parse_header('Content-Type: application/json'),
+        self.assertEqual(base.parse_header('Content-Type: application/json'),
             ('content-type', 'application/json')
         )
-        self.assertEqual(parser.parse_header('Content-Length: 17'),
+        self.assertEqual(base.parse_header('Content-Length: 17'),
             ('content-length', 17)
         )
-        self.assertEqual(parser.parse_header('Content-Length: 0'),
+        self.assertEqual(base.parse_header('Content-Length: 0'),
             ('content-length', 0)
         )
-        self.assertEqual(parser.parse_header('Transfer-Encoding: chunked'),
+        self.assertEqual(base.parse_header('Transfer-Encoding: chunked'),
             ('transfer-encoding', 'chunked')
         )
 
@@ -301,7 +301,7 @@ class TestFunctions(TestCase):
             key = random_id()
             value = random_id()
             line = '{}: {}'.format(key, value)
-            self.assertEqual(parser.parse_header(line),
+            self.assertEqual(base.parse_header(line),
                 (key.casefold(), value)
             )
 
@@ -312,27 +312,27 @@ class TestFunctions(TestCase):
         headers = random_headers(MAX_HEADER_COUNT)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Add the final CRLF, should work:
         fp = tmp.prepare(lines + b'\r\n')
-        self.assertEqual(parser.read_headers(fp), casefold_headers(headers))
+        self.assertEqual(base.read_headers(fp), casefold_headers(headers))
 
         # MAX_HEADER_COUNT headers, ParseError should be raised:
         headers = random_headers(MAX_HEADER_COUNT + 1)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Too Many Headers')
         self.assertEqual(fp.tell(), 594)
 
         # And get a ParseError just the same with the final CRLF:
         fp = tmp.prepare(lines + b'\r\n')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Too Many Headers')
         self.assertEqual(fp.tell(), 594)  # Note did not read to end
 
@@ -343,30 +343,30 @@ class TestFunctions(TestCase):
         self.assertEqual(len(headers), MAX_HEADER_COUNT)
         lines = build_header_lines(headers)
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Duplicate Header')
 
         # And the same with the final CRLF:
         fp = tmp.prepare(lines + b'\r\n')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Duplicate Header')
 
         # Test when there is nothing to read:
         fp = tmp.prepare(b'')
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
         # Test when there are zero headers:
         fp = tmp.prepare(b'\r\n')
-        self.assertEqual(parser.read_headers(fp), {})
+        self.assertEqual(base.read_headers(fp), {})
 
         # Test a simple, hard-coded example:
         lines = b'Content-Type: text/plain\r\nContent-Length: 17\r\n\r\n'
         fp = tmp.prepare(lines)
-        self.assertEqual(parser.read_headers(fp),
+        self.assertEqual(base.read_headers(fp),
             {'content-type': 'text/plain', 'content-length': 17}
         )
         self.assertEqual(fp.tell(), len(lines))
@@ -374,48 +374,48 @@ class TestFunctions(TestCase):
         # Similar to above, but with a broken line termination:
         lines = b'Content-Type: text/plain\r\nContent-Length: 17\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
         # Test with a mallformed header line:
         lines = b'Content-Type: text/plain\r\nContent-Length:17\r\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Header Line')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
         # Test with a bad Content-Length:
         lines = b'Content-Type: text/plain\r\nContent-Length: 16.9\r\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Content-Length')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
         # Test with a negative Content-Length:
         lines = b'Content-Type: text/plain\r\nContent-Length: -17\r\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Negative Content-Length')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
         # Test with a bad Transfer-Encoding:
         lines = b'Content-Type: text/plain\r\nTransfer-Encoding: chunky\r\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Bad Transfer-Encoding')
         self.assertEqual(fp.tell(), len(lines) - 2)
 
         # Test that Content-Length and Transfer-Encoding aren't allowed together:
         lines = b'Transfer-Encoding: chunked\r\nContent-Length: 17\r\n\r\n'
         fp = tmp.prepare(lines)
-        with self.assertRaises(parser.ParseError) as cm:
-            parser.read_headers(fp)
+        with self.assertRaises(base.ParseError) as cm:
+            base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Content-Length With Transfer-Encoding')
         self.assertEqual(fp.tell(), len(lines))
 
