@@ -75,6 +75,26 @@ class TestConstants(TestCase):
         self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
 
 
+class TestUnderFlowError(TestCase):
+    def test_init(self):
+        inst = base.UnderFlowError(16, 17)
+        self.assertIsInstance(inst, Exception)
+        self.assertNotIsInstance(inst, base.OverFlowError)
+        self.assertEqual(inst.received, 16)
+        self.assertEqual(inst.expected, 17)
+        self.assertEqual(str(inst), 'received 16 bytes, expected 17')
+
+
+class TestOverFlowError(TestCase):
+    def test_init(self):
+        inst = base.OverFlowError(20, 18)
+        self.assertIsInstance(inst, Exception)
+        self.assertNotIsInstance(inst, base.UnderFlowError)
+        self.assertEqual(inst.received, 20)
+        self.assertEqual(inst.expected, 18)
+        self.assertEqual(str(inst), 'received 20 bytes, expected 18')
+
+
 class TestFunctions(TestCase):
     def test_read_line(self):
         tmp = TempDir()
@@ -418,4 +438,93 @@ class TestFunctions(TestCase):
             base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Content-Length With Transfer-Encoding')
         self.assertEqual(fp.tell(), len(lines))
+
+
+class TestOutput(TestCase):
+    def test_init(self):
+        source = (b'foo', b'bar', b'baz')
+        body = base.Output(source, 9)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.source, source)
+        self.assertEqual(body.content_length, 9)
+
+        # Should raise a TypeError if content_length isn't an int:
+        with self.assertRaises(TypeError) as cm:
+            base.Output(source, '9')
+        self.assertEqual(str(cm.exception), 'content_length must be an int')
+
+        # Should raise a ValueError if content_length < 0:
+        with self.assertRaises(ValueError) as cm:
+            base.Output(source, -1)
+        self.assertEqual(str(cm.exception), 'content_length must be >= 0')
+
+    def test_iter(self):
+        source = (b'foo', b'bar', b'baz')
+        body = base.Output(source, 9)
+        self.assertEqual(list(body), [b'foo', b'bar', b'baz'])
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # More bytes yielded from source than expected:
+        body = base.Output(source, 8)
+        results = []
+        with self.assertRaises(base.OverFlowError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception), 'received 9 bytes, expected 8')
+        self.assertEqual(results, [b'foo', b'bar'])
+
+        # Fewer bytes yielded from source than expected:
+        body = base.Output(source, 10)
+        results = []
+        with self.assertRaises(base.UnderFlowError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception), 'received 9 bytes, expected 10')
+        self.assertEqual(results, [b'foo', b'bar', b'baz'])
+
+        # BodyClosedError should be raised by setting the closed attribute:
+        source = (b'foo', b'bar', b'baz')
+        body = base.Output(source, 9)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # Should work fine with an empty source:
+        body = base.Output([], 0)
+        self.assertEqual(list(body), [])
+        self.assertIs(body.closed, True)
+
+        # And with a single empty buffer in source:
+        body = base.Output([b''], 0)
+        self.assertEqual(list(body), [b''])
+        self.assertIs(body.closed, True)
+
+        # Should also work with intermixed empty buffers:
+        body = base.Output((b'foo', b'', b'bar', b'baz', b''), 9)
+        self.assertEqual(list(body), [b'foo', b'', b'bar', b'baz', b''])
+        self.assertIs(body.closed, True)
+
+        # Both bytes and bytearray are valid buffer types:
+        body = base.Output((b'stuff', bytearray(b'junk')), 9)
+        self.assertEqual(list(body), [b'stuff', bytearray(b'junk')])
+        self.assertIs(body.closed, True)
+
+        # But str is not a valid buffer type:
+        body = base.Output((b'foo', 'bar', b'baz'), 9)
+        results = []
+        with self.assertRaises(TypeError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception), 'buf must be bytes or bytearray')
+        self.assertEqual(results, [b'foo'])
 

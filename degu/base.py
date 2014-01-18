@@ -25,12 +25,42 @@ Common HTTP parser used by server and client, plus a few other bits.
 
 MAX_LINE_BYTES = 4096
 MAX_HEADER_COUNT = 10
+STREAM_BUFFER_BYTES = 65536  # 64 KiB
+FILE_BUFFER_BYTES = 8388608  # 8 MiB
 
 
 class ParseError(Exception):
     def __init__(self, reason):
         self.reason = reason
         super().__init__(reason)
+
+
+class UnderFlowError(Exception):
+    def __init__(self, received, expected):
+        self.received = received
+        self.expected = expected
+        super().__init__(
+            'received {:d} bytes, expected {:d}'.format(received, expected)
+        )
+
+
+class OverFlowError(Exception):
+    def __init__(self, received, expected):
+        self.received = received
+        self.expected = expected
+        super().__init__(
+            'received {:d} bytes, expected {:d}'.format(received, expected)
+        )
+
+
+class BodyClosedError(Exception):
+    """
+    Raised when trying to iterate through a closed request or response body.
+    """
+    def __init__(self, body):
+        self.body = body
+        super().__init__('cannot iterate, {!r} is closed'.format(body))
+        
 
 
 def read_line(fp):
@@ -125,16 +155,65 @@ def read_headers(fp):
     raise ParseError('Too Many Headers')
 
 
+def makefiles(sock):
+    return (
+        sock.makefile('rb', buffering=BUFFER_SIZE_BYTES),
+        sock.makefile('wb', buffering=BUFFER_SIZE_BYTES)
+    )     
+
+
 class Output:
-    pass
+    """
+    Written to the wfile.
 
+    Content-Length must be known in advance.  On the server side it is used as
+    as a response body, and on the client side it is used as a request body.
 
-class ChunkedOutput:
-    pass
+    >>> body = Output([b'stuff', b'junk'], 9)
+    >>> list(body)
+    [b'stuff', b'junk']
+
+    """
+
+    __slots__ = ('closed', 'source', 'content_length')
+
+    def __init__(self, source, content_length):
+        if not isinstance(content_length, int):
+            raise TypeError('content_length must be an int')
+        if content_length < 0:
+            raise ValueError('content_length must be >= 0')
+        self.closed = False
+        self.source = source
+        self.content_length = content_length
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        received = 0
+        for buf in self.source:
+            if not isinstance(buf, (bytes, bytearray)):
+                raise TypeError('buf must be bytes or bytearray')
+            received += len(buf)
+            if received > self.content_length:
+                self.closed = True
+                raise OverFlowError(received, self.content_length)
+            yield buf
+        self.closed = True
+        if received != self.content_length:
+            raise UnderFlowError(received, self.content_length)
 
 
 class FileOutput:
-    pass
+    """
+    Written to the wfile by reading from an io.BufferedReader.
+    """
+
+
+class ChunkedOutput:
+    """
+    Written to the wfile using chunked encoding.
+    """
+
 
 
 class Input:
