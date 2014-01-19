@@ -34,11 +34,42 @@ from .base import (
     write_chunk,
     Input,
     ChunkedInput,
+    Output,
+    ChunkedOutput,
+    FileOutput,
 )
 
 
 Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
+
+
+def validate_request(method, uri, headers, body):
+    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+        raise ValueError('invalid method: {!r}'.format(method))
+    if not uri.startswith('/'):
+        raise ValueError('bad uri: {!r}'.format(uri))
+    for key in headers:
+        if key.casefold() != key:
+            raise ValueError('non-casefolded header name: {!r}'.format(key))
+    if isinstance(body, (bytes, bytearray)): 
+        headers['content-length'] = len(body)
+    elif isinstance(body, (Output, FileOutput)):
+        headers['content-length'] = body.content_length
+    elif isinstance(body, ChunkedOutput):
+        headers['transfer-encoding'] = 'chunked'
+    elif body is not None:
+        raise TypeError('bad request body type: {!r}'.format(type(body)))
+    if {'content-length', 'transfer-encoding'}.issubset(headers):
+        raise ValueError('content-length with transfer-encoding')
+    if body is None:
+        for key in ('content-length', 'transfer-encoding'):
+            if key in headers:
+                raise ValueError(
+                    'cannot include {!r} when body is None'.format(key)
+                )
+    elif method not in {'PUT', 'POST'}:
+        raise ValueError('cannot include body in a {} request'.format(method))
 
 
 def iter_request_lines(method, uri, headers):

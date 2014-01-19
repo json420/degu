@@ -31,6 +31,93 @@ from degu import base, client
 
 
 class TestFunctions(TestCase):
+    def test_validate_request(self):
+        # Bad method:
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('get', None, None, None)
+        self.assertEqual(str(cm.exception), "invalid method: 'get'")
+
+        # Bad uri:
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('GET', 'foo', None, None)
+        self.assertEqual(str(cm.exception), "bad uri: 'foo'")
+
+        # Non-casefolded header name:
+        H = {'Content-Type': 'text/plain'}
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('GET', '/foo', H, None)
+        self.assertEqual(str(cm.exception),
+            "non-casefolded header name: 'Content-Type'"
+        )
+
+        # Bad body type:
+        H = {'content-type': 'text/plain'}
+        with self.assertRaises(TypeError) as cm:
+            client.validate_request('GET', '/foo', H, 'hello')
+        self.assertEqual(str(cm.exception),
+            "bad request body type: <class 'str'>"
+        )
+
+        # Both content-length and transfer-encoding present:
+        H = {'content-length': 17, 'transfer-encoding': 'chunked'}
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('GET', '/foo', H, None)
+        self.assertEqual(str(cm.exception),
+            'content-length with transfer-encoding'
+        )
+
+        # content-length with a None body:
+        H = {'content-length': 17}
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('GET', '/foo', H, None)
+        self.assertEqual(str(cm.exception),
+            "cannot include 'content-length' when body is None"
+        )
+
+        # transfer-encoding with a None body:
+        H = {'transfer-encoding': 'chunked'}
+        with self.assertRaises(ValueError) as cm:
+            client.validate_request('GET', '/foo', H, None)
+        self.assertEqual(str(cm.exception),
+            "cannot include 'transfer-encoding' when body is None"
+        )
+
+        # Cannot include body in GET, HEAD, DELETE:
+        for M in ('GET', 'HEAD', 'DELETE'):
+            with self.assertRaises(ValueError) as cm:
+                client.validate_request(M, '/foo', {}, b'hello')
+            self.assertEqual(str(cm.exception),
+                'cannot include body in a {} request'.format(M)
+            )
+
+        # No in-place header modification should happen with GET, HEAD, DELETE:
+        for M in ('GET', 'HEAD', 'DELETE'):
+            H = {}
+            self.assertIsNone(client.validate_request(M, '/foo', H, None))
+            self.assertEqual(H, {})
+
+        # Test with all the non-chunked body types:
+        tmp = TempDir()
+        fp = tmp.prepare(b'')  # Contents of rfile wont matter
+        bodies = (
+            os.urandom(17),
+            bytearray(os.urandom(17)),
+            base.Output([], 17),
+            base.FileOutput(fp, 17),
+        )
+        for M in ('PUT', 'POST'):
+            for B in bodies:
+                H = {}
+                self.assertIsNone(client.validate_request(M, '/foo', H, B))
+                self.assertEqual(H, {'content-length': 17})
+
+        # Finally test with base.ChunkedOutput:
+        B = base.ChunkedOutput([b''])
+        for M in ('PUT', 'POST'):
+            H = {}
+            self.assertIsNone(client.validate_request(M, '/foo', H, B))
+            self.assertEqual(H, {'transfer-encoding': 'chunked'})
+
     def test_iter_request_lines(self):
         # Test when headers is an empty dict:
         self.assertEqual(
