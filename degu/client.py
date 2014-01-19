@@ -190,7 +190,7 @@ class Client:
             else:
                 assert body is None
             conn.wfile.flush()
-            response = read_response(conn.rfile)
+            response = read_response(conn.rfile, method)
             self.response_body = response.body
             return response
         except Exception:
