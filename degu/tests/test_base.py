@@ -786,13 +786,14 @@ class TestInput(TestCase):
         self.assertEqual(str(cm.exception), 'rfile is already closed')
 
     def test_read(self):
+        tmp = TempDir()
+
         total = 1776
         start = random.randrange(total)
         stop = random.randrange(start + 1, total + 1)
         content_length = stop - start
         self.assertTrue(0 <= content_length <= total)
         data = os.urandom(total)
-        tmp = TempDir()
         rfile = tmp.prepare(data)
         rfile.seek(start)
         body = base.Input(rfile, content_length)
@@ -815,4 +816,40 @@ class TestInput(TestCase):
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), stop)
+
+        # Should raise a TypeError if size isn't an int:
+        rfile = tmp.prepare(data)
+        rfile.seek(start)
+        body = base.Input(rfile, content_length)
+        with self.assertRaises(TypeError) as cm:
+            body.read(str(content_length))
+        self.assertEqual(str(cm.exception), 'size must be an int')
+
+        # Should raise a ValueError if size < 0:
+        with self.assertRaises(ValueError) as cm:
+            body.read(-1)
+        self.assertEqual(str(cm.exception), 'size must be >= 0')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile.closed, False)
+        self.assertEqual(body.rfile.tell(), start)
+
+    def test_iter(self):
+        buf1 = os.urandom(base.FILE_BUFFER_BYTES)
+        buf2 = os.urandom(base.FILE_BUFFER_BYTES)
+        buf3 = os.urandom(21)
+        data = buf1 + buf2 + buf3
+        tmp = TempDir()
+
+        # Reading all:
+        rfile = tmp.prepare(data)
+        body = base.Input(rfile, len(data))
+        self.assertEqual(list(body), [buf1, buf2, buf3])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.rfile.closed, False)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
 
