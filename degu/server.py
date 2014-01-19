@@ -38,7 +38,7 @@ from .base import (
 
 def parse_request(line):
     """
-    Parse the request header line.
+    Parse the request line.
 
     The return value will be a ``(method, path_list, query)`` tuple.  For
     example, when there is no query:
