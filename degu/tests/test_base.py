@@ -251,9 +251,9 @@ class TestFunctions(TestCase):
 
         # Not enough data:
         fp = tmp.prepare(size + small_data + b'\r\n')
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(base.UnderFlowError) as cm:
             base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Not Enough Chunk Data Provided')
+        self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7779')
         self.assertEqual(fp.tell(), 6674)
 
         # Data isn't properly terminated:
@@ -546,6 +546,79 @@ class TestOutput(TestCase):
                 results.append(buf)
         self.assertEqual(str(cm.exception), 'buf must be bytes or bytearray')
         self.assertEqual(results, [b'foo'])
+        self.assertIs(body.closed, True)
+
+
+class TestChunkedOutput(TestCase):
+    def test_init(self):
+        source = (b'foo', b'bar', b'')
+        body = base.ChunkedOutput(source)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.source, source)
+
+    def test_iter(self):
+        source = (b'foo', b'bar', b'')
+        body = base.ChunkedOutput(source)
+        self.assertEqual(list(body), [b'foo', b'bar', b''])
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # BodyClosedError should be raised by setting the closed attribute:
+        body = base.ChunkedOutput(source)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # Non-empty chunk after empty chunk:
+        body = base.ChunkedOutput((b'foo', b'bar', b'', b'baz'))
+        results = []
+        with self.assertRaises(base.ChunkError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception),
+            'received non-empty chunk after empty chunk'
+        )
+        self.assertEqual(results, [b'foo', b'bar', b''])
+
+        # Final chunk not empty:
+        body = base.ChunkedOutput((b'foo', b'bar', b'baz'))
+        results = []
+        with self.assertRaises(base.ChunkError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception),
+            'final chunk was not empty'
+        )
+        self.assertEqual(results, [b'foo', b'bar', b'baz'])
+
+        # Should work fine with a single empty chunk:
+        body = base.ChunkedOutput((b'',))
+        self.assertEqual(list(body), [b''])
+        self.assertIs(body.closed, True)
+
+        # Both bytes and bytearray are valid chunk types:
+        body = base.ChunkedOutput((b'stuff', bytearray(b'junk'), b''))
+        self.assertEqual(list(body), [b'stuff', bytearray(b'junk'), b''])
+        self.assertIs(body.closed, True)
+
+        # But str is not a valid chunk type:
+        body = base.ChunkedOutput((b'foo', 'bar', b'baz', b''))
+        results = []
+        with self.assertRaises(TypeError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception), 'chunk must be bytes or bytearray')
+        self.assertEqual(results, [b'foo'])
+        self.assertIs(body.closed, True)
 
 
 class TestFileOutput(TestCase):
@@ -652,3 +725,4 @@ class TestFileOutput(TestCase):
         self.assertEqual(results, [data[:-1]])
         self.assertIs(body.closed, True)
         self.assertIs(body.fp.closed, True)
+

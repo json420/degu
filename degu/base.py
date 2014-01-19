@@ -55,6 +55,10 @@ class OverFlowError(Exception):
         )
 
 
+class ChunkError(Exception):
+    pass
+
+
 class BodyClosedError(Exception):
     """
     Raised when trying to iterate through a closed request or response body.
@@ -87,7 +91,7 @@ def read_chunk(fp):
         raise ParseError('Negative Chunk Size')
     chunk = fp.read(size + 2)
     if len(chunk) != size + 2:
-        raise ParseError('Not Enough Chunk Data Provided')
+        raise UnderFlowError(len(chunk), size + 2)
     if chunk[-2:] != b'\r\n':
         raise ParseError('Bad Chunk Termination')
     return chunk[:-2]
@@ -197,6 +201,7 @@ class Output:
         received = 0
         for buf in self.source:
             if not isinstance(buf, (bytes, bytearray)):
+                self.closed = True
                 raise TypeError('buf must be bytes or bytearray')
             received += len(buf)
             if received > self.content_length:
@@ -206,6 +211,41 @@ class Output:
         self.closed = True
         if received != self.content_length:
             raise UnderFlowError(received, self.content_length)
+
+
+class ChunkedOutput:
+    """
+    Written to the wfile using chunked encoding.
+
+    For example:
+
+    >>> body = ChunkedOutput([b'stuff', b'junk', b''])
+    >>> list(body)
+    [b'stuff', b'junk', b'']
+
+    """
+
+    __slots__ = ('closed', 'source',)
+
+    def __init__(self, source):
+        self.closed = False
+        self.source = source
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        for chunk in self.source:
+            if not isinstance(chunk, (bytes, bytearray)):
+                self.closed = True
+                raise TypeError('chunk must be bytes or bytearray')
+            if self.closed:
+                raise ChunkError('received non-empty chunk after empty chunk')
+            if chunk == b'':
+                self.closed = True
+            yield chunk
+        if not self.closed:
+            self.closed = True
+            raise ChunkError('final chunk was not empty')
 
 
 class FileOutput:
@@ -244,12 +284,6 @@ class FileOutput:
         assert remaining == 0
         self.closed = True
         self.fp.close()
-
-
-class ChunkedOutput:
-    """
-    Written to the wfile using chunked encoding.
-    """
 
 
 
