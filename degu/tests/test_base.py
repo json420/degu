@@ -29,7 +29,7 @@ from random import SystemRandom
 
 from dbase32 import random_id
 
-from .helpers import TempDir
+from .helpers import TempDir, DummySocket
 from degu.base import MAX_LINE_BYTES, MAX_HEADER_COUNT
 from degu import base
 
@@ -88,30 +88,47 @@ class TestConstants(TestCase):
 
 class TestParseError(TestCase):
     def test_init(self):
-        inst = base.ParseError('Bad Request')
-        self.assertIsInstance(inst, Exception)
-        self.assertEqual(inst.reason, 'Bad Request')
-        self.assertEqual(str(inst), 'Bad Request')
+        e = base.ParseError('Bad Request')
+        self.assertIsInstance(e, Exception)
+        self.assertEqual(e.reason, 'Bad Request')
+        self.assertEqual(str(e), 'Bad Request')
 
 
 class TestUnderFlowError(TestCase):
     def test_init(self):
-        inst = base.UnderFlowError(16, 17)
-        self.assertIsInstance(inst, Exception)
-        self.assertNotIsInstance(inst, base.OverFlowError)
-        self.assertEqual(inst.received, 16)
-        self.assertEqual(inst.expected, 17)
-        self.assertEqual(str(inst), 'received 16 bytes, expected 17')
+        e = base.UnderFlowError(16, 17)
+        self.assertIsInstance(e, Exception)
+        self.assertNotIsInstance(e, base.OverFlowError)
+        self.assertEqual(e.received, 16)
+        self.assertEqual(e.expected, 17)
+        self.assertEqual(str(e), 'received 16 bytes, expected 17')
 
 
 class TestOverFlowError(TestCase):
     def test_init(self):
-        inst = base.OverFlowError(20, 18)
-        self.assertIsInstance(inst, Exception)
-        self.assertNotIsInstance(inst, base.UnderFlowError)
-        self.assertEqual(inst.received, 20)
-        self.assertEqual(inst.expected, 18)
-        self.assertEqual(str(inst), 'received 20 bytes, expected 18')
+        e = base.OverFlowError(20, 18)
+        self.assertIsInstance(e, Exception)
+        self.assertNotIsInstance(e, base.UnderFlowError)
+        self.assertEqual(e.received, 20)
+        self.assertEqual(e.expected, 18)
+        self.assertEqual(str(e), 'received 20 bytes, expected 18')
+
+
+class TestChunkError(TestCase):
+    def test_init(self):
+        msg = random_id()
+        e = base.ChunkError(msg)
+        self.assertIsInstance(e, Exception)
+        self.assertEqual(str(e), msg) 
+
+
+class TestBodyClosedError(TestCase):
+    def test_init(self):
+        body = random_id()
+        e = base.BodyClosedError(body)
+        self.assertIsInstance(e, Exception)
+        self.assertIs(e.body, body)
+        self.assertEqual(str(e), 'cannot iterate, {!r} is closed'.format(body))
 
 
 class TestFunctions(TestCase):
@@ -457,6 +474,14 @@ class TestFunctions(TestCase):
             base.read_headers(fp)
         self.assertEqual(cm.exception.reason, 'Content-Length With Transfer-Encoding')
         self.assertEqual(fp.tell(), len(lines))
+
+    def test_makefiles(self):
+        sock = DummySocket()
+        self.assertEqual(base.makefiles(sock), (sock._rb, sock._wb))
+        self.assertEqual(sock._calls, [
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+        ])
 
 
 class TestOutput(TestCase):

@@ -166,8 +166,8 @@ def read_headers(fp):
 
 def makefiles(sock):
     return (
-        sock.makefile('rb', buffering=BUFFER_SIZE_BYTES),
-        sock.makefile('wb', buffering=BUFFER_SIZE_BYTES)
+        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
+        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
     )     
 
 
@@ -284,7 +284,6 @@ class FileOutput:
         assert remaining == 0
         self.closed = True
         self.fp.close()
-
 
 
 class Input:

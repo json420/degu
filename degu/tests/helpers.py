@@ -70,3 +70,22 @@ class TempDir:
         filename = self.write(content, random_id())
         return open(filename, 'rb')
 
+
+class DummySocket:
+    def __init__(self):
+        self._calls = []
+        self._rb = random_id()
+        self._wb = random_id()
+
+    def makefile(self, mode, **kw):
+        self._calls.append(('makefile', mode, kw))
+        if mode == 'rb':
+            return self._rb
+        if mode == 'wb':
+            return self._wb
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+
+    def close(self):
+        self._calls.append('close')
