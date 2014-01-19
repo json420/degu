@@ -211,8 +211,8 @@ class TestHandler(TestCase):
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
-        self.assertIs(handler.rfile, sock._rb)
-        self.assertIs(handler.wfile, sock._wb)
+        self.assertIs(handler.rfile, sock._rfile)
+        self.assertIs(handler.wfile, sock._wfile)
 
     def test_close(self):
         # We need to override Handler.__init__() for this test:

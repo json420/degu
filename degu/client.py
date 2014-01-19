@@ -44,6 +44,14 @@ Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
 
 
+class UnconsumedResponseError(Exception):
+    def __init__(self, body):
+        self.body = body
+        super().__init__(
+            'previous response body not consumed: {!r}'.format(body)
+        )
+
+
 def validate_request(method, uri, headers, body):
     if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
         raise ValueError('invalid method: {!r}'.format(method))
@@ -130,4 +138,62 @@ def read_response(rfile, method):
     return Response(status, reason, headers, body)
 
 
-    
+class Client:
+    default_port = 80
+
+    def __init__(self, hostname, port):
+        self.hostname = hostname
+        self.port = (self.default_port if port is None else port)
+        self.conn = None
+        self.response_body = None  # Previous Input or ChunkedInput
+
+    def create_socket(self):
+        return socket.create_connection((self.hostname, self.port))
+
+    def connect(self):
+        if self.conn is None:
+            sock = self.create_socket()
+            (rfile, wfile) = makefiles(sock)
+            self.conn = Connection(sock, rfile, wfile)
+        return self.conn
+
+    def close(self):
+        self.response_body = None
+        if self.conn is not None:
+            self.conn.rfile.close()
+            self.conn.wfile.close()
+            try:
+                self.conn.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            self.conn.sock.close()
+            self.conn = None
+
+    def request(self, method, uri, headers=None, body=None):
+        if self.response_body and not self.response_body.closed:
+            raise UnconsumedResponseError(self.response_body)
+        if headers is None:
+            headers = {}
+        validate_request(method, uri, headers, body)
+        conn = self.connect()
+        try:
+            preamble = ''.join(iter_request_lines(method, uri, headers))
+            conn.wfile.write(preamble.encode('latin_1'))
+            if isinstance(body, (bytes, bytearray)):
+                conn.wfile.write(body)
+            elif isinstance(body, (Output, FileOutput)):
+                for buf in body:
+                    conn.wfile.write(buf)
+            elif isinstance(body, ChunkedOutput):
+                for chunk in body:
+                    write_chunk(conn.wfile, chunk)
+            else:
+                assert body is None
+            conn.wfile.flush()
+            response = read_response(conn.rfile)
+            self.response_body = response.body
+            return response
+        except Exception:
+            self.close()
+            raise
+

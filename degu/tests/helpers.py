@@ -74,15 +74,15 @@ class TempDir:
 class DummySocket:
     def __init__(self):
         self._calls = []
-        self._rb = random_id()
-        self._wb = random_id()
+        self._rfile = random_id()
+        self._wfile = random_id()
 
     def makefile(self, mode, **kw):
         self._calls.append(('makefile', mode, kw))
         if mode == 'rb':
-            return self._rb
+            return self._rfile
         if mode == 'wb':
-            return self._wb
+            return self._wfile
 
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
