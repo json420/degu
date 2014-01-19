@@ -289,18 +289,18 @@ class TestFunctions(TestCase):
         tmp = TempDir()
 
         (filename, fp) = tmp.create('zero')
-        self.assertIsNone(base.write_chunk(fp, b''))
+        self.assertEqual(base.write_chunk(fp, b''), 5)
         fp.close()
         self.assertEqual(open(filename, 'rb').read(), b'0\r\n\r\n')
 
         (filename, fp) = tmp.create('one')
-        self.assertIsNone(base.write_chunk(fp, b'hello'))
+        self.assertEqual(base.write_chunk(fp, b'hello'), 10)
         fp.close()
         self.assertEqual(open(filename, 'rb').read(), b'5\r\nhello\r\n')
 
         data = b'D' * 7777
         (filename, fp) = tmp.create('two')
-        self.assertIsNone(base.write_chunk(fp, data))
+        self.assertEqual(base.write_chunk(fp, data), 7785)
         fp.close()
         self.assertEqual(open(filename, 'rb').read(),
             b'1e61\r\n' + data + b'\r\n'
@@ -311,7 +311,8 @@ class TestFunctions(TestCase):
             filename = tmp.join(random_id())
             fp = open(filename, 'xb')
             data = os.urandom(size)
-            self.assertIsNone(base.write_chunk(fp, data))
+            total = size + len('{:x}'.format(size)) + 4
+            self.assertEqual(base.write_chunk(fp, data), total)
             fp.close()
             fp = open(filename, 'rb')
             self.assertEqual(base.read_chunk(fp), data)

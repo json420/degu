@@ -153,8 +153,9 @@ class TestFunctions(TestCase):
         chunk3 = os.urandom(19)
         (filename, fp) = tmp.create('foo')
         fp.write(lines)
+        total = 0
         for chunk in [chunk1, chunk2, chunk3, b'']:
-            base.write_chunk(fp, chunk)
+            total += base.write_chunk(fp, chunk)
         fp.close()
         rfile = open(filename, 'rb')
         r = client.read_response(rfile, 'GET')
@@ -168,6 +169,7 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.closed, False)
         self.assertEqual(list(r.body), [chunk1, chunk2, chunk3, b''])
         self.assertIs(r.body.closed, True)
+        self.assertEqual(rfile.tell(), len(lines) + total)
 
     def test_iter_request_lines(self):
         # Test when headers is an empty dict:

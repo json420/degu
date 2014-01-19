@@ -100,11 +100,12 @@ def read_chunk(rfile):
 
 def write_chunk(wfile, chunk):
     size_line = '{:x}\r\n'.format(len(chunk))
-    wfile.write(size_line.encode('latin_1'))
-    wfile.write(chunk)
-    wfile.write(b'\r\n')
+    total = wfile.write(size_line.encode('latin_1'))
+    total += wfile.write(chunk)
+    total += wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
     wfile.flush()
+    return total
 
 
 def parse_header(line):
