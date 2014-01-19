@@ -23,10 +23,12 @@
 Common HTTP parser used by server and client, plus a few other bits.
 """
 
+import io
+
 MAX_LINE_BYTES = 4096
 MAX_HEADER_COUNT = 10
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
-FILE_BUFFER_BYTES = 8388608  # 8 MiB
+FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
 
 class ParseError(Exception):
@@ -60,12 +62,15 @@ class BodyClosedError(Exception):
     def __init__(self, body):
         self.body = body
         super().__init__('cannot iterate, {!r} is closed'.format(body))
-        
 
 
 def read_line(fp):
-    # BufferedReader.readline() will stop at the first \n, so there is no reason
-    # for us the check the length of the line, just the line termination
+    """
+    Read a single CRLF terminated line from io.BufferedReader *fp*.
+
+    The return value will be an ``str`` with the decoded latin_1 text, minus the
+    terminating CRLF. 
+    """
     line_bytes = fp.readline(MAX_LINE_BYTES)
     if line_bytes[-2:] != b'\r\n':
         raise ParseError('Bad Line Termination')
@@ -207,6 +212,38 @@ class FileOutput:
     """
     Written to the wfile by reading from an io.BufferedReader.
     """
+
+    __slots__ = ('closed', 'fp', 'content_length')
+
+    def __init__(self, fp, content_length):
+        if not isinstance(fp, io.BufferedReader):
+            raise TypeError('fp must be an io.BufferedReader')
+        if fp.closed:
+            raise ValueError('fp is already closed')
+        if not isinstance(content_length, int):
+            raise TypeError('content_length must be an int')
+        if content_length < 0:
+            raise ValueError('content_length must be >= 0')
+        self.closed = False
+        self.fp = fp
+        self.content_length = content_length
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        remaining = self.content_length
+        while remaining:
+            size = min(remaining, FILE_BUFFER_BYTES)
+            buf = self.fp.read(size)
+            if len(buf) < size:
+                self.closed = True
+                self.fp.close()
+                raise UnderFlowError(len(buf), size)
+            remaining -= size
+            yield buf
+        assert remaining == 0
+        self.closed = True
+        self.fp.close()
 
 
 class ChunkedOutput:

@@ -547,3 +547,108 @@ class TestOutput(TestCase):
         self.assertEqual(str(cm.exception), 'buf must be bytes or bytearray')
         self.assertEqual(results, [b'foo'])
 
+
+class TestFileOutput(TestCase):
+    def test_init(self):
+        tmp = TempDir()
+        data = os.urandom(17)
+        fp = tmp.prepare(data)
+
+        body = base.FileOutput(fp, 17)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.fp, fp)
+        self.assertEqual(body.content_length, 17)
+
+        # Should raise a TypeError if fp isn't an io.BufferedReader:
+        wfile = open(tmp.join('foo'), 'wb')
+        with self.assertRaises(TypeError) as cm:
+            base.FileOutput(wfile, 17)
+        self.assertEqual(str(cm.exception), 'fp must be an io.BufferedReader')
+
+        # Should raise a TypeError if content_length isn't an int:
+        with self.assertRaises(TypeError) as cm:
+            base.FileOutput(fp, '17')
+        self.assertEqual(str(cm.exception), 'content_length must be an int')
+
+        # Should raise a ValueError if content_length < 0:
+        with self.assertRaises(ValueError) as cm:
+            base.FileOutput(fp, -1)
+        self.assertEqual(str(cm.exception), 'content_length must be >= 0')
+
+        # Should raise a TypeError fp closed:
+        fp.close()
+        with self.assertRaises(ValueError) as cm:
+            base.FileOutput(fp, 17)
+        self.assertEqual(str(cm.exception), 'fp is already closed')
+
+    def test_iter(self):
+        tmp = TempDir()
+
+        # Test with an empty file:
+        fp = tmp.prepare(b'')
+        body = base.FileOutput(fp, 0)
+        self.assertEqual(list(body), [])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
+
+        # Full file:
+        data = os.urandom(base.FILE_BUFFER_BYTES + 1)
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, base.FILE_BUFFER_BYTES + 1)
+        self.assertEqual(list(body), [data[:-1], data[-1:]])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
+
+        # Check that BodyClosedError is raised in above non-contrived scenario:
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # But should also be raised by merely setting body.closed to True:
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, base.FILE_BUFFER_BYTES + 1)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'cannot iterate, {!r} is closed'.format(body)
+        )
+
+        # From seek(200) to the end of file:
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, base.FILE_BUFFER_BYTES - 199)
+        fp.seek(200)
+        self.assertEqual(list(body), [data[200:]])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
+
+        # From start of file up to size - 200:
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, base.FILE_BUFFER_BYTES - 199)
+        self.assertEqual(list(body), [data[:-200]])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
+
+        # A non-inclusive slice:
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, 111)
+        fp.seek(666)
+        self.assertEqual(list(body), [data[666:777]])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
+
+        # Not enough content:
+        fp = tmp.prepare(data)
+        body = base.FileOutput(fp, base.FILE_BUFFER_BYTES + 2)
+        results = []
+        with self.assertRaises(base.UnderFlowError) as cm:
+            for buf in body:
+                results.append(buf)
+        self.assertEqual(str(cm.exception), 'received 1 bytes, expected 2')
+        self.assertEqual(results, [data[:-1]])
+        self.assertIs(body.closed, True)
+        self.assertIs(body.fp.closed, True)
