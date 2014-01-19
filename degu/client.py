@@ -41,6 +41,14 @@ Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
 
 
+def iter_request_lines(method, uri, headers):
+    yield '{} {} HTTP/1.1\r\n'.format(method, uri)
+    if headers:
+        for key in sorted(headers):
+            yield '{}: {}\r\n'.format(key, headers[key])
+    yield '\r\n'
+
+
 def parse_status(line):
     """
     Parse the status line.
@@ -90,12 +98,5 @@ def read_response(rfile, method):
         body = None
     return Response(status, reason, headers, body)
 
-
-def iter_request_lines(method, uri, headers):
-    yield '{} {} HTTP/1.1\r\n'.format(method, uri)
-    if headers:
-        for key in sorted(headers):
-            yield '{}: {}\r\n'.format(key, headers[key])
-    yield '\r\n'
 
     
