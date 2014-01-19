@@ -69,28 +69,28 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def read_line(fp):
+def read_line(rfile):
     """
-    Read a single CRLF terminated line from io.BufferedReader *fp*.
+    Read a single CRLF terminated line from io.BufferedReader *rfile*.
 
     The return value will be an ``str`` with the decoded latin_1 text, minus the
     terminating CRLF. 
     """
-    line_bytes = fp.readline(MAX_LINE_BYTES)
+    line_bytes = rfile.readline(MAX_LINE_BYTES)
     if line_bytes[-2:] != b'\r\n':
         raise ParseError('Bad Line Termination')
     return line_bytes[:-2].decode('latin_1')
 
 
-def read_chunk(fp):
-    line = read_line(fp)
+def read_chunk(rfile):
+    line = read_line(rfile)
     try:
         size = int(line.split(';', 1)[0], 16)
     except ValueError:
         raise ParseError('Bad Chunk Size')
     if size < 0:
         raise ParseError('Negative Chunk Size')
-    chunk = fp.read(size + 2)
+    chunk = rfile.read(size + 2)
     if len(chunk) != size + 2:
         raise UnderFlowError(len(chunk), size + 2)
     if chunk[-2:] != b'\r\n':
@@ -98,13 +98,13 @@ def read_chunk(fp):
     return chunk[:-2]
 
 
-def write_chunk(fp, chunk):
+def write_chunk(wfile, chunk):
     size_line = '{:x}\r\n'.format(len(chunk))
-    fp.write(size_line.encode('latin_1'))
-    fp.write(chunk)
-    fp.write(b'\r\n')
+    wfile.write(size_line.encode('latin_1'))
+    wfile.write(chunk)
+    wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
-    fp.flush()
+    wfile.flush()
 
 
 def parse_header(line):
