@@ -751,3 +751,68 @@ class TestFileOutput(TestCase):
         self.assertIs(body.closed, True)
         self.assertIs(body.fp.closed, True)
 
+
+class TestInput(TestCase):
+    def test_init(self):
+        tmp = TempDir()
+        data = os.urandom(18)
+        rfile = tmp.prepare(data)
+
+        body = base.Input(rfile, 18)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(body.remaining, 18)
+
+        # Should raise a TypeError if rfile isn't an io.BufferedReader:
+        wfile = open(tmp.join('foo'), 'wb')
+        with self.assertRaises(TypeError) as cm:
+            base.Input(wfile, 18)
+        self.assertEqual(str(cm.exception), 'rfile must be an io.BufferedReader')
+
+        # Should raise a TypeError if content_length isn't an int:
+        with self.assertRaises(TypeError) as cm:
+            base.Input(rfile, '18')
+        self.assertEqual(str(cm.exception), 'content_length must be an int')
+
+        # Should raise a ValueError if content_length < 0:
+        with self.assertRaises(ValueError) as cm:
+            base.Input(rfile, -1)
+        self.assertEqual(str(cm.exception), 'content_length must be >= 0')
+
+        # Should raise a TypeError if rfile closed:
+        rfile.close()
+        with self.assertRaises(ValueError) as cm:
+            base.Input(rfile, 18)
+        self.assertEqual(str(cm.exception), 'rfile is already closed')
+
+    def test_read(self):
+        total = 1776
+        start = random.randrange(total)
+        stop = random.randrange(start + 1, total + 1)
+        content_length = stop - start
+        self.assertTrue(0 <= content_length <= total)
+        data = os.urandom(total)
+        tmp = TempDir()
+        rfile = tmp.prepare(data)
+        rfile.seek(start)
+        body = base.Input(rfile, content_length)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(body.remaining, content_length)
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, False)
+
+        result = body.read()
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(len(result), content_length)
+        self.assertEqual(result, data[start:stop])
+        self.assertIs(body.closed, True)
+        self.assertIs(rfile.closed, False)
+        self.assertEqual(rfile.tell(), stop)
+
+        result = body.read()
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(result, b'')
+        self.assertIs(body.closed, True)
+        self.assertIs(rfile.closed, False)
+        self.assertEqual(rfile.tell(), stop)
+

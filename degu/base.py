@@ -287,7 +287,55 @@ class FileOutput:
 
 
 class Input:
-    pass
+    """
+    Read from the rfile.
+
+    Content-Length must be known in advance.
+    """
+
+    __slots__ = ('closed', 'rfile', 'remaining')
+
+    def __init__(self, rfile, content_length):
+        if not isinstance(rfile, io.BufferedReader):
+            raise TypeError('rfile must be an io.BufferedReader')
+        if rfile.closed:
+            raise ValueError('rfile is already closed')
+        if not isinstance(content_length, int):
+            raise TypeError('content_length must be an int')
+        if content_length < 0:
+            raise ValueError('content_length must be >= 0')
+        self.closed = False
+        self.rfile = rfile
+        self.remaining = content_length
+
+    def read(self, size=None):
+        if size is not None:
+            if not isinstance(size, int):
+                raise TypeError('size must be an int')
+            if size < 0:
+                raise ValueError('size must be >= 0')
+        if self.closed:
+            return b''
+        size = (self.remaining if size is None else min(self.remaining, size))
+        buf = self.rfile.read(size)
+        if len(buf) != size:
+            self.closed = True
+            raise UnderFlowError(len(buf), size)
+        self.remaining -= size
+        if self.remaining == 0:
+            self.closed = True
+        return buf
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        while True:
+            buf = self.read(FILE_BUFFER_BYTES)
+            if not buf:
+                self.closed = True
+                break
+            yield buf
+        assert self.closed is True
 
 
 class ChunkedInput:
