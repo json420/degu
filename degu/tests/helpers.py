@@ -89,3 +89,12 @@ class DummySocket:
 
     def close(self):
         self._calls.append('close')
+
+
+class DummyFile:
+    def __init__(self):
+        self._calls = []
+
+    def close(self):
+        self._calls.append('close')
+

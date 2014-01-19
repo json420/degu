@@ -23,7 +23,17 @@
 HTTP server.
 """
 
-from .base import ParseError
+import socket
+
+from .base import (
+    ParseError,
+    makefiles,
+    read_line,
+    read_headers,
+    write_chunk,
+    Input,
+    ChunkedInput,
+)
 
 
 def parse_request(line):
@@ -134,3 +144,100 @@ def iter_response_lines(status, reason, headers):
         for key in sorted(headers):
             yield '{}: {}\r\n'.format(key, headers[key])
     yield '\r\n'
+
+
+
+
+class Handler:
+    """
+    Handles one or more HTTP requests.
+
+    A `Handler` instance is created per TCP connection.
+    """
+
+    __slots__ = ('app', 'environ', 'sock', 'rfile', 'wfile')
+
+    def __init__(self, app, environ, sock):
+        self.app = app
+        self.environ = environ
+        self.sock = sock
+        (self.rfile, self.wfile) = makefiles(sock)
+
+    def close(self):
+        self.rfile.close()
+        self.wfile.close()
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+
+    def handle_one(self):
+        try:
+            request = self.environ.copy()
+            request.update(self.build_request())
+            self.validate_request(request)
+            response = self.app(request)
+            self.validate_response(request, response)
+        except Exception as e:
+            if isinstance(e, RGIError) and e.status:
+                self.send_status_only(e.status)
+            else:
+                self.send_status_only('500 Internal Server Error')
+            raise e
+        self.send_response(request, response)
+
+    def build_request(self):
+        """
+        Builds the *environ* fragment unique to a single HTTP request.
+        """
+        (method, path_list, query) = parse_request(read_line(self.rfile))
+        headers = read_headers(self.rfile)
+        if 'content-length' in headers:
+            body = Input(self.rfile, headers['content-length'])
+        elif 'transfer-encoding' in headers:
+            body = ChunkedInput(self.rfile)
+        else:
+            body = None
+        return {
+            'method': method,
+            'script': [],
+            'path': path_list,
+            'query': query,
+            'headers': headers,
+            'body': body,
+        }
+
+    def validate_request(self, request):
+        if request['body'] is not None:
+            if request['method'] not in ('POST', 'PUT'):
+                raise RGIError('400 Request Body With Wrong Method')
+
+    def validate_response(self, request, response):
+        (status, headers, body) = response
+        if request['method'] == 'HEAD' and body is not None:
+            raise TypeError(
+                'response body must be None when request method is HEAD'
+            )
+
+    def send_response(self, request, response):
+        (status, headers, body) = response
+        preamble = ''.join(iter_response_lines(status, headers))
+        self.wfile.write(preamble.encode('latin_1'))
+        if isinstance(body, (bytes, bytearray)):
+            self.wfile.write(body)
+        elif isinstance(body, (ResponseBody, FileResponseBody)):
+            for buf in body:
+                self.wfile.write(buf)
+        elif isinstance(body, ChunkedResponseBody):
+            for chunk in body:
+                write_chunk(self.wfile, chunk)
+        elif body is not None:
+            raise TypeError('Bad response body type')
+        self.wfile.flush()
+
+    def send_status_only(self, status):
+        preamble = ''.join(iter_response_lines(status, None))
+        self.wfile.write(preamble.encode('latin_1'))
+        self.wfile.flush()
+

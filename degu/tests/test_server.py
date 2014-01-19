@@ -26,67 +26,67 @@ Unit tests for the `degu.server` module`
 from unittest import TestCase
 import os
 from random import SystemRandom
+import socket
 
 from dbase32 import random_id
 
-from .helpers import TempDir
-from degu.base import ParseError
-from degu import server
+from .helpers import TempDir, DummySocket, DummyFile
+from degu import base, server
 
 
 class TestFunctions(TestCase):
     def test_parse_request(self):
         # Bad separators:
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET/foo/bar?stuff=junkHTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Bad Request Line')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET  /foo/bar?stuff=junk  HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Bad Request Line')
 
         # Bad method:
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('COPY /foo/bar?stuff=junk HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Method Not Allowed')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Method Not Allowed')
 
         # All manner of URI problems:
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET foo/bar HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Bad Request URI Start')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /../bar HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI DotDot')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET //bar HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI Double Slash')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo\\/bar HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI Backslash')
 
         # Same as above, but toss a query into the mix
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET foo/bar?stuff=junk HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Bad Request URI Start')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo/bar?stuff=.. HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI DotDot')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo/bar?stuff=// HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI Double Slash')
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo/bar?stuff\\=junk HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Naughty URI Backslash')
 
         # Multiple "?" present in URI:
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
         self.assertEqual(cm.exception.reason, 'Bad Request URI Query')
 
         # Bad protocol:
-        with self.assertRaises(ParseError) as cm:
+        with self.assertRaises(base.ParseError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
         self.assertEqual(cm.exception.reason, '505 HTTP Version Not Supported')
 
@@ -196,3 +196,143 @@ class TestFunctions(TestCase):
                 '\r\n',
             ]
         )
+
+
+class TestHandler(TestCase):
+    def test_init(self):
+        app = random_id()
+        environ = random_id()
+        sock = DummySocket()
+        handler = server.Handler(app, environ, sock)
+        self.assertIs(handler.app, app)
+        self.assertIs(handler.environ, environ)
+        self.assertIs(handler.sock, sock)
+        self.assertEqual(sock._calls, [
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+        ])
+        self.assertIs(handler.rfile, sock._rb)
+        self.assertIs(handler.wfile, sock._wb)
+
+    def test_close(self):
+        # We need to override Handler.__init__() for this test:
+        class HandlerSubclass(server.Handler):
+            def __init__(self, sock, rfile, wfile):
+                self.sock = sock
+                self.rfile = rfile
+                self.wfile = wfile
+
+        sock = DummySocket()
+        rfile = DummyFile()
+        wfile = DummyFile()
+        handler = HandlerSubclass(sock, rfile, wfile)
+        self.assertIsNone(handler.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR), 'close'])
+        self.assertEqual(rfile._calls, ['close'])
+        self.assertEqual(wfile._calls, ['close'])
+
+    def test_build_request(self):
+        # We need to override Handler.__init__() for this test:
+        class HandlerSubclass(server.Handler):
+            def __init__(self, rfile):
+                self.rfile = rfile
+
+        tmp = TempDir()
+
+        # Test with no request body
+        lines = ''.join([
+            'GET /foo/bar?stuff=junk HTTP/1.1\r\n',
+            'User-Agent: Microfiber/14.04\r\n',
+            'Accept: application/json\r\n',
+            '\r\n',
+        ])
+        rfile = tmp.prepare(lines.encode('latin_1'))
+        handler = HandlerSubclass(rfile)
+        self.assertEqual(handler.build_request(), {
+            'method': 'GET',
+            'script': [],
+            'path': ['foo', 'bar'],
+            'query': 'stuff=junk',
+            'headers': {
+                'user-agent': 'Microfiber/14.04',
+                'accept': 'application/json',
+            },
+            'body': None,
+        })
+
+        # Test with a Content-Length header
+        data = os.urandom(17)
+        lines = ''.join([
+            'PUT /foo/bar/baz?hello HTTP/1.1\r\n',
+            'User-Agent: Microfiber/14.04\r\n',
+            'Content-Length: 17\r\n',
+            '\r\n',
+        ])
+        rfile = tmp.prepare(lines.encode('latin_1') + data)
+        handler = HandlerSubclass(rfile)
+        req = handler.build_request()
+        body = req.pop('body')
+        self.assertEqual(req, {
+            'method': 'PUT',
+            'script': [],
+            'path': ['foo', 'bar', 'baz'],
+            'query': 'hello',
+            'headers': {
+                'user-agent': 'Microfiber/14.04',
+                'content-length': 17,
+            },
+        })
+        self.assertIsInstance(body, base.Input)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(body.remaining, 17)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile.closed, False)
+        self.assertEqual(body.read(), data)
+        self.assertIs(body.closed, True)
+        self.assertIs(body.rfile.closed, False)
+        self.assertEqual(body.read(), b'')
+        self.assertIs(body.closed, True)
+        self.assertIs(body.rfile.closed, False)
+
+        # Test with a Transfer-Encoding header
+        chunk1 = os.urandom(21)
+        chunk2 = os.urandom(18)
+        lines = ''.join([
+            'POST / HTTP/1.1\r\n',
+            'Transfer-Encoding: chunked\r\n',
+            'Content-Type: application/json\r\n',
+            '\r\n',
+        ])
+        filename = tmp.join(random_id())
+        fp = open(filename, 'xb')
+        fp.write(lines.encode('latin_1'))
+        base.write_chunk(fp, chunk1)
+        base.write_chunk(fp, chunk2)
+        base.write_chunk(fp, b'')
+        fp.close()
+        fp = open(filename, 'rb')
+        handler = HandlerSubclass(fp)
+        req = handler.build_request()
+        body = req.pop('body')
+        self.assertEqual(req, {
+            'method': 'POST',
+            'script': [],
+            'path': [],
+            'query': '',
+            'headers': {
+                'transfer-encoding': 'chunked',
+                'content-type': 'application/json',
+            },
+        })
+        self.assertIsInstance(body, base.ChunkedInput)
+        self.assertIs(body.rfile, fp)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile.closed, False)
+        self.assertEqual(body.readchunk(), chunk1)
+        self.assertEqual(body.readchunk(), chunk2)
+        self.assertEqual(body.readchunk(), b'')
+        self.assertIs(body.closed, True)
+        self.assertIs(body.rfile.closed, False)
+        self.assertEqual(body.readchunk(), b'')
+        self.assertIs(body.closed, True)
+        self.assertIs(body.rfile.closed, False)
