@@ -25,6 +25,7 @@ Common HTTP parser used by server and client, plus a few other bits.
 
 import io
 
+
 MAX_LINE_BYTES = 4096
 MAX_HEADER_COUNT = 10
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
@@ -339,5 +340,43 @@ class Input:
 
 
 class ChunkedInput:
-    pass
+    __slots__ = ('rfile', 'closed')
 
+    def __init__(self, rfile):
+        if not isinstance(rfile, io.BufferedReader):
+            raise TypeError('rfile must be an io.BufferedReader')
+        if rfile.closed:
+            raise ValueError('rfile is already closed')
+        self.closed = False
+        self.rfile = rfile
+
+    def read(self):
+        if self.closed:
+            return b''
+        buf = bytearray()
+        while True:
+            chunk = self.readchunk()
+            if not chunk:
+                break
+            buf.extend(chunk)
+        assert self.closed is True
+        return buf
+
+    def readchunk(self):
+        if self.closed:
+            return b''
+        chunk = read_chunk(self.rfile)
+        if not chunk:
+            self.closed = True
+        return chunk
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        while True:
+            chunk = self.readchunk()
+            yield chunk
+            if not chunk:
+                self.closed = True
+                break
+        assert self.closed is True
