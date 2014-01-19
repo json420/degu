@@ -24,6 +24,7 @@ HTTP client.
 """
 
 import socket
+from collections import namedtuple
 
 from .base import (
     ParseError,
@@ -34,6 +35,10 @@ from .base import (
     Input,
     ChunkedInput,
 )
+
+
+Connection = namedtuple('Connection', 'sock rfile wfile')
+Response = namedtuple('Response', 'status reason headers body')
 
 
 def parse_status(line):
@@ -72,3 +77,25 @@ def parse_status(line):
 
     # Return only (status, reason) as protocol isn't interesting:
     return (status, reason)
+
+
+def read_response(rfile, method):
+    (status, reason) = parse_status(read_line(rfile))
+    headers = read_headers(rfile)
+    if 'content-length' in headers and method != 'HEAD':
+        body = Input(rfile, headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = ChunkedInput(rfile)
+    else:
+        body = None
+    return Response(status, reason, headers, body)
+
+
+def iter_request_lines(method, uri, headers):
+    yield '{} {} HTTP/1.1\r\n'.format(method, uri)
+    if headers:
+        for key in sorted(headers):
+            yield '{}: {}\r\n'.format(key, headers[key])
+    yield '\r\n'
+
+    
