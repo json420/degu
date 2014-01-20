@@ -202,7 +202,7 @@ class Client:
 class SSLClient(Client):
     default_port = 443
 
-    def __init__(self, hostname, port, ssl_ctx, check_hostname=True):
+    def __init__(self, ssl_ctx, hostname, port, check_hostname=True):
         super().__init__(hostname, port)
         self.ssl_ctx = ssl_ctx
         self.check_hostname = check_hostname
