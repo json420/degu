@@ -24,6 +24,7 @@ HTTP client.
 """
 
 import socket
+import ssl
 from collections import namedtuple
 
 from .base import (
@@ -197,3 +198,30 @@ class Client:
             self.close()
             raise
 
+
+class SSLClient(Client):
+    default_port = 443
+
+    def __init__(self, hostname, port, ssl_ctx, check_hostname=True):
+        super().__init__(hostname, port)
+        self.ssl_ctx = ssl_ctx
+        self.check_hostname = check_hostname
+
+    def create_socket(self):
+        sock = self.ssl_ctx.wrap_socket(
+            socket.create_connection((self.hostname, self.port)),
+            server_hostname=self.hostname
+        )
+        peercert = sock.getpeercert()
+        try:
+            if self.check_hostname:
+                ssl.match_hostname(peercert, self.hostname)
+            self.handle_ssl_connection(sock, peercert)
+        except Exception:
+            sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+            raise
+        return sock
+
+    def handle_ssl_connection(self, sock, peercert):
+        pass

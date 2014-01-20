@@ -27,6 +27,7 @@ from unittest import TestCase
 import os
 from random import SystemRandom
 import socket
+import ssl
 
 from dbase32 import random_id
 
@@ -336,3 +337,155 @@ class TestHandler(TestCase):
         self.assertEqual(body.readchunk(), b'')
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
+
+
+def demo_app(request):
+    return (200, 'OK', {}, None) 
+
+
+class TestServer(TestCase):
+    def test_init(self):
+        class Bad:
+            pass
+
+        # App not callable
+        bad = Bad()
+        with self.assertRaises(TypeError) as cm:
+            server.Server(bad, '::1')
+        self.assertEqual(
+            str(cm.exception),
+            'app not callable: {!r}'.format(bad)
+        )
+
+        # Bad bind_address:
+        with self.assertRaises(ValueError) as cm:
+            server.Server(demo_app, '192.168.1.1')
+        self.assertEqual(str(cm.exception), "invalid bind_address: '192.168.1.1'")
+
+        # IPv6 localhost only:
+        inst = server.Server(demo_app, '::1')
+        self.assertEqual(inst.scheme, 'http')
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '::1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'http://[::1]:{:d}/'.format(inst.port))
+
+        # IPv6 any:
+        inst = server.Server(demo_app, '::')
+        self.assertEqual(inst.scheme, 'http')
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '::')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'http://[::1]:{:d}/'.format(inst.port))
+
+        # IPv4 localhost only:
+        inst = server.Server(demo_app, '127.0.0.1')
+        self.assertEqual(inst.scheme, 'http')
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '127.0.0.1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'http://127.0.0.1:{:d}/'.format(inst.port))
+
+        # IPv4 any:
+        inst = server.Server(demo_app, '127.0.0.1')
+        self.assertEqual(inst.scheme, 'http')
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '127.0.0.1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'http://127.0.0.1:{:d}/'.format(inst.port))
+
+
+class TestSSLServer(TestCase):
+    def test_init(self):
+        # ssl_ctx is not an ssl.SSLContext:
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer('foo', demo_app, '::1')
+        self.assertEqual(str(cm.exception), 'ssl_ctx must be an ssl.SSLContext')
+
+        # Bad SSL protocol version:
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(ssl_ctx, demo_app, '::1')
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1'
+        )
+
+        # not (options & ssl.OP_NO_COMPRESSION)
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(ssl_ctx, demo_app, '::1')
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.options must include ssl.OP_NO_COMPRESSION'
+        )
+
+        # Good ssl_ctx from here on:
+        ssl_ctx.options |= ssl.OP_NO_COMPRESSION
+
+        class Bad:
+            pass
+
+        # App not callable
+        bad = Bad()
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(ssl_ctx, bad, '::1')
+        self.assertEqual(
+            str(cm.exception),
+            'app not callable: {!r}'.format(bad)
+        )
+
+        # Bad bind_address:
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(ssl_ctx, demo_app, '192.168.1.1')
+        self.assertEqual(str(cm.exception), "invalid bind_address: '192.168.1.1'")
+
+        # IPv6 localhost only:
+        inst = server.SSLServer(ssl_ctx, demo_app, '::1')
+        self.assertEqual(inst.scheme, 'https')
+        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '::1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
+
+        # IPv6 any:
+        inst = server.SSLServer(ssl_ctx, demo_app, '::')
+        self.assertEqual(inst.scheme, 'https')
+        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '::')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
+
+        # IPv4 localhost only:
+        inst = server.SSLServer(ssl_ctx, demo_app, '127.0.0.1')
+        self.assertEqual(inst.scheme, 'https')
+        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '127.0.0.1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
+
+        # IPv4 any:
+        inst = server.SSLServer(ssl_ctx, demo_app, '127.0.0.1')
+        self.assertEqual(inst.scheme, 'https')
+        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.app, demo_app)
+        self.assertIsInstance(inst.sock, socket.socket)
+        self.assertEqual(inst.bind_address, '127.0.0.1')
+        self.assertIsInstance(inst.port, int)
+        self.assertEqual(inst.port, inst.sock.getsockname()[1])
+        self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))

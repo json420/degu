@@ -24,6 +24,7 @@ HTTP server.
 """
 
 import socket
+import ssl
 
 from .base import (
     ParseError,
@@ -34,6 +35,9 @@ from .base import (
     Input,
     ChunkedInput,
 )
+
+
+SOCKET_TIMEOUT = 30
 
 
 def parse_request(line):
@@ -146,8 +150,6 @@ def iter_response_lines(status, reason, headers):
     yield '\r\n'
 
 
-
-
 class Handler:
     """
     Handles one or more HTTP requests.
@@ -240,4 +242,139 @@ class Handler:
         preamble = ''.join(iter_response_lines(status, None))
         self.wfile.write(preamble.encode('latin_1'))
         self.wfile.flush()
+
+
+class Server:
+    scheme = 'http'
+
+    def __init__(self, app, bind_address='::1', port=0):
+        if not callable(app):
+            raise TypeError('app not callable: {!r}'.format(app))
+        self.app = app
+        if bind_address in {'::1', '::'}:
+            template = '{}://[::1]:{:d}/'
+            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        elif bind_address in {'127.0.0.1', '0.0.0.0'}:
+            template = '{}://127.0.0.1:{:d}/'
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        else:
+            raise ValueError('invalid bind_address: {!r}'.format(bind_address))
+        self.sock.bind((bind_address, port))
+        self.bind_address = bind_address
+        self.port = self.sock.getsockname()[1]
+        self.url = template.format(self.scheme, self.port)
+
+    def build_base_environ(self):
+        """
+        Builds the base *environ* used throughout instance lifetime.
+        """
+        return {
+            'server': (self.bind_address, self.port),
+            'scheme': self.scheme,
+            'rgi.version': (0, 1),
+            'rgi.multithread': True,
+            'rgi.multiprocess': False,
+            'rgi.run_once': False,
+            'rgi.ResponseBody': Output,
+            'rgi.FileResponseBody': FileOutput,
+            'rgi.ChunkedResponseBody': ChunkedOutput,
+        }
+
+    def build_connection_environ(self, sock, address):
+        """
+        Builds the *environ* fragment unique to a TCP (and SSL) connection.
+        """
+        return {
+            'client': (address[0], address[1]),
+        }
+
+    def serve_forever(self):
+        self.environ = self.build_base_environ()
+        self.socket.listen(5)
+        while True:
+            (conn, address) = self.socket.accept()
+            conn.settimeout(SOCKET_TIMEOUT)
+            thread = threading.Thread(
+                target=self.handle_connection,
+                args=(conn, address),
+            )
+            thread.daemon = True
+            thread.start()
+
+    def handle_connection(self, conn, address):
+        #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+        try:
+            if self.context is not None:
+                conn = self.context.wrap_socket(conn, server_side=True)
+            self.handle_requests(conn, address)
+            conn.shutdown(socket.SHUT_RDWR)
+        except socket.error:
+            log.info('%s\tSocket Timeout/Error', address)
+        except Exception:
+            log.exception('%s\tUnhandled Exception', address)
+        finally:
+            conn.close()
+
+    def handle_requests(self, conn, address):
+        environ = self.environ.copy()
+        environ.update(self.build_connection_environ(conn, address))
+        handler = Handler(self.app, environ, conn)
+        handler.handle()
+
+
+class SSLServer(Server):
+    scheme = 'https'
+
+    def __init__(self, ssl_ctx, app, bind_address='::1', port=0):
+        if not isinstance(ssl_ctx, ssl.SSLContext):
+            raise TypeError('ssl_ctx must be an ssl.SSLContext')
+        if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:
+            raise ValueError('ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1')
+        if not (ssl_ctx.options & ssl.OP_NO_COMPRESSION):
+            raise ValueError('ssl_ctx.options must include ssl.OP_NO_COMPRESSION')
+        super().__init__(app, bind_address, port)
+        self.ssl_ctx = ssl_ctx
+
+    def build_connection_environ(self, conn, address):
+        """
+        Builds the *environ* fragment unique to a TCP (and SSL) connection.
+        """
+        environ = {
+            'client': (address[0], address[1]),
+        }
+        return environ
+        if self.context is None:
+            return environ
+
+        peercert = conn.getpeercert()
+        if peercert is None:
+            if self.context.verify_mode == ssl.CERT_REQUIRED:
+                raise Exception(
+                    'peercert is None but verify_mode == CERT_REQUIRED'
+                )
+            return environ
+
+        if self.context.verify_mode == ssl.CERT_REQUIRED:
+            environ['SSL_CLIENT_VERIFY'] = 'SUCCESS'
+        subject = dict(peercert['subject'][0])
+        if 'commonName' in subject:
+            environ['SSL_CLIENT_S_DN_CN'] = subject['commonName']
+        issuer = dict(peercert['issuer'][0])
+        if 'commonName' in issuer:
+            environ['SSL_CLIENT_I_DN_CN'] = issuer['commonName']
+        return environ
+
+    def handle_connection(self, conn, address):
+        #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+        try:
+            if self.context is not None:
+                conn = self.context.wrap_socket(conn, server_side=True)
+            self.handle_requests(conn, address)
+            conn.shutdown(socket.SHUT_RDWR)
+        except socket.error:
+            log.info('%s\tSocket Timeout/Error', address)
+        except Exception:
+            log.exception('%s\tUnhandled Exception', address)
+        finally:
+            conn.close()
 
