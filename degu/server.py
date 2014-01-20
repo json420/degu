@@ -291,41 +291,35 @@ class Server:
             'client': (address[0], address[1]),
         }
 
-    def _serve_forever(self):
+    def serve_forever(self):
         self.environ = self.build_base_environ()
         self.sock.listen(5)
         while True:
-            (conn, address) = self.sock.accept()
-            conn.settimeout(SOCKET_TIMEOUT)
+            (sock, address) = self.sock.accept()
+            sock.settimeout(SOCKET_TIMEOUT)
             thread = threading.Thread(
                 target=self.handle_connection,
-                args=(conn, address),
+                args=(sock, address),
             )
             thread.daemon = True
             thread.start()
 
-    def serve_forever(self):
+    def handle_connection(self, sock, address):
         try:
-            self._serve_forever()
-        except Exception:
-            log.exception('error is server_forever()')
-            raise
-
-    def handle_connection(self, conn, address):
-        try:
-            self.handle_requests(conn, address)
-            conn.shutdown(socket.SHUT_RDWR)
+            self.handle_requests(sock, address)
+            sock.shutdown(socket.SHUT_RDWR)
         except socket.error:
             log.info('%s\tSocket Timeout/Error', address)
         except Exception:
             log.exception('%s\tUnhandled Exception', address)
         finally:
-            conn.close()
+            sock.close()
 
-    def handle_requests(self, conn, address):
+    def handle_requests(self, sock, address):
+        print(address)
         environ = self.environ.copy()
-        environ.update(self.build_connection_environ(conn, address))
-        handler = Handler(self.app, environ, conn)
+        environ.update(self.build_connection_environ(sock, address))
+        handler = Handler(self.app, environ, sock)
         handler.handle()
 
 
