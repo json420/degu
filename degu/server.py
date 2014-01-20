@@ -25,6 +25,8 @@ HTTP server.
 
 import socket
 import ssl
+import logging
+import threading
 
 from .base import (
     ParseError,
@@ -34,10 +36,14 @@ from .base import (
     write_chunk,
     Input,
     ChunkedInput,
+    Output,
+    ChunkedOutput,
+    FileOutput,
 )
 
 
 SOCKET_TIMEOUT = 30
+log = logging.getLogger()
 
 
 def parse_request(line):
@@ -174,20 +180,15 @@ class Handler:
             pass
         self.sock.close()
 
+    def handle(self):
+        while True:
+            self.handle_one()
+
     def handle_one(self):
-        try:
-            request = self.environ.copy()
-            request.update(self.build_request())
-            self.validate_request(request)
-            response = self.app(request)
-            self.validate_response(request, response)
-        except Exception as e:
-            if isinstance(e, RGIError) and e.status:
-                self.send_status_only(e.status)
-            else:
-                self.send_status_only('500 Internal Server Error')
-            raise e
-        self.send_response(request, response)
+        request = self.environ.copy()
+        request.update(self.build_request())
+        response = self.app(request)
+        self.send_response(response)
 
     def build_request(self):
         """
@@ -216,30 +217,32 @@ class Handler:
                 raise RGIError('400 Request Body With Wrong Method')
 
     def validate_response(self, request, response):
-        (status, headers, body) = response
+        (status, reason, headers, body) = response
         if request['method'] == 'HEAD' and body is not None:
             raise TypeError(
                 'response body must be None when request method is HEAD'
             )
 
-    def send_response(self, request, response):
-        (status, headers, body) = response
-        preamble = ''.join(iter_response_lines(status, headers))
+    def send_response(self, response):
+        (status, reason, headers, body) = response
+        preamble = ''.join(iter_response_lines(status, reason, headers))
         self.wfile.write(preamble.encode('latin_1'))
-        if isinstance(body, (bytes, bytearray)):
+        if body is None:
+            pass
+        elif isinstance(body, (bytes, bytearray)):
             self.wfile.write(body)
-        elif isinstance(body, (ResponseBody, FileResponseBody)):
+        elif isinstance(body, (Output, FileOutput)):
             for buf in body:
                 self.wfile.write(buf)
-        elif isinstance(body, ChunkedResponseBody):
+        elif isinstance(body, ChunkedOutput):
             for chunk in body:
                 write_chunk(self.wfile, chunk)
-        elif body is not None:
+        else:
             raise TypeError('Bad response body type')
         self.wfile.flush()
 
-    def send_status_only(self, status):
-        preamble = ''.join(iter_response_lines(status, None))
+    def send_status_only(self, status, reason):
+        preamble = ''.join(iter_response_lines(status, reason, None))
         self.wfile.write(preamble.encode('latin_1'))
         self.wfile.flush()
 
@@ -288,11 +291,11 @@ class Server:
             'client': (address[0], address[1]),
         }
 
-    def serve_forever(self):
+    def _serve_forever(self):
         self.environ = self.build_base_environ()
-        self.socket.listen(5)
+        self.sock.listen(5)
         while True:
-            (conn, address) = self.socket.accept()
+            (conn, address) = self.sock.accept()
             conn.settimeout(SOCKET_TIMEOUT)
             thread = threading.Thread(
                 target=self.handle_connection,
@@ -301,11 +304,15 @@ class Server:
             thread.daemon = True
             thread.start()
 
-    def handle_connection(self, conn, address):
-        #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+    def serve_forever(self):
         try:
-            if self.context is not None:
-                conn = self.context.wrap_socket(conn, server_side=True)
+            self._serve_forever()
+        except Exception:
+            log.exception('error is server_forever()')
+            raise
+
+    def handle_connection(self, conn, address):
+        try:
             self.handle_requests(conn, address)
             conn.shutdown(socket.SHUT_RDWR)
         except socket.error:
