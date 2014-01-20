@@ -7,9 +7,9 @@ multiple fronts, WSGI is an exceedingly good design.
 
 RGI is largely a thought experiment in what you could do with something
 WSGI-like assuming you did *not* need `CGI`_ compatibility.  It would be
-tempting to call RGI an attempt at WSGI 2.0, but RGI is not in the original
-spirit of WSGI in some important ways (in particular, its disregard for CGI
-compatibility).
+tempting to call RGI a hopeful WSGI 2.0 draft, but RGI is not in the original
+spirit of WSGI in some important ways (in particular, its complete disregard for
+CGI compatibility).  Thus, this is RGI 0.1, not WSGI 2.0.
 
 RGI focuses on improvement in three areas:
 
@@ -22,9 +22,10 @@ RGI focuses on improvement in three areas:
        ``start_response()`` callable they received from the server
 
     3. A proxy application is a good guiding-light for an extreme-case
-       middleware component; in particular, you do not want middleware
-       components (or the server) to need to re-parse any values in order to do
-       meaningful things with them (say, the request header names)
+       middleware component; in particular, we should not require middleware
+       components to re-parse or otherwise transform any values in order to do
+       something meaningful with these value (eg, a proxy generally needs to use
+       the full request headers in its own HTTP client request)
 
 
 Birds Eye View
@@ -75,7 +76,8 @@ servers much easier.
 
 Note that the HTTP status code is return as an integer, and the reason is
 returned in a separate string value.  This is so that this value doesn't need to
-be parsed out of a WSGI-style status string.
+be parsed out of a WSGI-style status string in order to be inspected by
+middleware or the server.
 
 Also note that the response headers are a dictionary instead of a WSGI-style
 list of pairs.  The response header names must be casefolded with
