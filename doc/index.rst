@@ -20,6 +20,7 @@ Contents:
     install
     bugs
     degu
+    rgi
 
 
 .. _`Degu`: https://launchpad.net/degu

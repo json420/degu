@@ -21,6 +21,64 @@
 
 """
 HTTP server.
+
+Example RGI application:
+
+>>> def demo_app(request):
+...     if request['method'] not in ('GET', 'HEAD'):
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request['path'] != []:
+...         return (404, 'Not Found', {}, None)
+...     body = b'Hello, world!'
+...     headers = {'content-length': len(body)}
+...     return (200, 'OK', headers, body)
+...
+
+For example, a request with the wrong method:
+
+>>> demo_app({'method': 'DELETE', 'path': []})
+(405, 'Method Not Allowed', {}, None)
+
+A GET request for the wrong path:
+
+>>> demo_app({'method': 'GET', 'path': ['foo']})
+(404, 'Not Found', {}, None)
+
+And now a GET request for the correct path:
+
+>>> demo_app({'method': 'GET', 'path': []})
+(200, 'OK', {'content-length': 13}, b'Hello, world!')
+
+But note that this application isn't correct, as it should not return a response
+body for a HEAD request:
+
+>>> demo_app({'method': 'HEAD', 'path': []})
+(200, 'OK', {'content-length': 13}, b'Hello, world!')
+
+Which brings us to an example middleware app, which checks for such a faulty
+application and overrides its response:
+
+>>> class Middleware:
+...     def __init__(self, app):
+...         self.app = app
+...
+...     def __call__(self, request):
+...         (status, reason, headers, body) = self.app(request)
+...         if request['method'] == 'HEAD' and body is not None:
+...             return (500, 'Internal Server Error', {}, None)
+...         return (status, reason, headers, body)
+...
+
+The middleware will let the response to a GET request pass through unchanged: 
+
+>>> middleware = Middleware(demo_app)
+>>> middleware({'method': 'GET', 'path': []})
+(200, 'OK', {'content-length': 13}, b'Hello, world!')
+
+But it will intercept the faulty response to a HEAD request:
+
+>>> middleware({'method': 'HEAD', 'path': []})
+(500, 'Internal Server Error', {}, None)
 """
 
 import socket
