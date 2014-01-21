@@ -70,8 +70,29 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def validate_ssl_ctx(ssl_ctx):
+def build_base_ssl_ctx():
+    """
+    Build an ssl.SSLContext with the shared server and client features.
+    """
     # FIXME: When we move to Python 3.4, we should use ssl.PROTOCOL_TLSv1_2
+    ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+
+    # FIXME: We should perhaps accept only a single, highly restrictive cipher:
+    #   TLSv1:   ECDHE-RSA-AES256-SHA
+    #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
+    ssl_ctx.set_ciphers('HIGH:!aNULL:!RC4:!DSS')
+
+    # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
+    # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
+    # Python 3.4 is still setting this, so we are too:
+    ssl_ctx.options |= ssl.OP_NO_SSLv2
+
+    # Protect against CRIME-like attacks, plus better media file transfer rates:
+    ssl_ctx.options |= ssl.OP_NO_COMPRESSION
+    return ssl_ctx
+
+
+def validate_ssl_ctx(ssl_ctx):
     if not isinstance(ssl_ctx, ssl.SSLContext):
         raise TypeError('ssl_ctx must be an ssl.SSLContext')
     if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:

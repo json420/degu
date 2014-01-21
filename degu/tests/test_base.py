@@ -25,6 +25,7 @@ Unit tests for the `degu.base` module`
 
 from unittest import TestCase
 import os
+import ssl
 from random import SystemRandom
 
 from dbase32 import random_id
@@ -132,6 +133,47 @@ class TestBodyClosedError(TestCase):
 
 
 class TestFunctions(TestCase):
+    def test_build_base_ssl_ctx(self):
+        ssl_ctx = base.build_base_ssl_ctx()
+        self.assertIsInstance(ssl_ctx, ssl.SSLContext)
+        self.assertEqual(ssl_ctx.protocol, ssl.PROTOCOL_TLSv1)
+        self.assertTrue(ssl_ctx.options & ssl.OP_NO_SSLv2)
+        self.assertTrue(ssl_ctx.options & ssl.OP_NO_COMPRESSION)
+        self.assertIsNone(base.validate_ssl_ctx(ssl_ctx))
+
+    def test_validate_ssl_ctx(self):
+        # Bad type:
+        with self.assertRaises(TypeError) as cm:
+            base.validate_ssl_ctx('foo')
+        self.assertEqual(str(cm.exception), 'ssl_ctx must be an ssl.SSLContext')
+
+        # Bad protocol:
+        with self.assertRaises(ValueError) as cm:
+            base.validate_ssl_ctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1'
+        )
+
+        # Missing ssl.OP_NO_SSLv2:
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        with self.assertRaises(ValueError) as cm:
+            base.validate_ssl_ctx(ssl_ctx)
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.options must include ssl.OP_NO_SSLv2'
+        )
+
+        # Missing ssl.OP_NO_COMPRESSION:
+        ssl_ctx.options |= ssl.OP_NO_SSLv2
+        with self.assertRaises(ValueError) as cm:
+            base.validate_ssl_ctx(ssl_ctx)
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.options must include ssl.OP_NO_COMPRESSION'
+        )
+
+        # All good:
+        ssl_ctx.options |= ssl.OP_NO_COMPRESSION
+        self.assertIsNone(base.validate_ssl_ctx(ssl_ctx))
+
     def test_read_line(self):
         tmp = TempDir()
         good = (b'G' * (MAX_LINE_BYTES - 2)) + b'\r\n'

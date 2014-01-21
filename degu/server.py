@@ -88,6 +88,7 @@ import threading
 
 from .base import (
     ParseError,
+    build_base_ssl_ctx,
     validate_ssl_ctx,
     makefiles,
     read_line,
@@ -103,6 +104,22 @@ from .base import (
 
 SOCKET_TIMEOUT = 30
 log = logging.getLogger()
+
+
+def build_server_ssl_ctx(config):
+    ssl_ctx = build_base_ssl_ctx()
+    ssl_ctx.set_ecdh_curve('prime256v1')  # Enable perfect forward secrecy
+    ssl_ctx.options |= ssl.OP_SINGLE_ECDH_USE
+    ssl_ctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+    ssl_ctx.load_cert_chain(config['cert_file'], config['key_file'])
+    if 'ca_file' in config or 'ca_path' in config:
+        # Configure for authentication with client certificates:
+        ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+        ssl_ctx.load_verify_locations(
+            cafile=config.get('ca_file'),
+            capath=config.get('ca_path'),
+        )
+    return ctx
 
 
 def parse_request(line):
