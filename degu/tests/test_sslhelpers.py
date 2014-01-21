@@ -243,3 +243,33 @@ class TestPKI(TestCase):
             ])
         )
 
+    def test_get_server_config(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        server_id = random_id()
+        self.assertEqual(pki.get_server_config(server_id), {
+            'cert_file': pki.path(server_id, 'cert'),
+            'key_file': pki.path(server_id, 'key'),
+        })
+        ca_id = random_id()
+        self.assertEqual(pki.get_server_config(server_id, ca_id=ca_id), {
+            'cert_file': pki.path(server_id, 'cert'),
+            'key_file': pki.path(server_id, 'key'),
+            'ca_file': pki.path(ca_id, 'ca'),
+        })
+
+    def test_get_client_config(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        ca_id = random_id()
+        self.assertEqual(pki.get_client_config(ca_id), {
+            'ca_file': pki.path(ca_id, 'ca'),
+            'check_hostname': False,
+        })
+        client_id = random_id()
+        self.assertEqual(pki.get_client_config(ca_id, client_id=client_id), {
+            'ca_file': pki.path(ca_id, 'ca'),
+            'check_hostname': False,
+            'cert_file': pki.path(client_id, 'cert'),
+            'key_file': pki.path(client_id, 'key'),
+        })

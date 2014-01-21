@@ -29,6 +29,7 @@ from collections import namedtuple
 
 from .base import (
     ParseError,
+    build_base_sslctx,
     validate_sslctx,
     makefiles,
     read_line,
@@ -52,6 +53,25 @@ class UnconsumedResponseError(Exception):
         super().__init__(
             'previous response body not consumed: {!r}'.format(body)
         )
+
+
+def build_client_ssl(config):
+    ctx = build_base_sslctx()
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    # Configure certificate authorities used to verify server certs
+    if 'ca_file' in config or 'ca_path' in config:
+        ctx.load_verify_locations(
+            cafile=config.get('ca_file'),
+            capath=config.get('ca_path'),
+        )
+    else:
+        ctx.set_default_verify_paths()
+    # Configure client certificate, if provided
+    if 'cert_file' in config:
+        ctx.load_cert_chain(config['cert_file'],
+            keyfile=config.get('key_file')
+        )
+    return ctx
 
 
 def validate_request(method, uri, headers, body):
