@@ -222,21 +222,19 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    __slots__ = ('app', 'environ', 'sock', 'rfile', 'wfile')
+    __slots__ = ('closed', 'app', 'environ', 'sock', 'rfile', 'wfile')
 
     def __init__(self, app, environ, sock):
+        self.closed = False
         self.app = app
         self.environ = environ
         self.sock = sock
         (self.rfile, self.wfile) = makefiles(sock)
 
     def close(self):
+        self.closed = True
         self.rfile.close()
         self.wfile.close()
-        try:
-            self.sock.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
         self.sock.close()
 
     def handle(self):
@@ -375,7 +373,6 @@ class Server:
             sock.close()
 
     def handle_requests(self, sock, address):
-        print(address)
         environ = self.environ.copy()
         environ.update(self.build_connection_environ(sock, address))
         handler = Handler(self.app, environ, sock)
@@ -390,34 +387,15 @@ class SSLServer(Server):
         super().__init__(app, bind_address, port)
         self.ssl_ctx = ssl_ctx
 
-    def build_connection_environ(self, conn, address):
+    def build_connection_environ(self, sock, address):
         """
         Builds the *environ* fragment unique to a TCP (and SSL) connection.
         """
-        environ = {
+        return  {
             'client': (address[0], address[1]),
+            'ssl_cipher': sock.cipher(),
+            'ssl_compression': sock.compression(),
         }
-        return environ
-        if self.context is None:
-            return environ
-
-        peercert = conn.getpeercert()
-        if peercert is None:
-            if self.context.verify_mode == ssl.CERT_REQUIRED:
-                raise Exception(
-                    'peercert is None but verify_mode == CERT_REQUIRED'
-                )
-            return environ
-
-        if self.context.verify_mode == ssl.CERT_REQUIRED:
-            environ['SSL_CLIENT_VERIFY'] = 'SUCCESS'
-        subject = dict(peercert['subject'][0])
-        if 'commonName' in subject:
-            environ['SSL_CLIENT_S_DN_CN'] = subject['commonName']
-        issuer = dict(peercert['issuer'][0])
-        if 'commonName' in issuer:
-            environ['SSL_CLIENT_I_DN_CN'] = issuer['commonName']
-        return environ
 
     def handle_connection(self, conn, address):
         #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)

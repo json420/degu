@@ -29,6 +29,7 @@ from collections import namedtuple
 
 from .base import (
     ParseError,
+    validate_ssl_ctx,
     makefiles,
     read_line,
     read_headers,
@@ -142,7 +143,7 @@ def read_response(rfile, method):
 class Client:
     default_port = 80
 
-    def __init__(self, hostname, port):
+    def __init__(self, hostname, port=None):
         self.hostname = hostname
         self.port = (self.default_port if port is None else port)
         self.conn = None
@@ -202,7 +203,8 @@ class Client:
 class SSLClient(Client):
     default_port = 443
 
-    def __init__(self, ssl_ctx, hostname, port, check_hostname=True):
+    def __init__(self, ssl_ctx, hostname, port=None, check_hostname=True):
+        validate_ssl_ctx(ssl_ctx)
         super().__init__(hostname, port)
         self.ssl_ctx = ssl_ctx
         self.check_hostname = check_hostname

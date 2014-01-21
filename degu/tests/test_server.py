@@ -205,6 +205,7 @@ class TestHandler(TestCase):
         environ = random_id()
         sock = DummySocket()
         handler = server.Handler(app, environ, sock)
+        self.assertIs(handler.closed, False)
         self.assertIs(handler.app, app)
         self.assertIs(handler.environ, environ)
         self.assertIs(handler.sock, sock)
@@ -228,9 +229,10 @@ class TestHandler(TestCase):
         wfile = DummyFile()
         handler = HandlerSubclass(sock, rfile, wfile)
         self.assertIsNone(handler.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR), 'close'])
+        self.assertEqual(sock._calls, ['close'])
         self.assertEqual(rfile._calls, ['close'])
         self.assertEqual(wfile._calls, ['close'])
+        self.assertIs(handler.closed, True)
 
     def test_build_request(self):
         # We need to override Handler.__init__() for this test:
