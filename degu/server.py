@@ -88,8 +88,8 @@ import threading
 
 from .base import (
     ParseError,
-    build_base_ssl_ctx,
-    validate_ssl_ctx,
+    build_base_sslctx,
+    validate_sslctx,
     makefiles,
     read_line,
     read_headers,
@@ -106,16 +106,16 @@ SOCKET_TIMEOUT = 30
 log = logging.getLogger()
 
 
-def build_server_ssl_ctx(config):
-    ssl_ctx = build_base_ssl_ctx()
-    ssl_ctx.set_ecdh_curve('prime256v1')  # Enable perfect forward secrecy
-    ssl_ctx.options |= ssl.OP_SINGLE_ECDH_USE
-    ssl_ctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
-    ssl_ctx.load_cert_chain(config['cert_file'], config['key_file'])
+def build_server_sslctx(config):
+    sslctx = build_base_sslctx()
+    sslctx.set_ecdh_curve('prime256v1')  # Enable perfect forward secrecy
+    sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+    sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+    sslctx.load_cert_chain(config['cert_file'], config['key_file'])
     if 'ca_file' in config or 'ca_path' in config:
         # Configure for authentication with client certificates:
-        ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-        ssl_ctx.load_verify_locations(
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+        sslctx.load_verify_locations(
             cafile=config.get('ca_file'),
             capath=config.get('ca_path'),
         )
@@ -399,10 +399,10 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, ssl_ctx, app, bind_address='::1', port=0):
-        validate_ssl_ctx(ssl_ctx)
+    def __init__(self, sslctx, app, bind_address='::1', port=0):
+        validate_sslctx(sslctx)
         super().__init__(app, bind_address, port)
-        self.ssl_ctx = ssl_ctx
+        self.sslctx = sslctx
 
     def build_connection_environ(self, sock, address):
         """

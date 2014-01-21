@@ -29,7 +29,7 @@ from collections import namedtuple
 
 from .base import (
     ParseError,
-    validate_ssl_ctx,
+    validate_sslctx,
     makefiles,
     read_line,
     read_headers,
@@ -203,14 +203,14 @@ class Client:
 class SSLClient(Client):
     default_port = 443
 
-    def __init__(self, ssl_ctx, hostname, port=None, check_hostname=True):
-        validate_ssl_ctx(ssl_ctx)
+    def __init__(self, sslctx, hostname, port=None, check_hostname=True):
+        validate_sslctx(sslctx)
         super().__init__(hostname, port)
-        self.ssl_ctx = ssl_ctx
+        self.sslctx = sslctx
         self.check_hostname = check_hostname
 
     def create_socket(self):
-        sock = self.ssl_ctx.wrap_socket(
+        sock = self.sslctx.wrap_socket(
             socket.create_connection((self.hostname, self.port)),
             server_hostname=self.hostname
         )

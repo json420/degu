@@ -36,7 +36,7 @@ from degu import base, server
 
 
 class TestFunctions(TestCase):
-    def test_build_server_ssl_ctx(self):
+    def test_build_server_sslctx(self):
         pass
 
     def test_parse_request(self):
@@ -410,37 +410,37 @@ class TestServer(TestCase):
 
 class TestSSLServer(TestCase):
     def test_init(self):
-        # ssl_ctx is not an ssl.SSLContext:
+        # sslctx is not an ssl.SSLContext:
         with self.assertRaises(TypeError) as cm:
             server.SSLServer('foo', demo_app, '::1')
-        self.assertEqual(str(cm.exception), 'ssl_ctx must be an ssl.SSLContext')
+        self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
-        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(ssl_ctx, demo_app, '::1')
+            server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),
-            'ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1'
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1'
         )
 
         # not (options & ssl.OP_NO_SSLv2)
-        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(ssl_ctx, demo_app, '::1')
+            server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),
-            'ssl_ctx.options must include ssl.OP_NO_SSLv2'
+            'sslctx.options must include ssl.OP_NO_SSLv2'
         )
 
         # not (options & ssl.OP_NO_COMPRESSION)
-        ssl_ctx.options |= ssl.OP_NO_SSLv2
+        sslctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(ssl_ctx, demo_app, '::1')
+            server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),
-            'ssl_ctx.options must include ssl.OP_NO_COMPRESSION'
+            'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
-        # Good ssl_ctx from here on:
-        ssl_ctx.options |= ssl.OP_NO_COMPRESSION
+        # Good sslctx from here on:
+        sslctx.options |= ssl.OP_NO_COMPRESSION
 
         class Bad:
             pass
@@ -448,7 +448,7 @@ class TestSSLServer(TestCase):
         # App not callable
         bad = Bad()
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer(ssl_ctx, bad, '::1')
+            server.SSLServer(sslctx, bad, '::1')
         self.assertEqual(
             str(cm.exception),
             'app not callable: {!r}'.format(bad)
@@ -456,13 +456,13 @@ class TestSSLServer(TestCase):
 
         # Bad bind_address:
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(ssl_ctx, demo_app, '192.168.1.1')
+            server.SSLServer(sslctx, demo_app, '192.168.1.1')
         self.assertEqual(str(cm.exception), "invalid bind_address: '192.168.1.1'")
 
         # IPv6 localhost only:
-        inst = server.SSLServer(ssl_ctx, demo_app, '::1')
+        inst = server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.bind_address, '::1')
@@ -471,9 +471,9 @@ class TestSSLServer(TestCase):
         self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
 
         # IPv6 any:
-        inst = server.SSLServer(ssl_ctx, demo_app, '::')
+        inst = server.SSLServer(sslctx, demo_app, '::')
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.bind_address, '::')
@@ -482,9 +482,9 @@ class TestSSLServer(TestCase):
         self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
 
         # IPv4 localhost only:
-        inst = server.SSLServer(ssl_ctx, demo_app, '127.0.0.1')
+        inst = server.SSLServer(sslctx, demo_app, '127.0.0.1')
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.bind_address, '127.0.0.1')
@@ -493,9 +493,9 @@ class TestSSLServer(TestCase):
         self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
 
         # IPv4 any:
-        inst = server.SSLServer(ssl_ctx, demo_app, '127.0.0.1')
+        inst = server.SSLServer(sslctx, demo_app, '127.0.0.1')
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.ssl_ctx, ssl_ctx)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.bind_address, '127.0.0.1')

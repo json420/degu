@@ -70,37 +70,37 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def build_base_ssl_ctx():
+def build_base_sslctx():
     """
     Build an ssl.SSLContext with the shared server and client features.
     """
     # FIXME: When we move to Python 3.4, we should use ssl.PROTOCOL_TLSv1_2
-    ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
 
     # FIXME: We should perhaps accept only a single, highly restrictive cipher:
     #   TLSv1:   ECDHE-RSA-AES256-SHA
     #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    ssl_ctx.set_ciphers('HIGH:!aNULL:!RC4:!DSS')
+    sslctx.set_ciphers('HIGH:!aNULL:!RC4:!DSS')
 
     # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
     # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
     # Python 3.4 is still setting this, so we are too:
-    ssl_ctx.options |= ssl.OP_NO_SSLv2
+    sslctx.options |= ssl.OP_NO_SSLv2
 
     # Protect against CRIME-like attacks, plus better media file transfer rates:
-    ssl_ctx.options |= ssl.OP_NO_COMPRESSION
-    return ssl_ctx
+    sslctx.options |= ssl.OP_NO_COMPRESSION
+    return sslctx
 
 
-def validate_ssl_ctx(ssl_ctx):
-    if not isinstance(ssl_ctx, ssl.SSLContext):
-        raise TypeError('ssl_ctx must be an ssl.SSLContext')
-    if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:
-        raise ValueError('ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1')
-    if not (ssl_ctx.options & ssl.OP_NO_SSLv2):
-        raise ValueError('ssl_ctx.options must include ssl.OP_NO_SSLv2')
-    if not (ssl_ctx.options & ssl.OP_NO_COMPRESSION):
-        raise ValueError('ssl_ctx.options must include ssl.OP_NO_COMPRESSION')
+def validate_sslctx(sslctx):
+    if not isinstance(sslctx, ssl.SSLContext):
+        raise TypeError('sslctx must be an ssl.SSLContext')
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1')
+    if not (sslctx.options & ssl.OP_NO_SSLv2):
+        raise ValueError('sslctx.options must include ssl.OP_NO_SSLv2')
+    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
 
 
 def read_line(rfile):
