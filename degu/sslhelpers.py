@@ -62,7 +62,7 @@ def make_subject(cn):
     return '/CN={}'.format(cn)
 
 
-def create_key(dst_file, bits=2048):
+def create_key(dst_file, bits=4096):
     """
     Create an RSA keypair and save it to *dst_file*.
     """
@@ -173,7 +173,7 @@ class PKI:
     def path(self, _id, ext):
         return path.join(self.ssldir, '.'.join([_id, ext]))
 
-    def create_key(self, bits=2048):
+    def create_key(self, bits=4096):
         tmp_file = self.random_tmp()
         create_key(tmp_file, bits)
         _id = hash_pubkey(get_rsa_pubkey(tmp_file))

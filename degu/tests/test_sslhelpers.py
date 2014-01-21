@@ -45,13 +45,8 @@ class TestSSLFunctions(TestCase):
         self.assertLess(path.getsize(key), max(sizes) + 25)
         os.remove(key)
 
-        # bits=2048 (default)
+        # bits=2048
         sizes = [1671, 1675, 1679]
-        sslhelpers.create_key(key)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-
         sslhelpers.create_key(key, bits=2048)
         self.assertLess(min(sizes) - 25, path.getsize(key))
         self.assertLess(path.getsize(key), max(sizes) + 25)
@@ -62,18 +57,24 @@ class TestSSLFunctions(TestCase):
         sslhelpers.create_key(key, bits=3072)
         self.assertLess(min(sizes) - 25, path.getsize(key))
         self.assertLess(path.getsize(key), max(sizes) + 25)
+        os.remove(key)
 
-        # bits=4096
+        # bits=4096 (default)
         sizes = [3239, 3243, 3247]
+        sslhelpers.create_key(key)
+        self.assertLess(min(sizes) - 25, path.getsize(key))
+        self.assertLess(path.getsize(key), max(sizes) + 25)
+        os.remove(key)
         sslhelpers.create_key(key, bits=4096)
         self.assertLess(min(sizes) - 25, path.getsize(key))
         self.assertLess(path.getsize(key), max(sizes) + 25)
+        os.remove(key)
 
     def test_create_ca(self):
         tmp = TempDir()
         foo_key = tmp.join('foo.key')
         foo_ca = tmp.join('foo.ca')
-        sslhelpers.create_key(foo_key)
+        sslhelpers.create_key(foo_key, bits=1024)
         self.assertFalse(path.exists(foo_ca))
         sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
         self.assertGreater(path.getsize(foo_ca), 0)
@@ -82,7 +83,7 @@ class TestSSLFunctions(TestCase):
         tmp = TempDir()
         bar_key = tmp.join('bar.key')
         bar_csr = tmp.join('bar.csr')
-        sslhelpers.create_key(bar_key)
+        sslhelpers.create_key(bar_key, bits=1024)
         self.assertFalse(path.exists(bar_csr))
         sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
         self.assertGreater(path.getsize(bar_csr), 0)
@@ -93,13 +94,13 @@ class TestSSLFunctions(TestCase):
         foo_key = tmp.join('foo.key')
         foo_ca = tmp.join('foo.ca')
         foo_srl = tmp.join('foo.srl')
-        sslhelpers.create_key(foo_key)
+        sslhelpers.create_key(foo_key, bits=1024)
         sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
 
         bar_key = tmp.join('bar.key')
         bar_csr = tmp.join('bar.csr')
         bar_cert = tmp.join('bar.cert')
-        sslhelpers.create_key(bar_key)
+        sslhelpers.create_key(bar_key, bits=1024)
         sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
 
         files = (foo_srl, bar_cert)
@@ -116,7 +117,7 @@ class TestSSLFunctions(TestCase):
         foo_key = tmp.join('foo.key')
         foo_ca = tmp.join('foo.ca')
         foo_srl = tmp.join('foo.srl')
-        sslhelpers.create_key(foo_key)
+        sslhelpers.create_key(foo_key, bits=1024)
         foo_pubkey = sslhelpers.get_rsa_pubkey(foo_key)
         sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
 
@@ -124,7 +125,7 @@ class TestSSLFunctions(TestCase):
         bar_key = tmp.join('bar.key')
         bar_csr = tmp.join('bar.csr')
         bar_cert = tmp.join('bar.cert')
-        sslhelpers.create_key(bar_key)
+        sslhelpers.create_key(bar_key, bits=1024)
         bar_pubkey = sslhelpers.get_rsa_pubkey(bar_key)
         sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
         sslhelpers.issue_cert(bar_csr, foo_ca, foo_key, foo_srl, bar_cert)
@@ -174,7 +175,7 @@ class TestPKI(TestCase):
     def test_create_key(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
-        _id = pki.create_key()
+        _id = pki.create_key(bits=1024)
         self.assertEqual(os.listdir(pki.tmpdir), [])
         self.assertEqual(
             set(os.listdir(pki.ssldir)),
@@ -187,7 +188,7 @@ class TestPKI(TestCase):
     def test_create_ca(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
-        _id = pki.create_key()
+        _id = pki.create_key(bits=1024)
         ca_file = tmp.join(_id + '.ca')
         self.assertFalse(path.exists(ca_file))
         self.assertEqual(pki.create_ca(_id), ca_file)
@@ -201,7 +202,7 @@ class TestPKI(TestCase):
     def test_create_csr(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
-        _id = pki.create_key()
+        _id = pki.create_key(bits=1024)
         csr_file = tmp.join(_id + '.csr')
         self.assertFalse(path.exists(csr_file))
         self.assertEqual(pki.create_csr(_id), csr_file)
@@ -217,11 +218,11 @@ class TestPKI(TestCase):
         pki = sslhelpers.PKI(tmp.dir)
 
         # Create the CA
-        ca_id = pki.create_key()
+        ca_id = pki.create_key(bits=1024)
         pki.create_ca(ca_id)
 
         # Create the CSR
-        cert_id = pki.create_key()
+        cert_id = pki.create_key(bits=1024)
         pki.create_csr(cert_id)
         os.remove(tmp.join(cert_id + '.key'))
 
