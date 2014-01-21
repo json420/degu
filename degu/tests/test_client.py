@@ -26,8 +26,10 @@ Unit tests for the `degu.server` module`
 from unittest import TestCase
 import os
 import socket
+import ssl
 
 from .helpers import TempDir, DummySocket, DummyFile
+from degu.misc import TempPKI
 from degu import base, client
 
 
@@ -49,6 +51,24 @@ class TestNamedTuples(TestCase):
 
 
 class TestFunctions(TestCase):
+    def test_build_client_sslctx(self):
+        # Empty config, will verify against system-wide CAs:
+        sslctx = client.build_client_sslctx({})
+        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+
+        # client_pki=False:
+        pki = TempPKI()
+        sslctx = client.build_client_sslctx(pki.client_config)
+        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+
+        # client_pki=True:
+        pki = TempPKI(client_pki=True)
+        sslctx = client.build_client_sslctx(pki.client_config)
+        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+
     def test_validate_request(self):
         # Bad method:
         with self.assertRaises(ValueError) as cm:
@@ -395,3 +415,67 @@ class TestClient(TestCase):
         self.assertEqual(str(cm.exception),
             'previous response body not consumed: {!r}'.format(DummyBody)
         )
+
+
+class TestSSLClient(TestCase):
+    def test_init(self):
+        hostname = '127.0.0.1'
+        port = 5984
+
+        # sslctx is not an ssl.SSLContext:
+        with self.assertRaises(TypeError) as cm:
+            client.SSLClient('foo', hostname, port)
+        self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
+
+        # Bad SSL protocol version:
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+        with self.assertRaises(ValueError) as cm:
+            client.SSLClient(sslctx, hostname, port)
+        self.assertEqual(str(cm.exception),
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1'
+        )
+
+        # not (options & ssl.OP_NO_SSLv2)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        with self.assertRaises(ValueError) as cm:
+            client.SSLClient(sslctx, hostname, port)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_NO_SSLv2'
+        )
+
+        # not (options & ssl.OP_NO_COMPRESSION)
+        sslctx.options |= ssl.OP_NO_SSLv2
+        with self.assertRaises(ValueError) as cm:
+            client.SSLClient(sslctx, hostname, port)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_NO_COMPRESSION'
+        )
+
+        # verify_mode is not ssl.CERT_REQUIRED:
+        sslctx.options |= ssl.OP_NO_COMPRESSION
+        with self.assertRaises(ValueError) as cm:
+            client.SSLClient(sslctx, hostname, port)
+        self.assertEqual(str(cm.exception),
+            'sslctx.verify_mode must be ssl.CERT_REQUIRED'
+        )
+
+        # Good sslctx from here on:
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+        inst = client.SSLClient(sslctx, hostname, port)
+        self.assertIs(inst.hostname, hostname)
+        self.assertIs(inst.port, port)
+        self.assertIsNone(inst.conn)
+        self.assertIsNone(inst.response_body)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertIs(inst.check_hostname, True)
+
+        # Test default_port, and overriding check_hostname:
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+        inst = client.SSLClient(sslctx, hostname, check_hostname=False)
+        self.assertIs(inst.hostname, hostname)
+        self.assertEqual(inst.port, 443)
+        self.assertIsNone(inst.conn)
+        self.assertIsNone(inst.response_body)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertIs(inst.check_hostname, False)
+

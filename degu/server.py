@@ -119,7 +119,7 @@ def build_server_sslctx(config):
             cafile=config.get('ca_file'),
             capath=config.get('ca_path'),
         )
-    return ctx
+    return sslctx
 
 
 def parse_request(line):

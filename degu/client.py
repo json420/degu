@@ -55,23 +55,23 @@ class UnconsumedResponseError(Exception):
         )
 
 
-def build_client_ssl(config):
-    ctx = build_base_sslctx()
-    ctx.verify_mode = ssl.CERT_REQUIRED
+def build_client_sslctx(config):
+    sslctx = build_base_sslctx()
+    sslctx.verify_mode = ssl.CERT_REQUIRED
     # Configure certificate authorities used to verify server certs
     if 'ca_file' in config or 'ca_path' in config:
-        ctx.load_verify_locations(
+        sslctx.load_verify_locations(
             cafile=config.get('ca_file'),
             capath=config.get('ca_path'),
         )
     else:
-        ctx.set_default_verify_paths()
+        sslctx.set_default_verify_paths()
     # Configure client certificate, if provided
     if 'cert_file' in config:
-        ctx.load_cert_chain(config['cert_file'],
+        sslctx.load_cert_chain(config['cert_file'],
             keyfile=config.get('key_file')
         )
-    return ctx
+    return sslctx
 
 
 def validate_request(method, uri, headers, body):
@@ -225,6 +225,8 @@ class SSLClient(Client):
 
     def __init__(self, sslctx, hostname, port=None, check_hostname=True):
         validate_sslctx(sslctx)
+        if sslctx.verify_mode != ssl.CERT_REQUIRED:
+            raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
         super().__init__(hostname, port)
         self.sslctx = sslctx
         self.check_hostname = check_hostname

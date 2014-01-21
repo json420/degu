@@ -32,12 +32,27 @@ import ssl
 from dbase32 import random_id
 
 from .helpers import TempDir, DummySocket, DummyFile
+from degu.misc import TempPKI
 from degu import base, server
 
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
-        pass
+        # client_pki=False:
+        pki = TempPKI()
+        sslctx = server.build_server_sslctx(pki.server_config)
+        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
+
+        # client_pki=True:
+        pki = TempPKI(client_pki=True)
+        sslctx = server.build_server_sslctx(pki.server_config)
+        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 
     def test_parse_request(self):
         # Bad separators:
