@@ -417,8 +417,7 @@ class SSLServer(Server):
     def handle_connection(self, conn, address):
         #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
         try:
-            if self.context is not None:
-                conn = self.context.wrap_socket(conn, server_side=True)
+            conn = self.sslctx.wrap_socket(conn, server_side=True)
             self.handle_requests(conn, address)
             conn.shutdown(socket.SHUT_RDWR)
         except socket.error:
