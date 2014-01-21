@@ -5,13 +5,15 @@ Maintainer: Jason Gerard DeRose <jderose@novacut.com>
 Build-Depends: debhelper (>= 9),
     python3-all (>= 3.3),
     python3-sphinx,
+    python3-dbase32 (>= 0.9),
 Standards-Version: 3.9.4
 X-Python3-Version: >= 3.3
 Homepage: https://launchpad.net/degu
 
 Package: python3-degu
 Architecture: all
-Depends: ${python3:Depends}, ${shlibs:Depends}, ${misc:Depends}
+Depends: ${python3:Depends}, ${shlibs:Depends}, ${misc:Depends},
+    python3-dbase32 (>= 0.9),
 Suggests: python3-degu-doc
 Description: an embedded HTTP server and client library
  FIXME.
