@@ -36,6 +36,9 @@ from degu import base, server
 
 
 class TestFunctions(TestCase):
+    def test_build_server_ssl_ctx(self):
+        pass
+
     def test_parse_request(self):
         # Bad separators:
         with self.assertRaises(base.ParseError) as cm:

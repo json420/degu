@@ -17,8 +17,8 @@ RGI focuses on improvement in a number of areas:
        WSGI *environ* leave much to be desired in terms of signal-to-noise ratio
 
     2. ``start_response()`` is the bane of middleware components because
-       assuming they need to inspect or to modify the response status or
-       response headers, they cannot simply pass to a WSGI application the same
+       if they need to inspect or to modify the response status or response
+       headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
     3. A proxy application is a good guiding-light for an extreme-case

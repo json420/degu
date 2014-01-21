@@ -27,6 +27,8 @@ from unittest import TestCase
 import os
 from os import path
 
+from dbase32 import random_id
+
 from .helpers import TempDir
 from degu import sslhelpers
 
@@ -106,3 +108,138 @@ class TestSSLFunctions(TestCase):
         sslhelpers.issue_cert(bar_csr, foo_ca, foo_key, foo_srl, bar_cert)
         for f in files:
             self.assertGreater(path.getsize(f), 0)
+
+    def test_get_pubkey(self):
+        tmp = TempDir()
+
+        # Create CA
+        foo_key = tmp.join('foo.key')
+        foo_ca = tmp.join('foo.ca')
+        foo_srl = tmp.join('foo.srl')
+        sslhelpers.create_key(foo_key)
+        foo_pubkey = sslhelpers.get_rsa_pubkey(foo_key)
+        sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
+
+        # Create CSR and issue cert
+        bar_key = tmp.join('bar.key')
+        bar_csr = tmp.join('bar.csr')
+        bar_cert = tmp.join('bar.cert')
+        sslhelpers.create_key(bar_key)
+        bar_pubkey = sslhelpers.get_rsa_pubkey(bar_key)
+        sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
+        sslhelpers.issue_cert(bar_csr, foo_ca, foo_key, foo_srl, bar_cert)
+
+        # Now compare
+        os.remove(foo_key)
+        os.remove(bar_key)
+        self.assertEqual(sslhelpers.get_pubkey(foo_ca), foo_pubkey)
+        self.assertEqual(sslhelpers.get_csr_pubkey(bar_csr), bar_pubkey)
+        self.assertEqual(sslhelpers.get_pubkey(bar_cert), bar_pubkey)
+
+
+class TestPKI(TestCase):
+    def test_init(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        self.assertIs(pki.ssldir, tmp.dir)
+        self.assertEqual(pki.tmpdir, tmp.join('tmp'))
+
+        # Test when tmpdir already exists
+        pki = sslhelpers.PKI(tmp.dir)
+
+    def test_random_tmp(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        filename = pki.random_tmp()
+        self.assertEqual(path.dirname(filename), tmp.join('tmp'))
+        self.assertEqual(len(path.basename(filename)), 24)
+
+    def test_path(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        cert_id = random_id(25)
+        self.assertEqual(
+            pki.path(cert_id, 'key'),
+            tmp.join(cert_id + '.key')
+        )
+        self.assertEqual(
+            pki.path(cert_id, 'cert'),
+            tmp.join(cert_id + '.cert')
+        )
+        self.assertEqual(
+            pki.path(cert_id, 'srl'),
+            tmp.join(cert_id + '.srl')
+        )
+
+    def test_create_key(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        _id = pki.create_key()
+        self.assertEqual(os.listdir(pki.tmpdir), [])
+        self.assertEqual(
+            set(os.listdir(pki.ssldir)),
+            set(['tmp', _id + '.key'])
+        )
+        key_file = path.join(pki.ssldir, _id + '.key')
+        data = sslhelpers.get_rsa_pubkey(key_file)
+        self.assertEqual(_id, sslhelpers.hash_pubkey(data))
+
+    def test_create_ca(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        _id = pki.create_key()
+        ca_file = tmp.join(_id + '.ca')
+        self.assertFalse(path.exists(ca_file))
+        self.assertEqual(pki.create_ca(_id), ca_file)
+        self.assertTrue(path.isfile(ca_file))
+        self.assertEqual(os.listdir(pki.tmpdir), [])
+        self.assertEqual(
+            set(os.listdir(pki.ssldir)),
+            set(['tmp', _id + '.key', _id + '.ca'])
+        )
+
+    def test_create_csr(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+        _id = pki.create_key()
+        csr_file = tmp.join(_id + '.csr')
+        self.assertFalse(path.exists(csr_file))
+        self.assertEqual(pki.create_csr(_id), csr_file)
+        self.assertTrue(path.isfile(csr_file))
+        self.assertEqual(os.listdir(pki.tmpdir), [])
+        self.assertEqual(
+            set(os.listdir(pki.ssldir)),
+            set(['tmp', _id + '.key', _id + '.csr'])
+        )
+
+    def test_issue_cert(self):
+        tmp = TempDir()
+        pki = sslhelpers.PKI(tmp.dir)
+
+        # Create the CA
+        ca_id = pki.create_key()
+        pki.create_ca(ca_id)
+
+        # Create the CSR
+        cert_id = pki.create_key()
+        pki.create_csr(cert_id)
+        os.remove(tmp.join(cert_id + '.key'))
+
+        # Now test
+        cert_file = tmp.join(cert_id + '.cert')
+        self.assertFalse(path.exists(cert_file))
+        self.assertEqual(pki.issue_cert(cert_id, ca_id), cert_file)
+        self.assertGreater(path.getsize(cert_file), 0)
+        self.assertEqual(os.listdir(pki.tmpdir), [])
+        self.assertEqual(
+            set(os.listdir(pki.ssldir)),
+            set([
+                'tmp',
+                ca_id + '.key',
+                ca_id + '.ca',
+                ca_id + '.srl',
+                cert_id + '.csr',
+                cert_id + '.cert',
+            ])
+        )
+
