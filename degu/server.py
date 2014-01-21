@@ -255,12 +255,16 @@ class Handler:
         self.sock.close()
 
     def handle(self):
-        while True:
+        while not self.closed:
             self.handle_one()
 
     def handle_one(self):
-        request = self.environ.copy()
-        request.update(self.build_request())
+        try:
+            request = self.environ.copy()
+            request.update(self.build_request())
+        except ParseError as e:
+            self.send_response((400, e.reason, {}, None))
+            return
         response = self.app(request)
         self.send_response(response)
 
@@ -314,11 +318,8 @@ class Handler:
         else:
             raise TypeError('Bad response body type')
         self.wfile.flush()
-
-    def send_status_only(self, status, reason):
-        preamble = ''.join(iter_response_lines(status, reason, None))
-        self.wfile.write(preamble.encode('latin_1'))
-        self.wfile.flush()
+        if status >= 500 or status == 400:
+            self.close()
 
 
 class Server:

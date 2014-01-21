@@ -232,15 +232,11 @@ class SSLClient(Client):
         self.check_hostname = check_hostname
 
     def create_socket(self):
-        sock = self.sslctx.wrap_socket(
-            socket.create_connection((self.hostname, self.port)),
-            server_hostname=self.hostname
-        )
-        peercert = sock.getpeercert()
+        sock = super().create_socket()
         try:
+            sock = self.sslctx.wrap_socket(sock, server_hostname=self.hostname)
             if self.check_hostname:
-                ssl.match_hostname(peercert, self.hostname)
-            self.handle_ssl_connection(sock, peercert)
+                ssl.match_hostname(sock.getpeercert(), self.hostname)
         except Exception:
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
