@@ -5,13 +5,13 @@ Note that this design is done out of deep respect for the `WSGI`_ standard.
 Considering the delicate balance needed between backward compatibility on
 multiple fronts, WSGI is an exceedingly good design.
 
-RGI is largely a thought experiment in what you could do with something
-WSGI-like assuming you did *not* need `CGI`_ compatibility.  It would be
-tempting to call RGI a hopeful WSGI 2.0 draft, but RGI is not in the original
-spirit of WSGI in some important ways (in particular, its complete disregard for
-CGI compatibility).  Thus, this is RGI 0.1, not WSGI 2.0.
+*RGI* (REST Gateway Interface) is largely a thought experiment in what you could
+do with something WSGI-like assuming you did *not* need `CGI`_ compatibility.
+It would be tempting to call RGI a WSGI 2.0 draft hopeful, but RGI is not in the
+original spirit of WSGI in some important ways (in particular, its complete
+disregard for CGI compatibility).  Thus, this is RGI 0.1, not WSGI 2.0.
 
-RGI focuses on improvement in three areas:
+RGI focuses on improvement in a number of areas:
 
     1. Assuming you can drop CGI compatibility, the naming conventions in the
        WSGI *environ* leave much to be desired in terms of signal-to-noise ratio
@@ -26,6 +26,9 @@ RGI focuses on improvement in three areas:
        components to re-parse or otherwise transform any values in order to do
        something meaningful with these value (eg, a proxy generally needs to use
        the full request headers in its own HTTP client request)
+
+    4. Eliminate ambiguity about Transfer-Encoding vs Content-Length, in both
+       the request body and the response body.
 
 
 Birds Eye View
@@ -139,11 +142,13 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 >>> middleware({'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
 
-This simple pattern is extremely cumbersome with WSGI, but this pattern is also
+This simple pattern is very cumbersome with WSGI, but this pattern is also
 extremely useful for things like middleware that does run-time security auditing
-or other run-time testing.  The fact that RGI uses a single response value
-(instead of the ``start_response()`` callable plus return a value that WSGI
-uses) also means unit testing RGI apps is much easier.
+or other run-time testing.
+
+
+Request Body
+------------
 
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/

@@ -389,6 +389,8 @@ class SSLServer(Server):
             raise TypeError('ssl_ctx must be an ssl.SSLContext')
         if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:
             raise ValueError('ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1')
+        if not (ssl_ctx.options & ssl.OP_NO_SSLv2):
+            raise ValueError('ssl_ctx.options must include ssl.OP_NO_SSLv2')
         if not (ssl_ctx.options & ssl.OP_NO_COMPRESSION):
             raise ValueError('ssl_ctx.options must include ssl.OP_NO_COMPRESSION')
         super().__init__(app, bind_address, port)

@@ -418,8 +418,16 @@ class TestSSLServer(TestCase):
             'ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1'
         )
 
-        # not (options & ssl.OP_NO_COMPRESSION)
+        # not (options & ssl.OP_NO_SSLv2)
         ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(ssl_ctx, demo_app, '::1')
+        self.assertEqual(str(cm.exception),
+            'ssl_ctx.options must include ssl.OP_NO_SSLv2'
+        )
+
+        # not (options & ssl.OP_NO_COMPRESSION)
+        ssl_ctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
             server.SSLServer(ssl_ctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),
