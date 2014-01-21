@@ -88,6 +88,7 @@ import threading
 
 from .base import (
     ParseError,
+    validate_ssl_ctx,
     makefiles,
     read_line,
     read_headers,
@@ -385,14 +386,7 @@ class SSLServer(Server):
     scheme = 'https'
 
     def __init__(self, ssl_ctx, app, bind_address='::1', port=0):
-        if not isinstance(ssl_ctx, ssl.SSLContext):
-            raise TypeError('ssl_ctx must be an ssl.SSLContext')
-        if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:
-            raise ValueError('ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1')
-        if not (ssl_ctx.options & ssl.OP_NO_SSLv2):
-            raise ValueError('ssl_ctx.options must include ssl.OP_NO_SSLv2')
-        if not (ssl_ctx.options & ssl.OP_NO_COMPRESSION):
-            raise ValueError('ssl_ctx.options must include ssl.OP_NO_COMPRESSION')
+        validate_ssl_ctx(ssl_ctx)
         super().__init__(app, bind_address, port)
         self.ssl_ctx = ssl_ctx
 

@@ -24,6 +24,7 @@ Common HTTP parser used by server and client, plus a few other bits.
 """
 
 import io
+import ssl
 
 
 MAX_LINE_BYTES = 4096
@@ -67,6 +68,18 @@ class BodyClosedError(Exception):
     def __init__(self, body):
         self.body = body
         super().__init__('cannot iterate, {!r} is closed'.format(body))
+
+
+def validate_ssl_ctx(ssl_ctx):
+    # FIXME: When we move to Python 3.4, we should use ssl.PROTOCOL_TLSv1_2
+    if not isinstance(ssl_ctx, ssl.SSLContext):
+        raise TypeError('ssl_ctx must be an ssl.SSLContext')
+    if ssl_ctx.protocol != ssl.PROTOCOL_TLSv1:
+        raise ValueError('ssl_ctx.protocol must be ssl.PROTOCOL_TLSv1')
+    if not (ssl_ctx.options & ssl.OP_NO_SSLv2):
+        raise ValueError('ssl_ctx.options must include ssl.OP_NO_SSLv2')
+    if not (ssl_ctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('ssl_ctx.options must include ssl.OP_NO_COMPRESSION')
 
 
 def read_line(rfile):
