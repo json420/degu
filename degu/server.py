@@ -349,10 +349,6 @@ class Server:
         return {
             'server': (self.bind_address, self.port),
             'scheme': self.scheme,
-            'rgi.version': (0, 1),
-            'rgi.multithread': True,
-            'rgi.multiprocess': False,
-            'rgi.run_once': False,
             'rgi.ResponseBody': Output,
             'rgi.FileResponseBody': FileOutput,
             'rgi.ChunkedResponseBody': ChunkedOutput,

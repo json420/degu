@@ -422,6 +422,22 @@ class TestServer(TestCase):
         self.assertEqual(inst.port, inst.sock.getsockname()[1])
         self.assertEqual(inst.url, 'http://127.0.0.1:{:d}/'.format(inst.port))
 
+    def test_build_base_environ(self):
+        class ServerSubclass(server.Server):
+            def __init__(self, bind_address, port):
+                self.bind_address = bind_address
+                self.port = port
+
+        bind_address = random_id()
+        port = random_id()
+        inst = ServerSubclass(bind_address, port)
+        self.assertEqual(inst.build_base_environ(), {
+            'server': (bind_address, port),
+            'scheme': 'http',
+            'rgi.ResponseBody': base.Output,
+            'rgi.FileResponseBody': base.FileOutput,
+            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+        })
 
 class TestSSLServer(TestCase):
     def test_init(self):
@@ -517,3 +533,20 @@ class TestSSLServer(TestCase):
         self.assertIsInstance(inst.port, int)
         self.assertEqual(inst.port, inst.sock.getsockname()[1])
         self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
+  
+    def test_build_base_environ(self):
+        class SSLServerSubclass(server.SSLServer):
+            def __init__(self, bind_address, port):
+                self.bind_address = bind_address
+                self.port = port
+
+        bind_address = random_id()
+        port = random_id()
+        inst = SSLServerSubclass(bind_address, port)
+        self.assertEqual(inst.build_base_environ(), {
+            'server': (bind_address, port),
+            'scheme': 'https',
+            'rgi.ResponseBody': base.Output,
+            'rgi.FileResponseBody': base.FileOutput,
+            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+        })
