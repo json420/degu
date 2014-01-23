@@ -77,17 +77,21 @@ def build_base_sslctx():
     # FIXME: When we move to Python 3.4, we should use ssl.PROTOCOL_TLSv1_2
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
 
-    # FIXME: We should perhaps accept only a single, highly restrictive cipher:
+    # By setting this to something so restrictive, we make sure that the client
+    # wont connect to a server unless it provides perfect forward secrecy:
     #   TLSv1:   ECDHE-RSA-AES256-SHA
     #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    sslctx.set_ciphers('HIGH:!aNULL:!RC4:!DSS')
+    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA')
 
     # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
     # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
     # Python 3.4 is still setting this, so we are too:
     sslctx.options |= ssl.OP_NO_SSLv2
 
-    # Protect against CRIME-like attacks, plus better media file transfer rates:
+    # Protect against CRIME-like attacks, plus better media file transfer rates,
+    # although note that on Debian/Ubuntu systems, libssl (openssl) is built
+    # with TSL compression disabled, so we can't deep unit test for this using
+    # SSLSocket.compression() as that will always return None:
     sslctx.options |= ssl.OP_NO_COMPRESSION
     return sslctx
 
