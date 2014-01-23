@@ -354,73 +354,59 @@ class Server:
             'rgi.ChunkedResponseBody': ChunkedOutput,
         }
 
-    def build_connection_environ(self, sock, address):
-        """
-        Builds the *environ* fragment unique to a TCP (and SSL) connection.
-        """
-        return {
-            'client': (address[0], address[1]),
-        }
-
     def serve_forever(self):
-        self.environ = self.build_base_environ()
+        base_environ = self.build_base_environ()
         self.sock.listen(5)
         while True:
             (sock, address) = self.sock.accept()
             sock.settimeout(SOCKET_TIMEOUT)
             thread = threading.Thread(
-                target=self.handle_connection,
-                args=(sock, address),
+                target=self.handle_requests,
+                args=(base_environ.copy(), sock, address),
             )
             thread.daemon = True
             thread.start()
 
-    def handle_connection(self, sock, address):
+    def handle_requests(self, base_environ, base_sock, address):
         try:
-            self.handle_requests(sock, address)
-            sock.shutdown(socket.SHUT_RDWR)
-        except socket.error:
-            log.info('%s\tSocket Timeout/Error', address)
+            (environ, sock) = self.build_connection(base_sock, address)
+            base_environ.update(environ)
+            handler = Handler(self.app, base_environ, sock)
+            handler.handle()
         except Exception:
-            log.exception('%s\tUnhandled Exception', address)
+            log.exception('client: %r', address)
         finally:
-            sock.close()
+            try:
+                base_sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
-    def handle_requests(self, sock, address):
-        environ = self.environ.copy()
-        environ.update(self.build_connection_environ(sock, address))
-        handler = Handler(self.app, environ, sock)
-        handler.handle()
+    def build_connection(self, sock, address):
+        environ = {
+            'client': (address[0], address[1]),
+        }
+        return (environ, sock)
 
 
 class SSLServer(Server):
     scheme = 'https'
+
+    # What SSLServer needs to do differently from Server:
+    #   1. Wrap a socket.socket in an ssl.SSLSocket
+    #   2. Build a different per-connection environ
+    # Would be nice to do both in a single method that SSLServer could override:
+    #   (conn_environ, sock) = self.build_connection(sock, address)
 
     def __init__(self, sslctx, app, bind_address='::1', port=0):
         validate_sslctx(sslctx)
         super().__init__(app, bind_address, port)
         self.sslctx = sslctx
 
-    def build_connection_environ(self, sock, address):
-        """
-        Builds the *environ* fragment unique to a TCP (and SSL) connection.
-        """
-        return  {
+    def build_connection(self, sock, address):
+        sock = self.sslctx.wrap_socket(sock, server_side=True)
+        environ = {
             'client': (address[0], address[1]),
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         }
-
-    def handle_connection(self, conn, address):
-        #conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
-        try:
-            conn = self.sslctx.wrap_socket(conn, server_side=True)
-            self.handle_requests(conn, address)
-            conn.shutdown(socket.SHUT_RDWR)
-        except socket.error:
-            log.info('%s\tSocket Timeout/Error', address)
-        except Exception:
-            log.exception('%s\tUnhandled Exception', address)
-        finally:
-            conn.close()
-
+        return (environ, sock)
