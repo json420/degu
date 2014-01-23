@@ -432,11 +432,11 @@ class TestSSLClient(TestCase):
         with self.assertRaises(ValueError) as cm:
             client.SSLClient(sslctx, hostname, port)
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.PROTOCOL_TLSv1'
+            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
 
         # not (options & ssl.OP_NO_SSLv2)
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        sslctx = ssl.SSLContext(base.TLS.protocol)
         with self.assertRaises(ValueError) as cm:
             client.SSLClient(sslctx, hostname, port)
         self.assertEqual(str(cm.exception),

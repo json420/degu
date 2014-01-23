@@ -86,6 +86,18 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
+    def test_TLS(self):
+        self.assertIsInstance(base.TLS, tuple)
+        self.assertIsInstance(base.TLS, base._TLS)
+        if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
+            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assserIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
+            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
+        else:
+            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
+            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1')
+            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
+
 
 class TestParseError(TestCase):
     def test_init(self):
@@ -136,7 +148,7 @@ class TestFunctions(TestCase):
     def test_build_base_sslctx(self):
         sslctx = base.build_base_sslctx()
         self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1)
+        self.assertEqual(sslctx.protocol, base.TLS.protocol)
         self.assertTrue(sslctx.options & ssl.OP_NO_SSLv2)
         self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
         self.assertIsNone(base.validate_sslctx(sslctx))
@@ -151,11 +163,11 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.validate_sslctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.PROTOCOL_TLSv1'
+            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
 
         # Missing ssl.OP_NO_SSLv2:
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        sslctx = ssl.SSLContext(base.TLS.protocol)
         with self.assertRaises(ValueError) as cm:
             base.validate_sslctx(sslctx)
         self.assertEqual(str(cm.exception),

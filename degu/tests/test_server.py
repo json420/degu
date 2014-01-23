@@ -439,6 +439,7 @@ class TestServer(TestCase):
             'rgi.ChunkedResponseBody': base.ChunkedOutput,
         })
 
+
 class TestSSLServer(TestCase):
     def test_init(self):
         # sslctx is not an ssl.SSLContext:
@@ -451,11 +452,11 @@ class TestSSLServer(TestCase):
         with self.assertRaises(ValueError) as cm:
             server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.PROTOCOL_TLSv1'
+            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
 
         # not (options & ssl.OP_NO_SSLv2)
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        sslctx = ssl.SSLContext(base.TLS.protocol)
         with self.assertRaises(ValueError) as cm:
             server.SSLServer(sslctx, demo_app, '::1')
         self.assertEqual(str(cm.exception),

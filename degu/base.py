@@ -25,12 +25,22 @@ Common HTTP parser used by server and client, plus a few other bits.
 
 import io
 import ssl
+from collections import namedtuple
 
 
 MAX_LINE_BYTES = 4096
 MAX_HEADER_COUNT = 10
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
+
+# Hack so we can unit test Python 3.4 as planned, but still also work with
+# Python 3.3 for the time being; note this does not make Degu running under
+# Python 3.4 *network* compatible with Degu running under Python 3.3
+_TLS = namedtuple('TSL', 'protocol name ciphers')
+if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
+    TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
+else:
+    TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
 
 
 class ParseError(Exception):
@@ -74,14 +84,13 @@ def build_base_sslctx():
     """
     Build an ssl.SSLContext with the shared server and client features.
     """
-    # FIXME: When we move to Python 3.4, we should use ssl.PROTOCOL_TLSv1_2
-    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+    sslctx = ssl.SSLContext(TLS.protocol)
 
     # By setting this to something so restrictive, we make sure that the client
     # wont connect to a server unless it provides perfect forward secrecy:
     #   TLSv1:   ECDHE-RSA-AES256-SHA
     #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA')
+    sslctx.set_ciphers(TLS.ciphers)
 
     # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
     # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
@@ -99,8 +108,8 @@ def build_base_sslctx():
 def validate_sslctx(sslctx):
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
-    if sslctx.protocol != ssl.PROTOCOL_TLSv1:
-        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1')
+    if sslctx.protocol != TLS.protocol:
+        raise ValueError('sslctx.protocol must be ssl.{}'.format(TLS.name))
     if not (sslctx.options & ssl.OP_NO_SSLv2):
         raise ValueError('sslctx.options must include ssl.OP_NO_SSLv2')
     if not (sslctx.options & ssl.OP_NO_COMPRESSION):
