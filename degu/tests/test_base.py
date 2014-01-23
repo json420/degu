@@ -91,7 +91,7 @@ class TestConstants(TestCase):
         self.assertIsInstance(base.TLS, base._TLS)
         if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
             self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
-            self.assserIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
+            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
             self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
         else:
             self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
