@@ -33,6 +33,9 @@ MAX_HEADER_COUNT = 10
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
+# Provide very clear TypeError messages:
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+
 # Hack so we can unit test Python 3.4 as planned, but still also work with
 # Python 3.3 for the time being; note this does not make Degu running under
 # Python 3.4 *network* compatible with Degu running under Python 3.3
@@ -41,6 +44,10 @@ if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
     TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
 else:
     TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
+
+
+class EmptyLineError(Exception):
+    pass
 
 
 class ParseError(Exception):
@@ -127,6 +134,23 @@ def read_line(rfile):
     if line_bytes[-2:] != b'\r\n':
         raise ParseError('Bad Line Termination')
     return line_bytes[:-2].decode('latin_1')
+
+
+def read_lines_iter(rfile):
+    line_bytes = rfile.readline(MAX_LINE_BYTES)
+    if not line_bytes:
+        raise EmptyLineError()
+    if line_bytes[-2:] != b'\r\n':
+        raise ParseError('Bad Line Termination')
+    yield line_bytes[:-2].decode('latin_1')
+    for i in range(MAX_HEADER_COUNT + 1):
+        line_bytes = rfile.readline(MAX_LINE_BYTES)
+        if line_bytes == b'\r\n':
+            break
+        if line_bytes[-2:] != b'\r\n':
+            raise ParseError('Bad Line Termination')
+        yield line_bytes[:-2].decode('latin_1')
+    raise ParseError('Too Many Headers')
 
 
 def read_chunk(rfile):

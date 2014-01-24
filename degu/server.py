@@ -87,6 +87,7 @@ import logging
 import threading
 
 from .base import (
+    TYPE_ERROR,
     ParseError,
     build_base_sslctx,
     validate_sslctx,
@@ -232,6 +233,75 @@ def shift_path(request):
     return next
 
 
+def validate_response(request, response):
+    """
+    Deeply validate response from a RGI application.
+
+    This exhaustive validation is expensive, but for now we're focusing on
+    stabilizing RGI as a specification and Degu as an implementation.  Soon
+    we'll work on wringing more performance out of Degu (and probably wont do
+    such deep validation at run-time, just for unit testing).
+    """
+    (status, reason, headers, body) = response
+    if not isinstance(status, int):
+        raise TypeError(TYPE_ERROR.format('status', int, type(status), status))
+    if not (100 <= status <= 599):
+        raise ValueError(
+            'status: need 100 <= status <= 599; got {}'.format(status)
+        )
+    if not isinstance(reason, str):
+        raise TypeError(TYPE_ERROR.format('reason', str, type(reason), reason))
+    if not reason:
+        raise ValueError('reason: cannot be empty')
+    if reason.strip() != reason:
+        raise ValueError('reason: surrounding whitespace: {!r}'.format(reason))
+    if not isinstance(headers, dict):
+        raise TypeError(TYPE_ERROR.format('headers', dict, type(headers), headers))
+    for (key, value) in headers.items():
+        if not isinstance(key, str):
+            raise TypeError(
+                'bad header name type: {!r}: {!r}'.format(type(key), key)
+            )
+        if key.casefold() != key:
+            raise ValueError('non-casefolded header name: {!r}'.format(key))
+        if key == 'content-length':
+            if not isinstance(value, int): 
+                raise TypeError(
+                    TYPE_ERROR.format("headers['content-length']", int, type(value), value)
+                )
+        elif key == 'transfer-encoding':
+            if value != 'chunked':
+                raise ValueError(
+                    "headers['transfer-encoding']: need 'chunked'; got {!r}".format(value)
+                )
+        elif not isinstance(value, str):
+            raise TypeError(
+                TYPE_ERROR.format('headers[{!r}]'.format(key), str, type(value), value)
+            )
+    if isinstance(body, (bytes, bytearray)):
+        headers.setdefault('content-length', len(body))
+        if headers['content-length'] != len(body):
+            raise ValueError(
+                "headers['content-length'] != len(body): {} != {}".format(headers['content-length'], len(body))
+            )
+    elif isinstance(body, (Output, FileOutput)):
+        headers.setdefault('content-length', body.content_length)
+        if headers['content-length'] != body.content_length:
+            raise ValueError(
+                "headers['content-length'] != body.content_length: {} != {}".format(headers['content-length'], body.content_length)
+            )
+    elif isinstance(body, ChunkedOutput):
+        headers.setdefault('transfer-encoding', 'chunked') 
+    elif body is not None:
+        raise TypeError(
+            'body: not valid type: {!r}: {!r}'.format(type(body), body)
+        )
+    if request['method'] == 'HEAD' and body is not None:
+        raise TypeError(
+            'response body must be None when request method is HEAD'
+        )
+
+
 def iter_response_lines(status, reason, headers):
     yield 'HTTP/1.1 {:d} {}\r\n'.format(status, reason)
     if headers:
@@ -278,7 +348,8 @@ class Handler:
         request_body = request['body']
         response = self.app(request)
         if request_body and not request_body.closed:
-            raise UnconsumedRequestError(request_body)   
+            raise UnconsumedRequestError(request_body)
+        validate_response(request, response)
         self.send_response(response)
 
     def build_request(self):
@@ -303,13 +374,6 @@ class Handler:
             'headers': headers,
             'body': body,
         }
-
-    def validate_response(self, request, response):
-        (status, reason, headers, body) = response
-        if request['method'] == 'HEAD' and body is not None:
-            raise TypeError(
-                'response body must be None when request method is HEAD'
-            )
 
     def send_response(self, response):
         (status, reason, headers, body) = response

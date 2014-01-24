@@ -36,6 +36,7 @@ from dbase32 import random_id
 from .helpers import TempDir, DummySocket, DummyFile
 from degu.misc import TempPKI
 from degu.client import Client, SSLClient, build_client_sslctx
+from degu.base import TYPE_ERROR
 from degu import base, server
 
 
@@ -193,6 +194,142 @@ class TestFunctions(TestCase):
         self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
         self.assertIs(environ['script'], script)
         self.assertIs(environ['path'], path)
+
+    def test_validate_response(self):
+        # status:
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, ('200', None, None, None))
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('status', int, str, '200')
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (99, None, None, None))
+        self.assertEqual(str(cm.exception),
+            'status: need 100 <= status <= 599; got 99'
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (600, None, None, None))
+        self.assertEqual(str(cm.exception),
+            'status: need 100 <= status <= 599; got 600'
+        )
+
+        # reason:
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, b'OK', None, None))
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('reason', str, bytes, b'OK')
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (200, '', None, None))
+        self.assertEqual(str(cm.exception), 'reason: cannot be empty')
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (200, ' OK', None, None))
+        self.assertEqual(str(cm.exception), "reason: surrounding whitespace: ' OK'")
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (200, 'OK ', None, None))
+        self.assertEqual(str(cm.exception), "reason: surrounding whitespace: 'OK '")
+
+        # headers:
+        headers = [('content-type', 'application/json')]
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('headers', dict, list, headers)
+        )
+        headers = {17: 'ok'}
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            "bad header name type: <class 'int'>: 17"
+        )
+        headers = {'Content-Type': 'application/json', 'content-length': 17}
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            "non-casefolded header name: 'Content-Type'"
+        )
+        headers = {'content-type': 'application/json', 'content-length': '17'}
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("headers['content-length']", int, str, '17')
+        )
+        headers = {'content-type': 'application/json', 'transfer-encoding': 'globbed'}
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            "headers['transfer-encoding']: need 'chunked'; got 'globbed'"
+        )
+        headers = {'content-type': 'application/json', 'hello': 17}
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, 'OK', headers, None))
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("headers['hello']", str, int, 17)
+        )
+
+        # body:
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response({}, (200, 'OK', {}, 'hello'))
+        self.assertEqual(str(cm.exception),
+            "body: not valid type: <class 'str'>: 'hello'"
+        )
+        # isinstance(body, (bytes, bytearray):
+        request = {'method': 'GET'}
+        for body in [b'hello', bytearray(b'hello')]:
+            headers = {}
+            self.assertIsNone(
+                server.validate_response(request, (200, 'OK', headers, body))
+            )
+            self.assertEqual(headers, {'content-length': 5})
+            headers = {'content-length': 6}
+            with self.assertRaises(ValueError) as cm:
+                server.validate_response(request, (200, 'OK', headers, body))
+            self.assertEqual(str(cm.exception),
+                "headers['content-length'] != len(body): 6 != 5"
+            )
+        # isinstance(body, (Output, FileOutput)):
+        tmp = TempDir()
+        fp = tmp.prepare(b'hello')
+        for body in [base.Output(b'hello', 5), base.FileOutput(fp, 5)]:
+            headers = {}
+            self.assertIsNone(
+                server.validate_response(request, (200, 'OK', headers, body))
+            )
+            self.assertEqual(headers, {'content-length': 5})
+            headers = {'content-length': 6}
+            with self.assertRaises(ValueError) as cm:
+                server.validate_response(request, (200, 'OK', headers, body))
+            self.assertEqual(str(cm.exception),
+                "headers['content-length'] != body.content_length: 6 != 5"
+            )
+        # isinstance(body, ChunkedOutput):
+        body = base.ChunkedOutput([b'hello', b'naughty', b'nurse'])
+        headers = {}
+        self.assertIsNone(
+            server.validate_response(request, (200, 'OK', headers, body))
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        # body is None:
+        headers = {}
+        self.assertIsNone(
+            server.validate_response(request, (200, 'OK', headers, None))
+        )
+        self.assertEqual(headers, {})
+
+        # method=HEAD, body is not None:
+        request = {'method': 'HEAD'}
+        with self.assertRaises(TypeError) as cm:
+            server.validate_response(request, (200, 'OK', {}, b'hello'))
+        self.assertEqual(str(cm.exception),
+            'response body must be None when request method is HEAD'
+        )
+
+        # method=HEAD, body=None:
+        headers = {}
+        self.assertIsNone(
+            server.validate_response(request, (200, 'OK', headers, None))
+        )
+        self.assertEqual(headers, {})
 
     def test_iter_response_lines(self):
         self.assertEqual(
