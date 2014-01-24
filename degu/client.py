@@ -233,15 +233,8 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        try:
-            sock = self.sslctx.wrap_socket(sock, server_hostname=self.hostname)
-            if self.check_hostname:
-                ssl.match_hostname(sock.getpeercert(), self.hostname)
-        except Exception:
-            sock.shutdown(socket.SHUT_RDWR)
-            sock.close()
-            raise
+        sock = self.sslctx.wrap_socket(sock, server_hostname=self.hostname)
+        if self.check_hostname:
+            ssl.match_hostname(sock.getpeercert(), self.hostname)
         return sock
 
-    def handle_ssl_connection(self, sock, peercert):
-        pass

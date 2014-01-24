@@ -684,7 +684,62 @@ class TestLiveServer(LiveTestCase):
             httpd.join()
 
 
+def ssl_app(request):
+    assert request['ssl_cipher'] == (base.TLS.ciphers, 'TLSv1/SSLv3', 256), request['ssl_cipher']
+    assert request['ssl_compression'] is None
+    return (200, 'OK', {}, None)
+
+
 class TestLiveSSLServer(LiveTestCase):
+    def test_ssl(self):
+        pki = TempPKI(client_pki=True)
+        (httpd, env) = server.start_sslserver(pki.server_config, ssl_app)
+        try:
+            # Test from a non-SSL client:
+            client = Client('::1', env['port'])
+            with self.assertRaises(ConnectionResetError) as cm:
+                client.request('GET', '/')
+            self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
+            self.assertIsNone(client.conn)
+            self.assertIsNone(client.response_body)
+
+            # Test with no client cert:
+            client_ctx = build_client_sslctx(
+                {'ca_file': pki.client_config['ca_file']}
+            )
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            with self.assertRaises(ssl.SSLError) as cm:
+                client.request('GET', '/')
+            self.assertTrue(
+                str(cm.exception).startswith('[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]')
+            )
+            self.assertIsNone(client.conn)
+            self.assertIsNone(client.response_body)
+
+            # Test with the wrong client cert (not signed by client CA):
+            client_ctx = build_client_sslctx({
+                'ca_file': pki.client_config['ca_file'],
+                'cert_file': pki.server_config['cert_file'],
+                'key_file': pki.server_config['key_file'],
+            })
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            with self.assertRaises(ssl.SSLError) as cm:
+                client.request('GET', '/')
+            self.assertTrue(
+                str(cm.exception).startswith('[SSL: TLSV1_ALERT_UNKNOWN_CA]')
+            )
+            self.assertIsNone(client.conn)
+            self.assertIsNone(client.response_body)
+
+            # Test with a properly configured SSLClient:
+            client_ctx = build_client_sslctx(pki.client_config)
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            response = client.request('GET', '/')
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
     def test_chunked_request(self):
         pki = TempPKI(client_pki=True)
         client_ctx = build_client_sslctx(pki.client_config)

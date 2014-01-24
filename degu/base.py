@@ -97,10 +97,10 @@ def build_base_sslctx():
     # Python 3.4 is still setting this, so we are too:
     sslctx.options |= ssl.OP_NO_SSLv2
 
-    # Protect against CRIME-like attacks, plus better media file transfer rates,
-    # although note that on Debian/Ubuntu systems, libssl (openssl) is built
-    # with TSL compression disabled, so we can't deep unit test for this using
-    # SSLSocket.compression() as that will always return None:
+    # Protect against CRIME-like attacks, plus better media file transfer rates;
+    # note that on Debian/Ubuntu systems, libssl (openssl) is built with TSL
+    # compression disabled system-wide, so we can't deep unit test for this
+    # using SSLSocket.compression() as that will always return None:
     sslctx.options |= ssl.OP_NO_COMPRESSION
     return sslctx
 
