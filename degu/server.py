@@ -443,3 +443,26 @@ def start_server(app, bind_address='::1', port=0):
         raise env
     return (process, env)
 
+
+def run_sslserver(queue, sslconfig, app, bind_address, port):
+    try:
+        sslctx = build_server_sslctx(sslconfig)
+        httpd = SSLServer(sslctx, app, bind_address, port)
+        env = {'port': httpd.port, 'url': httpd.url}
+        queue.put(env)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+
+
+def start_sslserver(sslconfig, app, bind_address='::1', port=0):
+    import multiprocessing
+    queue = multiprocessing.Queue()
+    args = (queue, sslconfig, app, bind_address, port)
+    process = multiprocessing.Process(target=run_sslserver, args=args, daemon=True)
+    process.start()
+    env = queue.get()
+    if isinstance(env, Exception):
+        raise env
+    return (process, env)
+

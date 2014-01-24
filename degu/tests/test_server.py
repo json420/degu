@@ -682,3 +682,29 @@ class TestLiveServer(LiveTestCase):
         finally:
             httpd.terminate()
             httpd.join()
+
+
+class TestLiveSSLServer(LiveTestCase):
+    def test_chunked_request(self):
+        pki = TempPKI(client_pki=True)
+        client_ctx = build_client_sslctx(pki.client_config)
+        (httpd, env) = server.start_sslserver(pki.server_config, chunked_request_app)
+        try:
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            self.check_chunked_request(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
+    def test_chunked_response(self):
+        pki = TempPKI(client_pki=True)
+        client_ctx = build_client_sslctx(pki.client_config)
+        (httpd, env) = server.start_sslserver(pki.server_config, chunked_response_app)
+        try:
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            self.check_chunked_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()

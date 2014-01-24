@@ -3,13 +3,12 @@
 import time
 import logging
 import json
-import multiprocessing
 
 from dbase32 import random_id
 
 from degu.misc import TempPKI
 from degu.client import SSLClient, build_client_sslctx
-from degu.server import SSLServer, build_server_sslctx
+from degu.server import start_sslserver
 
 
 logging.basicConfig(
@@ -24,24 +23,6 @@ logging.basicConfig(
 log = logging.getLogger()
 
 
-def start_process(target, *args, **kw):
-    process = multiprocessing.Process(target=target, args=args, kwargs=kw)
-    process.daemon = True
-    process.start()
-    return process
-
-
-def run_server(queue, sslconfig, app, bind_address='::1', port=0):
-    try:
-        sslctx = build_server_sslctx(sslconfig)
-        httpd = SSLServer(sslctx, app, bind_address, port)
-        env = {'port': httpd.port, 'url': httpd.url}
-        queue.put(env)
-        httpd.serve_forever()
-    except Exception as e:
-        queue.put(e)
-
-
 def echo_app(request):
     data = request['body'].read()
     obj = json.loads(data.decode('utf-8'))
@@ -54,12 +35,7 @@ def echo_app(request):
 
 
 pki = TempPKI(client_pki=True)
-q = multiprocessing.Queue()
-start_process(run_server, q, pki.server_config, echo_app)
-env = q.get()
-print(env)
-
-
+(httpd, env) = start_sslserver(pki.server_config, echo_app)
 marker = random_id()
 body = json.dumps({'ping': marker}).encode('utf-8')
 headers = {
@@ -81,3 +57,6 @@ for i in range(5):
 delta = min(deltas)
 print('{:.2f} requests/second'.format(count / delta))
 
+
+httpd.terminate()
+httpd.join()
