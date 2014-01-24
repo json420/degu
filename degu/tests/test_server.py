@@ -28,12 +28,18 @@ import os
 from random import SystemRandom
 import socket
 import ssl
+import json
+from hashlib import sha1
 
 from dbase32 import random_id
 
 from .helpers import TempDir, DummySocket, DummyFile
 from degu.misc import TempPKI
+from degu.client import Client, SSLClient, build_client_sslctx
 from degu import base, server
+
+
+random = SystemRandom()
 
 
 class TestFunctions(TestCase):
@@ -534,7 +540,7 @@ class TestSSLServer(TestCase):
         self.assertIsInstance(inst.port, int)
         self.assertEqual(inst.port, inst.sock.getsockname()[1])
         self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
-  
+
     def test_build_base_environ(self):
         class SSLServerSubclass(server.SSLServer):
             def __init__(self, bind_address, port):
@@ -551,3 +557,128 @@ class TestSSLServer(TestCase):
             'rgi.FileResponseBody': base.FileOutput,
             'rgi.ChunkedResponseBody': base.ChunkedOutput,
         })
+
+
+CHUNKS = []
+for i in range(7):
+    size = random.randint(1, 5000)
+    CHUNKS.append(os.urandom(size))
+CHUNKS.append(b'')
+CHUNKS = tuple(CHUNKS)
+
+
+def chunked_request_app(request):
+    assert request['method'] == 'POST'
+    assert request['script'] == []
+    assert request['path'] == []
+    assert isinstance(request['body'], base.ChunkedInput)
+    assert request['headers']['transfer-encoding'] == 'chunked'
+    result = []
+    for chunk in request['body']:
+        result.append(sha1(chunk).hexdigest())
+    body = json.dumps(result).encode('utf-8')
+    headers = {'content-length': len(body), 'content-type': 'application/json'}
+    return (200, 'OK', headers, body)
+
+
+def chunked_response_app(request):
+    assert request['method'] == 'GET'
+    assert request['script'] == []
+    assert request['body'] is None
+    headers = {'transfer-encoding': 'chunked'}
+    if request['path'] == ['foo']:
+        body = base.ChunkedOutput(CHUNKS)
+    elif request['path'] == ['bar']:
+        body = base.ChunkedOutput([b''])
+    else:
+        return (404, 'Not Found', {}, None)
+    return (200, 'OK', headers, body)
+
+
+class LiveTestCase(TestCase):
+    def check_chunked_request(self, client):
+        body = base.ChunkedOutput(CHUNKS)
+        response = client.request('POST', '/', {}, body)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers,
+            {'content-length': 352, 'content-type': 'application/json'}
+        )
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(json.loads(response.body.read().decode('utf-8')),
+            [sha1(chunk).hexdigest() for chunk in CHUNKS]
+        )
+
+        body = base.ChunkedOutput([b''])
+        response = client.request('POST', '/', {}, body)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers,
+            {'content-length': 44, 'content-type': 'application/json'}
+        )
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(json.loads(response.body.read().decode('utf-8')),
+            [sha1(b'').hexdigest()]
+        )
+
+        body = base.ChunkedOutput(CHUNKS)
+        response = client.request('POST', '/', {}, body)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers,
+            {'content-length': 352, 'content-type': 'application/json'}
+        )
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(json.loads(response.body.read().decode('utf-8')),
+            [sha1(chunk).hexdigest() for chunk in CHUNKS]
+        )
+
+    def check_chunked_response(self, client):
+        response = client.request('GET', '/foo')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertEqual(tuple(response.body), CHUNKS)
+
+        response = client.request('GET', '/bar')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertEqual(list(response.body), [b''])
+
+        response = client.request('GET', '/baz')
+        self.assertEqual(response.status, 404)
+        self.assertEqual(response.reason, 'Not Found')
+        self.assertEqual(response.headers, {})
+        self.assertIsNone(response.body)
+
+        response = client.request('GET', '/foo')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertEqual(tuple(response.body), CHUNKS)
+
+
+class TestLiveServer(LiveTestCase):
+    def test_chunked_request(self):
+        (httpd, env) = server.start_server(chunked_request_app)
+        try:
+            client = Client('::1', env['port'])
+            self.check_chunked_request(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
+    def test_chunked_response(self):
+        (httpd, env) = server.start_server(chunked_response_app)
+        try:
+            client = Client('::1', env['port'])
+            self.check_chunked_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()

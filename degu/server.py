@@ -106,6 +106,14 @@ SOCKET_TIMEOUT = 30
 log = logging.getLogger()
 
 
+class UnconsumedRequestError(Exception):
+    def __init__(self, body):
+        self.body = body
+        super().__init__(
+            'previous request body not consumed: {!r}'.format(body)
+        )
+
+
 def build_server_sslctx(config):
     sslctx = build_base_sslctx()
     sslctx.set_ecdh_curve('prime256v1')  # Enable perfect forward secrecy
@@ -263,9 +271,14 @@ class Handler:
             request = self.environ.copy()
             request.update(self.build_request())
         except ParseError as e:
+            log.exception('client=%r', request['client'])
             self.send_response((400, e.reason, {}, None))
+            assert self.closed
             return
+        request_body = request['body']
         response = self.app(request)
+        if request_body and not request_body.closed:
+            raise UnconsumedRequestError(request_body)   
         self.send_response(response)
 
     def build_request(self):
@@ -280,6 +293,8 @@ class Handler:
             body = ChunkedInput(self.rfile)
         else:
             body = None
+        if body is not None and method not in {'POST', 'PUT'}:
+                raise ParseError('Request Body With Wrong Method')
         return {
             'method': method,
             'script': [],
@@ -288,11 +303,6 @@ class Handler:
             'headers': headers,
             'body': body,
         }
-
-    def validate_request(self, request):
-        if request['body'] is not None:
-            if request['method'] not in ('POST', 'PUT'):
-                raise RGIError('400 Request Body With Wrong Method')
 
     def validate_response(self, request, response):
         (status, reason, headers, body) = response
@@ -410,3 +420,26 @@ class SSLServer(Server):
             'ssl_compression': sock.compression(),
         }
         return (environ, sock)
+
+
+def run_server(queue, app, bind_address, port):
+    try:
+        httpd = Server(app, bind_address, port)
+        env = {'port': httpd.port, 'url': httpd.url}
+        queue.put(env)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+
+
+def start_server(app, bind_address='::1', port=0):
+    import multiprocessing
+    queue = multiprocessing.Queue()
+    args = (queue, app, bind_address, port)
+    process = multiprocessing.Process(target=run_server, args=args, daemon=True)
+    process.start()
+    env = queue.get()
+    if isinstance(env, Exception):
+        raise env
+    return (process, env)
+
