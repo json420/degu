@@ -587,11 +587,30 @@ def chunked_response_app(request):
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = base.ChunkedOutput(CHUNKS)
+        body = request['rgi.ChunkedResponseBody'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = base.ChunkedOutput([b''])
+        body = request['rgi.ChunkedResponseBody']([b''])
     else:
         return (404, 'Not Found', {}, None)
+    return (200, 'OK', headers, body)
+
+
+DATA1 = os.urandom(1776)
+DATA2 = os.urandom(3469)
+DATA = DATA1 + DATA2
+
+
+def response_app(request):
+    assert request['method'] == 'GET'
+    assert request['script'] == []
+    assert request['body'] is None
+    if request['path'] == ['foo']:
+        body = request['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
+    elif request['path'] == ['bar']:
+        body = request['rgi.ResponseBody']([b'', b''], 0)
+    else:
+        return (404, 'Not Found', {}, None)
+    headers = {'content-length': body.content_length}
     return (200, 'OK', headers, body)
 
 
@@ -661,6 +680,34 @@ class LiveTestCase(TestCase):
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(tuple(response.body), CHUNKS)
 
+    def check_response(self, client):
+        response = client.request('GET', '/foo')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': len(DATA)})
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(response.body.read(), DATA)
+
+        response = client.request('GET', '/bar')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': 0})
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(response.body.read(), b'')
+
+        response = client.request('GET', '/baz')
+        self.assertEqual(response.status, 404)
+        self.assertEqual(response.reason, 'Not Found')
+        self.assertEqual(response.headers, {})
+        self.assertIsNone(response.body)
+
+        response = client.request('GET', '/foo')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': len(DATA)})
+        self.assertIsInstance(response.body, base.Input)
+        self.assertEqual(response.body.read(), DATA)
+
 
 class TestLiveServer(LiveTestCase):
     def test_chunked_request(self):
@@ -683,8 +730,21 @@ class TestLiveServer(LiveTestCase):
             httpd.terminate()
             httpd.join()
 
+    def test_response(self):
+        (httpd, env) = server.start_server(response_app)
+        try:
+            client = Client('::1', env['port'])
+            self.check_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
 
 def ssl_app(request):
+    assert request['method'] == 'GET'
+    assert request['script'] == []
+    assert request['body'] is None
     assert request['ssl_cipher'] == (base.TLS.ciphers, 'TLSv1/SSLv3', 256), request['ssl_cipher']
     assert request['ssl_compression'] is None
     return (200, 'OK', {}, None)
@@ -759,6 +819,18 @@ class TestLiveSSLServer(LiveTestCase):
         try:
             client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
             self.check_chunked_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
+    def test_response(self):
+        pki = TempPKI(client_pki=True)
+        client_ctx = build_client_sslctx(pki.client_config)
+        (httpd, env) = server.start_sslserver(pki.server_config, response_app)
+        try:
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            self.check_response(client)
             client.close()
         finally:
             httpd.terminate()

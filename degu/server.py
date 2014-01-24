@@ -315,9 +315,7 @@ class Handler:
         (status, reason, headers, body) = response
         preamble = ''.join(iter_response_lines(status, reason, headers))
         self.wfile.write(preamble.encode('latin_1'))
-        if body is None:
-            pass
-        elif isinstance(body, (bytes, bytearray)):
+        if isinstance(body, (bytes, bytearray)):
             self.wfile.write(body)
         elif isinstance(body, (Output, FileOutput)):
             for buf in body:
@@ -325,7 +323,7 @@ class Handler:
         elif isinstance(body, ChunkedOutput):
             for chunk in body:
                 write_chunk(self.wfile, chunk)
-        else:
+        elif body is not None:
             raise TypeError('Bad response body type')
         self.wfile.flush()
         if status >= 500 or status == 400:
