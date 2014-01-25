@@ -275,10 +275,11 @@ class TestFunctions(TestCase):
 
         # 1st line is too long:
         rfile = tmp.prepare(toolong)
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(base.read_lines_iter(rfile))
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(str(cm.exception),
+            'bad line termination: {!r}'.format(toolong[:MAX_LINE_BYTES])
+        )
         self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
 
@@ -287,24 +288,24 @@ class TestFunctions(TestCase):
         marker_line = marker.encode('latin_1') + b'\r\n'
         rfile = tmp.prepare(marker_line)
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
         self.assertEqual(result, [marker])
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(str(cm.exception), "bad line termination: b''")
         self.assertEqual(rfile.tell(), len(marker_line))
         self.assertFalse(rfile.closed)
 
         # 2nd line is too long:
         rfile = tmp.prepare(marker_line + toolong + b'\r\n')
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
         self.assertEqual(result, [marker])
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(str(cm.exception),
+            'bad line termination: {!r}'.format(toolong[:MAX_LINE_BYTES])
+        )
         self.assertEqual(rfile.tell(), len(marker_line) + MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
 
@@ -315,11 +316,10 @@ class TestFunctions(TestCase):
         preamble = ''.join(lines).encode('latin_1')
         rfile = tmp.prepare(preamble)
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(str(cm.exception), "bad line termination: b''")
         self.assertEqual(result, markers)
         self.assertEqual(rfile.tell(), len(preamble))
         self.assertFalse(rfile.closed)
@@ -327,11 +327,12 @@ class TestFunctions(TestCase):
         # Same, but append with body data:
         rfile = tmp.prepare(preamble + body)
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(str(cm.exception),
+            'bad line termination: {!r}'.format(body[:MAX_LINE_BYTES])
+        )
         self.assertEqual(result, markers)
         self.assertEqual(rfile.tell(), len(preamble) + MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
@@ -357,11 +358,10 @@ class TestFunctions(TestCase):
         preamble = ''.join(lines).encode('latin_1')
         rfile = tmp.prepare(preamble)
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
-        self.assertEqual(cm.exception.reason, 'Too Many Headers')
-        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(str(cm.exception), 'too many headers (> 10)')
         self.assertEqual(result, markers)
         self.assertEqual(rfile.tell(), len(preamble))
         self.assertFalse(rfile.closed)
@@ -369,11 +369,10 @@ class TestFunctions(TestCase):
         # Same, append a final termination:
         rfile = tmp.prepare(preamble + b'\r\n')
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
-        self.assertEqual(cm.exception.reason, 'Too Many Headers')
-        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(str(cm.exception), 'too many headers (> 10)')
         self.assertEqual(result, markers)
         self.assertEqual(rfile.tell(), len(preamble))
         self.assertFalse(rfile.closed)
@@ -381,11 +380,10 @@ class TestFunctions(TestCase):
         # Same, but also append body:
         rfile = tmp.prepare(preamble + b'\r\n' + body)
         result = []
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             for line in base.read_lines_iter(rfile):
                 result.append(line)
-        self.assertEqual(cm.exception.reason, 'Too Many Headers')
-        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(str(cm.exception), 'too many headers (> 10)')
         self.assertEqual(result, markers)
         self.assertEqual(rfile.tell(), len(preamble))
         self.assertFalse(rfile.closed)

@@ -142,16 +142,16 @@ def read_lines_iter(rfile):
     if not line_bytes:
         raise EmptyLineError()
     if line_bytes[-2:] != b'\r\n':
-        raise ParseError('Bad Line Termination')
+        raise ValueError('bad line termination: {!r}'.format(line_bytes))
     yield line_bytes[:-2].decode('latin_1')
     for i in range(MAX_HEADER_COUNT + 1):
         line_bytes = rfile.readline(MAX_LINE_BYTES)
         if line_bytes == b'\r\n':
             return
         if line_bytes[-2:] != b'\r\n':
-            raise ParseError('Bad Line Termination')
+            raise ValueError('bad line termination: {!r}'.format(line_bytes))
         yield line_bytes[:-2].decode('latin_1')
-    raise ParseError('Too Many Headers', 431)
+    raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
 
 
 def read_chunk(rfile):
