@@ -92,8 +92,8 @@ from .base import (
     build_base_sslctx,
     validate_sslctx,
     makefiles,
-    read_line,
-    read_headers,
+    read_lines_iter,
+    parse_headers,
     write_chunk,
     Input,
     ChunkedInput,
@@ -354,8 +354,9 @@ class Handler:
         """
         Builds the *environ* fragment unique to a single HTTP request.
         """
-        (method, path_list, query) = parse_request(read_line(self.rfile))
-        headers = read_headers(self.rfile)
+        lines = tuple(read_lines_iter(self.rfile))
+        (method, path_list, query) = parse_request(lines[0])
+        headers = parse_headers(lines[1:])
         if 'content-length' in headers:
             body = Input(self.rfile, headers['content-length'])
         elif 'transfer-encoding' in headers:

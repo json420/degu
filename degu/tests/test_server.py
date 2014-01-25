@@ -935,7 +935,7 @@ class TestLiveSSLServer(LiveTestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(response.reason, 'OK')
             self.assertIsNone(response.body)
-            
+
             client.close()
         finally:
             httpd.terminate()
