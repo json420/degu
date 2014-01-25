@@ -303,7 +303,7 @@ def validate_response(request, response):
 
 
 def iter_response_lines(status, reason, headers):
-    yield 'HTTP/1.1 {:d} {}\r\n'.format(status, reason)
+    yield 'HTTP/1.1 {} {}\r\n'.format(status, reason)
     if headers:
         for key in sorted(headers):
             yield '{}: {}\r\n'.format(key, headers[key])
