@@ -124,19 +124,6 @@ def validate_sslctx(sslctx):
         raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
 
 
-def read_line(rfile):
-    """
-    Read a single CRLF terminated line from io.BufferedReader *rfile*.
-
-    The return value will be an ``str`` with the decoded latin_1 text, minus the
-    terminating CRLF. 
-    """
-    line_bytes = rfile.readline(MAX_LINE_BYTES)
-    if line_bytes[-2:] != b'\r\n':
-        raise ParseError('Bad Line Termination')
-    return line_bytes[:-2].decode('latin_1')
-
-
 def read_lines_iter(rfile):
     line_bytes = rfile.readline(MAX_LINE_BYTES)
     if not line_bytes:
@@ -240,21 +227,6 @@ def parse_headers(lines):
         if headers['transfer-encoding'] != 'chunked':
             raise ValueError('bad transfer-encoding')
     return headers
-
-
-def read_headers(fp):
-    headers = {}
-    for i in range(MAX_HEADER_COUNT + 1):
-        line = read_line(fp)
-        if line == '':
-            if {'content-length', 'transfer-encoding'}.issubset(headers):
-                raise ParseError('Content-Length With Transfer-Encoding')
-            return headers
-        (key, value) = parse_header(line)
-        if key in headers:
-            raise ParseError('Duplicate Header')
-        headers[key] = value
-    raise ParseError('Too Many Headers')
 
 
 def makefiles(sock):
