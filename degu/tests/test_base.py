@@ -436,77 +436,103 @@ class TestFunctions(TestCase):
         termed = data + b'\r\n'
         self.assertEqual(len(termed), 7779)
         size = b'1e61\r\n'
+        size_plus = b'1e61; extra stuff here\r\n'
 
         # No CRLF terminated chunk size line:
-        fp = tmp.prepare(termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(fp.tell(), MAX_LINE_BYTES)
+        rfile = tmp.prepare(termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'bad line termination: {!r}'.format(termed[:MAX_LINE_BYTES])
+        )
+        self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:
-        fp = tmp.prepare(b'1e61\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(fp.tell(), 5)
+        rfile = tmp.prepare(b'1e61\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'1e61\\n'")
+        self.assertEqual(rfile.tell(), 5)
+        self.assertFalse(rfile.closed)
 
         # Totally empty:
-        fp = tmp.prepare(b'')
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
-        self.assertEqual(fp.tell(), 0)
+        rfile = tmp.prepare(b'')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b''")
+        self.assertEqual(rfile.tell(), 0)
+        self.assertFalse(rfile.closed)
 
         # Size line is property terminated, but empty value:
-        fp = tmp.prepare(b'\r\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
-        self.assertEqual(fp.tell(), 2)
+        rfile = tmp.prepare(b'\r\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 16: b'\\r\\n'"
+        )
+        self.assertEqual(rfile.tell(), 2)
+        self.assertFalse(rfile.closed)
 
         # Size isn't a hexidecimal integer:
-        fp = tmp.prepare(b'17.6\r\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
-        self.assertEqual(fp.tell(), 6)
-        fp = tmp.prepare(b'17.6; 1e61\r\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Chunk Size')
-        self.assertEqual(fp.tell(), 12)
+        rfile = tmp.prepare(b'17.6\r\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 16: b'17.6\\r\\n'"
+        )
+        self.assertEqual(rfile.tell(), 6)
+        self.assertFalse(rfile.closed)
+        rfile = tmp.prepare(b'17.6; 1e61\r\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 16: b'17.6'"
+        )
+        self.assertEqual(rfile.tell(), 12)
+        self.assertFalse(rfile.closed)
 
         # Size is negative:
-        fp = tmp.prepare(b'-1e61\r\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Negative Chunk Size')
-        self.assertEqual(fp.tell(), 7)
-        fp = tmp.prepare(b'-1e61; 1e61\r\n' + termed)
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Negative Chunk Size')
-        self.assertEqual(fp.tell(), 13)
+        rfile = tmp.prepare(b'-1e61\r\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
+        self.assertEqual(rfile.tell(), 7)
+        self.assertFalse(rfile.closed)
+        rfile = tmp.prepare(b'-1e61; 1e61\r\n' + termed)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
+        self.assertEqual(rfile.tell(), 13)
+        self.assertFalse(rfile.closed)
 
         # Not enough data:
-        fp = tmp.prepare(size + small_data + b'\r\n')
+        rfile = tmp.prepare(size + small_data + b'\r\n')
         with self.assertRaises(base.UnderFlowError) as cm:
-            base.read_chunk(fp)
+            base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7779')
-        self.assertEqual(fp.tell(), 6674)
+        self.assertEqual(rfile.tell(), 6674)
+        self.assertFalse(rfile.closed)
 
         # Data isn't properly terminated:
-        fp = tmp.prepare(size + data + b'TT\r\n')
-        with self.assertRaises(base.ParseError) as cm:
-            base.read_chunk(fp)
-        self.assertEqual(cm.exception.reason, 'Bad Chunk Termination')
-        self.assertEqual(fp.tell(), 7785)
+        rfile = tmp.prepare(size + data + b'TT\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception), "bad chunk termination: b'TT'")
+        self.assertEqual(rfile.tell(), 7785)
+        self.assertFalse(rfile.closed)
 
         # Test when it's all good:
-        fp = tmp.prepare(size + termed)
-        self.assertEqual(base.read_chunk(fp), data)
-        self.assertEqual(fp.tell(), 7785)
+        rfile = tmp.prepare(size + termed)
+        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(rfile.tell(), 7785)
+        self.assertFalse(rfile.closed)
+
+        # Test when size line has extra information:
+        rfile = tmp.prepare(size_plus + termed)
+        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(rfile.tell(), 7803)
+        self.assertFalse(rfile.closed)
 
     def test_write_chunk(self):
         tmp = TempDir()

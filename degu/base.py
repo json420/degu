@@ -155,24 +155,23 @@ def read_lines_iter(rfile):
 
 
 def read_chunk(rfile):
-    line = read_line(rfile)
-    try:
-        size = int(line.split(';', 1)[0], 16)
-    except ValueError:
-        raise ParseError('Bad Chunk Size')
+    line_bytes = rfile.readline(MAX_LINE_BYTES)
+    if line_bytes[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line_bytes))
+    size = int(line_bytes.split(b';')[0], 16)
     if size < 0:
-        raise ParseError('Negative Chunk Size')
+        raise ValueError('negative chunk size: {}'.format(size))
     chunk = rfile.read(size + 2)
     if len(chunk) != size + 2:
         raise UnderFlowError(len(chunk), size + 2)
     if chunk[-2:] != b'\r\n':
-        raise ParseError('Bad Chunk Termination')
+        raise ValueError('bad chunk termination: {!r}'.format(chunk[-2:]))
     return chunk[:-2]
 
 
 def write_chunk(wfile, chunk):
     size_line = '{:x}\r\n'.format(len(chunk))
-    total = wfile.write(size_line.encode('latin_1'))
+    total = wfile.write(size_line.encode())
     total += wfile.write(chunk)
     total += wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
