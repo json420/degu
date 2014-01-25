@@ -493,50 +493,6 @@ class TestFunctions(TestCase):
             self.assertEqual(base.read_chunk(fp), data)
             fp.close()
 
-    def test_parse_header(self):
-        # Bad separator:
-        with self.assertRaises(base.ParseError) as cm:
-            base.parse_header('Content-Type:application/json')
-        self.assertEqual(cm.exception.reason, 'Bad Header Line')
-
-        # Bad Content-Length:
-        with self.assertRaises(base.ParseError) as cm:
-            base.parse_header('Content-Length: 16.9')
-        self.assertEqual(cm.exception.reason, 'Bad Content-Length')
-
-        # Negative Content-Length:
-        with self.assertRaises(base.ParseError) as cm:
-            base.parse_header('Content-Length: -17')
-        self.assertEqual(cm.exception.reason, 'Negative Content-Length')
-
-        # Bad Transfer-Encoding:
-        with self.assertRaises(base.ParseError) as cm:
-            base.parse_header('Transfer-Encoding: clumped')
-        self.assertEqual(cm.exception.reason, 'Bad Transfer-Encoding')
-
-        # Test a number of good values:
-        self.assertEqual(base.parse_header('Content-Type: application/json'),
-            ('content-type', 'application/json')
-        )
-        self.assertEqual(base.parse_header('Content-Length: 17'),
-            ('content-length', 17)
-        )
-        self.assertEqual(base.parse_header('Content-Length: 0'),
-            ('content-length', 0)
-        )
-        self.assertEqual(base.parse_header('Transfer-Encoding: chunked'),
-            ('transfer-encoding', 'chunked')
-        )
-
-        # Throw a few random values through it:
-        for i in range(25):
-            key = random_id()
-            value = random_id()
-            line = '{}: {}'.format(key, value)
-            self.assertEqual(base.parse_header(line),
-                (key.casefold(), value)
-            )
-
     def test_parse_headers(self):
         # Bad separator:
         with self.assertRaises(ValueError) as cm:
@@ -553,12 +509,12 @@ class TestFunctions(TestCase):
         # Negative Content-Length:
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(['Content-Length: -17'])
-        self.assertEqual(str(cm.exception), 'negative content-length')
+        self.assertEqual(str(cm.exception), 'negative content-length: -17')
 
         # Bad Transfer-Encoding:
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(['Transfer-Encoding: clumped'])
-        self.assertEqual(str(cm.exception), 'bad transfer-encoding')
+        self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
 
         # Duplicate header:
         lines = ('Content-Type: text/plain', 'content-type: text/plain')
