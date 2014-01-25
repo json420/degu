@@ -103,7 +103,7 @@ from .base import (
 )
 
 
-SOCKET_TIMEOUT = 30
+SOCKET_TIMEOUT = 20
 log = logging.getLogger()
 
 
@@ -342,9 +342,7 @@ class Handler:
             request.update(self.build_request())
         except ParseError as e:
             log.exception('client=%r', request['client'])
-            self.send_response((400, e.reason, {}, None))
-            assert self.closed
-            return
+            return self.send_status_only(e.status, e.reason)
         request_body = request['body']
         response = self.app(request)
         if request_body and not request_body.closed:
@@ -390,8 +388,16 @@ class Handler:
         elif body is not None:
             raise TypeError('Bad response body type')
         self.wfile.flush()
-        if status >= 500 or status == 400:
-            self.close()
+
+    def send_status_only(self, status, reason):
+        assert isinstance(status, int)
+        assert 100 <= status <= 599
+        assert isinstance(reason, str)
+        assert len(reason) > 0
+        preamble = ''.join(iter_response_lines(status, reason, None))
+        self.wfile.write(preamble.encode('latin_1'))
+        self.wfile.flush()
+        self.close()
 
 
 class Server:

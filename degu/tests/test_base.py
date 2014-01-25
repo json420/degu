@@ -260,6 +260,177 @@ class TestFunctions(TestCase):
             base.read_line(fp)
         self.assertEqual(cm.exception.reason, 'Bad Line Termination')
 
+    def test_read_lines_iter(self):
+        tmp = TempDir()
+        body = b'B' * (MAX_LINE_BYTES + 1)
+        toolong = b'L' * (MAX_LINE_BYTES - 1) + b'\r\n'
+        self.assertEqual(len(toolong), MAX_LINE_BYTES + 1)
+
+        # Empty:
+        rfile = tmp.prepare(b'')
+        with self.assertRaises(base.EmptyLineError) as cm:
+            list(base.read_lines_iter(rfile))
+        self.assertEqual(rfile.tell(), 0)
+        self.assertFalse(rfile.closed)
+
+        # 1st line is too long:
+        rfile = tmp.prepare(toolong)
+        with self.assertRaises(base.ParseError) as cm:
+            list(base.read_lines_iter(rfile))
+        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
+        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
+
+        # 2nd line is empty (note does not raise EmptyLineError):
+        marker = random_id()
+        marker_line = marker.encode('latin_1') + b'\r\n'
+        rfile = tmp.prepare(marker_line)
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(result, [marker])
+        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
+        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(rfile.tell(), len(marker_line))
+        self.assertFalse(rfile.closed)
+
+        # 2nd line is too long:
+        rfile = tmp.prepare(marker_line + toolong + b'\r\n')
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(result, [marker])
+        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
+        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(rfile.tell(), len(marker_line) + MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
+
+        ##########################################
+        # 11 lines, but missing final termination:
+        markers = [random_id() for i in range(11)]
+        lines = [M + '\r\n' for M in markers]
+        preamble = ''.join(lines).encode('latin_1')
+        rfile = tmp.prepare(preamble)
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
+        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(result, markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        # Same, but append with body data:
+        rfile = tmp.prepare(preamble + body)
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(cm.exception.reason, 'Bad Line Termination')
+        self.assertEqual(cm.exception.status, 400)
+        self.assertEqual(result, markers)
+        self.assertEqual(rfile.tell(), len(preamble) + MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
+
+        # Now add final termination:
+        lines.append('\r\n')
+        preamble = ''.join(lines).encode('latin_1')
+        rfile = tmp.prepare(preamble)
+        self.assertEqual(list(base.read_lines_iter(rfile)), markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        # Same, but append with body data:
+        rfile = tmp.prepare(preamble + body)
+        self.assertEqual(list(base.read_lines_iter(rfile)), markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        ##########################################
+        # 12 lines, but missing final termination:
+        markers = [random_id() for i in range(12)]
+        lines = [M + '\r\n' for M in markers]
+        preamble = ''.join(lines).encode('latin_1')
+        rfile = tmp.prepare(preamble)
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(cm.exception.reason, 'Too Many Headers')
+        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(result, markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        # Same, append a final termination:
+        rfile = tmp.prepare(preamble + b'\r\n')
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(cm.exception.reason, 'Too Many Headers')
+        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(result, markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        # Same, but also append body:
+        rfile = tmp.prepare(preamble + b'\r\n' + body)
+        result = []
+        with self.assertRaises(base.ParseError) as cm:
+            for line in base.read_lines_iter(rfile):
+                result.append(line)
+        self.assertEqual(cm.exception.reason, 'Too Many Headers')
+        self.assertEqual(cm.exception.status, 431)
+        self.assertEqual(result, markers)
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertFalse(rfile.closed)
+
+        ###########################
+        # Test with a real request:
+        preamble = ''.join([
+            'POST /dmedia-1 HTTP/1.1\r\n'
+            'content-type: application/json\r\n',
+            'content-length: 1776\r\n',
+            '\r\n',
+        ]).encode('latin_1')
+        body = os.urandom(17)
+        rfile = tmp.prepare(preamble + body)
+        self.assertEqual(list(base.read_lines_iter(rfile)), [
+            'POST /dmedia-1 HTTP/1.1',
+            'content-type: application/json',
+            'content-length: 1776',
+        ])
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertEqual(rfile.read(), body)
+        with self.assertRaises(base.EmptyLineError) as cm:
+            list(base.read_lines_iter(rfile))
+        self.assertEqual(rfile.tell(), len(preamble) + len(body))
+        self.assertFalse(rfile.closed)
+
+        # Same, but when a 2nd request could be read:
+        rfile = tmp.prepare(preamble + preamble)
+        self.assertEqual(list(base.read_lines_iter(rfile)), [
+            'POST /dmedia-1 HTTP/1.1',
+            'content-type: application/json',
+            'content-length: 1776',
+        ])
+        self.assertEqual(rfile.tell(), len(preamble))
+        self.assertEqual(list(base.read_lines_iter(rfile)), [
+            'POST /dmedia-1 HTTP/1.1',
+            'content-type: application/json',
+            'content-length: 1776',
+        ])
+        self.assertEqual(rfile.tell(), len(preamble) * 2)
+        with self.assertRaises(base.EmptyLineError) as cm:
+            list(base.read_lines_iter(rfile))
+        self.assertEqual(rfile.tell(), len(preamble) * 2)
+        self.assertFalse(rfile.closed)
+
     def test_read_chunk(self):
         tmp = TempDir()
         data = (b'D' * 7777)  # Longer than MAX_LINE_BYTES

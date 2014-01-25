@@ -932,6 +932,10 @@ class TestLiveSSLServer(LiveTestCase):
             client_ctx = build_client_sslctx(pki.client_config)
             client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
             response = client.request('GET', '/')
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertIsNone(response.body)
+            
             client.close()
         finally:
             httpd.terminate()

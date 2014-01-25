@@ -51,8 +51,9 @@ class EmptyLineError(Exception):
 
 
 class ParseError(Exception):
-    def __init__(self, reason):
+    def __init__(self, reason, status=400):
         self.reason = reason
+        self.status = status
         super().__init__(reason)
 
 
@@ -146,11 +147,11 @@ def read_lines_iter(rfile):
     for i in range(MAX_HEADER_COUNT + 1):
         line_bytes = rfile.readline(MAX_LINE_BYTES)
         if line_bytes == b'\r\n':
-            break
+            return
         if line_bytes[-2:] != b'\r\n':
             raise ParseError('Bad Line Termination')
         yield line_bytes[:-2].decode('latin_1')
-    raise ParseError('Too Many Headers')
+    raise ParseError('Too Many Headers', 431)
 
 
 def read_chunk(rfile):

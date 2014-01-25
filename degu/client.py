@@ -45,6 +45,7 @@ from .base import (
 
 Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
+SOCKET_TIMEOUT = 30
 
 
 class UnconsumedResponseError(Exception):
@@ -170,7 +171,9 @@ class Client:
         self.response_body = None  # Previous Input or ChunkedInput
 
     def create_socket(self):
-        return socket.create_connection((self.hostname, self.port))
+        sock = socket.create_connection((self.hostname, self.port))
+        sock.settimeout(SOCKET_TIMEOUT)
+        return sock
 
     def connect(self):
         if self.conn is None:
