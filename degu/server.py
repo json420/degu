@@ -88,7 +88,6 @@ import threading
 
 from .base import (
     TYPE_ERROR,
-    ParseError,
     build_base_sslctx,
     validate_sslctx,
     makefiles,
@@ -317,18 +316,18 @@ class Handler:
             self.handle_one()
 
     def handle_one(self):
+        request = self.environ.copy()
         try:
-            request = self.environ.copy()
             request.update(self.build_request())
-        except ParseError as e:
-            log.exception('client=%r', request['client'])
-            return self.send_status_only(e.status, e.reason)
+        except ValueError:
+            log.exception('client: %r', request['client'])
+            return self.write_status_only(400, 'Bad Request')
         request_body = request['body']
         response = self.app(request)
         if request_body and not request_body.closed:
             raise UnconsumedRequestError(request_body)
         validate_response(request, response)
-        self.send_response(response)
+        self.write_response(response)
 
     def build_request(self):
         """
@@ -344,7 +343,9 @@ class Handler:
         else:
             body = None
         if body is not None and method not in {'POST', 'PUT'}:
-                raise ParseError('Request Body With Wrong Method')
+            raise ValueError(
+                'Request body with wrong method: {!r}'.format(method)
+            )
         return {
             'method': method,
             'script': [],
@@ -354,7 +355,104 @@ class Handler:
             'body': body,
         }
 
-    def send_response(self, response):
+    def write_response(self, response):
+        """
+        Write the response to the wfile.
+
+        A somewhat tricky issue is when to close the connection, especially
+        because we need to consider not just what's happening in Degu, but also
+        what might have happened in an upstream HTTP server (eg, CouchDB) in the
+        case of an RGI proxy application.  In general we want to close the
+        connection whenever:
+
+            * The TCP stream gets into an inconsistent state, one way or
+              another, regardless of how we detect it
+
+            * We receive a malicious or otherwise malformed request, or when
+              there is an unhandled server exception; ie, in this scenario we
+              should unconditionally close the connection and not think too hard
+              about whether the TCP stream might get into an inconsistent state
+              as a result of the request
+
+        This has serious security ramifications because we don't want an
+        attacker to be able to escalate an attack by first creating an
+        inconsistent stream state and then exploiting it.  In a perfect world,
+        creating an inconsistent stream state should always result in a closed
+        connection (meaning the attacker has to start over with a new
+        connection, and new requests).
+
+        From the server perspective, we're most concerned with the stream state
+        on the read side (the ``rfile``), although we should never rule out the
+        security consequences of the stream state on the write side (the
+        ``wfile``), especially considering that Dmedia/Novacut need to interact
+        with collaborators who, although presumably trustworthy *people*, should
+        not be assumed to be using trustworthy, uncompromised *machines*.
+        Actually, we shouldn't assume trustworthy *people* either, but we can be
+        polite and just blame the machines :P
+
+        On the read side, we can break things down into three types stream state
+        inconsistencies:
+
+            1. The request preamble isn't fully read - Degu offers at least some
+               protection against this as it will try to *read* the complete
+               preamble (the request line, plus header lines, plus final CRLF)
+               before trying to *parse* the preamble
+
+            2. The request body isn't fully read - this is trickier because it
+               is the responsibility of the RGI application to ready the request
+               body; however, `Handler.handle_one()` should raise an
+               `UnconsumedRequestError` when it detects that the request body
+               was not fully consumed by the RGI application
+
+            3. The rfile is read *past* the end of #1 or #2 - in *theory* this
+               should never happen given the current implementation, but that
+               also means that in *practice*... this is probably a good place to
+               look for vulnerabilities
+
+        Scenarios under which the connection is currently closed:
+
+            1. If a ``ValueError`` is raised when parsing the request, 
+               `Handler.handler_one()` will send *only* a "400 Bad Request"
+               status line to the client, and will then gracefully close the
+               connection (ie, it will try to flush wfile buffer first); this is
+               merely a courtesy to the client (and to developers), and it's
+               thus certainly up for debate as to whether we should instead
+               handle this case the same way as #2 below; although note that in
+               this case, only the status line is sent, but no headers, no body
+               (especially not a trace in the response body), so this should be
+               safe
+
+            2. If any unhandled Exception occurs, `Server.handle_requests()`
+               will immediately and forcibly shutdown the connection, without
+               first trying to send any response data to the client; note that
+               for unhandled exceptions, we send nothing to the client
+               whatsoever: no status line, no headers, no trace in the response
+               body; this is a good thing (TM)
+
+            3. If the RGI application returns a response status >= 400, and if
+               that response status isn't 404, 409, or 412, then the connection
+               will be gracefully closed after trying to send the full response
+
+        The reason we handle 404 specially is that it has special, non-error
+        meaning in both the Dmedia files app and CouchDB (eg, you often make a
+        HEAD or GET request to see if a file or document exists).  Likewise, we
+        handle 409 and 412 specially because they have a common, non-error
+        meanings in CouchDB.
+
+        Note that RGI applications should return "410 Gone" for any seemingly
+        *naughty* request URI, rather than returning "404 Not Found".  Only
+        return "404 Not Found" for an otherwise syntactically and semantically
+        valid requests for a resource that happens not to exist on the server.
+
+        The motivation for our lenient treatment of 404, 409, and 412 is
+        performance.  We're assuming that security critical requests will all
+        happen over SSL, where there is a high cost to creating a new
+        connection, and where there is motivation to make as many requests as
+        possible through a single connection.  In fact, we can generally justify
+        this just by the cost of the TCP connection, yet alone the SSL
+        connection.  But as always, this is up for debate, so please speak up
+        with any concerns.
+        """
         (status, reason, headers, body) = response
         preamble = ''.join(iter_response_lines(status, reason, headers))
         self.wfile.write(preamble.encode('latin_1'))
@@ -369,12 +467,16 @@ class Handler:
         elif body is not None:
             raise TypeError('Bad response body type')
         self.wfile.flush()
+        if status >= 400 and status not in {404, 409, 412}:
+            self.close()
+            log.warning('closed connection to %r after %d %r',
+                    self.environ['client'], status, reason)
 
-    def send_status_only(self, status, reason):
+    def write_status_only(self, status, reason):
         assert isinstance(status, int)
         assert 100 <= status <= 599
         assert isinstance(reason, str)
-        assert len(reason) > 0
+        assert reason  # reason should be non-empty
         preamble = ''.join(iter_response_lines(status, reason, None))
         self.wfile.write(preamble.encode('latin_1'))
         self.wfile.flush()
