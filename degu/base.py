@@ -223,6 +223,26 @@ def parse_header(line):
     return (key, value)
 
 
+def parse_headers(lines):
+    headers = {}
+    for line in lines:
+        (key, value) = line.split(': ')
+        key = key.casefold()
+        if key in headers:
+            raise ValueError('duplicate header: {!r}'.format(key))
+        headers[key] = value
+    if 'content-length' in headers:
+        headers['content-length'] = int(headers['content-length'])
+        if headers['content-length'] < 0:
+            raise ValueError('negative content-length')
+        if 'transfer-encoding' in headers:
+            raise ValueError('content-length plus transfer-encoding') 
+    elif 'transfer-encoding' in headers:
+        if headers['transfer-encoding'] != 'chunked':
+            raise ValueError('bad transfer-encoding')
+    return headers
+
+
 def read_headers(fp):
     headers = {}
     for i in range(MAX_HEADER_COUNT + 1):

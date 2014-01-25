@@ -587,6 +587,100 @@ class TestFunctions(TestCase):
                 (key.casefold(), value)
             )
 
+    def test_parse_headers(self):
+        # Bad separator:
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['Content-Type:application/json'])
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+
+        # Bad Content-Length:
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['Content-Length: 16.9'])
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 10: '16.9'"
+        )
+
+        # Negative Content-Length:
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['Content-Length: -17'])
+        self.assertEqual(str(cm.exception), 'negative content-length')
+
+        # Bad Transfer-Encoding:
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['Transfer-Encoding: clumped'])
+        self.assertEqual(str(cm.exception), 'bad transfer-encoding')
+
+        # Duplicate header:
+        lines = ('Content-Type: text/plain', 'content-type: text/plain')
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(lines)
+        self.assertEqual(str(cm.exception), "duplicate header: 'content-type'")
+
+        # Content-Length with Transfer-Encoding:
+        lines = ('Content-Length: 17', 'Transfer-Encoding: chunked')
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(lines)
+        self.assertEqual(str(cm.exception), 'content-length plus transfer-encoding')
+
+        # Test a number of good single values:
+        self.assertEqual(base.parse_headers(['Content-Type: application/json']),
+            {'content-type': 'application/json'}
+        )
+        self.assertEqual(base.parse_headers(['Content-Length: 17']),
+            {'content-length': 17}
+        )
+        self.assertEqual(base.parse_headers(['Content-Length: 0']),
+            {'content-length': 0}
+        )
+        self.assertEqual(base.parse_headers(['Transfer-Encoding: chunked']),
+            {'transfer-encoding': 'chunked'}
+        )
+
+        # Test a few good groups of values:
+        lines = (
+            'Content-Length: 18',
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'User-Agent: Microfiber/14.04',
+        )
+        self.assertEqual(base.parse_headers(lines), {
+            'content-length': 18,
+            'content-type': 'application/json',
+            'accept': 'application/json',
+            'user-agent': 'Microfiber/14.04',
+        })
+        lines = (
+            'transfer-encoding: chunked',
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'User-Agent: Microfiber/14.04',
+        )
+        self.assertEqual(base.parse_headers(lines), {
+            'transfer-encoding': 'chunked',
+            'content-type': 'application/json',
+            'accept': 'application/json',
+            'user-agent': 'Microfiber/14.04',
+        })
+
+        # Throw a few random values through it.  Note that parse_headers() isn't
+        # limited by MAX_HEADER_COUNT, only read_lines_iter() is.
+        headers = dict(
+            ('X-' + random_id(), random_id()) for i in range(25)
+        )
+        lines = tuple(
+            '{}: {}'.format(key, value) for (key, value) in headers.items()
+        )
+        headers = dict(
+            (key.casefold(), value) for (key, value) in headers.items()
+        )
+        self.assertEqual(base.parse_headers(lines), headers)
+
+        # Sanity check when header names are already casefolded:
+        lines = tuple(
+            '{}: {}'.format(key, value) for (key, value) in headers.items()
+        )
+        self.assertEqual(base.parse_headers(lines), headers)
+
     def test_read_headers(self):
         tmp = TempDir()
 
