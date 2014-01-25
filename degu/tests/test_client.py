@@ -198,46 +198,37 @@ class TestFunctions(TestCase):
 
     def test_parse_status(self):
         # Not enough spaces:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.1 200OK')
-        self.assertEqual(cm.exception.reason, 'Bad Status Line')
+        self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
 
         # Bad protocol:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.0 200 OK')
-        self.assertEqual(cm.exception.reason, 'HTTP Version Not Supported')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
 
         # Status not an int:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.1 17.9 OK')
-        self.assertEqual(cm.exception.reason, 'Bad Status Code')
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 10: '17.9'"
+        )
 
         # Status outside valid range:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.1 99 OK')
-        self.assertEqual(cm.exception.reason, 'Invalid Status Code')
-        with self.assertRaises(base.ParseError) as cm:
+        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 99')
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.1 600 OK')
-        self.assertEqual(cm.exception.reason, 'Invalid Status Code')
+        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 600')
+        with self.assertRaises(ValueError) as cm:
+            client.parse_status('HTTP/1.1 -200 OK')
+        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got -200')
 
         # Empty reason:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             client.parse_status('HTTP/1.1 200 ')
-        self.assertEqual(cm.exception.reason, 'Empty Reason')
-
-        # Leading or trailing whitespace in reason:
-        with self.assertRaises(base.ParseError) as cm:
-            client.parse_status('HTTP/1.1 200  ')
-        self.assertEqual(cm.exception.reason, 'Extraneous Whitespace In Reason')
-        with self.assertRaises(base.ParseError) as cm:
-            client.parse_status('HTTP/1.1 200  Okey Dokey')
-        self.assertEqual(cm.exception.reason, 'Extraneous Whitespace In Reason')
-        with self.assertRaises(base.ParseError) as cm:
-            client.parse_status('HTTP/1.1 200 Okey Dokey ')
-        self.assertEqual(cm.exception.reason, 'Extraneous Whitespace In Reason')
-        with self.assertRaises(base.ParseError) as cm:
-            client.parse_status('HTTP/1.1 200  OK ')
-        self.assertEqual(cm.exception.reason, 'Extraneous Whitespace In Reason')
+        self.assertEqual(str(cm.exception), 'empty reason')
 
         # A gew good static values:
         self.assertEqual(client.parse_status('HTTP/1.1 200 OK'),

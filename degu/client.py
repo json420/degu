@@ -32,8 +32,8 @@ from .base import (
     build_base_sslctx,
     validate_sslctx,
     makefiles,
-    read_line,
-    read_headers,
+    read_lines_iter,
+    parse_headers,
     write_chunk,
     Input,
     ChunkedInput,
@@ -122,36 +122,21 @@ def parse_status(line):
     (404, 'Not Found')
 
     """
-    line_parts = line.split(' ', 2)
-    if len(line_parts) != 3:
-        raise ParseError('Bad Status Line')
-    (protocol, status_str, reason) = line_parts
-
-    # Validate protocol:
+    (protocol, status, reason) = line.split(' ', 2)
     if protocol != 'HTTP/1.1':
-        raise ParseError('HTTP Version Not Supported')
-
-    # Convent status into an int, validate:
-    try:
-        status = int(status_str)
-    except ValueError:
-        raise ParseError('Bad Status Code')
+        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
+    status = int(status)
     if not (100 <= status <= 599):
-        raise ParseError('Invalid Status Code')
-
-    # Validate reason:
+        raise ValueError('need 100 <= status <= 599; got {}'.format(status))
     if not reason:
-        raise ParseError('Empty Reason')
-    if reason.strip() != reason:
-        raise ParseError('Extraneous Whitespace In Reason')
-
-    # Return only (status, reason) as protocol isn't interesting:
+        raise ValueError('empty reason')
     return (status, reason)
 
 
 def read_response(rfile, method):
-    (status, reason) = parse_status(read_line(rfile))
-    headers = read_headers(rfile)
+    lines = tuple(read_lines_iter(rfile))
+    (status, reason) = parse_status(lines[0])
+    headers = parse_headers(lines[1:])
     if 'content-length' in headers and method != 'HEAD':
         body = Input(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
