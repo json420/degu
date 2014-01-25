@@ -146,46 +146,26 @@ def parse_request(line):
     >>> parse_request('GET /foo/bar?stuff=junk HTTP/1.1')
     ('GET', ['foo', 'bar'], 'stuff=junk')
 
-    Note that the URI "/" is somewhat special case in how it's parsed:
+    Note that the URI "/" is a special case in how it's parsed:
 
     >>> parse_request('GET / HTTP/1.1')
     ('GET', [], '')
 
     Also see `reconstruct_uri()`.
     """
-    request_parts = line.split(' ')
-    if len(request_parts) != 3:
-        raise ParseError('Bad Request Line')
-    (method, uri, protocol) = request_parts
-
-    # Validate method:
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ParseError('Method Not Allowed')
-
-    # Validate uri, parse into path_list and query:
-    if not uri.startswith('/'):
-        raise ParseError('Bad Request URI Start')
-    if '..' in uri:  # Prevent path-traversal attacks
-        raise ParseError('Naughty URI DotDot')
-    if '//' in uri:  # The ol double-slash
-        raise ParseError('Naughty URI Double Slash')
-    if '\\' in uri:  # Prevent backslash ambiguity
-        raise ParseError('Naughty URI Backslash')
+    (method, uri, protocol) = line.split()
     uri_parts = uri.split('?')
     if len(uri_parts) == 2:
         (path_str, query) = uri_parts
     elif len(uri_parts) == 1:
         (path_str, query) = (uri_parts[0], '')
     else:
-        raise ParseError('Bad Request URI Query')
-    # FIXME: Should maybe disallow a trailing / at the end of path_str
+        raise ValueError('bad request uri: {!r}'.format(uri))
+    if path_str[:1] != '/' or '//' in path_str:
+        raise ValueError('bad request path: {!r}'.format(path_str))
     path_list = ([] if path_str == '/' else path_str[1:].split('/'))
-
-    # Validate protocol:
     if protocol != 'HTTP/1.1':
-        raise ParseError('505 HTTP Version Not Supported')
-
-    # Return only (method, path_list, query) as protocol isn't interesting:
+        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     return (method, path_list, query)
 
 

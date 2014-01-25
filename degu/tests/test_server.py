@@ -63,58 +63,74 @@ class TestFunctions(TestCase):
 
     def test_parse_request(self):
         # Bad separators:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             server.parse_request('GET/foo/bar?stuff=junkHTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Bad Request Line')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET  /foo/bar?stuff=junk  HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Bad Request Line')
-
-        # Bad method:
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('COPY /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Method Not Allowed')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Method Not Allowed')
-
-        # All manner of URI problems:
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET foo/bar HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Bad Request URI Start')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET /../bar HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI DotDot')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET //bar HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI Double Slash')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET /foo\\/bar HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI Backslash')
-
-        # Same as above, but toss a query into the mix
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Bad Request URI Start')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET /foo/bar?stuff=.. HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI DotDot')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET /foo/bar?stuff=// HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI Double Slash')
-        with self.assertRaises(base.ParseError) as cm:
-            server.parse_request('GET /foo/bar?stuff\\=junk HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Naughty URI Backslash')
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET MY /foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 3)'
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar\rstuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 3)'
+        )
 
         # Multiple "?" present in URI:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
-        self.assertEqual(cm.exception.reason, 'Bad Request URI Query')
+        self.assertEqual(str(cm.exception),
+            "bad request uri: '/foo/bar?stuff=junk?other=them'"
+        )
+
+        # All manner of path problems:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET foo HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET foo/bar HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET // HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '//'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo// HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo//bar HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar// HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
+
+        # Same as above, but toss a query into the mix:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET ?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: ''")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET foo?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET //?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '//'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo//?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo//bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar//?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
 
         # Bad protocol:
-        with self.assertRaises(base.ParseError) as cm:
+        with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
-        self.assertEqual(cm.exception.reason, '505 HTTP Version Not Supported')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
 
         # Test all valid methods:
         for M in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD'):
