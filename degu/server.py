@@ -399,7 +399,7 @@ class Handler:
                before trying to *parse* the preamble
 
             2. The request body isn't fully read - this is trickier because it
-               is the responsibility of the RGI application to ready the request
+               is the responsibility of the RGI application to read the request
                body; however, `Handler.handle_one()` should raise an
                `UnconsumedRequestError` when it detects that the request body
                was not fully consumed by the RGI application
