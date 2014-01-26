@@ -6,8 +6,7 @@ import json
 
 from dbase32 import random_id
 
-from degu.client import Client
-from degu.server import start_server
+from degu.misc import TempServer
 
 
 logging.basicConfig(
@@ -33,7 +32,9 @@ def echo_app(request):
     return (200, 'OK', headers, body)
 
 
-(httpd, env) = start_server(echo_app)
+server = TempServer(None, echo_app)
+client = server.get_client()
+print(client)
 
 
 marker = random_id(60)
@@ -44,7 +45,7 @@ headers = {
     'content-type': 'application/json',
 }
 
-client = Client('::1', env['port'])
+
 count = 10000
 deltas = []
 for i in range(5):
@@ -57,5 +58,4 @@ for i in range(5):
 delta = min(deltas)
 print('{:.2f} requests/second'.format(count / delta))
 
-httpd.terminate()
-httpd.join()
+

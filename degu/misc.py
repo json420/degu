@@ -31,8 +31,11 @@ from os import path
 import shutil
 import json
 from hashlib import sha1
+from urllib.parse import urlparse
 
 from .sslhelpers import PKI
+from .server import start_server, start_sslserver
+from .client import Client, SSLClient, build_client_sslctx
 
 
 def echo_app(request):
@@ -80,3 +83,42 @@ class TempPKI(PKI):
     def __del__(self):
         if path.isdir(self.ssldir):
             shutil.rmtree(self.ssldir)
+
+
+class TempServer:
+    def __init__(self, build_func, *build_args, **kw):
+        (self.process, self.env) = start_server(build_func, *build_args, **kw)
+        self.t = urlparse(self.env['url'])
+
+    def __del__(self):
+        self.process.terminate()
+        self.process.join()
+
+    def get_client(self):
+        return Client(self.t.hostname, self.t.port)
+
+
+class TempSSLServer:
+    def __init__(self, pki, build_func, *build_args, **kw):
+        assert isinstance(pki, TempPKI)
+        self.pki = pki
+        (self.process, self.env) = start_sslserver(
+            pki.server_config, build_func, *build_args, **kw
+        )
+        t = urlparse(self.env['url'])
+        self.hostname = t.hostname
+        self.port = t.port
+        assert self.port == self.env['port']
+        self.url = self.env['url']
+
+    def __del__(self):
+        self.process.terminate()
+        self.process.join()
+
+    def get_client(self, sslconfig=None):
+        if sslconfig is None:
+            sslconfig = self.pki.client_config
+        sslctx = build_client_sslctx(sslconfig)
+        return SSLClient(sslctx, self.hostname, self.port,
+            check_hostname=sslconfig.get('check_hostname', False),
+        )

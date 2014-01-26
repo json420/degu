@@ -35,8 +35,8 @@ from hashlib import sha1
 from dbase32 import random_id
 
 from .helpers import TempDir, DummySocket, DummyFile
-from degu.misc import TempPKI
-from degu.client import Client, SSLClient, build_client_sslctx, CLIENT_SOCKET_TIMEOUT
+from degu.misc import TempPKI, TempServer, TempSSLServer
+from degu.client import Client, CLIENT_SOCKET_TIMEOUT
 from degu.base import TYPE_ERROR
 from degu import base, server
 
@@ -890,46 +890,27 @@ class LiveTestCase(TestCase):
         self.assertIsNone(client.response_body)
         self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
 
+
 class TestLiveServer(LiveTestCase):
     def test_chunked_request(self):
-        (httpd, env) = server.start_server(chunked_request_app)
-        try:
-            client = Client('::1', env['port'])
-            self.check_chunked_request(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempServer(None, chunked_request_app)
+        client = httpd.get_client()
+        self.check_chunked_request(client)
 
     def test_chunked_response(self):
-        (httpd, env) = server.start_server(chunked_response_app)
-        try:
-            client = Client('::1', env['port'])
-            self.check_chunked_response(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempServer(None, chunked_response_app)
+        client = httpd.get_client()
+        self.check_chunked_response(client)
 
     def test_response(self):
-        (httpd, env) = server.start_server(response_app)
-        try:
-            client = Client('::1', env['port'])
-            self.check_response(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempServer(None, response_app)
+        client = httpd.get_client()
+        self.check_response(client)
 
     def test_timeout(self):
-        (httpd, env) = server.start_server(timeout_app)
-        try:
-            client = Client('::1', env['port'])
-            self.check_timeout(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempServer(None, timeout_app)
+        client = httpd.get_client()
+        self.check_timeout(client)
 
 
 def ssl_app(request):
@@ -944,101 +925,68 @@ def ssl_app(request):
 class TestLiveSSLServer(LiveTestCase):
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        (httpd, env) = server.start_sslserver(pki.server_config, ssl_app)
-        try:
-            # Test from a non-SSL client:
-            client = Client('::1', env['port'])
-            with self.assertRaises(ConnectionResetError) as cm:
-                client.request('GET', '/')
-            self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
-            self.assertIsNone(client.conn)
-            self.assertIsNone(client.response_body)
+        httpd = TempSSLServer(pki, None, ssl_app)
 
-            # Test with no client cert:
-            client_ctx = build_client_sslctx(
-                {'ca_file': pki.client_config['ca_file']}
-            )
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            with self.assertRaises(ssl.SSLError) as cm:
-                client.request('GET', '/')
-            self.assertTrue(
-                str(cm.exception).startswith('[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]')
-            )
-            self.assertIsNone(client.conn)
-            self.assertIsNone(client.response_body)
+        # Test from a non-SSL client:
+        client = Client(httpd.hostname, httpd.port)
+        with self.assertRaises(ConnectionResetError) as cm:
+            client.request('GET', '/')
+        self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
+        self.assertIsNone(client.conn)
+        self.assertIsNone(client.response_body)
 
-            # Test with the wrong client cert (not signed by client CA):
-            client_ctx = build_client_sslctx({
-                'ca_file': pki.client_config['ca_file'],
-                'cert_file': pki.server_config['cert_file'],
-                'key_file': pki.server_config['key_file'],
-            })
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            with self.assertRaises(ssl.SSLError) as cm:
-                client.request('GET', '/')
-            self.assertTrue(
-                str(cm.exception).startswith('[SSL: TLSV1_ALERT_UNKNOWN_CA]')
-            )
-            self.assertIsNone(client.conn)
-            self.assertIsNone(client.response_body)
+        # Test with no client cert:
+        client = httpd.get_client({'ca_file': pki.client_config['ca_file']})
+        with self.assertRaises(ssl.SSLError) as cm:
+            client.request('GET', '/')
+        self.assertTrue(
+            str(cm.exception).startswith('[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]')
+        )
+        self.assertIsNone(client.conn)
+        self.assertIsNone(client.response_body)
 
-            # Test with a properly configured SSLClient:
-            client_ctx = build_client_sslctx(pki.client_config)
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            response = client.request('GET', '/')
-            self.assertEqual(response.status, 200)
-            self.assertEqual(response.reason, 'OK')
-            self.assertIsNone(response.body)
+        # Test with the wrong client cert (not signed by client CA):
+        client = httpd.get_client({
+            'ca_file': pki.client_config['ca_file'],
+            'cert_file': pki.server_config['cert_file'],
+            'key_file': pki.server_config['key_file'],
+        })
+        with self.assertRaises(ssl.SSLError) as cm:
+            client.request('GET', '/')
+        self.assertTrue(
+            str(cm.exception).startswith('[SSL: TLSV1_ALERT_UNKNOWN_CA]')
+        )
+        self.assertIsNone(client.conn)
+        self.assertIsNone(client.response_body)
 
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        # Test with a properly configured SSLClient:
+        client = httpd.get_client()
+        response = client.request('GET', '/')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertIsNone(response.body)
 
     def test_chunked_request(self):
         pki = TempPKI(client_pki=True)
-        client_ctx = build_client_sslctx(pki.client_config)
-        (httpd, env) = server.start_sslserver(pki.server_config, chunked_request_app)
-        try:
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            self.check_chunked_request(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempSSLServer(pki, None, chunked_request_app)
+        client = httpd.get_client()
+        pki = TempPKI(client_pki=True)
+        self.check_chunked_request(client)
 
     def test_chunked_response(self):
         pki = TempPKI(client_pki=True)
-        client_ctx = build_client_sslctx(pki.client_config)
-        (httpd, env) = server.start_sslserver(pki.server_config, chunked_response_app)
-        try:
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            self.check_chunked_response(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempSSLServer(pki, None, chunked_response_app)
+        client = httpd.get_client()
+        self.check_chunked_response(client)
 
     def test_response(self):
         pki = TempPKI(client_pki=True)
-        client_ctx = build_client_sslctx(pki.client_config)
-        (httpd, env) = server.start_sslserver(pki.server_config, response_app)
-        try:
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            self.check_response(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempSSLServer(pki, None, response_app)
+        client = httpd.get_client()
+        self.check_response(client)
 
     def test_timeout(self):
         pki = TempPKI(client_pki=True)
-        client_ctx = build_client_sslctx(pki.client_config)
-        (httpd, env) = server.start_sslserver(pki.server_config, timeout_app)
-        try:
-            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
-            self.check_timeout(client)
-            client.close()
-        finally:
-            httpd.terminate()
-            httpd.join()
+        httpd = TempSSLServer(pki, None, timeout_app)
+        client = httpd.get_client()
+        self.check_timeout(client)

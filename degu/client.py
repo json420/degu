@@ -154,6 +154,11 @@ class Client:
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
+    def __repr__(self):
+        return '{}({!r}{!r})'.format(
+            self.__class__.__name__, self.hostname, self.port
+        )
+
     def create_socket(self):
         sock = socket.create_connection((self.hostname, self.port))
         sock.settimeout(CLIENT_SOCKET_TIMEOUT)

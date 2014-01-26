@@ -6,9 +6,7 @@ import json
 
 from dbase32 import random_id
 
-from degu.misc import TempPKI
-from degu.client import SSLClient, build_client_sslctx
-from degu.server import start_sslserver
+from degu.misc import TempPKI, TempSSLServer
 
 
 logging.basicConfig(
@@ -35,7 +33,10 @@ def echo_app(request):
 
 
 pki = TempPKI(client_pki=True)
-(httpd, env) = start_sslserver(pki.server_config, echo_app)
+server = TempSSLServer(pki, None, echo_app)
+client = server.get_client()
+print(client)
+
 marker = random_id()
 body = json.dumps({'ping': marker}).encode('utf-8')
 headers = {
@@ -43,8 +44,6 @@ headers = {
     'accept': 'application/json',
     'content-type': 'application/json',
 }
-sslctx = build_client_sslctx(pki.client_config)
-client = SSLClient(sslctx, '::1', env['port'], check_hostname=False)
 count = 10000
 deltas = []
 for i in range(5):
@@ -57,6 +56,3 @@ for i in range(5):
 delta = min(deltas)
 print('{:.2f} requests/second'.format(count / delta))
 
-
-httpd.terminate()
-httpd.join()

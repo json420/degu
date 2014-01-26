@@ -586,31 +586,44 @@ class SSLServer(Server):
         return (environ, sock)
 
 
-def run_server(queue, app, bind_address, port):
+def app_passthrough(app):
+    return app
+
+
+def run_server(queue, bind_address, port, build_func, *build_args):
     try:
+        app = build_func(*build_args)
         httpd = Server(app, bind_address, port)
         env = {'port': httpd.port, 'url': httpd.url}
         queue.put(env)
         httpd.serve_forever()
     except Exception as e:
         queue.put(e)
+        raise e
 
 
-def start_server(app, bind_address='::1', port=0):
+def start_server(build_func, *build_args, bind_address='::1', port=0):
     import multiprocessing
     queue = multiprocessing.Queue()
-    args = (queue, app, bind_address, port)
+    if build_func is None:
+        build_func = app_passthrough
+        assert len(build_args) == 1
+    assert callable(build_func)
+    args = (queue, bind_address, port, build_func) + build_args
     process = multiprocessing.Process(target=run_server, args=args, daemon=True)
     process.start()
     env = queue.get()
     if isinstance(env, Exception):
+        process.terminate()
+        process.join()
         raise env
     return (process, env)
 
 
-def run_sslserver(queue, sslconfig, app, bind_address, port):
+def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args):
     try:
         sslctx = build_server_sslctx(sslconfig)
+        app = build_func(*build_args)
         httpd = SSLServer(sslctx, app, bind_address, port)
         env = {'port': httpd.port, 'url': httpd.url}
         queue.put(env)
@@ -619,14 +632,19 @@ def run_sslserver(queue, sslconfig, app, bind_address, port):
         queue.put(e)
 
 
-def start_sslserver(sslconfig, app, bind_address='::1', port=0):
+def start_sslserver(sslconfig, build_func, *build_args, bind_address='::1', port=0):
     import multiprocessing
     queue = multiprocessing.Queue()
-    args = (queue, sslconfig, app, bind_address, port)
+    if build_func is None:
+        build_func = app_passthrough
+        assert len(build_args) == 1
+    assert callable(build_func)
+    args = (queue, sslconfig, bind_address, port, build_func) + build_args
     process = multiprocessing.Process(target=run_sslserver, args=args, daemon=True)
     process.start()
     env = queue.get()
     if isinstance(env, Exception):
+        process.terminate()
+        process.join()
         raise env
     return (process, env)
-
