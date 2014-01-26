@@ -46,7 +46,7 @@ else:
     TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
 
 
-class EmptyLineError(Exception):
+class EmptyLineError(ConnectionError):
     pass
 
 
@@ -225,7 +225,37 @@ def makefiles(sock):
     return (
         sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
         sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
-    )     
+    )
+
+
+def make_output_from_input(input_body):
+    if isinstance(input_body, Input):
+        return Output(input_body, input_body.content_length)
+    if isinstance(input_body, ChunkedInput):
+        return ChunkedOutput(input_body)
+    if input_body is not None:
+        raise TypeError('bad input_body: {!r}'.format(type(input_body)))
+
+
+def build_uri(path_list, query):
+    """
+    Reconstruct a URI from a parsed path_list and query.
+
+    For example, when there is no query:
+
+    >>> build_uri(['foo', 'bar'], '')
+    '/foo/bar'
+
+    And when there is a query:
+
+    >>> build_uri(['foo', 'bar'], 'stuff=junk')
+    '/foo/bar?stuff=junk'
+
+    """
+    path_str = '/' + '/'.join(path_list)
+    if query:
+        return '?'.join((path_str, query))
+    return path_str  
 
 
 class Output:
@@ -350,7 +380,7 @@ class Input:
     Content-Length must be known in advance.
     """
 
-    __slots__ = ('closed', 'rfile', 'remaining')
+    __slots__ = ('closed', 'rfile', 'content_length', 'remaining')
 
     def __init__(self, rfile, content_length):
         if not isinstance(rfile, io.BufferedReader):
@@ -363,7 +393,13 @@ class Input:
             raise ValueError('content_length must be >= 0')
         self.closed = False
         self.rfile = rfile
+        self.content_length = content_length
         self.remaining = content_length
+
+    def __repr__(self):
+        return '{}({!r}, {!r})'.format(
+            self.__class__.__name__, self.rfile, self.content_length
+        )
 
     def read(self, size=None):
         if size is not None:
@@ -436,3 +472,4 @@ class ChunkedInput:
                 self.closed = True
                 break
         assert self.closed is True
+

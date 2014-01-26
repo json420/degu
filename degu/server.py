@@ -344,6 +344,11 @@ class Handler:
         lines = tuple(read_lines_iter(self.rfile))
         (method, path_list, query) = parse_request(lines[0])
         headers = parse_headers(lines[1:])
+        # Hack for compatibility with the CouchDB replicator, which annoyingly
+        # sends a {'content-length': 0} header with all GET and HEAD requests:
+        if method in {'GET', 'HEAD'} and 'content-length' in headers:
+            if headers['content-length'] == 0:
+                del headers['content-length']
         if 'content-length' in headers:
             body = Input(self.rfile, headers['content-length'])
         elif 'transfer-encoding' in headers:
