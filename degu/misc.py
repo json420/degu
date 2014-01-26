@@ -21,13 +21,37 @@
 
 """
 Some tools for unit testing.
+
+This module imports things that often wouldn't normally be needed, so thus this
+separate module helps keep the baseline memory footprint lower.
 """
 
 import tempfile
 from os import path
 import shutil
+import json
+from hashlib import sha1
 
 from .sslhelpers import PKI
+
+
+def echo_app(request):
+    obj = request.copy()
+    for name in ('ResponseBody', 'FileResponseBody', 'ChunkedResponseBody'):
+        key = 'rgi.' + name
+        obj[key] = repr(obj[key])
+    if obj['body'] is not None:
+        data = obj['body'].read()
+        obj['echo.content_sha1'] = sha1(data).hexdigest()
+        obj['body'] = repr(obj['body'])
+    body = json.dumps(obj, sort_keys=True, indent=4).encode()
+    headers = {
+        'content-type': 'application/json',
+        'content-length': len(body),
+    }
+    if request['method'] == 'HEAD':
+        return (200, 'OK', headers, None)
+    return (200, 'OK', headers, body)
 
 
 class TempPKI(PKI):
