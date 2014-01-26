@@ -312,8 +312,14 @@ class Handler:
         self.sock.close()
 
     def handle(self):
-        while not self.closed:
-            self.handle_one()
+        client = self.environ['client']
+        count = 0
+        try:
+            while not self.closed:
+                self.handle_one()
+                count += 1
+        finally:
+            log.info('handled %d requests from %r', count, client)
 
     def handle_one(self):
         request = self.environ.copy()
@@ -322,6 +328,8 @@ class Handler:
         except ValueError:
             log.exception('client: %r', request['client'])
             return self.write_status_only(400, 'Bad Request')
+        if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+            return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
         response = self.app(request)
         if request_body and not request_body.closed:
