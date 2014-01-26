@@ -63,26 +63,32 @@ class TempPKI(PKI):
         # is not the size you should use in production
         ssldir = tempfile.mkdtemp(prefix='TempPKI.')
         super().__init__(ssldir)
-        self.server_ca = self.create_key(bits)
-        self.create_ca(self.server_ca)
-        self.server = self.create_key(bits)
-        self.create_csr(self.server)
-        self.issue_cert(self.server, self.server_ca)
+        self.server_ca_id = self.create_key(bits)
+        self.create_ca(self.server_ca_id)
+        self.server_id = self.create_key(bits)
+        self.create_csr(self.server_id)
+        self.issue_cert(self.server_id, self.server_ca_id)
         if client_pki:
-            self.client_ca = self.create_key(bits)
-            self.create_ca(self.client_ca)
-            self.client = self.create_key(bits)
-            self.create_csr(self.client)
-            self.issue_cert(self.client, self.client_ca)
+            self.client_ca_id = self.create_key(bits)
+            self.create_ca(self.client_ca_id)
+            self.client_id = self.create_key(bits)
+            self.create_csr(self.client_id)
+            self.issue_cert(self.client_id, self.client_ca_id)
         else:
-            self.client_ca = None
-            self.client = None
-        self.server_config = self.get_server_config(self.server, self.client_ca)
-        self.client_config = self.get_client_config(self.server_ca, self.client)
+            self.client_ca_id = None
+            self.client_id = None
 
     def __del__(self):
         if path.isdir(self.ssldir):
             shutil.rmtree(self.ssldir)
+
+    def get_server_config(self):
+        return super().get_server_config(self.server_id, self.client_ca_id)
+
+    def get_client_config(self):
+        return super().get_client_config(self.server_ca_id, self.client_id)
+
+
 
 
 class TempServer:
@@ -100,10 +106,9 @@ class TempServer:
 
 class TempSSLServer:
     def __init__(self, pki, build_func, *build_args, **kw):
-        assert isinstance(pki, TempPKI)
         self.pki = pki
         (self.process, self.env) = start_sslserver(
-            pki.server_config, build_func, *build_args, **kw
+            pki.get_server_config(), build_func, *build_args, **kw
         )
         t = urlparse(self.env['url'])
         self.hostname = t.hostname
@@ -117,7 +122,7 @@ class TempSSLServer:
 
     def get_client(self, sslconfig=None):
         if sslconfig is None:
-            sslconfig = self.pki.client_config
+            sslconfig = self.pki.get_client_config()
         sslctx = build_client_sslctx(sslconfig)
         return SSLClient(sslctx, self.hostname, self.port,
             check_hostname=sslconfig.get('check_hostname', False),

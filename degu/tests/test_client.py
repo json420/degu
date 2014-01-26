@@ -59,13 +59,15 @@ class TestFunctions(TestCase):
 
         # client_pki=False:
         pki = TempPKI()
-        sslctx = client.build_client_sslctx(pki.client_config)
+        client_config = pki.get_client_config()
+        sslctx = client.build_client_sslctx(client_config)
         self.assertIsNone(base.validate_sslctx(sslctx))
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 
         # client_pki=True:
         pki = TempPKI(client_pki=True)
-        sslctx = client.build_client_sslctx(pki.client_config)
+        client_config = pki.get_client_config()
+        sslctx = client.build_client_sslctx(client_config)
         self.assertIsNone(base.validate_sslctx(sslctx))
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 

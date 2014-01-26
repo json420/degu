@@ -209,19 +209,19 @@ class PKI:
         issue_cert(csr_file, ca_file, key_file, srl_file, tmp_file)
         os.rename(tmp_file, cert_file)
         return cert_file
- 
-    def get_server_config(self, server_id, ca_id=None):
+
+    def get_server_config(self, server_id, client_ca_id=None):
         config = {
             'cert_file': self.path(server_id, 'cert'),
             'key_file': self.path(server_id, 'key'),
         }
-        if ca_id:
-            config['ca_file'] = self.path(ca_id, 'ca')
+        if client_ca_id:
+            config['ca_file'] = self.path(client_ca_id, 'ca')
         return config
 
-    def get_client_config(self, ca_id, client_id=None):
+    def get_client_config(self, server_ca_id, client_id=None):
         config = {
-            'ca_file': self.path(ca_id, 'ca'),
+            'ca_file': self.path(server_ca_id, 'ca'),
             'check_hostname': False,
         }
         if client_id:

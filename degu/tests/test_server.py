@@ -48,7 +48,8 @@ class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # client_pki=False:
         pki = TempPKI()
-        sslctx = server.build_server_sslctx(pki.server_config)
+        server_config = pki.get_server_config()
+        sslctx = server.build_server_sslctx(server_config)
         self.assertIsNone(base.validate_sslctx(sslctx))
         self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
         self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
@@ -56,7 +57,8 @@ class TestFunctions(TestCase):
 
         # client_pki=True:
         pki = TempPKI(client_pki=True)
-        sslctx = server.build_server_sslctx(pki.server_config)
+        server_config = pki.get_server_config()
+        sslctx = server.build_server_sslctx(server_config)
         self.assertIsNone(base.validate_sslctx(sslctx))
         self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
         self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
@@ -921,6 +923,8 @@ class TestLiveSSLServer(TestLiveServer):
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
         httpd = TempSSLServer(pki, None, ssl_app)
+        server_config = pki.get_server_config()
+        client_config = pki.get_client_config()
 
         # Test from a non-SSL client:
         client = Client(httpd.hostname, httpd.port)
@@ -931,7 +935,7 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(client.response_body)
 
         # Test with no client cert:
-        client = httpd.get_client({'ca_file': pki.client_config['ca_file']})
+        client = httpd.get_client({'ca_file': client_config['ca_file']})
         with self.assertRaises(ssl.SSLError) as cm:
             client.request('GET', '/')
         self.assertTrue(
@@ -942,9 +946,9 @@ class TestLiveSSLServer(TestLiveServer):
 
         # Test with the wrong client cert (not signed by client CA):
         client = httpd.get_client({
-            'ca_file': pki.client_config['ca_file'],
-            'cert_file': pki.server_config['cert_file'],
-            'key_file': pki.server_config['key_file'],
+            'ca_file': client_config['ca_file'],
+            'cert_file': server_config['cert_file'],
+            'key_file': server_config['key_file'],
         })
         with self.assertRaises(ssl.SSLError) as cm:
             client.request('GET', '/')

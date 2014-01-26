@@ -253,7 +253,7 @@ class TestPKI(TestCase):
             'key_file': pki.path(server_id, 'key'),
         })
         ca_id = random_id()
-        self.assertEqual(pki.get_server_config(server_id, ca_id=ca_id), {
+        self.assertEqual(pki.get_server_config(server_id, client_ca_id=ca_id), {
             'cert_file': pki.path(server_id, 'cert'),
             'key_file': pki.path(server_id, 'key'),
             'ca_file': pki.path(ca_id, 'ca'),

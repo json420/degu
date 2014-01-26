@@ -33,18 +33,20 @@ class TestTempPKI(TestCase):
     def test_init(self):
         # Test when client_pki=False:
         pki = misc.TempPKI()
-        self.assertGreater(path.getsize(pki.path(pki.server_ca, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server_ca, 'ca')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server, 'cert')), 0)
-        self.assertIsNone(pki.client_ca)
-        self.assertIsNone(pki.client)
-        self.assertEqual(pki.server_config,
-            pki.get_server_config(pki.server)
-        )
-        self.assertEqual(pki.client_config,
-            pki.get_client_config(pki.server_ca)
-        )
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'cert')), 0)
+        self.assertIsNone(pki.client_ca_id)
+        self.assertIsNone(pki.client_id)
+        self.assertEqual(pki.get_server_config(), {
+            'cert_file': pki.path(pki.server_id, 'cert'),
+            'key_file': pki.path(pki.server_id, 'key'),
+        })
+        self.assertEqual(pki.get_client_config(), {
+            'ca_file': pki.path(pki.server_ca_id, 'ca'),
+            'check_hostname': False,
+        })
         self.assertTrue(path.isdir(pki.ssldir))
         pki.__del__()
         self.assertFalse(path.exists(pki.ssldir))
@@ -52,20 +54,25 @@ class TestTempPKI(TestCase):
 
         # Test when client_pki=True:
         pki = misc.TempPKI(client_pki=True)
-        self.assertGreater(path.getsize(pki.path(pki.server_ca, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server_ca, 'ca')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server, 'cert')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.client_ca, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.client_ca, 'ca')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.client, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.client, 'cert')), 0)
-        self.assertEqual(pki.server_config,
-            pki.get_server_config(pki.server, pki.client_ca)
-        )
-        self.assertEqual(pki.client_config,
-            pki.get_client_config(pki.server_ca, pki.client)
-        )
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'cert')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.client_ca_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.client_ca_id, 'ca')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.client_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.client_id, 'cert')), 0)
+        self.assertEqual(pki.get_server_config(), {
+            'cert_file': pki.path(pki.server_id, 'cert'),
+            'key_file': pki.path(pki.server_id, 'key'),
+            'ca_file': pki.path(pki.client_ca_id, 'ca'),
+        })
+        self.assertEqual(pki.get_client_config(), {
+            'ca_file': pki.path(pki.server_ca_id, 'ca'),
+            'check_hostname': False,
+            'cert_file': pki.path(pki.client_id, 'cert'),
+            'key_file': pki.path(pki.client_id, 'key'),
+        })
         self.assertTrue(path.isdir(pki.ssldir))
         pki.__del__()
         self.assertFalse(path.exists(pki.ssldir))
