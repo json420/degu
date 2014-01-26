@@ -782,8 +782,14 @@ def timeout_app(request):
     return (404, 'Not Found', {}, None)
 
 
-class LiveTestCase(TestCase):
-    def check_chunked_request(self, client):
+class TestLiveServer(TestCase):
+    def build_with_app(self, build_func, *build_args):
+        httpd = TempServer(build_func, *build_args)
+        return (httpd, httpd.get_client())
+  
+    def test_chunked_request(self):
+        (httpd, client) = self.build_with_app(None, chunked_request_app)
+
         body = base.ChunkedOutput(CHUNKS)
         response = client.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
@@ -820,7 +826,9 @@ class LiveTestCase(TestCase):
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
 
-    def check_chunked_response(self, client):
+    def test_chunked_response(self):
+        (httpd, client) = self.build_with_app(None, chunked_response_app)
+
         response = client.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
@@ -848,7 +856,9 @@ class LiveTestCase(TestCase):
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(tuple(response.body), CHUNKS)
 
-    def check_response(self, client):
+    def test_response(self):
+        (httpd, client) = self.build_with_app(None, response_app)
+
         response = client.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
@@ -876,7 +886,9 @@ class LiveTestCase(TestCase):
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
 
-    def check_timeout(self, client):
+    def test_timeout(self):
+        (httpd, client) = self.build_with_app(None, timeout_app)
+
         self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
         with self.assertRaises(base.EmptyLineError) as cm:
@@ -891,28 +903,6 @@ class LiveTestCase(TestCase):
         self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
 
 
-class TestLiveServer(LiveTestCase):
-    def test_chunked_request(self):
-        httpd = TempServer(None, chunked_request_app)
-        client = httpd.get_client()
-        self.check_chunked_request(client)
-
-    def test_chunked_response(self):
-        httpd = TempServer(None, chunked_response_app)
-        client = httpd.get_client()
-        self.check_chunked_response(client)
-
-    def test_response(self):
-        httpd = TempServer(None, response_app)
-        client = httpd.get_client()
-        self.check_response(client)
-
-    def test_timeout(self):
-        httpd = TempServer(None, timeout_app)
-        client = httpd.get_client()
-        self.check_timeout(client)
-
-
 def ssl_app(request):
     assert request['method'] == 'GET'
     assert request['script'] == []
@@ -922,7 +912,12 @@ def ssl_app(request):
     return (200, 'OK', {}, None)
 
 
-class TestLiveSSLServer(LiveTestCase):
+class TestLiveSSLServer(TestLiveServer):
+    def build_with_app(self, build_func, *build_args):
+        pki = TempPKI(client_pki=True)
+        httpd = TempSSLServer(pki, build_func, *build_args)
+        return (httpd, httpd.get_client())
+
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
         httpd = TempSSLServer(pki, None, ssl_app)
@@ -966,27 +961,3 @@ class TestLiveSSLServer(LiveTestCase):
         self.assertEqual(response.reason, 'OK')
         self.assertIsNone(response.body)
 
-    def test_chunked_request(self):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, chunked_request_app)
-        client = httpd.get_client()
-        pki = TempPKI(client_pki=True)
-        self.check_chunked_request(client)
-
-    def test_chunked_response(self):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, chunked_response_app)
-        client = httpd.get_client()
-        self.check_chunked_response(client)
-
-    def test_response(self):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, response_app)
-        client = httpd.get_client()
-        self.check_response(client)
-
-    def test_timeout(self):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, timeout_app)
-        client = httpd.get_client()
-        self.check_timeout(client)

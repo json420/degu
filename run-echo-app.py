@@ -4,9 +4,7 @@ import time
 import logging
 import json
 
-from degu.client import Client
-from degu.misc import echo_app
-from degu.server import start_server
+from degu.misc import TempServer, echo_app
 
 
 logging.basicConfig(
@@ -20,13 +18,10 @@ logging.basicConfig(
 )
 log = logging.getLogger()
 
-
-(httpd, env) = start_server(echo_app)
-client = Client('::1', env['port'])
+httpd = TempServer(None, echo_app)
+client = httpd.get_client()
 response = client.request('GET', '/foo/bar?stuff=junk',
     {'accept': 'application/json', 'user-agent': 'Microfiber/14.04'}
 )
 print(response.body.read().decode())
 
-httpd.terminate()
-httpd.join()
