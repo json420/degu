@@ -102,7 +102,7 @@ from .base import (
 )
 
 
-SOCKET_TIMEOUT = 20
+SERVER_SOCKET_TIMEOUT = 5
 log = logging.getLogger()
 
 
@@ -520,12 +520,12 @@ class Server:
         self.sock.listen(5)
         while True:
             (sock, address) = self.sock.accept()
-            sock.settimeout(SOCKET_TIMEOUT)
+            sock.settimeout(SERVER_SOCKET_TIMEOUT)
             thread = threading.Thread(
                 target=self.handle_requests,
                 args=(base_environ.copy(), sock, address),
+                daemon=True
             )
-            thread.daemon = True
             thread.start()
 
     def handle_requests(self, base_environ, base_sock, address):

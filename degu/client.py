@@ -44,7 +44,7 @@ from .base import (
 
 Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
-SOCKET_TIMEOUT = 30
+CLIENT_SOCKET_TIMEOUT = 5
 
 
 class UnconsumedResponseError(Exception):
@@ -156,7 +156,7 @@ class Client:
 
     def create_socket(self):
         sock = socket.create_connection((self.hostname, self.port))
-        sock.settimeout(SOCKET_TIMEOUT)
+        sock.settimeout(CLIENT_SOCKET_TIMEOUT)
         return sock
 
     def connect(self):
@@ -169,12 +169,12 @@ class Client:
     def close(self):
         self.response_body = None
         if self.conn is not None:
-            self.conn.rfile.close()
-            self.conn.wfile.close()
             try:
                 self.conn.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+            self.conn.rfile.close()
+            self.conn.wfile.close()
             self.conn.sock.close()
             self.conn = None
 

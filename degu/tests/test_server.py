@@ -25,6 +25,7 @@ Unit tests for the `degu.server` module`
 
 from unittest import TestCase
 import os
+import time
 from random import SystemRandom
 import socket
 import ssl
@@ -35,7 +36,7 @@ from dbase32 import random_id
 
 from .helpers import TempDir, DummySocket, DummyFile
 from degu.misc import TempPKI
-from degu.client import Client, SSLClient, build_client_sslctx
+from degu.client import Client, SSLClient, build_client_sslctx, CLIENT_SOCKET_TIMEOUT
 from degu.base import TYPE_ERROR
 from degu import base, server
 
@@ -767,6 +768,20 @@ def response_app(request):
     return (200, 'OK', headers, body)
 
 
+def timeout_app(request):
+    assert request['method'] == 'POST'
+    assert request['script'] == []
+    assert request['body'] is None
+    if request['path'] == ['foo']:
+        # Used to test timeout on server side:
+        return (200, 'OK', {}, None)
+    if request['path'] == ['bar']:
+        # Used to test timeout on client side:
+        time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
+        return (200, 'OK', {}, None)
+    return (404, 'Not Found', {}, None)
+
+
 class LiveTestCase(TestCase):
     def check_chunked_request(self, client):
         body = base.ChunkedOutput(CHUNKS)
@@ -861,6 +876,19 @@ class LiveTestCase(TestCase):
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
 
+    def check_timeout(self, client):
+        self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
+        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
+        with self.assertRaises(base.EmptyLineError) as cm:
+            client.request('POST', '/foo')
+        self.assertIsNone(client.conn)
+        self.assertIsNone(client.response_body)
+        self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
+        with self.assertRaises(socket.timeout) as cm:
+            client.request('POST', '/bar')
+        self.assertIsNone(client.conn)
+        self.assertIsNone(client.response_body)
+        self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
 
 class TestLiveServer(LiveTestCase):
     def test_chunked_request(self):
@@ -888,6 +916,16 @@ class TestLiveServer(LiveTestCase):
         try:
             client = Client('::1', env['port'])
             self.check_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
+    def test_timeout(self):
+        (httpd, env) = server.start_server(timeout_app)
+        try:
+            client = Client('::1', env['port'])
+            self.check_timeout(client)
             client.close()
         finally:
             httpd.terminate()
@@ -988,6 +1026,18 @@ class TestLiveSSLServer(LiveTestCase):
         try:
             client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
             self.check_response(client)
+            client.close()
+        finally:
+            httpd.terminate()
+            httpd.join()
+
+    def test_timeout(self):
+        pki = TempPKI(client_pki=True)
+        client_ctx = build_client_sslctx(pki.client_config)
+        (httpd, env) = server.start_sslserver(pki.server_config, timeout_app)
+        try:
+            client = SSLClient(client_ctx, '::1', env['port'], check_hostname=False)
+            self.check_timeout(client)
             client.close()
         finally:
             httpd.terminate()
