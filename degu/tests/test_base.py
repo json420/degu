@@ -99,12 +99,11 @@ class TestConstants(TestCase):
             self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
 
 
-class TestParseError(TestCase):
+class TestEmptyLineError(TestCase):
     def test_init(self):
-        e = base.ParseError('Bad Request')
+        e = base.EmptyLineError('stuff and junk')
         self.assertIsInstance(e, Exception)
-        self.assertEqual(e.reason, 'Bad Request')
-        self.assertEqual(str(e), 'Bad Request')
+        self.assertEqual(str(e), 'stuff and junk')
 
 
 class TestUnderFlowError(TestCase):

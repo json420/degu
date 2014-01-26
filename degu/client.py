@@ -28,7 +28,6 @@ import ssl
 from collections import namedtuple
 
 from .base import (
-    ParseError,
     build_base_sslctx,
     validate_sslctx,
     makefiles,

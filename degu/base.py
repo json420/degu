@@ -50,13 +50,6 @@ class EmptyLineError(Exception):
     pass
 
 
-class ParseError(Exception):
-    def __init__(self, reason, status=400):
-        self.reason = reason
-        self.status = status
-        super().__init__(reason)
-
-
 class UnderFlowError(Exception):
     def __init__(self, received, expected):
         self.received = received
