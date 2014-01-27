@@ -499,7 +499,7 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, app, bind_address='::1', port=0):
+    def __init__(self, app, bind_address='127.0.0.1', port=0):
         if not callable(app):
             raise TypeError('app not callable: {!r}'.format(app))
         self.app = app
@@ -571,7 +571,7 @@ class SSLServer(Server):
     # Would be nice to do both in a single method that SSLServer could override:
     #   (conn_environ, sock) = self.build_connection(sock, address)
 
-    def __init__(self, sslctx, app, bind_address='::1', port=0):
+    def __init__(self, sslctx, app, bind_address='127.0.0.1', port=0):
         validate_sslctx(sslctx)
         super().__init__(app, bind_address, port)
         self.sslctx = sslctx
@@ -602,7 +602,7 @@ def run_server(queue, bind_address, port, build_func, *build_args):
         raise e
 
 
-def start_server(build_func, *build_args, bind_address='::1', port=0):
+def start_server(build_func, *build_args, bind_address='127.0.0.1', port=0):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
@@ -632,7 +632,7 @@ def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args)
         queue.put(e)
 
 
-def start_sslserver(sslconfig, build_func, *build_args, bind_address='::1', port=0):
+def start_sslserver(sslconfig, build_func, *build_args, bind_address='127.0.0.1', port=0):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
