@@ -155,13 +155,13 @@ class Client:
         self.response_body = None  # Previous Input or ChunkedInput
 
     def __repr__(self):
-        return '{}({!r}{!r})'.format(
+        return '{}({!r}, {!r})'.format(
             self.__class__.__name__, self.hostname, self.port
         )
 
     def create_socket(self):
-        sock = socket.create_connection((self.hostname, self.port))
-        sock.settimeout(CLIENT_SOCKET_TIMEOUT)
+        return socket.create_connection((self.hostname, self.port))
+        #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
         return sock
 
     def connect(self):
@@ -222,6 +222,11 @@ class SSLClient(Client):
         super().__init__(hostname, port)
         self.sslctx = sslctx
         self.check_hostname = check_hostname
+
+    def __repr__(self):
+        return '{}({!r}, {!r}, {!r})'.format(
+            self.__class__.__name__, self.sslctx, self.hostname, self.port
+        )
 
     def create_socket(self):
         sock = super().create_socket()
