@@ -429,7 +429,11 @@ class TestSSLClient(TestCase):
         )
 
         # not (options & ssl.OP_NO_SSLv2)
+        # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
+        # default (which is good), but we still want to unit test and make sure
+        # Degu enforces this; see: http://bugs.python.org/issue20207
         sslctx = ssl.SSLContext(base.TLS.protocol)
+        sslctx.options &= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
             client.SSLClient(sslctx, hostname, port)
         self.assertEqual(str(cm.exception),
