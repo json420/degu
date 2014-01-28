@@ -160,8 +160,8 @@ class Client:
         )
 
     def create_socket(self):
-        return socket.create_connection((self.hostname, self.port))
-        #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
+        sock = socket.create_connection((self.hostname, self.port))
+        sock.settimeout(CLIENT_SOCKET_TIMEOUT)
         return sock
 
     def connect(self):

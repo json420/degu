@@ -102,7 +102,7 @@ from .base import (
 )
 
 
-SERVER_SOCKET_TIMEOUT = 10
+SERVER_SOCKET_TIMEOUT = 5
 log = logging.getLogger()
 
 
@@ -512,6 +512,7 @@ class Server:
         else:
             raise ValueError('invalid bind_address: {!r}'.format(bind_address))
         self.sock.bind((bind_address, port))
+        self.sock.listen(5)
         self.bind_address = bind_address
         self.port = self.sock.getsockname()[1]
         self.url = template.format(self.scheme, self.port)
@@ -530,7 +531,6 @@ class Server:
 
     def serve_forever(self):
         base_environ = self.build_base_environ()
-        self.sock.listen(5)
         while True:
             (sock, address) = self.sock.accept()
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
