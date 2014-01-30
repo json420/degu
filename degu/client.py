@@ -26,6 +26,8 @@ HTTP client.
 import socket
 import ssl
 from collections import namedtuple
+import io
+import os
 
 from .base import (
     build_base_sslctx,
@@ -191,6 +193,12 @@ class Client:
             raise UnconsumedResponseError(self.response_body)
         if headers is None:
             headers = {}
+        if isinstance(body, io.BufferedReader):
+            if 'content-length' in headers:
+                content_length = headers['content-length']
+            else:
+                content_length = os.stat(body.fileno()).st_size
+            body = FileOutput(body, content_length)
         validate_request(method, uri, headers, body)
         conn = self.connect()
         try:

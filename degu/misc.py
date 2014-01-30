@@ -89,8 +89,6 @@ class TempPKI(PKI):
         return super().get_client_config(self.server_ca_id, self.client_id)
 
 
-
-
 class TempServer:
     def __init__(self, build_func, *build_args, **kw):
         (self.process, self.env) = start_server(build_func, *build_args, **kw)
@@ -127,3 +125,4 @@ class TempSSLServer:
         return SSLClient(sslctx, self.hostname, self.port,
             check_hostname=sslconfig.get('check_hostname', False),
         )
+
