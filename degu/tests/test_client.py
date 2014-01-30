@@ -346,6 +346,25 @@ class TestClient(TestCase):
         self.assertIsNone(inst.conn)
         self.assertIsNone(inst.response_body)
 
+    def test_del(self):
+        class ClientSubclass(client.Client):
+            def __init__(self):
+                self._calls = 0
+
+            def close(self):
+                self._calls += 1
+
+        inst = ClientSubclass()
+        self.assertEqual(inst._calls, 0)
+        self.assertIsNone(inst.__del__())
+        self.assertEqual(inst._calls, 1)
+        self.assertIsNone(inst.__del__())
+        self.assertEqual(inst._calls, 2)
+
+    def test_repr(self):
+        inst = client.Client('127.0.0.1', 5984)
+        self.assertEqual(repr(inst), "Client('127.0.0.1', 5984)")
+
     def test_connect(self):
         class ClientSubclass(client.Client):
             def __init__(self, sock):

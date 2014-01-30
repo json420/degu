@@ -542,7 +542,6 @@ class Server:
             thread.start()
             log.info('request from %r, active thread count is %r', address,
                     threading.active_count())
-            ) 
 
     def handle_requests(self, base_environ, base_sock, address):
         try:

@@ -154,6 +154,9 @@ class Client:
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
+    def __del__(self):
+        self.close()
+
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
             self.__class__.__name__, self.hostname, self.port
