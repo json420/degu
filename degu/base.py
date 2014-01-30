@@ -45,6 +45,10 @@ if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
 else:
     TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
 
+# FIXME: CouchDB isn't playing nice with TLSv1.2, so till we have our own
+# replicator, we need to stick with TLSv1:
+TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
+
 
 class EmptyLineError(ConnectionError):
     pass
