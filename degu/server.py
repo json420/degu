@@ -88,6 +88,7 @@ import threading
 
 from .base import (
     TYPE_ERROR,
+    EmptyLineError,
     build_base_sslctx,
     validate_sslctx,
     makefiles,
@@ -311,6 +312,10 @@ class Handler:
         self.wfile.close()
         self.sock.close()
 
+    def shutdown(self):
+        self.sock.shutdown(socket.SHUT_RDWR)
+        self.close()
+
     def handle(self):
         client = self.environ['client']
         count = 0
@@ -325,6 +330,8 @@ class Handler:
         request = self.environ.copy()
         try:
             request.update(self.build_request())
+        except EmptyLineError:
+            return self.shutdown()
         except ValueError:
             log.exception('client: %r', request['client'])
             return self.write_status_only(400, 'Bad Request')
@@ -600,6 +607,7 @@ def run_server(queue, bind_address, port, build_func, *build_args):
         queue.put(env)
         httpd.serve_forever()
     except Exception as e:
+        log.exception('error starting Server:')
         queue.put(e)
         raise e
 
@@ -631,6 +639,7 @@ def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args)
         queue.put(env)
         httpd.serve_forever()
     except Exception as e:
+        log.exception('error starting SSLServer:')
         queue.put(e)
 
 
