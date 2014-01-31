@@ -547,7 +547,7 @@ class Server:
                 daemon=True
             )
             thread.start()
-            log.info('request from %r, active thread count is %r', address,
+            log.info('connection from %r, active_count=%d', address,
                     threading.active_count())
 
     def handle_requests(self, base_environ, base_sock, address):
