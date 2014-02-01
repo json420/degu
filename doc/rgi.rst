@@ -2,14 +2,11 @@ REST Gateway Interface
 ======================
 
 Note that this design is done out of deep respect for the `WSGI`_ standard.
-Considering the delicate balance needed between backward compatibility on
-multiple fronts, WSGI is an exceedingly good design.
+Considering the delicate balance needed for compatibility on multiple fronts,
+WSGI is an exceedingly good design.
 
 *RGI* (REST Gateway Interface) is largely a thought experiment in what you could
 do with something WSGI-like assuming you did *not* need `CGI`_ compatibility.
-It would be tempting to call RGI a WSGI 2.0 draft hopeful, but RGI is not in the
-original spirit of WSGI in some important ways (in particular, its complete
-disregard for CGI compatibility).  Thus, this is RGI 0.1, not WSGI 2.0.
 
 RGI focuses on improvement in a number of areas:
 
@@ -21,10 +18,10 @@ RGI focuses on improvement in a number of areas:
        headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
-    3. A proxy application is a good guiding-light for an extreme-case
-       middleware component; in particular, we should not require middleware
-       components to re-parse or otherwise transform any values in order to do
-       something meaningful with these value (eg, a proxy generally needs to use
+    3. A reverse proxy (aka gateway) application is a good model for the needs
+       of middleware; in particular, we should not require middleware components
+       to re-parse or otherwise transform any values in order to do something
+       meaningful with these value (eg, a reverse proxy generally needs to use
        the full request headers in its own HTTP client request)
 
     4. Eliminate ambiguity about Transfer-Encoding vs Content-Length, in both
@@ -69,18 +66,20 @@ tuple, for example:
 >>> response = (200, 'OK', {'content-type': 'application/json'}, b'{"Hello": "World"}")
 
 RGI doesn't use anything like the WSGI ``start_response()`` callable.  Instead,
-applications (or middleware) convey the HTTP response in total via a single
+applications and middleware convey the HTTP response in total via a single
 return value (the above response tuple).
 
 This allows middleware to easily inspect (or even modify) any aspect of the
 request or response all within a single call to their ``__call__()`` method.
-This design also makes unit testing of applications, middleware, and even
-servers much easier.
+This design also makes it easier to unit test applications, middleware, and even
+servers.
 
-Note that the HTTP status code is return as an integer, and the reason is
-returned in a separate string value.  This is so that this value doesn't need to
-be parsed out of a WSGI-style status string in order to be inspected by
-middleware or the server.
+Note that the HTTP *status* code is returned as an integer, and the *reason* is
+returned as a separate string value.  A general design theme in RGI is that
+values should be kept in their most useful and native form for as long as
+possible, so that re-parsing isn't needed.  For example, the server might want
+to verify that a ``'content-range'`` header is present when the *status* is
+``206`` (Partial Content).
 
 Also note that the response headers are a dictionary instead of a WSGI-style
 list of pairs.  The response header names must be casefolded with
@@ -142,13 +141,12 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 >>> middleware({'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
 
-This simple pattern is very cumbersome with WSGI, but this pattern is also
-extremely useful for things like middleware that does run-time security auditing
-or other run-time testing.
+This pattern is very cumbersome with WSGI.
 
 
 Request Body
 ------------
+
 
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/

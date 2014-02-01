@@ -1,7 +1,24 @@
 Degu
 ====
 
-`Degu`_ is an embedded HTTP server and client library.
+`Degu`_ is an embedded HTTP server and client library for Python3. It's well
+suited for implementing REST APIs for device-to-device communication on the
+local network.
+
+Degu includes:
+
+    * **A lightweight HTTP server** that's easy to embed in desktop and mobile
+      applications
+
+    * **A low-level HTTP client** comparable to `http.client`_ in the Python
+      standard library
+
+    * **A set of test fixtures** that make it easy to create throw-away Degu
+      server instances for unit testing
+
+Degu server applications are implemented according to the :doc:`rgi`, which is
+very much in the spirit of `WSGI`_ but does not attempt to be compatible with
+`CGI`_, nor to be compatible with any existing HTTP servers.
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut
@@ -24,6 +41,10 @@ Contents:
 
 
 .. _`Degu`: https://launchpad.net/degu
+.. _`http.client`: http://docs.python.org/3/library/http.client.html
+.. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
+.. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+
 .. _`LGPLv3+`: http://www.gnu.org/licenses/lgpl-3.0.html
 .. _`Novacut`: https://wiki.ubuntu.com/Novacut
 .. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/stable
