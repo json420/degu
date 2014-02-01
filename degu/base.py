@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Common HTTP parser used by server and client, plus a few other bits.
+Common HTTP parser and IO abstractions used by server and client.
 """
 
 import io
