@@ -16,7 +16,20 @@ Depends: ${python3:Depends}, ${misc:Depends},
     openssl,
 Suggests: python3-degu-doc
 Description: an embedded HTTP server and client library
- FIXME.
+ Degu is an embedded HTTP server and client library for Python3. It's well
+ suited for implementing REST APIs for device-to-device communication on the
+ local network.  Degu is being developed as part of the Novacut project.
+ .
+ Degu includes:
+ .
+  * A lightweight HTTP server that's easy to embed in desktop and mobile
+    applications
+  * A low-level HTTP client comparable to http.client module in the Python
+    standard library
+  * A common parser and set of IO abstractions used by both the server and
+    client
+  * Test fixtures that make it easy to create throw-away Degu server instances
+    for unit testing
 
 Package: python3-degu-doc
 Architecture: all
@@ -24,5 +37,19 @@ Section: doc
 Depends: ${sphinxdoc:Depends}, ${misc:Depends}
 Suggests: python3-degu
 Description: an embedded HTTP server and client library (documentation)
- This package provides the documentation for python3-degu.
-
+ Degu is an embedded HTTP server and client library for Python3. It's well
+ suited for implementing REST APIs for device-to-device communication on the
+ local network.  Degu is being developed as part of the Novacut project.
+ .
+ Degu includes:
+ .
+  * A lightweight HTTP server that's easy to embed in desktop and mobile
+    applications
+  * A low-level HTTP client comparable to http.client module in the Python
+    standard library
+  * A common parser and set of IO abstractions used by both the server and
+    client
+  * Test fixtures that make it easy to create throw-away Degu server instances
+    for unit testing
+ .
+ This package provides the documentation.
