@@ -13,8 +13,10 @@ Degu includes:
     * **A low-level HTTP client** comparable to `http.client`_ in the Python
       standard library
 
-    * **A set of test fixtures** that make it easy to create throw-away Degu
-      server instances for unit testing
+    * **IO abstractions** and a common parser used by both the server and client
+
+    * **Test fixtures** that make it easy to create throw-away Degu server
+      instances for unit testing
 
 Degu server applications are implemented according to the :doc:`rgi`, which is
 very much in the spirit of `WSGI`_ but does not attempt to be compatible with
