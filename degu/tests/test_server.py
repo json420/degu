@@ -32,9 +32,8 @@ import ssl
 import json
 from hashlib import sha1
 
-from dbase32 import random_id
-
 from .helpers import TempDir, DummySocket, DummyFile
+from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, CLIENT_SOCKET_TIMEOUT
 from degu.base import TYPE_ERROR

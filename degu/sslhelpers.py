@@ -21,6 +21,27 @@
 
 """
 Helpers for non-interactive creation of SSL certs.
+
+This is an extremely trimmed-down version of the Dmedia Identity framework:
+
+    http://bazaar.launchpad.net/~dmedia/dmedia/trunk/view/head:/dmedia/identity.py
+
+Unlike the rest of Degu, this module isn't meant for production use and is
+really only aimed at unit testing.
+
+With time, we may move the Dmedia Identity framework into Degu, or at least a
+slightly more generalized version of it.  But for now, we're focused on refining
+the Degu server and client.
+
+Note that at least for now, we want Degu to only depend on the Python standard
+library, so we're using RFC-3548 Base32 encoding for the intrinsic IDs (content
+hash of the RSA public key), rather than using Dbase32:
+
+    https://launchpad.net/dbase32
+
+However, be warned that the Dbase32 encoding plays a key role in our long-term
+database plans for Novacut and Dmedia, so it might not always be possible to use
+RFC-3548 Base32 encoding in that context.
 """
 
 import os
@@ -28,11 +49,26 @@ from os import path
 import stat
 from subprocess import check_call, check_output
 from hashlib import sha512
-
-from dbase32 import random_id, db32enc
+from base64 import b32encode
 
 
 DAYS = 365 * 10  # Valid for 10 years
+
+
+def b32enc(data):
+    """
+    Similar to `dbase32.db32enc()`, but using RFC-3548 Base32 encoding.
+    """
+    assert 5 <= len(data) <= 60 and len(data) % 5 == 0
+    return b32encode(data).decode()
+
+
+def random_id(numbytes=15):
+    """
+    Similar to `dbase32.random_id()`, but using RFC-3548 Base32 encoding.
+    """
+    assert 5 <= numbytes <= 60 and numbytes % 5 == 0
+    return b32enc(os.urandom(numbytes))
 
 
 def hash_pubkey(pubkey_data):
@@ -42,11 +78,11 @@ def hash_pubkey(pubkey_data):
     For example:
 
     >>> hash_pubkey(b'The PEM encoded public key')
-    'XKDV44UR3BA66CGH8H34S6LVPG77L97PXE4KIAX3J7MNGHF9'
+    '6RK4BB3YAIHDDJNOFOABZDS4WNEESGEW6LBRPH6AQETUNOMG'
 
     """
     digest = sha512(pubkey_data).digest()
-    return db32enc(digest[:30])
+    return b32enc(digest[:30])
 
 
 def make_subject(cn):

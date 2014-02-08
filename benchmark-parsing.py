@@ -17,6 +17,7 @@ lines = (
     'Accept: application/json',
     'Content-Length: 1234567',
     'User-Agent: Microfiber/14.04',
+    'X-Token: VVI5KPPRN5VOG9DITDLEOEIB',
 )
 
 headers = {
@@ -24,14 +25,21 @@ headers = {
     'accept': 'application/json',
     'content-length': 1234567,
     'user-agent': 'Microfiber/14.04',
+    'x-token': 'VVI5KPPRN5VOG9DITDLEOEIB',
 }
 """
 
 
+def run_iter(statement, n):
+    for i in range(5):
+        t = timeit.Timer(statement, setup)
+        yield t.timeit(n)
+
+
 def run(statement, K=250):
-    t = timeit.Timer(statement, setup)
     n = K * 1000
-    elapsed = t.timeit(n)
+    # Choose fastest of 5 runs:
+    elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
     print('{:>14,}: {}'.format(rate, statement))
 

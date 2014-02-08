@@ -4,8 +4,7 @@ import time
 import logging
 import json
 
-from dbase32 import random_id
-
+from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempSSLServer
 
 
