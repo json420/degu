@@ -27,9 +27,8 @@ from unittest import TestCase
 import os
 from os import path
 
-from dbase32 import random_id
-
 from .helpers import TempDir
+from degu.sslhelpers import random_id
 from degu import sslhelpers
 
 

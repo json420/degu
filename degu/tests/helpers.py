@@ -28,7 +28,7 @@ from os import path
 import tempfile
 import shutil
 
-from dbase32 import random_id
+from degu.sslhelpers import random_id
 
 
 class TempDir:
