@@ -22,13 +22,11 @@
 """
 HTTP server.
 
-Example RGI application:
+Consider this simple RGI application:
 
 >>> def demo_app(request):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
-...     if request['path'] != []:
-...         return (404, 'Not Found', {}, None)
 ...     body = b'Hello, world!'
 ...     headers = {'content-length': len(body)}
 ...     return (200, 'OK', headers, body)
@@ -39,23 +37,18 @@ For example, a request with the wrong method:
 >>> demo_app({'method': 'DELETE', 'path': []})
 (405, 'Method Not Allowed', {}, None)
 
-A GET request for the wrong path:
-
->>> demo_app({'method': 'GET', 'path': ['foo']})
-(404, 'Not Found', {}, None)
-
-And now a GET request for the correct path:
+And now a GET request:
 
 >>> demo_app({'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 13}, b'Hello, world!')
 
-But note that this application isn't correct, as it should not return a response
-body for a HEAD request:
+But note that this application isn't HTTP 1.1 compliant, as it should not return
+a response body for a HEAD request:
 
 >>> demo_app({'method': 'HEAD', 'path': []})
 (200, 'OK', {'content-length': 13}, b'Hello, world!')
 
-Which brings us to an example middleware app, which checks for such a faulty
+Now consider this example middleware, which checks for just such a faulty
 application and overrides its response:
 
 >>> class Middleware:

@@ -98,8 +98,6 @@ For example, consider this simple RGI app:
 >>> def demo_app(request):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
-...     if request['path'] != []:
-...         return (404, 'Not Found', {}, None)
 ...     body = b'Hello, world!'
 ...     headers = {'content-length': len(body)}
 ...     return (200, 'OK', headers, body)
