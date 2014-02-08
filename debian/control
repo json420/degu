@@ -12,7 +12,7 @@ Homepage: https://launchpad.net/degu
 
 Package: python3-degu
 Architecture: all
-Depends: ${python3:Depends}, ${shlibs:Depends}, ${misc:Depends},
+Depends: ${python3:Depends}, ${misc:Depends},
     openssl,
 Suggests: python3-degu-doc
 Description: an embedded HTTP server and client library
