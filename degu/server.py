@@ -72,6 +72,7 @@ But it will intercept the faulty response to a HEAD request:
 
 >>> middleware({'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
+
 """
 
 import socket
@@ -96,7 +97,19 @@ from .base import (
 )
 
 
+IPv6_LOOPBACK = ('::1', 0, 0, 0)
+IPv6_ANY = ('::', 0, 0, 0)
+IPv4_LOOPBACK = ('127.0.0.1', 0)
+IPv4_ANY = ('0.0.0.0', 0)
+ADDRESS_CONSTANTS = (
+    IPv6_LOOPBACK,
+    IPv6_ANY,
+    IPv4_LOOPBACK,
+    IPv4_ANY,
+)
+DEFAULT_ADDRESS = IPv6_LOOPBACK
 SERVER_SOCKET_TIMEOUT = 15
+
 log = logging.getLogger()
 
 
@@ -106,6 +119,19 @@ class UnconsumedRequestError(Exception):
         super().__init__(
             'previous request body not consumed: {!r}'.format(body)
         )
+
+
+def hello_word_app(request):
+    body = b'Hello, world!'
+    headers = {
+        'content-length': len(body),
+        'content-type': 'text/plain; charset=utf-8',
+    }
+    if request['method'] == 'GET':
+        return (200, 'OK', headers, body)
+    if request['method'] == 'HEAD':
+        return (200, 'OK', headers, None)
+    return (405, 'Method Not Allowed', {}, None)
 
 
 def build_server_sslctx(config):
@@ -499,30 +525,37 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, app, bind_address='127.0.0.1', port=0):
+    def __init__(self, app, address):
         if not callable(app):
-            raise TypeError('app not callable: {!r}'.format(app))
-        self.app = app
-        if bind_address in {'::1', '::'}:
-            template = '{}://[::1]:{:d}/'
+            raise TypeError('app: not callable: {!r}'.format(app))
+        if not isinstance(address, tuple):
+            raise TypeError(
+                TYPE_ERROR.format('address', tuple, type(address), address)
+            )
+        if len(address) == 4:
             self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        elif bind_address in {'127.0.0.1', '0.0.0.0'}:
-            template = '{}://127.0.0.1:{:d}/'
+        elif len(address) == 2:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         else:
-            raise ValueError('invalid bind_address: {!r}'.format(bind_address))
-        self.sock.bind((bind_address, port))
+            raise ValueError(
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+        self.app = app
+        self.sock.bind(address)
+        self.address = self.sock.getsockname()
         self.sock.listen(5)
-        self.bind_address = bind_address
-        self.port = self.sock.getsockname()[1]
-        self.url = template.format(self.scheme, self.port)
+
+    def __repr__(self):
+        return '{}({!r}, address={!r})'.format(
+            self.__class__.__name__, self.app, self.address
+        )
 
     def build_base_environ(self):
         """
         Builds the base *environ* used throughout instance lifetime.
         """
         return {
-            'server': (self.bind_address, self.port),
+            'server': self.address,
             'scheme': self.scheme,
             'rgi.ResponseBody': Output,
             'rgi.FileResponseBody': FileOutput,
@@ -559,7 +592,7 @@ class Server:
 
     def build_connection(self, sock, address):
         environ = {
-            'client': (address[0], address[1]),
+            'client': address,
         }
         return (environ, sock)
 
@@ -573,15 +606,15 @@ class SSLServer(Server):
     # Would be nice to do both in a single method that SSLServer could override:
     #   (conn_environ, sock) = self.build_connection(sock, address)
 
-    def __init__(self, sslctx, app, bind_address='127.0.0.1', port=0):
+    def __init__(self, sslctx, app, address):
         validate_sslctx(sslctx)
-        super().__init__(app, bind_address, port)
+        super().__init__(app, address)
         self.sslctx = sslctx
 
     def build_connection(self, sock, address):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         environ = {
-            'client': (address[0], address[1]),
+            'client': address,
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         }

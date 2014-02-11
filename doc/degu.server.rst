@@ -26,12 +26,12 @@
         on dynamic ports, you typically specify port ``0`` in the *address*,
         using something like this::
 
-            ('::', 0)
+            ('::', 0, 0, 0)
 
         In which case this address attribute will contain the random port
         assigned by the operating system, something like this::
 
-            ('::1', 40505, 0, 0)
+            ('::', 40505, 0, 0)
 
 
 
