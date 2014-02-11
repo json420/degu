@@ -984,7 +984,7 @@ class TestLiveSSLServer(TestLiveServer):
         client_config = pki.get_client_config()
 
         # Test from a non-SSL client:
-        client = Client(httpd.hostname, httpd.port)
+        client = Client(httpd.address)
         with self.assertRaises(ConnectionResetError) as cm:
             client.request('GET', '/')
         self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')

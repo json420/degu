@@ -655,32 +655,32 @@ def start_server(build_func, *build_args, address=DEFAULT_ADDRESS):
     return (process, item)
 
 
-def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args):
+def run_sslserver(queue, sslconfig, address, build_func, *build_args):
     try:
         sslctx = build_server_sslctx(sslconfig)
         app = build_func(*build_args)
-        httpd = SSLServer(sslctx, app, bind_address, port)
-        env = {'port': httpd.port, 'url': httpd.url}
-        queue.put(env)
+        httpd = SSLServer(sslctx, address, app)
+        queue.put(httpd.address)
         httpd.serve_forever()
     except Exception as e:
-        log.exception('error starting SSLServer:')
+        log.exception('error starting Server:')
         queue.put(e)
+        raise e
 
 
-def start_sslserver(sslconfig, build_func, *build_args, bind_address='127.0.0.1', port=0):
+def start_sslserver(sslconfig, build_func, *build_args, address=DEFAULT_ADDRESS):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
-        build_func = app_passthrough
+        build_func = passthrough_build_func
         assert len(build_args) == 1
     assert callable(build_func)
-    args = (queue, sslconfig, bind_address, port, build_func) + build_args
+    args = (queue, sslconfig, address, build_func) + build_args
     process = multiprocessing.Process(target=run_sslserver, args=args, daemon=True)
     process.start()
-    env = queue.get()
-    if isinstance(env, Exception):
+    item = queue.get()
+    if isinstance(item, Exception):
         process.terminate()
         process.join()
-        raise env
-    return (process, env)
+        raise item
+    return (process, item)

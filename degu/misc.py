@@ -104,14 +104,9 @@ class TempServer:
 class TempSSLServer:
     def __init__(self, pki, build_func, *build_args, **kw):
         self.pki = pki
-        (self.process, self.env) = start_sslserver(
+        (self.process, self.address) = start_sslserver(
             pki.get_server_config(), build_func, *build_args, **kw
         )
-        t = urlparse(self.env['url'])
-        self.hostname = t.hostname
-        self.port = t.port
-        assert self.port == self.env['port']
-        self.url = self.env['url']
 
     def __del__(self):
         self.process.terminate()
@@ -121,7 +116,5 @@ class TempSSLServer:
         if sslconfig is None:
             sslconfig = self.pki.get_client_config()
         sslctx = build_client_sslctx(sslconfig)
-        return SSLClient(sslctx, self.hostname, self.port,
-            check_hostname=sslconfig.get('check_hostname', False),
-        )
+        return SSLClient(sslctx, self.address)
 
