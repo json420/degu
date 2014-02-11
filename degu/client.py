@@ -166,6 +166,10 @@ class Client:
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
         self.address = address
+        if ':' in address[0]:  # IPv6 literal?
+            self.host = '[{}]:{}'.format(address[0], address[1])
+        else:
+            self.host = '{}:{}'.format(address[0], address[1]) 
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
@@ -215,6 +219,7 @@ class Client:
                 content_length = os.stat(body.fileno()).st_size
             body = FileOutput(body, content_length)
         validate_request(method, uri, headers, body)
+        headers['host'] = self.host
         conn = self.connect()
         try:
             preamble = ''.join(iter_request_lines(method, uri, headers))
@@ -250,6 +255,5 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        sock = self.sslctx.wrap_socket(sock)
-        return sock
+        return self.sslctx.wrap_socket(sock, server_hostname=self.host)
 

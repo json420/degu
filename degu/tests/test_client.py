@@ -54,6 +54,16 @@ GOOD_ADDRESSES = (
     ('fe80::290:f5ff:fef0:d35c', 5678, 0, 2),
 )
 
+# Expected host for each of the above good addresses:
+HOSTS = (
+    '[::1]:5678',
+    '127.0.0.1:5678',
+    'example.com:80',
+    'example.com:443',
+    '[::1]:5678',
+    '[fe80::290:f5ff:fef0:d35c]:5678',
+)
+
 
 class TestNamedTuples(TestCase):
     def test_Connection(self):
@@ -371,9 +381,10 @@ class TestClient(TestCase):
             )
 
         # A number of good address permutations:
-        for address in GOOD_ADDRESSES:
+        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.Client(address)
             self.assertIs(inst.address, address)
+            self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
 
@@ -525,9 +536,10 @@ class TestSSLClient(TestCase):
             )
 
         # A number of good address permutations:
-        for address in GOOD_ADDRESSES:
+        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
+            self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
 
