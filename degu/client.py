@@ -24,6 +24,7 @@ HTTP client.
 """
 
 import socket
+import ipaddress
 import ssl
 from collections import namedtuple
 import io
@@ -166,10 +167,12 @@ class Client:
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
         self.address = address
-        if ':' in address[0]:  # IPv6 literal?
-            self.host = '[{}]:{}'.format(address[0], address[1])
-        else:
-            self.host = '{}:{}'.format(address[0], address[1]) 
+        try: 
+            ipaddress.ip_address(address[0])
+            self.host = None
+        except ValueError:
+            # Only send a "host" header for non-numberic hostname:
+            self.host = '{}:{}'.format(address[0], address[1])  
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
@@ -219,7 +222,8 @@ class Client:
                 content_length = os.stat(body.fileno()).st_size
             body = FileOutput(body, content_length)
         validate_request(method, uri, headers, body)
-        headers['host'] = self.host
+        if self.host:
+            headers['host'] = self.host
         conn = self.connect()
         try:
             preamble = ''.join(iter_request_lines(method, uri, headers))

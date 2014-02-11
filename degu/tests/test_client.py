@@ -56,12 +56,12 @@ GOOD_ADDRESSES = (
 
 # Expected host for each of the above good addresses:
 HOSTS = (
-    '[::1]:5678',
-    '127.0.0.1:5678',
+    None,
+    None,
     'example.com:80',
     'example.com:443',
-    '[::1]:5678',
-    '[fe80::290:f5ff:fef0:d35c]:5678',
+    None,
+    None,
 )
 
 
