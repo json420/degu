@@ -30,6 +30,7 @@ import io
 import os
 
 from .base import (
+    TYPE_ERROR,
     build_base_sslctx,
     validate_sslctx,
     makefiles,
@@ -73,6 +74,13 @@ def build_client_sslctx(config):
         sslctx.load_cert_chain(config['cert_file'],
             keyfile=config.get('key_file')
         )
+    return sslctx
+
+
+def validate_client_sslctx(sslctx):
+    validate_sslctx(sslctx)
+    if sslctx.verify_mode != ssl.CERT_REQUIRED:
+        raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
     return sslctx
 
 
@@ -148,11 +156,16 @@ def read_response(rfile, method):
 
 
 class Client:
-    default_port = 80
-
-    def __init__(self, hostname, port=None):
-        self.hostname = hostname
-        self.port = (self.default_port if port is None else port)
+    def __init__(self, address):
+        if not isinstance(address, tuple):
+            raise TypeError(
+                TYPE_ERROR.format('address', tuple, type(address), address)
+            )
+        if len(address) not in {2, 4}:
+            raise ValueError(
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+        self.address = address
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
@@ -160,12 +173,14 @@ class Client:
         self.close()
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.hostname, self.port
-        )
+        return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
-        sock = socket.create_connection((self.hostname, self.port))
+        if len(self.address) == 4:
+            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            sock.connect(self.address)
+        else:
+            sock = socket.create_connection(self.address)
         #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
         return sock
 
@@ -178,7 +193,7 @@ class Client:
 
     def close(self):
         self.response_body = None
-        if self.conn is not None:
+        if getattr(self, 'conn', None) is not None:
             try:
                 self.conn.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
@@ -224,25 +239,17 @@ class Client:
 
 
 class SSLClient(Client):
-    default_port = 443
-
-    def __init__(self, sslctx, hostname, port=None, check_hostname=True):
-        validate_sslctx(sslctx)
-        if sslctx.verify_mode != ssl.CERT_REQUIRED:
-            raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
-        super().__init__(hostname, port)
-        self.sslctx = sslctx
-        self.check_hostname = check_hostname
+    def __init__(self, sslctx, address):
+        self.sslctx = validate_client_sslctx(sslctx)
+        super().__init__(address)
 
     def __repr__(self):
-        return '{}({!r}, {!r}, {!r})'.format(
-            self.__class__.__name__, self.sslctx, self.hostname, self.port
+        return '{}({!r}, {!r})'.format(
+            self.__class__.__name__, self.sslctx, self.address
         )
 
     def create_socket(self):
         sock = super().create_socket()
-        sock = self.sslctx.wrap_socket(sock, server_hostname=self.hostname)
-        if self.check_hostname:
-            ssl.match_hostname(sock.getpeercert(), self.hostname)
+        sock = self.sslctx.wrap_socket(sock)
         return sock
 
