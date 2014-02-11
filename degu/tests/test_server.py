@@ -43,6 +43,18 @@ from degu import base, server
 random = SystemRandom()
 
 
+class TestConstants(TestCase):
+    def test_ADDRESS_CONSTANTS(self):
+        self.assertIsInstance(server.ADDRESS_CONSTANTS, tuple)
+        self.assertEqual(server.ADDRESS_CONSTANTS, (
+            server.IPv6_LOOPBACK,
+            server.IPv6_ANY,
+            server.IPv4_LOOPBACK,
+            server.IPv4_ANY,
+        ))
+
+
+
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # client_pki=False:

@@ -121,7 +121,7 @@ class UnconsumedRequestError(Exception):
         )
 
 
-def hello_word_app(request):
+def hello_world_app(request):
     body = b'Hello, world!'
     headers = {
         'content-length': len(body),
@@ -546,7 +546,7 @@ class Server:
         self.sock.listen(5)
 
     def __repr__(self):
-        return '{}({!r}, address={!r})'.format(
+        return '{}({!r}, {!r})'.format(
             self.__class__.__name__, self.app, self.address
         )
 
@@ -599,12 +599,6 @@ class Server:
 
 class SSLServer(Server):
     scheme = 'https'
-
-    # What SSLServer needs to do differently from Server:
-    #   1. Wrap a socket.socket in an ssl.SSLSocket
-    #   2. Build a different per-connection environ
-    # Would be nice to do both in a single method that SSLServer could override:
-    #   (conn_environ, sock) = self.build_connection(sock, address)
 
     def __init__(self, sslctx, app, address):
         validate_sslctx(sslctx)
