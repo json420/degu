@@ -532,27 +532,21 @@ class TestHandler(TestCase):
         self.assertIs(body.rfile.closed, False)
 
 
-def demo_app(request):
-    return (200, 'OK', {}, None) 
+class BadApp:
+    """
+    Not callable.
+    """
+
+
+def good_app(request):
+    return (200, 'OK', {}, None)
 
 
 class TestServer(TestCase):
     def test_init(self):
-        class Bad:
-            pass
-
-        # App not callable
-        bad = Bad()
-        with self.assertRaises(TypeError) as cm:
-            server.Server(bad, server.IPv6_LOOPBACK)
-        self.assertEqual(
-            str(cm.exception),
-            'app: not callable: {!r}'.format(bad)
-        )
-
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            server.Server(demo_app, '192.168.1.1')
+            server.Server('192.168.1.1', good_app)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
         )
@@ -569,42 +563,64 @@ class TestServer(TestCase):
         for address in bad_addresses:
             self.assertIn(len(address), {1, 3, 5})
             with self.assertRaises(ValueError) as cm:
-                server.Server(demo_app, address)
+                server.Server(address, good_app)
             self.assertEqual(str(cm.exception),
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
 
+        # app not callable:
+        bad_app = BadApp()
+        with self.assertRaises(TypeError) as cm:
+            server.Server(server.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app: not callable: {!r}'.format(bad_app)
+        )
+
         # IPv6 loopback:
-        inst = server.Server(demo_app, server.IPv6_LOOPBACK)
+        inst = server.Server(server.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.Server(demo_app, server.IPv6_ANY)
+        inst = server.Server(server.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 loopback:
-        inst = server.Server(demo_app, server.IPv4_LOOPBACK)
+        inst = server.Server(server.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('127.0.0.1', port))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.Server(demo_app, server.IPv4_ANY)
+        inst = server.Server(server.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
+        self.assertIs(inst.app, good_app)
+
+    def test_repr(self):
+        inst = server.Server(server.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Server({!r}, {!r})'.format(inst.address, good_app)
+        )
+
+        class Custom(server.Server):
+            pass
+
+        inst = Custom(server.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Custom({!r}, {!r})'.format(inst.address, good_app)
+        )
 
     def test_build_base_environ(self):
         class ServerSubclass(server.Server):
@@ -626,13 +642,13 @@ class TestSSLServer(TestCase):
     def test_init(self):
         # sslctx is not an ssl.SSLContext:
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer('foo', demo_app,  server.IPv6_LOOPBACK)
+            server.SSLServer('foo',  server.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, demo_app, server.IPv6_LOOPBACK)
+            server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception),
             'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
@@ -648,29 +664,17 @@ class TestSSLServer(TestCase):
         # not (options & ssl.OP_NO_COMPRESSION)
         sslctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, demo_app, '::1')
+            server.SSLServer(sslctx, '::1', good_app)
         self.assertEqual(str(cm.exception),
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
         # Good sslctx from here on:
         sslctx.options |= ssl.OP_NO_COMPRESSION
-
-        class Bad:
-            pass
-
-        # App not callable
-        bad = Bad()
-        with self.assertRaises(TypeError) as cm:
-            server.SSLServer(sslctx, bad, server.IPv6_LOOPBACK)
-        self.assertEqual(
-            str(cm.exception),
-            'app: not callable: {!r}'.format(bad)
-        )
-
+        
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer(sslctx, demo_app, '192.168.1.1')
+            server.SSLServer(sslctx, '192.168.1.1', good_app)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
         )
@@ -687,42 +691,69 @@ class TestSSLServer(TestCase):
         for address in bad_addresses:
             self.assertIn(len(address), {1, 3, 5})
             with self.assertRaises(ValueError) as cm:
-                server.SSLServer(sslctx, demo_app, address)
+                server.SSLServer(sslctx, address, good_app)
             self.assertEqual(str(cm.exception),
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
 
+        # app not callable:
+        bad_app = BadApp()
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, server.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app: not callable: {!r}'.format(bad_app)
+        )
+
         # IPv6 loopback:
-        inst = server.SSLServer(sslctx, demo_app, server.IPv6_LOOPBACK)
+        inst = server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.app, demo_app)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.SSLServer(sslctx, demo_app, server.IPv6_ANY)
+        inst = server.SSLServer(sslctx, server.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.app, demo_app)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 loopback:
-        inst = server.SSLServer(sslctx, demo_app, server.IPv4_LOOPBACK)
+        inst = server.SSLServer(sslctx, server.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.app, demo_app)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('127.0.0.1', port))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.SSLServer(sslctx, demo_app, server.IPv4_ANY)
+        inst = server.SSLServer(sslctx, server.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
-        self.assertIs(inst.app, demo_app)
+        self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
+        self.assertIs(inst.app, good_app)
+
+    def test_repr(self):
+        sslctx = base.build_base_sslctx()
+        inst = server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+        )
+
+        class Custom(server.SSLServer):
+            pass
+
+        inst = Custom(sslctx, server.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+        )
 
     def test_build_base_environ(self):
         class SSLServerSubclass(server.SSLServer):

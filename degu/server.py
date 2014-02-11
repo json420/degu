@@ -525,29 +525,30 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, app, address):
-        if not callable(app):
-            raise TypeError('app: not callable: {!r}'.format(app))
+    def __init__(self, address, app):
         if not isinstance(address, tuple):
             raise TypeError(
                 TYPE_ERROR.format('address', tuple, type(address), address)
             )
         if len(address) == 4:
-            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            family = socket.AF_INET6
         elif len(address) == 2:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            family = socket.AF_INET
         else:
             raise ValueError(
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
-        self.app = app
+        if not callable(app):
+            raise TypeError('app: not callable: {!r}'.format(app))
+        self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
+        self.app = app
         self.sock.listen(5)
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.app, self.address
+            self.__class__.__name__, self.address, self.app
         )
 
     def build_base_environ(self):
@@ -600,10 +601,15 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, sslctx, app, address):
+    def __init__(self, sslctx, address, app):
         validate_sslctx(sslctx)
-        super().__init__(app, address)
+        super().__init__(address, app)
         self.sslctx = sslctx
+
+    def __repr__(self):
+        return '{}({!r}, {!r}, {!r})'.format(
+            self.__class__.__name__, self.sslctx, self.address, self.app
+        )
 
     def build_connection(self, sock, address):
         sock = self.sslctx.wrap_socket(sock, server_side=True)

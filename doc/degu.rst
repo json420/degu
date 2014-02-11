@@ -54,7 +54,7 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
 
 .. data:: IPv4_ANY
 
-    A 4-tuple with the IPv4 any-IP *address*.
+    A 2-tuple with the IPv4 any-IP *address*.
 
     >>> IPv4_ANY = ('0.0.0.0', 0)
 
@@ -73,7 +73,7 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
 
     .. attribute:: address
 
-        The address as returned by `socket.socket.getsockname()`.
+        The address as returned by `socket.socket.getsockname()`_.
 
         Note this wont necessarily match the *address* provided when the server
         instance was created.  As Degu is designed for per-user server instances
