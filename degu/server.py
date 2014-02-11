@@ -564,24 +564,23 @@ class Server:
         }
 
     def serve_forever(self):
-        base_environ = self.build_base_environ()
+        environ = self.build_base_environ()
         while True:
             (sock, address) = self.sock.accept()
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
             thread = threading.Thread(
                 target=self.handle_requests,
-                args=(base_environ.copy(), sock, address),
+                args=(environ.copy(), sock, address),
                 daemon=True
             )
             thread.start()
             log.info('connection from %r, active_count=%d', address,
                     threading.active_count())
 
-    def handle_requests(self, base_environ, base_sock, address):
+    def handle_requests(self, environ, base_sock, address):
         try:
-            (environ, sock) = self.build_connection(base_sock, address)
-            base_environ.update(environ)
-            handler = Handler(self.app, base_environ, sock)
+            sock = self.build_connection(environ, base_sock, address)
+            handler = Handler(self.app, environ, sock)
             handler.handle()
         except Exception:
             log.exception('client: %r', address)
@@ -591,11 +590,9 @@ class Server:
             except OSError:
                 pass
 
-    def build_connection(self, sock, address):
-        environ = {
-            'client': address,
-        }
-        return (environ, sock)
+    def build_connection(self, environ, base_sock, address):
+        environ['client'] = address
+        return base_sock
 
 
 class SSLServer(Server):
@@ -611,14 +608,14 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def build_connection(self, sock, address):
-        sock = self.sslctx.wrap_socket(sock, server_side=True)
-        environ = {
+    def build_connection(self, environ, base_sock, address):
+        sock = self.sslctx.wrap_socket(base_sock, server_side=True)
+        environ.update({
             'client': address,
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
-        }
-        return (environ, sock)
+        })
+        return sock
 
 
 def passthrough_build_func(app):
