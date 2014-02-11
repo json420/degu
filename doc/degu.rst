@@ -104,11 +104,11 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
    :synopsis: Low-level HTTP client
 
 
-.. class:: Client(address, headers=None)
+.. class:: Client(address, default_headers=None)
 
     .. method:: request(method, uri, headers=None, body=None)
 
-.. class:: SSLClient(sslctx, address, headers=None)
+.. class:: SSLClient(sslctx, address, default_headers=None)
 
 
 .. _`socket.socket.bind()`: http://docs.python.org/3/library/socket.html#socket.socket.bind

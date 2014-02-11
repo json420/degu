@@ -387,6 +387,10 @@ class TestClient(TestCase):
             self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
+            if host is None:
+                self.assertIsNone(inst.default_headers)
+            else:
+                self.assertEqual(inst.default_headers, (('host', inst.host),))
 
     def test_del(self):
         class ClientSubclass(client.Client):
@@ -542,6 +546,10 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
+            if host is None:
+                self.assertIsNone(inst.default_headers)
+            else:
+                self.assertEqual(inst.default_headers, (('host', inst.host),))
 
     def test_repr(self):
         class Custom(client.SSLClient):
