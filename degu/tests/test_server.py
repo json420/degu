@@ -841,9 +841,6 @@ def timeout_app(request):
 
 
 class TestLiveServer(TestCase):
-    def setUp(self):
-        self.skipTest('temp')
-
     def build_with_app(self, build_func, *build_args):
         httpd = TempServer(build_func, *build_args)
         return (httpd, httpd.get_client())

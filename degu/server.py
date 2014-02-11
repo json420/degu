@@ -621,16 +621,15 @@ class SSLServer(Server):
         return (environ, sock)
 
 
-def app_passthrough(app):
+def passthrough_build_func(app):
     return app
 
 
-def run_server(queue, bind_address, port, build_func, *build_args):
+def run_server(queue, address, build_func, *build_args):
     try:
         app = build_func(*build_args)
-        httpd = Server(app, bind_address, port)
-        env = {'port': httpd.port, 'url': httpd.url}
-        queue.put(env)
+        httpd = Server(address, app)
+        queue.put(httpd.address)
         httpd.serve_forever()
     except Exception as e:
         log.exception('error starting Server:')
@@ -638,22 +637,22 @@ def run_server(queue, bind_address, port, build_func, *build_args):
         raise e
 
 
-def start_server(build_func, *build_args, bind_address='127.0.0.1', port=0):
+def start_server(build_func, *build_args, address=DEFAULT_ADDRESS):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
-        build_func = app_passthrough
+        build_func = passthrough_build_func
         assert len(build_args) == 1
     assert callable(build_func)
-    args = (queue, bind_address, port, build_func) + build_args
+    args = (queue, address, build_func) + build_args
     process = multiprocessing.Process(target=run_server, args=args, daemon=True)
     process.start()
-    env = queue.get()
-    if isinstance(env, Exception):
+    item = queue.get()
+    if isinstance(item, Exception):
         process.terminate()
         process.join()
-        raise env
-    return (process, env)
+        raise item
+    return (process, item)
 
 
 def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args):

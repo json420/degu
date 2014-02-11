@@ -91,15 +91,14 @@ class TempPKI(PKI):
 
 class TempServer:
     def __init__(self, build_func, *build_args, **kw):
-        (self.process, self.env) = start_server(build_func, *build_args, **kw)
-        self.t = urlparse(self.env['url'])
+        (self.process, self.address) = start_server(build_func, *build_args, **kw)
 
     def __del__(self):
         self.process.terminate()
         self.process.join()
 
     def get_client(self):
-        return Client(self.t.hostname, self.t.port)
+        return Client(self.address)
 
 
 class TempSSLServer:
