@@ -38,3 +38,87 @@ class TestConstants(TestCase):
             self.assertTrue(p >= 0)
             self.assertEqual(str(p), part)
 
+    def test_ADDRESS_CONSTANTS(self):
+        self.assertIsInstance(degu.ADDRESS_CONSTANTS, tuple)
+        self.assertEqual(degu.ADDRESS_CONSTANTS, (
+            degu.IPv6_LOOPBACK,
+            degu.IPv6_ANY,
+            degu.IPv4_LOOPBACK,
+            degu.IPv4_ANY,
+        ))
+        for address in degu.ADDRESS_CONSTANTS:
+            self.assertIsInstance(address, tuple)
+            self.assertIn(len(address), {2, 4})
+            self.assertIsInstance(address[0], str)
+            self.assertIn(address[0], {'::1', '::', '127.0.0.1', '0.0.0.0'})
+            if address[0] in {'::1', '::'}:
+                self.assertEqual(len(address), 4)
+            else:
+                self.assertEqual(len(address), 2)
+            for value in address[1:]:
+                self.assertIsInstance(value, int)
+                self.assertEqual(value, 0)
+
+
+class TestFunctions(TestCase):
+    def test_default_build_func(self):
+        marker1 = 'whatever'
+
+        def marker2(request):
+            return (200, 'OK', {}, None)
+
+        self.assertIs(degu._default_build_func(marker1), marker1)
+        self.assertIs(degu._default_build_func(marker2), marker2)
+
+    def test_validate_build_func(self):
+        def my_app(request):
+            return (200, 'OK', {}, None)
+
+        def my_build_func(arg1, arg2):  
+            assert False  # Should not get called
+
+        self.assertIs(
+            degu._validate_build_func(None, my_app),
+            degu._default_build_func
+        )
+        self.assertIs(
+            degu._validate_build_func(my_build_func),
+            my_build_func
+        )
+        self.assertIs(
+            degu._validate_build_func(my_build_func, 'foo'),
+            my_build_func
+        )
+        self.assertIs(
+            degu._validate_build_func(my_build_func, 'foo', 'bar'),
+            my_build_func
+        )
+
+        with self.assertRaises(TypeError) as cm:
+            degu._validate_build_func(None)
+        self.assertEqual(str(cm.exception),
+            'build_func is None, but len(build_args) != 1'
+        )
+        with self.assertRaises(TypeError) as cm:
+            degu._validate_build_func(None, my_app, 'foo')
+        self.assertEqual(str(cm.exception),
+            'build_func is None, but len(build_args) != 1'
+        )
+
+        with self.assertRaises(TypeError) as cm:
+            degu._validate_build_func(None, 'foo')
+        self.assertEqual(str(cm.exception),
+            'build_func is None, but not callable(build_args[0])'
+        )
+
+        with self.assertRaises(TypeError) as cm:
+            degu._validate_build_func('foo')
+        self.assertEqual(str(cm.exception),
+            "build_func: not callable: 'foo'"
+        )
+        with self.assertRaises(TypeError) as cm:
+            degu._validate_build_func('foo', my_app)
+        self.assertEqual(str(cm.exception),
+            "build_func: not callable: 'foo'"
+        )
+

@@ -21,51 +21,6 @@
 
 """
 HTTP server.
-
-As a quick example, say you have this simple RGI application:
-
->>> def hello_world_app(request):
-...     if request['method'] not in {'GET', 'HEAD'}:
-...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello, world!'
-...     headers = {'content-length': len(body)}
-...     if request['method'] == 'GET':
-...         return (200, 'OK', headers, body)
-...     return (200, 'OK', headers, None)  # No response body for HEAD
-
-You can create a :class:`Server` instance like this:
-
->>> from degu.server import Server
->>> server = Server(('::1', 0, 0, 0), hello_world_app)
-
-And then start the server by calling :meth:`Server.serve_forever()`.
-
-However, note that :meth:`Server.serve_forever()` will block the calling thread
-forever.  When embedding Degu in desktop and mobile applications, it's
-recommended to run your server in its own ``multiprocessing.Process``, which you
-can easily do using the :func:`start_server()` helper function, for example:
-
->>> from degu.server import start_server
->>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
-
-You can create a suitable :class:`Client` instance with the returned *address*
-like this:
-
->>> from degu.client import Client
->>> client = Client(address)
->>> response = client.request('GET', '/')
->>> response.body.read()
-b'Hello, world!'
-
-Running your Degu server in its own process has many advantages.  It means there
-will be no thread contention between the Degu server process and your main
-application process, and it also means you can forcibly and instantly kill the
-server process (something you can't do with a thread).  For example, to kill
-the server process we just created:
-
->>> process.terminate()
->>> process.join()
-
 """
 
 import socket
@@ -90,19 +45,7 @@ from .base import (
 )
 
 
-IPv6_LOOPBACK = ('::1', 0, 0, 0)
-IPv6_ANY = ('::', 0, 0, 0)
-IPv4_LOOPBACK = ('127.0.0.1', 0)
-IPv4_ANY = ('0.0.0.0', 0)
-ADDRESS_CONSTANTS = (
-    IPv6_LOOPBACK,
-    IPv6_ANY,
-    IPv4_LOOPBACK,
-    IPv4_ANY,
-)
-DEFAULT_ADDRESS = IPv6_LOOPBACK
 SERVER_SOCKET_TIMEOUT = 5
-
 log = logging.getLogger()
 
 
@@ -610,67 +553,3 @@ class SSLServer(Server):
         })
         return sock
 
-
-def passthrough_build_func(app):
-    return app
-
-
-def _run_server(queue, address, build_func, *build_args):
-    try:
-        app = build_func(*build_args)
-        httpd = Server(address, app)
-        queue.put(httpd.address)
-        httpd.serve_forever()
-    except Exception as e:
-        log.exception('error starting Server:')
-        queue.put(e)
-        raise e
-
-
-def start_server(address, build_func, *build_args):
-    import multiprocessing
-    queue = multiprocessing.Queue()
-    if build_func is None:
-        build_func = passthrough_build_func
-        assert len(build_args) == 1
-    assert callable(build_func)
-    args = (queue, address, build_func) + build_args
-    process = multiprocessing.Process(target=_run_server, args=args, daemon=True)
-    process.start()
-    item = queue.get()
-    if isinstance(item, Exception):
-        process.terminate()
-        process.join()
-        raise item
-    return (process, item)
-
-
-def _run_sslserver(queue, sslconfig, address, build_func, *build_args):
-    try:
-        sslctx = build_server_sslctx(sslconfig)
-        app = build_func(*build_args)
-        httpd = SSLServer(sslctx, address, app)
-        queue.put(httpd.address)
-        httpd.serve_forever()
-    except Exception as e:
-        log.exception('error starting Server:')
-        queue.put(e)
-        raise e
-
-
-def start_sslserver(sslconfig, address, build_func, *build_args):
-    import multiprocessing
-    queue = multiprocessing.Queue()
-    if build_func is None:
-        build_func = passthrough_build_func
-        assert len(build_args) == 1
-    assert callable(build_func)
-    args = (queue, sslconfig, address, build_func) + build_args
-    process = multiprocessing.Process(target=_run_sslserver, args=args, daemon=True)
-    process.start()
-    item = queue.get()
-    if isinstance(item, Exception):
-        process.terminate()
-        process.join()
-        raise item
-    return (process, item)

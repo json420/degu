@@ -33,6 +33,7 @@ import json
 from hashlib import sha1
 
 from .helpers import TempDir, DummySocket, DummyFile
+import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, CLIENT_SOCKET_TIMEOUT
@@ -41,17 +42,6 @@ from degu import base, server
 
 
 random = SystemRandom()
-
-
-class TestConstants(TestCase):
-    def test_ADDRESS_CONSTANTS(self):
-        self.assertIsInstance(server.ADDRESS_CONSTANTS, tuple)
-        self.assertEqual(server.ADDRESS_CONSTANTS, (
-            server.IPv6_LOOPBACK,
-            server.IPv6_ANY,
-            server.IPv4_LOOPBACK,
-            server.IPv4_ANY,
-        ))
 
 
 class TestFunctions(TestCase):
@@ -570,13 +560,13 @@ class TestServer(TestCase):
         # app not callable:
         bad_app = BadApp()
         with self.assertRaises(TypeError) as cm:
-            server.Server(server.IPv6_LOOPBACK, bad_app)
+            server.Server(degu.IPv6_LOOPBACK, bad_app)
         self.assertEqual(str(cm.exception),
             'app: not callable: {!r}'.format(bad_app)
         )
 
         # IPv6 loopback:
-        inst = server.Server(server.IPv6_LOOPBACK, good_app)
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -584,7 +574,7 @@ class TestServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.Server(server.IPv6_ANY, good_app)
+        inst = server.Server(degu.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -592,7 +582,7 @@ class TestServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv4 loopback:
-        inst = server.Server(server.IPv4_LOOPBACK, good_app)
+        inst = server.Server(degu.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -600,7 +590,7 @@ class TestServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.Server(server.IPv4_ANY, good_app)
+        inst = server.Server(degu.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -608,7 +598,7 @@ class TestServer(TestCase):
         self.assertIs(inst.app, good_app)
 
     def test_repr(self):
-        inst = server.Server(server.IPv6_LOOPBACK, good_app)
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'Server({!r}, {!r})'.format(inst.address, good_app)
         )
@@ -616,7 +606,7 @@ class TestServer(TestCase):
         class Custom(server.Server):
             pass
 
-        inst = Custom(server.IPv6_LOOPBACK, good_app)
+        inst = Custom(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'Custom({!r}, {!r})'.format(inst.address, good_app)
         )
@@ -641,13 +631,13 @@ class TestSSLServer(TestCase):
     def test_init(self):
         # sslctx is not an ssl.SSLContext:
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer('foo',  server.IPv6_LOOPBACK, good_app)
+            server.SSLServer('foo', degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception),
             'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
@@ -698,13 +688,13 @@ class TestSSLServer(TestCase):
         # app not callable:
         bad_app = BadApp()
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer(sslctx, server.IPv6_LOOPBACK, bad_app)
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, bad_app)
         self.assertEqual(str(cm.exception),
             'app: not callable: {!r}'.format(bad_app)
         )
 
         # IPv6 loopback:
-        inst = server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
@@ -713,7 +703,7 @@ class TestSSLServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.SSLServer(sslctx, server.IPv6_ANY, good_app)
+        inst = server.SSLServer(sslctx, degu.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
@@ -722,7 +712,7 @@ class TestSSLServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv4 loopback:
-        inst = server.SSLServer(sslctx, server.IPv4_LOOPBACK, good_app)
+        inst = server.SSLServer(sslctx, degu.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
@@ -731,7 +721,7 @@ class TestSSLServer(TestCase):
         self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.SSLServer(sslctx, server.IPv4_ANY, good_app)
+        inst = server.SSLServer(sslctx, degu.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
@@ -741,7 +731,7 @@ class TestSSLServer(TestCase):
 
     def test_repr(self):
         sslctx = base.build_base_sslctx()
-        inst = server.SSLServer(sslctx, server.IPv6_LOOPBACK, good_app)
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
@@ -749,7 +739,7 @@ class TestSSLServer(TestCase):
         class Custom(server.SSLServer):
             pass
 
-        inst = Custom(sslctx, server.IPv6_LOOPBACK, good_app)
+        inst = Custom(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
@@ -841,7 +831,7 @@ def timeout_app(request):
 
 class TestLiveServer(TestCase):
     def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(server.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
   
     def test_chunked_request(self):
@@ -973,12 +963,12 @@ def ssl_app(request):
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, server.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, server.IPv6_LOOPBACK, None, ssl_app)
+        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, None, ssl_app)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
 

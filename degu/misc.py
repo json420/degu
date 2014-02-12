@@ -34,7 +34,7 @@ from hashlib import sha1
 from urllib.parse import urlparse
 
 from .sslhelpers import PKI
-from .server import start_server, start_sslserver
+from . import start_server, start_sslserver
 from .client import Client, SSLClient, build_client_sslctx
 
 
