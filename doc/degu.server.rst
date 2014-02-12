@@ -140,7 +140,7 @@ Functions
 
 
 The :class:`Server` class
-----------------------------
+-------------------------
 
 .. class:: Server(address, app)
 
