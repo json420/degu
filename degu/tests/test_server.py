@@ -54,7 +54,6 @@ class TestConstants(TestCase):
         ))
 
 
-
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # client_pki=False:
@@ -842,7 +841,7 @@ def timeout_app(request):
 
 class TestLiveServer(TestCase):
     def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(build_func, *build_args)
+        httpd = TempServer(server.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
   
     def test_chunked_request(self):
@@ -974,12 +973,12 @@ def ssl_app(request):
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, build_func, *build_args)
+        httpd = TempSSLServer(pki, server.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, ssl_app)
+        httpd = TempSSLServer(pki, server.IPv6_LOOPBACK, None, ssl_app)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
 

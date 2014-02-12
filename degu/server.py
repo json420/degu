@@ -22,6 +22,42 @@
 """
 HTTP server.
 
+You'll need an RGI callable:
+
+>>> def hello_world_app(request):
+...     if request['method'] not in {'GET', 'HEAD'}:
+...         return (405, 'Method Not Allowed', {}, None)
+...     body = b'Hello, world!'
+...     headers = {'content-length': len(body)}
+...     if request['method'] == 'GET':
+...         return (200, 'OK', headers, body)
+...     return (200, 'OK', headers, None)  # Should not return body for HEAD request
+...
+
+And then you can create a Server instance like this:
+
+>>> from degu.server import Server, IPv6_LOOPBACK
+>>> server = Server(IPv6_LOOPBACK, hello_world_app)
+
+>>> from degu.server import start_server
+>>> (process, address) = start_server(IPv6_LOOPBACK, None, hello_world_app)
+>>> from degu.client import Client
+>>> client = Client(address)
+>>> response = client.request('GET', '/')
+>>> response.status
+200
+>>> response.headers
+{'content-length': 13}
+>>> response.body.read()
+b'Hello, world!'
+
+When needed, terminate the process like this:
+
+>>> process.terminate()
+>>> process.join()
+
+
+
 Consider this simple RGI application:
 
 >>> def demo_app(request):
@@ -108,7 +144,7 @@ ADDRESS_CONSTANTS = (
     IPv4_ANY,
 )
 DEFAULT_ADDRESS = IPv6_LOOPBACK
-SERVER_SOCKET_TIMEOUT = 15
+SERVER_SOCKET_TIMEOUT = 5
 
 log = logging.getLogger()
 
@@ -122,6 +158,8 @@ class UnconsumedRequestError(Exception):
 
 
 def hello_world_app(request):
+    if request['method'] not in {'GET', 'HEAD'}:
+        return (405, 'Method Not Allowed', {}, None)
     body = b'Hello, world!'
     headers = {
         'content-length': len(body),
@@ -129,9 +167,7 @@ def hello_world_app(request):
     }
     if request['method'] == 'GET':
         return (200, 'OK', headers, body)
-    if request['method'] == 'HEAD':
-        return (200, 'OK', headers, None)
-    return (405, 'Method Not Allowed', {}, None)
+    return (200, 'OK', headers, None)  # Should not return body for HEAD request
 
 
 def build_server_sslctx(config):
@@ -622,7 +658,7 @@ def passthrough_build_func(app):
     return app
 
 
-def run_server(queue, address, build_func, *build_args):
+def _run_server(queue, address, build_func, *build_args):
     try:
         app = build_func(*build_args)
         httpd = Server(address, app)
@@ -634,7 +670,7 @@ def run_server(queue, address, build_func, *build_args):
         raise e
 
 
-def start_server(build_func, *build_args, address=DEFAULT_ADDRESS):
+def start_server(address, build_func, *build_args):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
@@ -642,7 +678,7 @@ def start_server(build_func, *build_args, address=DEFAULT_ADDRESS):
         assert len(build_args) == 1
     assert callable(build_func)
     args = (queue, address, build_func) + build_args
-    process = multiprocessing.Process(target=run_server, args=args, daemon=True)
+    process = multiprocessing.Process(target=_run_server, args=args, daemon=True)
     process.start()
     item = queue.get()
     if isinstance(item, Exception):
@@ -652,7 +688,7 @@ def start_server(build_func, *build_args, address=DEFAULT_ADDRESS):
     return (process, item)
 
 
-def run_sslserver(queue, sslconfig, address, build_func, *build_args):
+def _run_sslserver(queue, sslconfig, address, build_func, *build_args):
     try:
         sslctx = build_server_sslctx(sslconfig)
         app = build_func(*build_args)
@@ -665,7 +701,7 @@ def run_sslserver(queue, sslconfig, address, build_func, *build_args):
         raise e
 
 
-def start_sslserver(sslconfig, build_func, *build_args, address=DEFAULT_ADDRESS):
+def start_sslserver(sslconfig, address, build_func, *build_args):
     import multiprocessing
     queue = multiprocessing.Queue()
     if build_func is None:
@@ -673,7 +709,7 @@ def start_sslserver(sslconfig, build_func, *build_args, address=DEFAULT_ADDRESS)
         assert len(build_args) == 1
     assert callable(build_func)
     args = (queue, sslconfig, address, build_func) + build_args
-    process = multiprocessing.Process(target=run_sslserver, args=args, daemon=True)
+    process = multiprocessing.Process(target=_run_sslserver, args=args, daemon=True)
     process.start()
     item = queue.get()
     if isinstance(item, Exception):

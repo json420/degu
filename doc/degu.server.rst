@@ -1,16 +1,51 @@
-:mod:`degu` API
-===============
-
-.. py:module:: degu
-    :synopsis: an embedded HTTP server and client library
-
-
-
 :mod:`degu.server` --- HTTP Server
-----------------------------------
+==================================
 
 .. module:: degu.server
    :synopsis: Embedded HTTP Server
+
+As a quick example, say you have this simple RGI application:
+
+>>> def hello_world_app(request):
+...     if request['method'] not in {'GET', 'HEAD'}:
+...         return (405, 'Method Not Allowed', {}, None)
+...     body = b'Hello, world!'
+...     headers = {'content-length': len(body)}
+...     if request['method'] == 'GET':
+...         return (200, 'OK', headers, body)
+...     return (200, 'OK', headers, None)  # No response body for HEAD
+...
+
+You can create a :class:`Server` instance like this:
+
+>>> from degu.server import Server
+>>> server = Server(('::1', 0, 0, 0), hello_world_app)
+
+And then start the server by calling :meth:`Server.serve_forever()`.
+
+However, note that :meth:`Server.serve_forever()` will block the calling thread
+forever.  When embedding Degu in desktop and mobile applications, it's
+recommended to run your server in its own ``multiprocessing.Process``, which you
+can easily do using the :func:`start_server()` helper function, for example:
+
+>>> (process, address) = start_server(None, hello_world_app)
+
+
+However, for testing and experimentation, it's easy to use a TempServer
+
+>>> from degu.misc import TempServer
+>>> tmpserver = TempServer(None, hello_world_app)
+>>> client = tmpserver.get_client()
+>>> response = client.request('GET', '/')
+>>> response.status
+200
+>>> response.headers
+{'content-length': 13}
+>>> response.body.read()
+b'Hello, world!'
+
+Bind *address*
+--------------
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 must be a 4-tuple for IPv6 and a 2-tuple for IPv4.  This *address* argument is
@@ -24,6 +59,10 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
     must always be a 4-tuple.  This restriction gives Degu a simple, unambiguous
     way of selecting between the ``AF_INET6`` and ``AF_INET`` families, without
     needing to inspect ``address[0]`` (the host portion).
+
+
+Constants
+---------
 
 :mod:`degu.server` includes handy constants with some common IPv6 and IPv4
 *address* tuples:
@@ -59,6 +98,25 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
     >>> IPv4_ANY = ('0.0.0.0', 0)
 
 
+Functions
+---------
+
+.. function:: start_server(address, build_func, *build_args)
+
+    Start a :class:`Server` in a new process.
+
+    The return value is a ``(process, address)`` tuple.
+
+
+.. function:: start_sslserver(sslconfig, address, build_func, *build_args)
+
+    Start a :class:`SSLServer` in a new process.
+
+    The return value is a ``(process, address)`` tuple.
+
+
+The :class:`Server` class
+----------------------------
 
 .. class:: Server(address, app)
 
@@ -91,24 +149,17 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
 
         The RGI application callable provided when the instance was created.
 
+    .. method:: serve_forever()
 
+        Start the server in multi-threaded mode.
+
+        The caller will block forever.
+
+
+The :class:`SSLServer` class
+----------------------------
 
 .. class:: SSLServer(sslctx, addresss, app)
-
-
-
-:mod:`degu.client` --- HTTP Client
-----------------------------------
-
-.. module:: degu.client
-   :synopsis: Low-level HTTP client
-
-
-.. class:: Client(address, default_headers=None)
-
-    .. method:: request(method, uri, headers=None, body=None)
-
-.. class:: SSLClient(sslctx, address, default_headers=None)
 
 
 .. _`socket.socket.bind()`: http://docs.python.org/3/library/socket.html#socket.socket.bind

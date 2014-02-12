@@ -89,7 +89,7 @@ class TempPKI(PKI):
         return super().get_client_config(self.server_ca_id, self.client_id)
 
 
-class _TempBase:
+class _TempProcess:
     def __del__(self):
         self.terminate()
 
@@ -100,19 +100,22 @@ class _TempBase:
             self.process = None
 
 
-class TempServer(_TempBase):
-    def __init__(self, build_func, *build_args, **kw):
-        (self.process, self.address) = start_server(build_func, *build_args, **kw)
+class TempServer(_TempProcess):
+    def __init__(self, address, build_func, *build_args):
+        (self.process, self.address) = start_server(
+            address, build_func, *build_args
+        )
 
     def get_client(self):
         return Client(self.address)
 
 
-class TempSSLServer(_TempBase):
-    def __init__(self, pki, build_func, *build_args, **kw):
+class TempSSLServer(_TempProcess):
+    def __init__(self, pki, address, build_func, *build_args):
         self.pki = pki
+        sslconfig = pki.get_server_config()
         (self.process, self.address) = start_sslserver(
-            pki.get_server_config(), build_func, *build_args, **kw
+            sslconfig, address, build_func, *build_args
         )
 
     def get_client(self, sslconfig=None):
