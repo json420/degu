@@ -26,7 +26,7 @@ directly to `socket.socket.connect()`_ when creating a connection, thereby
 giving you access to full IPv6 address semantics, including the *scopeid* needed
 for `link-local addresses`_.  In this case the *host* must be an IPv6 IP.  For
 example, this *address* would connect to a server listening on a link-local
-address:
+address::
 
     ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
 
