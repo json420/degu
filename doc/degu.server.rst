@@ -65,6 +65,25 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
     way of selecting between the ``AF_INET6`` and ``AF_INET`` families, without
     needing to inspect ``address[0]`` (the host portion).
 
+Typically you will use Degu for per-user server instances listening on random,
+unprivileged ports (as opposed to system-wide server instances listening on
+static, privileged ports).  In this case, ``address[1]`` (the port) should be
+``0``.  For example, to bind to the IPv6 any-IP address, you would supply this
+*address*::
+
+    ('::', 0, 0, 0)
+
+However, after you create your :class:`Server` or :class:`SSLServer` instance,
+you'll need to know what random port was assigned by the operating system (for
+example, so you can advertise this port to peers on the local network).
+
+The :attr:`Server.address` instance attribute will be the 4-tuple or 2-tuple
+returned by `socket.socket.getsockname()`_ for the socket upon which your
+server is listening.  In our example, assuming port ``54321`` was assigned,
+the :attr:`Server.address` would be::
+
+    ('::', 54321, 0, 0)
+
 
 Constants
 ---------
