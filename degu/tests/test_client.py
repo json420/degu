@@ -27,6 +27,7 @@ from unittest import TestCase
 import os
 import socket
 import ssl
+from urllib.parse import urlparse
 
 from .helpers import TempDir, DummySocket, DummyFile
 from degu.base import TYPE_ERROR
@@ -360,6 +361,149 @@ class TestFunctions(TestCase):
         self.assertEqual(list(r.body), [chunk1, chunk2, chunk3, b''])
         self.assertIs(r.body.closed, True)
         self.assertEqual(rfile.tell(), len(lines) + total)
+
+    def test_create_client(self):
+        # IPv6, with port:
+        url = 'http://[fe80::e8b:fdff:fe75:402c]:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+
+        # IPv6, no port (should default to 80):
+        url = 'http://[fe80::e8b:fdff:fe75:402c]/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+
+        # IPv4, with port:
+        url = 'http://10.17.76.69:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+
+        # IPv4, no port (should default to 80):
+        url = 'http://10.17.76.69/'
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 80))
+
+        # Name, with port:
+        url = 'http://www.example.com:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+
+        # Name, no port (should default to 80):
+        url = 'http://www.example.com/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 80))
+
+        # Bad scheme:
+        url = 'https://www.example.com/'
+        with self.assertRaises(ValueError) as cm:
+            client.create_client(url)
+        self.assertEqual(str(cm.exception), "scheme must be 'http', got 'https'")
+        with self.assertRaises(ValueError) as cm:
+            client.create_client(urlparse(url))
+        self.assertEqual(str(cm.exception), "scheme must be 'http', got 'https'")
+
+    def test_create_sslclient(self):
+        sslctx = base.build_base_sslctx()
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+
+        # IPv6, with port:
+        url = 'https://[fe80::e8b:fdff:fe75:402c]:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+
+        # IPv6, no port (should default to 443):
+        url = 'https://[fe80::e8b:fdff:fe75:402c]/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+
+        # IPv4, with port:
+        url = 'https://10.17.76.69:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+
+        # IPv4, no port (should default to 443):
+        url = 'https://10.17.76.69/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 443))
+
+        # Name, with port:
+        url = 'https://www.example.com:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+
+        # Name, no port (should default to 443):
+        url = 'https://www.example.com/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 443))
+
+        # Bad scheme:
+        url = 'http://www.example.com/'
+        with self.assertRaises(ValueError) as cm:
+            client.create_sslclient(sslctx, url)
+        self.assertEqual(str(cm.exception), "scheme must be 'https', got 'http'")
+        with self.assertRaises(ValueError) as cm:
+            client.create_sslclient(sslctx, urlparse(url))
+        self.assertEqual(str(cm.exception), "scheme must be 'https', got 'http'")
 
 
 class TestClient(TestCase):

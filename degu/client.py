@@ -29,6 +29,8 @@ import ssl
 from collections import namedtuple
 import io
 import os
+from urllib.parse import urlparse, ParseResult
+
 
 from .base import (
     TYPE_ERROR,
@@ -272,4 +274,32 @@ class SSLClient(Client):
     def create_socket(self):
         sock = super().create_socket()
         return self.sslctx.wrap_socket(sock, server_hostname=self.host)
+
+
+def create_client(url):
+    """
+    Convenience function to create a `Client` from a URL.
+
+    For example:
+
+    >>> create_client('http://www.example.com/')
+    Client(('www.example.com', 80))
+
+    """
+    t = (url if isinstance(url, ParseResult) else urlparse(url))
+    if t.scheme != 'http':
+        raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
+    port = (80 if t.port is None else t.port)
+    return Client((t.hostname, port))
+
+
+def create_sslclient(sslctx, url):
+    """
+    Convenience function to create an `SSLClient` from a URL.
+    """
+    t = (url if isinstance(url, ParseResult) else urlparse(url))
+    if t.scheme != 'https':
+        raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
+    port = (443 if t.port is None else t.port)
+    return SSLClient(sslctx, (t.hostname, port))
 
