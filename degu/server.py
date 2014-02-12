@@ -22,7 +22,7 @@
 """
 HTTP server.
 
-You'll need an RGI callable:
+As a quick example, say you have this simple RGI application:
 
 >>> def hello_world_app(request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
@@ -31,83 +31,40 @@ You'll need an RGI callable:
 ...     headers = {'content-length': len(body)}
 ...     if request['method'] == 'GET':
 ...         return (200, 'OK', headers, body)
-...     return (200, 'OK', headers, None)  # Should not return body for HEAD request
-...
+...     return (200, 'OK', headers, None)  # No response body for HEAD
 
-And then you can create a Server instance like this:
+You can create a :class:`Server` instance like this:
 
->>> from degu.server import Server, IPv6_LOOPBACK
->>> server = Server(IPv6_LOOPBACK, hello_world_app)
+>>> from degu.server import Server
+>>> server = Server(('::1', 0, 0, 0), hello_world_app)
+
+And then start the server by calling :meth:`Server.serve_forever()`.
+
+However, note that :meth:`Server.serve_forever()` will block the calling thread
+forever.  When embedding Degu in desktop and mobile applications, it's
+recommended to run your server in its own ``multiprocessing.Process``, which you
+can easily do using the :func:`start_server()` helper function, for example:
 
 >>> from degu.server import start_server
->>> (process, address) = start_server(IPv6_LOOPBACK, None, hello_world_app)
+>>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
+
+You can create a suitable :class:`Client` instance with the returned *address*
+like this:
+
 >>> from degu.client import Client
 >>> client = Client(address)
 >>> response = client.request('GET', '/')
->>> response.status
-200
->>> response.headers
-{'content-length': 13}
 >>> response.body.read()
 b'Hello, world!'
 
-When needed, terminate the process like this:
+Running your Degu server in its own process has many advantages.  It means there
+will be no thread contention between the Degu server process and your main
+application process, and it also means you can forcibly and instantly kill the
+server process (something you can't do with a thread).  For example, to kill
+the server process we just created:
 
 >>> process.terminate()
 >>> process.join()
-
-
-
-Consider this simple RGI application:
-
->>> def demo_app(request):
-...     if request['method'] not in ('GET', 'HEAD'):
-...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello, world!'
-...     headers = {'content-length': len(body)}
-...     return (200, 'OK', headers, body)
-...
-
-For example, a request with the wrong method:
-
->>> demo_app({'method': 'DELETE', 'path': []})
-(405, 'Method Not Allowed', {}, None)
-
-And now a GET request:
-
->>> demo_app({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-But note that this application isn't HTTP 1.1 compliant, as it should not return
-a response body for a HEAD request:
-
->>> demo_app({'method': 'HEAD', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-Now consider this example middleware, which checks for just such a faulty
-application and overrides its response:
-
->>> class Middleware:
-...     def __init__(self, app):
-...         self.app = app
-...
-...     def __call__(self, request):
-...         (status, reason, headers, body) = self.app(request)
-...         if request['method'] == 'HEAD' and body is not None:
-...             return (500, 'Internal Server Error', {}, None)
-...         return (status, reason, headers, body)
-...
-
-The middleware will let the response to a GET request pass through unchanged: 
-
->>> middleware = Middleware(demo_app)
->>> middleware({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-But it will intercept the faulty response to a HEAD request:
-
->>> middleware({'method': 'HEAD', 'path': []})
-(500, 'Internal Server Error', {}, None)
 
 """
 

@@ -14,7 +14,6 @@ As a quick example, say you have this simple RGI application:
 ...     if request['method'] == 'GET':
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
-...
 
 You can create a :class:`Server` instance like this:
 
@@ -24,25 +23,31 @@ You can create a :class:`Server` instance like this:
 And then start the server by calling :meth:`Server.serve_forever()`.
 
 However, note that :meth:`Server.serve_forever()` will block the calling thread
-forever.  When embedding Degu in desktop and mobile applications, it's
-recommended to run your server in its own ``multiprocessing.Process``, which you
-can easily do using the :func:`start_server()` helper function, for example:
+forever.  When embedding Degu in desktop and mobile applications, it's best to
+run your server in its own `multiprocessing.Process`_, which you can easily do
+using the :func:`start_server()` helper function, for example:
 
->>> (process, address) = start_server(None, hello_world_app)
+>>> from degu.server import start_server
+>>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
 
+You can create a suitable :class:`degu.client.Client` instance with the returned
+*address* like this:
 
-However, for testing and experimentation, it's easy to use a TempServer
-
->>> from degu.misc import TempServer
->>> tmpserver = TempServer(None, hello_world_app)
->>> client = tmpserver.get_client()
+>>> from degu.client import Client
+>>> client = Client(address)
 >>> response = client.request('GET', '/')
->>> response.status
-200
->>> response.headers
-{'content-length': 13}
 >>> response.body.read()
 b'Hello, world!'
+
+Running your Degu server in its own process has many advantages.  It means there
+will be no thread contention between the Degu server process and your main
+application process, and it also means you can forcibly and instantly kill the
+server process whenever you need (something you can't do with a thread).  For
+example, to kill the server process we just created:
+
+>>> process.terminate()
+>>> process.join()
+
 
 Bind *address*
 --------------
@@ -162,6 +167,7 @@ The :class:`SSLServer` class
 .. class:: SSLServer(sslctx, addresss, app)
 
 
+.. _`multiprocessing.Process`: http://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket.socket.bind()`: http://docs.python.org/3/library/socket.html#socket.socket.bind
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`socket.socket`: http://docs.python.org/3/library/socket.html#socket-objects
