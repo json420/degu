@@ -27,10 +27,43 @@ from unittest import TestCase
 import os
 import socket
 import ssl
+from urllib.parse import urlparse
 
 from .helpers import TempDir, DummySocket, DummyFile
+from degu.base import TYPE_ERROR
 from degu.misc import TempPKI
 from degu import base, client
+
+
+# Some bad address permutations:
+BAD_ADDRESSES = (
+    ('::1',),
+    ('127.0.0.1',),
+    ('::1', 5678, 0),
+    ('127.0.0.1', 5678, 0),
+    ('::1', 5678, 0, 0, 0),
+    ('127.0.0.1', 5678, 0, 0, 0),
+)
+
+# Some good address permutations:
+GOOD_ADDRESSES = (
+    ('::1', 5678),
+    ('127.0.0.1', 5678),
+    ('example.com', 80),
+    ('example.com', 443),
+    ('::1', 5678, 0, 0),
+    ('fe80::290:f5ff:fef0:d35c', 5678, 0, 2),
+)
+
+# Expected host for each of the above good addresses:
+HOSTS = (
+    None,
+    None,
+    'example.com:80',
+    'example.com:443',
+    None,
+    None,
+)
 
 
 class TestNamedTuples(TestCase):
@@ -329,22 +362,179 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.closed, True)
         self.assertEqual(rfile.tell(), len(lines) + total)
 
+    def test_create_client(self):
+        # IPv6, with port:
+        url = 'http://[fe80::e8b:fdff:fe75:402c]:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+
+        # IPv6, no port (should default to 80):
+        url = 'http://[fe80::e8b:fdff:fe75:402c]/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+
+        # IPv4, with port:
+        url = 'http://10.17.76.69:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+
+        # IPv4, no port (should default to 80):
+        url = 'http://10.17.76.69/'
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('10.17.76.69', 80))
+
+        # Name, with port:
+        url = 'http://www.example.com:54321/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+
+        # Name, no port (should default to 80):
+        url = 'http://www.example.com/'
+        inst = client.create_client(url)
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 80))
+        inst = client.create_client(urlparse(url))
+        self.assertIsInstance(inst, client.Client)
+        self.assertEqual(inst.address, ('www.example.com', 80))
+
+        # Bad scheme:
+        url = 'https://www.example.com/'
+        with self.assertRaises(ValueError) as cm:
+            client.create_client(url)
+        self.assertEqual(str(cm.exception), "scheme must be 'http', got 'https'")
+        with self.assertRaises(ValueError) as cm:
+            client.create_client(urlparse(url))
+        self.assertEqual(str(cm.exception), "scheme must be 'http', got 'https'")
+
+    def test_create_sslclient(self):
+        sslctx = base.build_base_sslctx()
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+
+        # IPv6, with port:
+        url = 'https://[fe80::e8b:fdff:fe75:402c]:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+
+        # IPv6, no port (should default to 443):
+        url = 'https://[fe80::e8b:fdff:fe75:402c]/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+
+        # IPv4, with port:
+        url = 'https://10.17.76.69:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 54321))
+
+        # IPv4, no port (should default to 443):
+        url = 'https://10.17.76.69/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('10.17.76.69', 443))
+
+        # Name, with port:
+        url = 'https://www.example.com:54321/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 54321))
+
+        # Name, no port (should default to 443):
+        url = 'https://www.example.com/'
+        inst = client.create_sslclient(sslctx, url)
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 443))
+        inst = client.create_sslclient(sslctx, urlparse(url))
+        self.assertIsInstance(inst, client.SSLClient)
+        self.assertIs(inst.sslctx, sslctx)
+        self.assertEqual(inst.address, ('www.example.com', 443))
+
+        # Bad scheme:
+        url = 'http://www.example.com/'
+        with self.assertRaises(ValueError) as cm:
+            client.create_sslclient(sslctx, url)
+        self.assertEqual(str(cm.exception), "scheme must be 'https', got 'http'")
+        with self.assertRaises(ValueError) as cm:
+            client.create_sslclient(sslctx, urlparse(url))
+        self.assertEqual(str(cm.exception), "scheme must be 'https', got 'http'")
+
 
 class TestClient(TestCase):
     def test_init(self):
-        hostname = '127.0.0.1'
-        port = 5984
-        inst = client.Client(hostname, port)
-        self.assertIs(inst.hostname, hostname)
-        self.assertIs(inst.port, port)
-        self.assertIsNone(inst.conn)
-        self.assertIsNone(inst.response_body)
+        # Bad address type:
+        with self.assertRaises(TypeError) as cm:
+            client.Client('192.168.1.1')
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+        )
 
-        inst = client.Client(hostname, None)
-        self.assertIs(inst.hostname, hostname)
-        self.assertEqual(inst.port, 80)
-        self.assertIsNone(inst.conn)
-        self.assertIsNone(inst.response_body)
+        # Wrong number of items in address tuple:
+        for address in BAD_ADDRESSES:
+            self.assertIn(len(address), {1, 3, 5})
+            with self.assertRaises(ValueError) as cm:
+                client.Client(address)
+            self.assertEqual(str(cm.exception),
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+
+        # A number of good address permutations:
+        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
+            inst = client.Client(address)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.host, host)
+            self.assertIsNone(inst.conn)
+            self.assertIsNone(inst.response_body)
+            if host is None:
+                self.assertEqual(inst.base_headers, {})
+            else:
+                self.assertEqual(inst.base_headers, {'host': inst.host})
 
     def test_del(self):
         class ClientSubclass(client.Client):
@@ -362,8 +552,14 @@ class TestClient(TestCase):
         self.assertEqual(inst._calls, 2)
 
     def test_repr(self):
-        inst = client.Client('127.0.0.1', 5984)
-        self.assertEqual(repr(inst), "Client('127.0.0.1', 5984)")
+        class Custom(client.Client):
+            pass
+
+        for address in GOOD_ADDRESSES:
+            inst = client.Client(address)
+            self.assertEqual(repr(inst), 'Client({!r})'.format(address))
+            inst = Custom(address)
+            self.assertEqual(repr(inst), 'Custom({!r})'.format(address))
 
     def test_connect(self):
         class ClientSubclass(client.Client):
@@ -392,7 +588,7 @@ class TestClient(TestCase):
         self.assertEqual(sock._calls, [])
 
     def test_close(self):
-        inst = client.Client('::1', None)
+        inst = client.Client(('::1',  5678))
 
         # Should set response_body to None even if conn is None:
         inst.response_body = 'foo'
@@ -419,7 +615,7 @@ class TestClient(TestCase):
         class DummyBody:
             closed = False
 
-        inst = client.Client('::1', None)
+        inst = client.Client(('::1', 5678))
         inst.response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
             inst.request(None, None)
@@ -431,18 +627,15 @@ class TestClient(TestCase):
 
 class TestSSLClient(TestCase):
     def test_init(self):
-        hostname = '127.0.0.1'
-        port = 5984
-
         # sslctx is not an ssl.SSLContext:
         with self.assertRaises(TypeError) as cm:
-            client.SSLClient('foo', hostname, port)
+            client.SSLClient('foo', None)
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         with self.assertRaises(ValueError) as cm:
-            client.SSLClient(sslctx, hostname, port)
+            client.SSLClient(sslctx, None)
         self.assertEqual(str(cm.exception),
             'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
@@ -458,7 +651,7 @@ class TestSSLClient(TestCase):
         # not (options & ssl.OP_NO_COMPRESSION)
         sslctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
-            client.SSLClient(sslctx, hostname, port)
+            client.SSLClient(sslctx, None)
         self.assertEqual(str(cm.exception),
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
@@ -466,28 +659,55 @@ class TestSSLClient(TestCase):
         # verify_mode is not ssl.CERT_REQUIRED:
         sslctx.options |= ssl.OP_NO_COMPRESSION
         with self.assertRaises(ValueError) as cm:
-            client.SSLClient(sslctx, hostname, port)
+            client.SSLClient(sslctx, None)
         self.assertEqual(str(cm.exception),
             'sslctx.verify_mode must be ssl.CERT_REQUIRED'
         )
 
         # Good sslctx from here on:
         sslctx.verify_mode = ssl.CERT_REQUIRED
-        inst = client.SSLClient(sslctx, hostname, port)
-        self.assertIs(inst.hostname, hostname)
-        self.assertIs(inst.port, port)
-        self.assertIsNone(inst.conn)
-        self.assertIsNone(inst.response_body)
-        self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.check_hostname, True)
 
-        # Test default_port, and overriding check_hostname:
+        # Bad address type:
+        with self.assertRaises(TypeError) as cm:
+            client.SSLClient(sslctx, '192.168.1.1')
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+        )
+
+        # Wrong number of items in address tuple:
+        for address in BAD_ADDRESSES:
+            self.assertIn(len(address), {1, 3, 5})
+            with self.assertRaises(ValueError) as cm:
+                client.SSLClient(sslctx, address)
+            self.assertEqual(str(cm.exception),
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+
+        # A number of good address permutations:
+        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
+            inst = client.SSLClient(sslctx, address)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.host, host)
+            self.assertIsNone(inst.conn)
+            self.assertIsNone(inst.response_body)
+            if host is None:
+                self.assertEqual(inst.base_headers, {})
+            else:
+                self.assertEqual(inst.base_headers, {'host': inst.host})
+
+    def test_repr(self):
+        class Custom(client.SSLClient):
+            pass
+
+        sslctx = base.build_base_sslctx()
         sslctx.verify_mode = ssl.CERT_REQUIRED
-        inst = client.SSLClient(sslctx, hostname, check_hostname=False)
-        self.assertIs(inst.hostname, hostname)
-        self.assertEqual(inst.port, 443)
-        self.assertIsNone(inst.conn)
-        self.assertIsNone(inst.response_body)
-        self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.check_hostname, False)
 
+        for address in GOOD_ADDRESSES:
+            inst = client.SSLClient(sslctx, address)
+            self.assertEqual(repr(inst),
+                'SSLClient({!r}, {!r})'.format(sslctx, address)
+            )
+            inst = Custom(sslctx, address)
+            self.assertEqual(repr(inst),
+                'Custom({!r}, {!r})'.format(sslctx, address)
+            )

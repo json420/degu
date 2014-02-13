@@ -22,8 +22,9 @@
 """
 Some tools for unit testing.
 
-This module imports things that often wouldn't normally be needed, so thus this
-separate module helps keep the baseline memory footprint lower.
+This module imports things that often wouldn't normally be needed except for
+unit testing, so thus this separate module helps keep the baseline memory
+footprint lower.
 """
 
 import tempfile
@@ -34,7 +35,7 @@ from hashlib import sha1
 from urllib.parse import urlparse
 
 from .sslhelpers import PKI
-from .server import start_server, start_sslserver
+from . import start_server, start_sslserver
 from .client import Client, SSLClient, build_client_sslctx
 
 
@@ -55,6 +56,28 @@ def echo_app(request):
     if request['method'] == 'HEAD':
         return (200, 'OK', headers, None)
     return (200, 'OK', headers, body)
+
+
+def address_to_url(scheme, address):
+    """
+    Convert `Server.address` into a URL.
+
+    For example:
+
+    >>> address_to_url('https', ('::1', 54321, 0, 0))
+    'https://[::1]:54321/'
+
+    >>> address_to_url('http', ('127.0.0.1', 54321))
+    'http://127.0.0.1:54321/'
+
+    """
+    assert scheme in ('http', 'https')
+    assert isinstance(address, tuple)
+    assert len(address) in {4, 2}
+    if len(address) == 2:  # IPv4?
+        return '{}://{}:{:d}/'.format(scheme, address[0], address[1])
+    # More better, IPv6:
+    return '{}://[{}]:{}/'.format(scheme, address[0], address[1])
 
 
 class TempPKI(PKI):
@@ -89,40 +112,40 @@ class TempPKI(PKI):
         return super().get_client_config(self.server_ca_id, self.client_id)
 
 
-class TempServer:
-    def __init__(self, build_func, *build_args, **kw):
-        (self.process, self.env) = start_server(build_func, *build_args, **kw)
-        self.t = urlparse(self.env['url'])
-
+class _TempProcess:
     def __del__(self):
-        self.process.terminate()
-        self.process.join()
+        self.terminate()
+
+    def terminate(self):
+        if getattr(self, 'process', None) is not None:
+            self.process.terminate()
+            self.process.join()
+            self.process = None
+
+
+class TempServer(_TempProcess):
+    def __init__(self, address, build_func, *build_args):
+        (self.process, self.address) = start_server(
+            address, build_func, *build_args
+        )
+        self.url = address_to_url('http', self.address)
 
     def get_client(self):
-        return Client(self.t.hostname, self.t.port)
+        return Client(self.address)
 
 
-class TempSSLServer:
-    def __init__(self, pki, build_func, *build_args, **kw):
+class TempSSLServer(_TempProcess):
+    def __init__(self, pki, address, build_func, *build_args):
         self.pki = pki
-        (self.process, self.env) = start_sslserver(
-            pki.get_server_config(), build_func, *build_args, **kw
+        sslconfig = pki.get_server_config()
+        (self.process, self.address) = start_sslserver(
+            sslconfig, address, build_func, *build_args
         )
-        t = urlparse(self.env['url'])
-        self.hostname = t.hostname
-        self.port = t.port
-        assert self.port == self.env['port']
-        self.url = self.env['url']
-
-    def __del__(self):
-        self.process.terminate()
-        self.process.join()
+        self.url = address_to_url('https', self.address)
 
     def get_client(self, sslconfig=None):
         if sslconfig is None:
             sslconfig = self.pki.get_client_config()
         sslctx = build_client_sslctx(sslconfig)
-        return SSLClient(sslctx, self.hostname, self.port,
-            check_hostname=sslconfig.get('check_hostname', False),
-        )
+        return SSLClient(sslctx, self.address)
 

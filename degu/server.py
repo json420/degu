@@ -21,57 +21,6 @@
 
 """
 HTTP server.
-
-Consider this simple RGI application:
-
->>> def demo_app(request):
-...     if request['method'] not in ('GET', 'HEAD'):
-...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello, world!'
-...     headers = {'content-length': len(body)}
-...     return (200, 'OK', headers, body)
-...
-
-For example, a request with the wrong method:
-
->>> demo_app({'method': 'DELETE', 'path': []})
-(405, 'Method Not Allowed', {}, None)
-
-And now a GET request:
-
->>> demo_app({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-But note that this application isn't HTTP 1.1 compliant, as it should not return
-a response body for a HEAD request:
-
->>> demo_app({'method': 'HEAD', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-Now consider this example middleware, which checks for just such a faulty
-application and overrides its response:
-
->>> class Middleware:
-...     def __init__(self, app):
-...         self.app = app
-...
-...     def __call__(self, request):
-...         (status, reason, headers, body) = self.app(request)
-...         if request['method'] == 'HEAD' and body is not None:
-...             return (500, 'Internal Server Error', {}, None)
-...         return (status, reason, headers, body)
-...
-
-The middleware will let the response to a GET request pass through unchanged: 
-
->>> middleware = Middleware(demo_app)
->>> middleware({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
-
-But it will intercept the faulty response to a HEAD request:
-
->>> middleware({'method': 'HEAD', 'path': []})
-(500, 'Internal Server Error', {}, None)
 """
 
 import socket
@@ -106,6 +55,19 @@ class UnconsumedRequestError(Exception):
         super().__init__(
             'previous request body not consumed: {!r}'.format(body)
         )
+
+
+def hello_world_app(request):
+    if request['method'] not in {'GET', 'HEAD'}:
+        return (405, 'Method Not Allowed', {}, None)
+    body = b'Hello, world!'
+    headers = {
+        'content-length': len(body),
+        'content-type': 'text/plain; charset=utf-8',
+    }
+    if request['method'] == 'GET':
+        return (200, 'OK', headers, body)
+    return (200, 'OK', headers, None)  # Should not return body for HEAD request
 
 
 def build_server_sslctx(config):
@@ -499,30 +461,38 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, app, bind_address='127.0.0.1', port=0):
-        if not callable(app):
-            raise TypeError('app not callable: {!r}'.format(app))
-        self.app = app
-        if bind_address in {'::1', '::'}:
-            template = '{}://[::1]:{:d}/'
-            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        elif bind_address in {'127.0.0.1', '0.0.0.0'}:
-            template = '{}://127.0.0.1:{:d}/'
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def __init__(self, address, app):
+        if not isinstance(address, tuple):
+            raise TypeError(
+                TYPE_ERROR.format('address', tuple, type(address), address)
+            )
+        if len(address) == 4:
+            family = socket.AF_INET6
+        elif len(address) == 2:
+            family = socket.AF_INET
         else:
-            raise ValueError('invalid bind_address: {!r}'.format(bind_address))
-        self.sock.bind((bind_address, port))
+            raise ValueError(
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+        if not callable(app):
+            raise TypeError('app: not callable: {!r}'.format(app))
+        self.sock = socket.socket(family, socket.SOCK_STREAM)
+        self.sock.bind(address)
+        self.address = self.sock.getsockname()
+        self.app = app
         self.sock.listen(5)
-        self.bind_address = bind_address
-        self.port = self.sock.getsockname()[1]
-        self.url = template.format(self.scheme, self.port)
+
+    def __repr__(self):
+        return '{}({!r}, {!r})'.format(
+            self.__class__.__name__, self.address, self.app
+        )
 
     def build_base_environ(self):
         """
         Builds the base *environ* used throughout instance lifetime.
         """
         return {
-            'server': (self.bind_address, self.port),
+            'server': self.address,
             'scheme': self.scheme,
             'rgi.ResponseBody': Output,
             'rgi.FileResponseBody': FileOutput,
@@ -530,24 +500,23 @@ class Server:
         }
 
     def serve_forever(self):
-        base_environ = self.build_base_environ()
+        environ = self.build_base_environ()
         while True:
             (sock, address) = self.sock.accept()
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
             thread = threading.Thread(
                 target=self.handle_requests,
-                args=(base_environ.copy(), sock, address),
+                args=(environ.copy(), sock, address),
                 daemon=True
             )
             thread.start()
             log.info('connection from %r, active_count=%d', address,
                     threading.active_count())
 
-    def handle_requests(self, base_environ, base_sock, address):
+    def handle_requests(self, environ, base_sock, address):
         try:
-            (environ, sock) = self.build_connection(base_sock, address)
-            base_environ.update(environ)
-            handler = Handler(self.app, base_environ, sock)
+            sock = self.build_connection(environ, base_sock, address)
+            handler = Handler(self.app, environ, sock)
             handler.handle()
         except Exception:
             log.exception('client: %r', address)
@@ -557,98 +526,30 @@ class Server:
             except OSError:
                 pass
 
-    def build_connection(self, sock, address):
-        environ = {
-            'client': (address[0], address[1]),
-        }
-        return (environ, sock)
+    def build_connection(self, environ, base_sock, address):
+        environ['client'] = address
+        return base_sock
 
 
 class SSLServer(Server):
     scheme = 'https'
 
-    # What SSLServer needs to do differently from Server:
-    #   1. Wrap a socket.socket in an ssl.SSLSocket
-    #   2. Build a different per-connection environ
-    # Would be nice to do both in a single method that SSLServer could override:
-    #   (conn_environ, sock) = self.build_connection(sock, address)
-
-    def __init__(self, sslctx, app, bind_address='127.0.0.1', port=0):
+    def __init__(self, sslctx, address, app):
         validate_sslctx(sslctx)
-        super().__init__(app, bind_address, port)
+        super().__init__(address, app)
         self.sslctx = sslctx
 
-    def build_connection(self, sock, address):
-        sock = self.sslctx.wrap_socket(sock, server_side=True)
-        environ = {
-            'client': (address[0], address[1]),
+    def __repr__(self):
+        return '{}({!r}, {!r}, {!r})'.format(
+            self.__class__.__name__, self.sslctx, self.address, self.app
+        )
+
+    def build_connection(self, environ, base_sock, address):
+        sock = self.sslctx.wrap_socket(base_sock, server_side=True)
+        environ.update({
+            'client': address,
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
-        }
-        return (environ, sock)
+        })
+        return sock
 
-
-def app_passthrough(app):
-    return app
-
-
-def run_server(queue, bind_address, port, build_func, *build_args):
-    try:
-        app = build_func(*build_args)
-        httpd = Server(app, bind_address, port)
-        env = {'port': httpd.port, 'url': httpd.url}
-        queue.put(env)
-        httpd.serve_forever()
-    except Exception as e:
-        log.exception('error starting Server:')
-        queue.put(e)
-        raise e
-
-
-def start_server(build_func, *build_args, bind_address='127.0.0.1', port=0):
-    import multiprocessing
-    queue = multiprocessing.Queue()
-    if build_func is None:
-        build_func = app_passthrough
-        assert len(build_args) == 1
-    assert callable(build_func)
-    args = (queue, bind_address, port, build_func) + build_args
-    process = multiprocessing.Process(target=run_server, args=args, daemon=True)
-    process.start()
-    env = queue.get()
-    if isinstance(env, Exception):
-        process.terminate()
-        process.join()
-        raise env
-    return (process, env)
-
-
-def run_sslserver(queue, sslconfig, bind_address, port, build_func, *build_args):
-    try:
-        sslctx = build_server_sslctx(sslconfig)
-        app = build_func(*build_args)
-        httpd = SSLServer(sslctx, app, bind_address, port)
-        env = {'port': httpd.port, 'url': httpd.url}
-        queue.put(env)
-        httpd.serve_forever()
-    except Exception as e:
-        log.exception('error starting SSLServer:')
-        queue.put(e)
-
-
-def start_sslserver(sslconfig, build_func, *build_args, bind_address='127.0.0.1', port=0):
-    import multiprocessing
-    queue = multiprocessing.Queue()
-    if build_func is None:
-        build_func = app_passthrough
-        assert len(build_args) == 1
-    assert callable(build_func)
-    args = (queue, sslconfig, bind_address, port, build_func) + build_args
-    process = multiprocessing.Process(target=run_sslserver, args=args, daemon=True)
-    process.start()
-    env = queue.get()
-    if isinstance(env, Exception):
-        process.terminate()
-        process.join()
-        raise env
-    return (process, env)

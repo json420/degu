@@ -33,6 +33,7 @@ import json
 from hashlib import sha1
 
 from .helpers import TempDir, DummySocket, DummyFile
+import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, CLIENT_SOCKET_TIMEOUT
@@ -520,80 +521,105 @@ class TestHandler(TestCase):
         self.assertIs(body.rfile.closed, False)
 
 
-def demo_app(request):
-    return (200, 'OK', {}, None) 
+class BadApp:
+    """
+    Not callable.
+    """
+
+
+def good_app(request):
+    return (200, 'OK', {}, None)
 
 
 class TestServer(TestCase):
     def test_init(self):
-        class Bad:
-            pass
-
-        # App not callable
-        bad = Bad()
+        # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            server.Server(bad, '::1')
-        self.assertEqual(
-            str(cm.exception),
-            'app not callable: {!r}'.format(bad)
+            server.Server('192.168.1.1', good_app)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
         )
 
-        # Bad bind_address:
-        with self.assertRaises(ValueError) as cm:
-            server.Server(demo_app, '192.168.1.1')
-        self.assertEqual(str(cm.exception), "invalid bind_address: '192.168.1.1'")
+        # Wrong number of items in address tuple:
+        bad_addresses = [
+            ('::1',),
+            ('127.0.0.1',),
+            ('::1', 0, 0),
+            ('127.0.0.1', 0, 0),
+            ('::1', 0, 0, 0, 0),
+            ('127.0.0.1', 0, 0, 0, 0),
+        ]
+        for address in bad_addresses:
+            self.assertIn(len(address), {1, 3, 5})
+            with self.assertRaises(ValueError) as cm:
+                server.Server(address, good_app)
+            self.assertEqual(str(cm.exception),
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
 
-        # IPv6 localhost only:
-        inst = server.Server(demo_app, '::1')
+        # app not callable:
+        bad_app = BadApp()
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app: not callable: {!r}'.format(bad_app)
+        )
+
+        # IPv6 loopback:
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '::1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'http://[::1]:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.Server(demo_app, '::')
+        inst = server.Server(degu.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '::')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'http://[::1]:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
-        # IPv4 localhost only:
-        inst = server.Server(demo_app, '127.0.0.1')
+        # IPv4 loopback:
+        inst = server.Server(degu.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '127.0.0.1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'http://127.0.0.1:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('127.0.0.1', port))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.Server(demo_app, '127.0.0.1')
+        inst = server.Server(degu.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'http')
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '127.0.0.1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'http://127.0.0.1:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('0.0.0.0', port))
+        self.assertIs(inst.app, good_app)
+
+    def test_repr(self):
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Server({!r}, {!r})'.format(inst.address, good_app)
+        )
+
+        class Custom(server.Server):
+            pass
+
+        inst = Custom(degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Custom({!r}, {!r})'.format(inst.address, good_app)
+        )
 
     def test_build_base_environ(self):
         class ServerSubclass(server.Server):
-            def __init__(self, bind_address, port):
-                self.bind_address = bind_address
-                self.port = port
+            def __init__(self, address):
+                self.address = address
 
-        bind_address = random_id()
-        port = random_id()
-        inst = ServerSubclass(bind_address, port)
+        address = (random_id(), random_id())
+        inst = ServerSubclass(address)
         self.assertEqual(inst.build_base_environ(), {
-            'server': (bind_address, port),
+            'server': address,
             'scheme': 'http',
             'rgi.ResponseBody': base.Output,
             'rgi.FileResponseBody': base.FileOutput,
@@ -605,13 +631,13 @@ class TestSSLServer(TestCase):
     def test_init(self):
         # sslctx is not an ssl.SSLContext:
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer('foo', demo_app, '::1')
+            server.SSLServer('foo', degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, demo_app, '::1')
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception),
             'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
@@ -627,86 +653,106 @@ class TestSSLServer(TestCase):
         # not (options & ssl.OP_NO_COMPRESSION)
         sslctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, demo_app, '::1')
+            server.SSLServer(sslctx, '::1', good_app)
         self.assertEqual(str(cm.exception),
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
         # Good sslctx from here on:
         sslctx.options |= ssl.OP_NO_COMPRESSION
-
-        class Bad:
-            pass
-
-        # App not callable
-        bad = Bad()
+        
+        # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            server.SSLServer(sslctx, bad, '::1')
-        self.assertEqual(
-            str(cm.exception),
-            'app not callable: {!r}'.format(bad)
+            server.SSLServer(sslctx, '192.168.1.1', good_app)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
         )
 
-        # Bad bind_address:
-        with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, demo_app, '192.168.1.1')
-        self.assertEqual(str(cm.exception), "invalid bind_address: '192.168.1.1'")
+        # Wrong number of items in address tuple:
+        bad_addresses = [
+            ('::1',),
+            ('127.0.0.1',),
+            ('::1', 0, 0),
+            ('127.0.0.1', 0, 0),
+            ('::1', 0, 0, 0, 0),
+            ('127.0.0.1', 0, 0, 0, 0),
+        ]
+        for address in bad_addresses:
+            self.assertIn(len(address), {1, 3, 5})
+            with self.assertRaises(ValueError) as cm:
+                server.SSLServer(sslctx, address, good_app)
+            self.assertEqual(str(cm.exception),
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
 
-        # IPv6 localhost only:
-        inst = server.SSLServer(sslctx, demo_app, '::1')
+        # app not callable:
+        bad_app = BadApp()
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app: not callable: {!r}'.format(bad_app)
+        )
+
+        # IPv6 loopback:
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '::1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
         # IPv6 any:
-        inst = server.SSLServer(sslctx, demo_app, '::')
+        inst = server.SSLServer(sslctx, degu.IPv6_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '::')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'https://[::1]:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::', port, 0, 0))
+        self.assertIs(inst.app, good_app)
 
-        # IPv4 localhost only:
-        inst = server.SSLServer(sslctx, demo_app, '127.0.0.1')
+        # IPv4 loopback:
+        inst = server.SSLServer(sslctx, degu.IPv4_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '127.0.0.1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('127.0.0.1', port))
+        self.assertIs(inst.app, good_app)
 
         # IPv4 any:
-        inst = server.SSLServer(sslctx, demo_app, '127.0.0.1')
+        inst = server.SSLServer(sslctx, degu.IPv4_ANY, good_app)
         self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
-        self.assertIs(inst.app, demo_app)
         self.assertIsInstance(inst.sock, socket.socket)
-        self.assertEqual(inst.bind_address, '127.0.0.1')
-        self.assertIsInstance(inst.port, int)
-        self.assertEqual(inst.port, inst.sock.getsockname()[1])
-        self.assertEqual(inst.url, 'https://127.0.0.1:{:d}/'.format(inst.port))
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('0.0.0.0', port))
+        self.assertIs(inst.app, good_app)
+
+    def test_repr(self):
+        sslctx = base.build_base_sslctx()
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+        )
+
+        class Custom(server.SSLServer):
+            pass
+
+        inst = Custom(sslctx, degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(repr(inst),
+            'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+        )
 
     def test_build_base_environ(self):
         class SSLServerSubclass(server.SSLServer):
-            def __init__(self, bind_address, port):
-                self.bind_address = bind_address
-                self.port = port
+            def __init__(self, address):
+                self.address = address
 
-        bind_address = random_id()
-        port = random_id()
-        inst = SSLServerSubclass(bind_address, port)
+        address = (random_id(), random_id())
+        inst = SSLServerSubclass(address)
         self.assertEqual(inst.build_base_environ(), {
-            'server': (bind_address, port),
+            'server': address,
             'scheme': 'https',
             'rgi.ResponseBody': base.Output,
             'rgi.FileResponseBody': base.FileOutput,
@@ -785,7 +831,7 @@ def timeout_app(request):
 
 class TestLiveServer(TestCase):
     def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(build_func, *build_args)
+        httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
   
     def test_chunked_request(self):
@@ -917,17 +963,17 @@ def ssl_app(request):
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, build_func, *build_args)
+        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
         return (httpd, httpd.get_client())
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, None, ssl_app)
+        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, None, ssl_app)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
 
         # Test from a non-SSL client:
-        client = Client(httpd.hostname, httpd.port)
+        client = Client(httpd.address)
         with self.assertRaises(ConnectionResetError) as cm:
             client.request('GET', '/')
         self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
