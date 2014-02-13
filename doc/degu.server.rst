@@ -53,9 +53,10 @@ Bind *address*
 --------------
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
-must be a 4-tuple for IPv6 and a 2-tuple for IPv4.  This *address* argument is
-passed directly to `socket.socket.bind()`_, thereby giving you access to full IPv6
-address semantics, including the *scopeid* needed for `link-local addresses`_.
+must be a 4-tuple for IPv6 or a 2-tuple for IPv4.  This *address* argument is
+passed directly to `socket.socket.bind()`_, thereby giving you access to full
+IPv6 address semantics, including the *scopeid* needed for
+`link-local addresses`_.
 
 .. note::
 
@@ -68,7 +69,7 @@ address semantics, including the *scopeid* needed for `link-local addresses`_.
 Typically you will use Degu for per-user server instances listening on random,
 unprivileged ports (as opposed to system-wide server instances listening on
 static, privileged ports).  In this case, ``address[1]`` (the port) should be
-``0``.  For example, to bind to the IPv6 any-IP address, you would supply this
+``0``.  For example, to bind to the IPv6 any-IP address, you would specify this
 *address*::
 
     ('::', 0, 0, 0)
