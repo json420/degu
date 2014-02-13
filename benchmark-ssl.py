@@ -4,6 +4,7 @@ import time
 import logging
 import json
 
+from degu import IPv6_LOOPBACK
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempSSLServer
 
@@ -32,7 +33,7 @@ def echo_app(request):
 
 
 pki = TempPKI(client_pki=True)
-server = TempSSLServer(pki, None, echo_app)
+server = TempSSLServer(pki, IPv6_LOOPBACK, None, echo_app)
 client = server.get_client()
 print(client)
 

@@ -4,6 +4,7 @@ import time
 import logging
 import json
 
+from degu import IPv6_LOOPBACK
 from degu.sslhelpers import random_id
 from degu.misc import TempServer
 
@@ -31,7 +32,7 @@ def echo_app(request):
     return (200, 'OK', headers, body)
 
 
-server = TempServer(None, echo_app)
+server = TempServer(IPv6_LOOPBACK, None, echo_app)
 client = server.get_client()
 print(client)
 
