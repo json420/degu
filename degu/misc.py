@@ -22,8 +22,9 @@
 """
 Some tools for unit testing.
 
-This module imports things that often wouldn't normally be needed, so thus this
-separate module helps keep the baseline memory footprint lower.
+This module imports things that often wouldn't normally be needed except for
+unit testing, so thus this separate module helps keep the baseline memory
+footprint lower.
 """
 
 import tempfile
@@ -55,6 +56,28 @@ def echo_app(request):
     if request['method'] == 'HEAD':
         return (200, 'OK', headers, None)
     return (200, 'OK', headers, body)
+
+
+def address_to_url(scheme, address):
+    """
+    Convert `Server.address` into a URL.
+
+    For example:
+
+    >>> address_to_url('https', ('::1', 54321, 0, 0))
+    'https://[::1]:54321/'
+
+    >>> address_to_url('http', ('127.0.0.1', 54321))
+    'http://127.0.0.1:54321/'
+
+    """
+    assert scheme in ('http', 'https')
+    assert isinstance(address, tuple)
+    assert len(address) in {4, 2}
+    if len(address) == 2:  # IPv4?
+        return '{}://{}:{:d}/'.format(scheme, address[0], address[1])
+    # More better, IPv6:
+    return '{}://[{}]:{}/'.format(scheme, address[0], address[1])
 
 
 class TempPKI(PKI):
@@ -105,6 +128,7 @@ class TempServer(_TempProcess):
         (self.process, self.address) = start_server(
             address, build_func, *build_args
         )
+        self.url = address_to_url('http', self.address)
 
     def get_client(self):
         return Client(self.address)
@@ -117,6 +141,7 @@ class TempSSLServer(_TempProcess):
         (self.process, self.address) = start_sslserver(
             sslconfig, address, build_func, *build_args
         )
+        self.url = address_to_url('https', self.address)
 
     def get_client(self, sslconfig=None):
         if sslconfig is None:
