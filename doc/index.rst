@@ -38,6 +38,7 @@ Contents:
 
     install
     bugs
+    degu
     degu.server
     degu.client
     rgi

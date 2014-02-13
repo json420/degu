@@ -25,9 +25,9 @@ And then start the server by calling :meth:`Server.serve_forever()`.
 However, note that :meth:`Server.serve_forever()` will block the calling thread
 forever.  When embedding Degu in desktop and mobile applications, it's best to
 run your server in its own `multiprocessing.Process`_, which you can easily do
-using the :func:`start_server()` helper function, for example:
+using the :func:`degu.start_server()` helper function, for example:
 
->>> from degu.server import start_server
+>>> from degu import start_server
 >>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
 
 You can create a suitable :class:`degu.client.Client` instance with the returned
@@ -83,60 +83,6 @@ server is listening.  In our example, assuming port ``54321`` was assigned,
 the :attr:`Server.address` would be::
 
     ('::', 54321, 0, 0)
-
-
-Constants
----------
-
-:mod:`degu.server` includes handy constants with some common IPv6 and IPv4
-*address* tuples:
-
-.. data:: IPv6_LOOPBACK
-
-    A 4-tuple with the IPv6 loopback-only *address*.
-
-    >>> IPv6_LOOPBACK = ('::1', 0, 0, 0)
-
-
-.. data:: IPv6_ANY
-
-    A 4-tuple with the IPv6 any-IP *address*.
-
-    >>> IPv6_ANY = ('::', 0, 0, 0)
-
-    Note that this address does not allow you to accept connections from
-    `link-local addresses`_.
-
-
-.. data:: IPv4_LOOPBACK
-
-    A 2-tuple with the IPv4 loopback-only *address*.
-
-    >>> IPv4_LOOPBACK = ('127.0.0.1', 0)
-
-
-.. data:: IPv4_ANY
-
-    A 2-tuple with the IPv4 any-IP *address*.
-
-    >>> IPv4_ANY = ('0.0.0.0', 0)
-
-
-Functions
----------
-
-.. function:: start_server(address, build_func, *build_args)
-
-    Start a :class:`Server` in a new process.
-
-    The return value is a ``(process, address)`` tuple.
-
-
-.. function:: start_sslserver(sslconfig, address, build_func, *build_args)
-
-    Start a :class:`SSLServer` in a new process.
-
-    The return value is a ``(process, address)`` tuple.
 
 
 The :class:`Server` class
