@@ -45,7 +45,7 @@ from .base import (
 )
 
 
-SERVER_SOCKET_TIMEOUT = 5
+SERVER_SOCKET_TIMEOUT = 15
 log = logging.getLogger()
 
 
