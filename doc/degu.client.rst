@@ -35,7 +35,7 @@ address::
 The :class:`Client` class
 -------------------------
 
-.. class:: Client(address, default_headers=None)
+.. class:: Client(address, base_headers=None)
 
     .. method:: request(method, uri, headers=None, body=None)
 
@@ -43,7 +43,7 @@ The :class:`Client` class
 The :class:`SSLClient` class
 ----------------------------
 
-.. class:: SSLClient(sslctx, address, default_headers=None)
+.. class:: SSLClient(sslctx, address, base_headers=None)
 
 
 

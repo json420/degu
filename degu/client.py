@@ -159,7 +159,7 @@ def read_response(rfile, method):
 
 
 class Client:
-    def __init__(self, address, default_headers=None):
+    def __init__(self, address, base_headers=None):
         if not isinstance(address, tuple):
             raise TypeError(
                 TYPE_ERROR.format('address', tuple, type(address), address)
@@ -175,18 +175,10 @@ class Client:
         except ValueError:
             # Only send a "host" header for non-numberic hostname:
             self.host = '{}:{}'.format(address[0], address[1])
-
-        if default_headers:
-            default_headers = dict(default_headers)
-            if self.host:
-                default_headers['host'] = self.host
-            self.default_headers = tuple(
-                (key, default_headers[key]) for key in sorted(default_headers)
-            )
-        elif self.host:
-            self.default_headers = (('host', self.host),)
-        else:
-            self.default_headers = None
+        self.base_headers = ({} if base_headers is None else base_headers)
+        assert isinstance(self.base_headers, dict)
+        if self.host:
+            self.base_headers['host'] = self.host
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
@@ -236,8 +228,7 @@ class Client:
                 content_length = os.stat(body.fileno()).st_size
             body = FileOutput(body, content_length)
         validate_request(method, uri, headers, body)
-        if self.default_headers:
-            headers.update(self.default_headers)
+        headers.update(self.base_headers)
         conn = self.connect()
         try:
             preamble = ''.join(iter_request_lines(method, uri, headers))
