@@ -267,7 +267,7 @@ class SSLClient(Client):
         return self.sslctx.wrap_socket(sock, server_hostname=self.host)
 
 
-def create_client(url):
+def create_client(url, base_headers=None):
     """
     Convenience function to create a `Client` from a URL.
 
@@ -281,10 +281,10 @@ def create_client(url):
     if t.scheme != 'http':
         raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
     port = (80 if t.port is None else t.port)
-    return Client((t.hostname, port))
+    return Client((t.hostname, port), base_headers)
 
 
-def create_sslclient(sslctx, url):
+def create_sslclient(sslctx, url, base_headers=None):
     """
     Convenience function to create an `SSLClient` from a URL.
     """
@@ -292,5 +292,5 @@ def create_sslclient(sslctx, url):
     if t.scheme != 'https':
         raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
     port = (443 if t.port is None else t.port)
-    return SSLClient(sslctx, (t.hostname, port))
+    return SSLClient(sslctx, (t.hostname, port), base_headers)
 
