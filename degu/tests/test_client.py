@@ -59,8 +59,8 @@ GOOD_ADDRESSES = (
 HOSTS = (
     None,
     None,
-    'example.com:80',
-    'example.com:443',
+    'example.com',
+    'example.com',
     None,
     None,
 )

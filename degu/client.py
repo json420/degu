@@ -174,7 +174,7 @@ class Client:
             self.host = None
         except ValueError:
             # Only send a "host" header for non-numberic hostname:
-            self.host = '{}:{}'.format(address[0], address[1])
+            self.host = address[0]
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
         if self.host:
