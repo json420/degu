@@ -285,11 +285,8 @@ class Handler:
         request = self.environ.copy()
         try:
             request.update(self.build_request())
-        except EmptyLineError:
+        except (EmptyLineError, socket.timeout):
             return self.shutdown()
-        except ValueError:
-            log.exception('client: %r', request['client'])
-            return self.write_status_only(400, 'Bad Request')
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
