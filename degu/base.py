@@ -159,7 +159,7 @@ def write_chunk(wfile, chunk):
     total += wfile.write(chunk)
     total += wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
-    wfile.flush()
+    # wfile.flush()
     return total
 
 
