@@ -21,7 +21,7 @@ If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
     Also, no promises that the Degu server will be compatible with your favorite
     browser, your favorite embedded WebKit, nor your favorite HTTP client
     library.  In fact, the only client Degu is currently *guaranteed* to be
-    compatible with is :mod:`degu.client`, its internal HTTP client library
+    compatible with is :mod:`degu.client`, its internal HTTP client library.
 
 Before we get into the details of where Degu excels and why, please whet your
 appetite with some code!
@@ -56,9 +56,8 @@ above ``server``:
 >>> client = Client(server.address)
 >>> client.request('GET', '/')
 Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
->>> client.close()
 
-Not bad for 8 lines of code, but we're just getting started!
+Not bad for 7 lines of code, but we're just getting started!
 
 Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
 by ``useless_app()``.  The Degu client API and the RGI application API have
@@ -122,9 +121,8 @@ requests to our ``proxy_server``:
 >>> proxy_client = Client(proxy_server.address)
 >>> proxy_client.request('GET', '/')
 Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
->>> proxy_client.close()
 
-Not bad for 43 lines of code!
+Not bad for 41 lines of code!
 
 
 
@@ -146,7 +144,7 @@ Degu is being designed for:
       concurrent connections without crashing (and without running out of
       memory) is a much different problem than trying to keep a 10 gigabit
       local Ethernet connection fully saturated with just a few connections;
-      Degu is being designed for the later, even at the expense of the former
+      Degu is being designed for the latter, even at the expense of the former
 
     * Modern SSL best-practices, with client cert authentication - one of the
       big advantages of not trying to be compatible with browsers is we can push
