@@ -116,7 +116,7 @@ address:
 
 >>> proxy_server = TempServer(('::1', 0, 0, 0), build_proxy_app, server.address)
 
-As before, we'll need a suitable :class:`degu.client.Client` so we can make
+Finally, we'll need a suitable :class:`degu.client.Client` so we can make
 requests to our ``proxy_server``:
 
 >>> proxy_client = Client(proxy_server.address)
@@ -124,7 +124,7 @@ requests to our ``proxy_server``:
 Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
 >>> proxy_client.close()
 
-Not bad for 43 lines of code.
+Not bad for 43 lines of code!
 
 
 
