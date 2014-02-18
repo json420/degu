@@ -144,9 +144,10 @@ simple functions.
     but could likewise return a new class instance with your simple function as
     an instance attribute, all depending on the decorator in question.
 
-    Degu doesn't do any hard enforcement of this, it just tries to provide an
-    API that makes the right thing the natural thing (even if it might funnel
-    you toward the correct destination with a lot of friendly road cones).
+    Degu itself doesn't do any hard enforcement of this either way, but Degu
+    does try to provide an API that makes the "right" thing feel like the
+    "natural" thing (even if it might funnel you toward the *correct*
+    destination with a lot of friendly road cones).
 
 Looked at another way, the Degu API encourages us *not* to import unnecessary
 modules in our application's main process, and *not* to create unnecessary
@@ -196,12 +197,25 @@ Where Degu excels
 
 Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
 communication on the local network, and in particular if your implementing
-symmetric, P2P communication in order to expose rich applications and deep
-platform integration over HTTP.
+symmetric, P2P communication in order to expose rich applications features and
+deep platform integration over HTTP.
 
 Degu is being designed for:
 
-    * Security, even at the expense of compatability
+    * Security, even at the expense of compatibility - the more secure Degu can
+      be, the more we can consider exposing highly interesting platform features
+      over HTTP
+
+    * High-throughput at low-concurrency - being able to handle a million
+      concurrent connections without crashing (and without running out of
+      memory) is a much different problem than trying to keep a 10 gigabit
+      local Ethernet connection fully saturated with just a few connections;
+      Degu is being designed for the later, even at the expense of the former
+
+    * Modern SSL best-practices, with client cert authentication - one of the
+      big advantages of not trying to be compatible with browsers is we can push
+      the limit when it comes to secure but user-friendly security, privacy, and
+      authentication.
 
 
 
