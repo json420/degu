@@ -5,6 +5,13 @@ Degu
 suited for implementing REST APIs for device-to-device communication on the
 local network.
 
+.. warning::
+
+    The Degu API is **not yet stable!**  Even the API documented here is still
+    subject to change, although hopefully only subtle changes.  However, please
+    expect gratuitous and frequent breakage if you venture into any of the
+    currently *undocumented* API :)
+
 Degu includes:
 
     * **A lightweight HTTP server** that's easy to embed in desktop and mobile
@@ -36,6 +43,7 @@ Contents:
 .. toctree::
     :maxdepth: 2
 
+    tutorial
     install
     bugs
     degu
