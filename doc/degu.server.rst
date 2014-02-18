@@ -4,6 +4,7 @@
 .. module:: degu.server
    :synopsis: Embedded HTTP Server
 
+
 As a quick example, say you have this simple RGI application:
 
 >>> def hello_world_app(request):

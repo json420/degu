@@ -34,12 +34,23 @@ Birds Eye View
 RGI applications take a single *request* argument, somewhat similar to the WSGI
 *environ*.  For example:
 
+.. testsetup::
+
+    from os import path
+    from tempfile import TemporaryDirectory
+    from degu.base import Input
+
+    _tmpdir = TemporaryDirectory()
+    _rfile_name = path.join(_tmpdir.name, 'rfile')
+    open(_rfile_name, 'xb').close()
+    rfile = open(_rfile_name, 'rb')
+
 >>> request = {
 ...     'method': 'POST',
 ...     'script': ['foo'],
 ...     'path': ['bar', 'baz'],
 ...     'query': 'hello=world',
-...     'body': Input(rfile, content_length),  # Explained below
+...     'body': Input(rfile, 1776),  # Explained below
 ...     'headers': {
 ...         'accept': 'application/json',
 ...         'content-length': 1776,
@@ -63,7 +74,7 @@ application when making its HTTP client request.
 An RGI application must return a ``(status, reason, headers, body)`` response
 tuple, for example:
 
->>> response = (200, 'OK', {'content-type': 'application/json'}, b'{"Hello": "World"}")
+>>> response = (200, 'OK', {'content-type': 'application/json'}, b'{"Hello": "World"}')
 
 RGI doesn't use anything like the WSGI ``start_response()`` callable.  Instead,
 applications and middleware convey the HTTP response in total via a single
