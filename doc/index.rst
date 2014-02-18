@@ -36,19 +36,21 @@ Daily Builds PPA`_.
 If you have questions or need help getting started with Degu, please stop by the
 `#novacut`_ IRC channel on freenode.
 
-Degu is licensed `LGPLv3+`_, and requires `Python 3.3`_ or newer.
+Degu is licensed `LGPLv3+`_, and requires `Python 3.3`_ or newer. Also, be
+warned that Degu will shortly require `Python 3.4`_ or newer.
 
 Contents:
 
 .. toctree::
     :maxdepth: 2
 
-    tutorial
     install
     bugs
+    tutorial
     degu
     degu.server
     degu.client
+    degu.misc
     rgi
 
 
@@ -64,3 +66,4 @@ Contents:
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
 .. _`Python 3.3`: http://docs.python.org/3.3/
+.. _`Python 3.4`: http://docs.python.org/3.4/

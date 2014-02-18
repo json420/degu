@@ -1,8 +1,7 @@
 Tutorial
 ========
 
-
-Before "Shinny new web-server for Python3!" lust-O-vision carries you too far
+Before "Shinny new web server for Python3!" lust-O-vision carries you too far
 along, let's immediately clarify where Degu is *not* a good fit, because chances
 are, these aren't the "python3 web server" you're looking for.
 
@@ -20,37 +19,39 @@ If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
 .. warning::
 
     Also, no promises that the Degu server will be compatible with your favorite
-    browser, your favorite embedded WebKit, your favorite HTTP client library,
-    etc.  In fact, the only client Degu is *guaranteed* to be compatible with is
-    *itself* (via :mod:`degu.client`, its internal HTTP client library)
+    browser, your favorite embedded WebKit, nor your favorite HTTP client
+    library.  In fact, the only client Degu is *guaranteed* to be compatible
+    with is *itself* (via :mod:`degu.client`, its internal HTTP client library)
 
 So, yeah, also that.  Note that when it comes to this 2nd warning, the Novacut
 team is happy to accept patches and suggestions needed for the Degu server to
-work well with *most* any well-behaved HTTP client, as long as such changes
+work well with *most* any *well-behaved* HTTP client, as long as such changes
 don't reduce our warm-fuzzy security feelings or otherwise compromise where we
 need Degu to be stunning.
 
 When the Degu server isn't compatible with a specific HTTP client, it's likely
 just a lack of knowledge on our part, although perhaps not always.  For what
 it's worth, we have extensive unit tests currently running that work with the
-CouchDB replicator as a client, and we've also tested quite a bit using Python's
-``http.client``, although that's not in our current unit tests (something we
-should fix).
+`CouchDB`_ replicator as a client, and we've also tested quite a bit using
+Python's `http.client`_, although that's not in our current unit tests
+(something we should fix).
 
 Likewise, there's no reason the Degu client shouldn't work with a wide-range of
-well-behaved HTTP servers.  We know the Degu client works well with the CouchDB
-server (from both from painfully extensive unit tests, and our use in
-production), and works well with Apache 2.4 (via our use in production).
+well-behaved HTTP servers.  We know the Degu client works well with the
+`CouchDB`_ server (from both from painfully extensive unit tests and our use in
+production), and works well with `Apache 2.4`_ (via our use in production).
 
 However, be warned that the outlook is grim if you hope we'll budge on that
-first warning.  There are many excellent, existing servers that allow you to run
+1st warning.  There are many excellent existing servers that allow you to run
 Python-powered websites, including on a number of excellent Python-powered web
 servers.  But there are fundamentally opposing reason why we couldn't use those
-existing servers for Novacut, and why Degu is weak where those existing servers
-are strong, yet Degu is strong where those existing servers are weak.
+existing servers for the embedded Dmedia/Novacut server, and why Degu is weak
+where those existing servers are strong, yet Degu is strong where those existing
+servers are weak.
 
-But before we get into the details of where Degu excels, please whet your
+Before we get into the details of where Degu excels and why, please whet your
 appetite with some code!
+
 
 
 READY! SET! GO!
@@ -115,7 +116,7 @@ It's likewise fun and easy to create an *additional* throw-away HTTP server on
 which to run this ``ProxyApp``.
 
 However, this case is slightly more complicated as the RGI callable will be a
-``ProxyApp`` instance instead of a simple function.  So this time we'll need to
+``ProxyApp`` instance rather than a simple function.  So this time we'll need to
 specify a *build_func*:
 
 >>> def build_proxy_app(address):
@@ -124,23 +125,28 @@ specify a *build_func*:
 ...     return ProxyApp(client)
 ...
 
-Previously we used the default *build_func* of ``None`` and then passed a single
-argument, the ``useless_app()`` simple function.
+Previously we passed a *build_func* of ``None`` in order to specify the default
+*build_func*, which takes a single argument, our ``useless_app()`` simple
+function (or any other simple function to be used as the RGI callable).
 
-In order to avoid subtle problems when pickling and un-pickling complex objects
+In order to avoid subtle problems with pickling and un-pickling complex objects
 on their way to a new ``multiprocessing.Process``, the Degu API encourages us
 to pass only simple functions and simple data structures to a new process.  A
-good rule of thumb is to pass only JSON-serialize data structures, plus simple
-functions.
+good rule of thumb is to pass only JSON-serializable data structures, plus
+simple functions.
 
 .. note::
 
     When is a function not "simple"?  We consider any dyed-in-the-wool Python
     function (aka, not a method, not a callable instance) to be a "simple
     function".  But the place to be careful is with decorators, which might
-    return your same simple function merely with a special attribute set, but
-    could likewise return a class instance with an instance attribute references
-    your simple function, all depending on the decorator in question.
+    return your same simple function merely with a special attribute assigned,
+    but could likewise return a new class instance with your simple function as
+    an instance attribute, all depending on the decorator in question.
+
+    Degu doesn't do any hard enforcement of this, it just tries to provide an
+    API that makes the right thing the natural thing (even if it might funnel
+    you toward the correct destination with a lot of friendly road cones).
 
 Looked at another way, the Degu API encourages us *not* to import unnecessary
 modules in our application's main process, and *not* to create unnecessary
@@ -149,8 +155,8 @@ said main process).
 
 Which all might seem a bit odd, but remember, Degu is meant to be embedded in
 desktop and mobile applications.  During a given application's process lifetime,
-it might never need to start its embedded Degu server.  So don't make that
-process's memory footprint needlessly larger :)
+it might never need to start its embedded Degu server.  So please don't make
+that process's memory footprint needlessly larger!
 
 For example, thus far we haven't directly imported :mod:`degu.client`, which you
 can see ``build_proxy_app()`` lazily imports in its function scope.  The new
@@ -162,13 +168,27 @@ address:
 
 >>> proxy_server = TempServer(('::1', 0, 0, 0), build_proxy_app, client.address)
 
-If our main application process were to pass an object instance to the new
-process, our main application process needs to have imported the module defining
-the needed class, in order to create said instance.  But is that module actually
-used by the main process?
+As before, we'll need a suitable :class:`degu.client.Client` so we can make
+requests to our ``proxy_server``:
 
-In our example, we haven't directly imported :mod:`degu.client` thus far, which
-is why ``build_proxy_app()`` imports it in function-scope.
+>>> proxy_client = proxy_server.get_client()
+>>> proxy_client.request('GET', '/')
+Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
+>>> proxy_client.close()
+
+In these mere 28 lines, we:
+
+    * Defined a simple (though useless) RGI app
+    * Created a destination server running the above app
+    * Created an HTTP client that can connect to the above server
+    * Defined a darn near complete reverse-proxy RGI app
+    * Created a 2nd server running the above reverse-proxy app
+    * Created a 2nd client that can connect to the above proxy server
+    * Made a request to the proxy server, onto the destination server, with a
+      response moving all the way back up to out outer proxy client
+
+Good enough for government work, and then some.
+
 
 
 Where Degu excels
@@ -188,3 +208,6 @@ Degu is being designed for:
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
+.. _`http.client`: http://docs.python.org/3/library/http.client.html
+.. _`CouchDB`: http://couchdb.apache.org/
+.. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
