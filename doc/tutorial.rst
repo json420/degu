@@ -83,14 +83,14 @@ above ``server``:
 Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
 >>> client.close()
 
-Not bad for 8 lines of code, but we're just getting started.
+Not bad for 8 lines of code, but we're just getting started!
 
 Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
 by ``useless_app()``.  The Degu client API carefully complements the RGI
 application API.  Think of them almost like inverse functions.
 
 Moving on up, this is a :doc:`rgi` application that implements a surprisingly
-complete and useful reverse-proxy:
+complete and useful `reverse-proxy`_:
 
 >>> from degu.base import build_uri, make_output_from_input
 >>> class ProxyApp:
@@ -160,7 +160,7 @@ that process's memory footprint needlessly larger!
 
 For example, thus far we haven't directly imported :mod:`degu.client`, which you
 can see ``build_proxy_app()`` lazily imports in its function scope.  The new
-process just needs to be passed the *address* tuple, not an actual
+process just needs to be passed an *address* tuple, not an actual
 :class:`degu.client.Client` instance.
 
 Anyway, for even more fun, we'll bind this 2nd HTTP server to the IPv6 loopback
@@ -176,7 +176,7 @@ requests to our ``proxy_server``:
 Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
 >>> proxy_client.close()
 
-In these mere 28 lines, we:
+In these mere 36 lines, we:
 
     * Defined a simple (though useless) RGI app
     * Created a destination server running the above app
@@ -187,15 +187,15 @@ In these mere 28 lines, we:
     * Made a request to the proxy server, onto the destination server, with a
       response moving all the way back up to out outer proxy client
 
-Good enough for government work, and then some.
+Good enough for government work, and then some!
 
 
 
 Where Degu excels
 -----------------
 
-On the other hand, Degu is a *fantastic* fit if you're implementing REST APIs
-for device-to-device communication on the local network, and in particular
+Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
+communication on the local network, and in particular if your implementing
 symmetric, P2P communication in order to expose rich applications and deep
 platform integration over HTTP.
 
@@ -205,9 +205,9 @@ Degu is being designed for:
 
 
 
-
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
 .. _`http.client`: http://docs.python.org/3/library/http.client.html
 .. _`CouchDB`: http://couchdb.apache.org/
 .. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
+.. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
