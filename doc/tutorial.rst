@@ -1,9 +1,7 @@
 Tutorial
 ========
 
-Before "Shinny new web server for Python3!" lust-O-vision carries you too far
-along, let's immediately clarify where Degu is *not* a good fit, because chances
-are, these aren't the "python3 web server" you're looking for.
+Let's immediately clarify where Degu is *not* a good fit:
 
 .. warning::
 
@@ -130,7 +128,7 @@ Where Degu excels
 -----------------
 
 Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
-communication on the local network, and in particular if your implementing
+communication on the local network, and in particular if you're implementing
 symmetric, P2P communication in order to expose rich applications features and
 deep platform integration over HTTP.
 
@@ -140,17 +138,14 @@ Degu is being designed for:
       be, the more we can consider exposing highly interesting platform features
       over HTTP
 
-    * High-throughput at low-concurrency - being able to handle a million
-      concurrent connections without crashing (and without running out of
-      memory) is a much different problem than trying to keep a 10 gigabit
-      local Ethernet connection fully saturated with just a few connections;
+    * High-throughput at low-concurrency - being able to handle 100k concurrent
+      connections without crashing (and without running out of memory) doesn't
+      mean you can keep a 10 gigabit local Ethernet connection saturated with
+      just a few concurrent connections;
       Degu is being designed for the latter, even at the expense of the former
 
-    * Modern SSL best-practices, with client cert authentication - one of the
-      big advantages of not trying to be compatible with browsers is we can push
-      the limit when it comes to secure but user-friendly security, privacy, and
-      authentication.
-
+    * Modern SSL best-practices - Degu is highly restrictive in how it will
+      configure an `ssl.SSLContext`_
 
 
 .. _`gunicorn`: http://gunicorn.org/
@@ -159,3 +154,4 @@ Degu is being designed for:
 .. _`CouchDB`: http://couchdb.apache.org/
 .. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
 .. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
+.. _`ssl.SSLContext`: http://docs.python.org/3/library/ssl.html#ssl-contexts
