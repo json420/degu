@@ -113,7 +113,7 @@ So in this case, it's best to specify a *build_func*:
 
 It's likewise easy to create throw-away SSL certificates chains, and a
 throw-away HTTPS server on which to run our ``ProxyApp``.  We'll create a server
-that accepts connections on any IPv6 address (and only from clients with a
+that accepts connections on any IPv6 address (but only from clients with a
 client certificate signed by the correct client certificate authority):
 
 >>> from degu.misc import TempPKI, TempSSLServer
