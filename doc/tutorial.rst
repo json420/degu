@@ -6,43 +6,53 @@ Let's immediately clarify where Degu is *not* a good fit:
 .. warning::
 
     Degu is *not* meant for production web-sites, public REST APIs, nor any
-    other public HTTP server reachable across the Internet.  To whatever extent
-    Degu might seem usable as a production Internet server (or a even
-    high-traffic *Intranet* server), this will be purely by coincidence and is
-    not something you should count on going forward!
+    other public HTTP server reachable across the Internet.  The Degu server
+    only supports a subset of HTTP 1.1 features and is likely not compatible
+    with a broad range of HTTP clients.
 
 If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
-`modwsgi`_, two excellent ways to get your Python3 + HTTP server fix.
+`modwsgi`_.
 
-.. warning::
+**So where is Degu a good fit?**
 
-    Also, no promises that the Degu server will be compatible with your favorite
-    browser, your favorite embedded WebKit, nor your favorite HTTP client
-    library.  In fact, the only client Degu is currently *guaranteed* to be
-    compatible with is :mod:`degu.client`, its internal HTTP client library.
+Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
+communication on the local network.  In particular, Degu is aimed at P2P
+services that expose rich applications and even platform features over HTTP
+(secured with SSL, using client certificates for authentication).
 
-Before we get into the details of where Degu excels and why, please whet your
-appetite with some code!
+Degu is a Python3 library that provides both an HTTP server and a matching HTTP
+client.  In a nutshell, the typical Degu usage pattern is:
+
+    1. Application starts an embedded :class:`degu.server.SSLServer` on a
+       random, unprivileged port
+
+    2. Application advertises this server to peers on the local network using
+       `Avahi`_ or similar
+
+    3. Peers use a :class:`degu.client.SSLClient` to make requests to this
+       server for structured data sync, file transfer, RPC, or whatever else the
+       application REST API might expose
 
 
 
-READY! SET! GO!
----------------
+Example: SSL reverse-proxy
+--------------------------
 
-This is an utterly minimal :doc:`rgi` application:
+Here's a minimal :doc:`rgi` application:
 
->>> def useless_app(request):
-...     return (200, 'OK', {'hello': 'world'}, None)
+>>> def example_app(request):
+...     return (200, 'OK', {'x-msg': 'Hello world'}, None)
 ...
 
-Sure, it's *also* completely useless, but still a working example in 2 lines of
-code.
+Although not particularly useful, it's still a working example in only 2 lines
+of code.
 
 It's fun and easy to create a throw-away HTTP server on which to run our
-``useless_app()``:
+``example_app``.  We'll create a sever that only accepts connections from the
+IPv4 looback device:
 
 >>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), None, useless_app)
+>>> server = TempServer(('127.0.0.1', 0), None, example_app)
 
 That just spun-up a :class:`degu.server.Server` in a new
 ``multiprocessing.Process`` (which, BTW, will be automatically terminated when the :class:`degu.misc.TempServer` instance is garbage collected).
@@ -53,14 +63,11 @@ above ``server``:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 >>> client.request('GET', '/')
-Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
-
-Not bad for 7 lines of code, but we're just getting started!
+Response(status=200, reason='OK', headers={'x-msg': 'Hello world'}, body=None)
 
 Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
-by ``useless_app()``.  The Degu client API and the RGI application API have
-been designed to complement each other.  Think of them almost like inverse
-functions.
+by ``example_app``.  The Degu client API and the RGI application API have been
+designed to complement each other.  Think of them almost like inverse functions.
 
 For example, here's an RGI application that implements a `reverse-proxy`_:
 
@@ -92,47 +99,46 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...         )
 ...
 
-It's likewise fun and easy to create an *additional* throw-away HTTP server on
-which to run this ``ProxyApp``.
+This case is slightly more complicated as the RGI callable will be a
+``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
+problems when pickling and un-pickling complex objects on their way to a new ``multiprocessing.Process``, it's best to pass only functions and simple data
+structures to a new process.  This approach also avoids importing unnecessary
+modules and using unnecessary resources in your main application process.
 
-However, this case is slightly more complicated as the RGI callable will be a
-``ProxyApp`` instance rather than a plain function.  So this time we'll need to
-specify a *build_func*:
+So in this case, it's best to specify a *build_func*:
 
 >>> def build_proxy_app(address):
 ...     return ProxyApp(address)
 ...
 
-In order to avoid subtle problems when pickling and un-pickling complex objects
-on their way to a new ``multiprocessing.Process``, it's best to pass only
-functions and simple data structures to a new process (although this isn't a
-strict requirement).
+It's likewise easy to create throw-away SSL certificates chains, and a
+throw-away HTTPS server on which to run our ``ProxyApp``.  We'll create a server
+that accepts connections on any IPv6 address (and only from clients with a
+client certificate signed by the correct client certificate authority):
 
-Anyway, for even more fun, we'll bind this 2nd HTTP server to the IPv6 loopback
-address:
+>>> from degu.misc import TempPKI, TempSSLServer
+>>> pki = TempPKI(client_pki=True)
+>>> proxy_server = TempSSLServer(pki, ('::', 0, 0, 0), build_proxy_app, server.address)
 
->>> proxy_server = TempServer(('::1', 0, 0, 0), build_proxy_app, server.address)
+Finally, we'll need a :class:`degu.client.SSLClient` so we can make requests to
+our ``proxy_server``:
 
-Finally, we'll need a suitable :class:`degu.client.Client` so we can make
-requests to our ``proxy_server``:
-
->>> proxy_client = Client(proxy_server.address)
+>>> from degu.client import SSLClient, build_client_sslctx
+>>> sslctx = build_client_sslctx(pki.get_client_config())
+>>> proxy_client = SSLClient(sslctx, proxy_server.address)
 >>> proxy_client.request('GET', '/')
-Response(status=200, reason='OK', headers={'hello': 'world'}, body=None)
+Response(status=200, reason='OK', headers={'x-msg': 'Hello world'}, body=None)
 
-Not bad for 41 lines of code!
+This example is based on real-world Degu usage.  This is more or less how
+`Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_ (although many details
+were left out for brevity).
 
 
 
-Where Degu excels
------------------
+Trade-offs
+----------
 
-Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
-communication on the local network, and in particular if you're implementing
-symmetric, P2P communication in order to expose rich applications features and
-deep platform integration over HTTP.
-
-Degu is being designed for:
+Degu is focused on:
 
     * Security, even at the expense of compatibility - the more secure Degu can
       be, the more we can consider exposing highly interesting platform features
@@ -141,16 +147,20 @@ Degu is being designed for:
     * High-throughput at low-concurrency - being able to handle 100k concurrent
       connections without crashing (and without running out of memory) doesn't
       mean you can keep a 10 gigabit local Ethernet connection saturated with
-      just a few concurrent connections;
-      Degu is being designed for the latter, even at the expense of the former
+      just a few concurrent connections; Degu is being optimized for the latter,
+      even at the expense of the former
 
     * Modern SSL best-practices - Degu is highly restrictive in how it will
       configure an `ssl.SSLContext`_
 
+    * Exposing full IPv6 address semantics, even though 
+
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
+.. _`Avahi`: http://avahi.org/
 .. _`http.client`: http://docs.python.org/3/library/http.client.html
+.. _`Dmedia`: https://launchpad.net/dmedia
 .. _`CouchDB`: http://couchdb.apache.org/
 .. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
 .. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
