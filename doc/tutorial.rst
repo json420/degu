@@ -20,8 +20,8 @@ communication on the local network.  In particular, Degu is aimed at P2P
 services that expose rich applications and even platform features over HTTP
 (secured with SSL, using client certificates for authentication).
 
-Degu is a Python3 library that provides both an HTTP server and a matching HTTP
-client.  In a nutshell, the typical Degu usage pattern is:
+Degu is a `Python3`_ library that provides both an HTTP server and a matching
+HTTP client.  In a nutshell, the typical Degu usage pattern is:
 
     1. Application starts an embedded :class:`degu.server.SSLServer` on a
        random, unprivileged port
@@ -55,7 +55,7 @@ IPv4 looback device:
 >>> server = TempServer(('127.0.0.1', 0), None, example_app)
 
 That just spun-up a :class:`degu.server.Server` in a new
-``multiprocessing.Process`` (which, BTW, will be automatically terminated when the :class:`degu.misc.TempServer` instance is garbage collected).
+`multiprocessing.Process`_ (which, BTW, will be automatically terminated when the :class:`degu.misc.TempServer` instance is garbage collected).
 
 Now we'll need a :class:`degu.client.Client` so we can make requests to our
 above ``server``:
@@ -101,7 +101,7 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 
 This case is slightly more complicated as the RGI callable will be a
 ``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
-problems when pickling and un-pickling complex objects on their way to a new ``multiprocessing.Process``, it's best to pass only functions and simple data
+problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
 structures to a new process.  This approach also avoids importing unnecessary
 modules and using unnecessary resources in your main application process.
 
@@ -158,7 +158,9 @@ Degu is focused on:
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
+.. _`Python3`: http://docs.python.org/3/
 .. _`Avahi`: http://avahi.org/
+.. _`multiprocessing.Process`: http://docs.python.org/3/library/multiprocessing.html#the-process-class
 .. _`http.client`: http://docs.python.org/3/library/http.client.html
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`CouchDB`: http://couchdb.apache.org/
