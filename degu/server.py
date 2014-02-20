@@ -32,7 +32,7 @@ from .base import (
     TYPE_ERROR,
     EmptyLineError,
     build_base_sslctx,
-    validate_sslctx,
+    validate_base_sslctx,
     makefiles,
     read_lines_iter,
     parse_headers,
@@ -532,7 +532,7 @@ class SSLServer(Server):
     scheme = 'https'
 
     def __init__(self, sslctx, address, app):
-        validate_sslctx(sslctx)
+        validate_base_sslctx(sslctx)
         super().__init__(address, app)
         self.sslctx = sslctx
 

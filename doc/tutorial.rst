@@ -103,7 +103,7 @@ This case is slightly more complicated as the RGI callable will be a
 ``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
 problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
 structures to a new process.  This approach also avoids importing unnecessary
-modules and using unnecessary resources in your main application process.
+modules and consuming unnecessary resources in your main application process.
 
 So in this case, it's best to specify a *build_func*:
 
@@ -119,6 +119,9 @@ client certificate signed by the correct client certificate authority):
 >>> from degu.misc import TempPKI, TempSSLServer
 >>> pki = TempPKI(client_pki=True)
 >>> proxy_server = TempSSLServer(pki, ('::', 0, 0, 0), build_proxy_app, server.address)
+
+That just spun-up a :class:`degu.server.SSLServer` in a new
+`multiprocessing.Process`_ (which, BTW, will be automatically terminated when the :class:`degu.misc.TempSSLServer` instance is garbage collected).
 
 Finally, we'll need a :class:`degu.client.SSLClient` so we can make requests to
 our ``proxy_server``:
@@ -153,7 +156,9 @@ Degu is focused on:
     * Modern SSL best-practices - Degu is highly restrictive in how it will
       configure an `ssl.SSLContext`_
 
-    * Exposing full IPv6 address semantics, even though 
+    * Exposing full IPv6 address semantics - on both the server and client, you
+      use a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
+      needed for `link-local addresses`_
 
 
 .. _`gunicorn`: http://gunicorn.org/
@@ -167,3 +172,4 @@ Degu is focused on:
 .. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
 .. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
 .. _`ssl.SSLContext`: http://docs.python.org/3/library/ssl.html#ssl-contexts
+.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6

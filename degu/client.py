@@ -35,7 +35,7 @@ from urllib.parse import urlparse, ParseResult
 from .base import (
     TYPE_ERROR,
     build_base_sslctx,
-    validate_sslctx,
+    validate_base_sslctx,
     makefiles,
     read_lines_iter,
     parse_headers,
@@ -81,7 +81,7 @@ def build_client_sslctx(config):
 
 
 def validate_client_sslctx(sslctx):
-    validate_sslctx(sslctx)
+    validate_base_sslctx(sslctx)
     if sslctx.verify_mode != ssl.CERT_REQUIRED:
         raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
     return sslctx

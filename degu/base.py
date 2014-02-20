@@ -110,7 +110,7 @@ def build_base_sslctx():
     return sslctx
 
 
-def validate_sslctx(sslctx):
+def validate_base_sslctx(sslctx):
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
     if sslctx.protocol != TLS.protocol:

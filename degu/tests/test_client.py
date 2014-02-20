@@ -87,21 +87,21 @@ class TestFunctions(TestCase):
     def test_build_client_sslctx(self):
         # Empty config, will verify against system-wide CAs:
         sslctx = client.build_client_sslctx({})
-        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertIsNone(base.validate_base_sslctx(sslctx))
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 
         # client_pki=False:
         pki = TempPKI()
         client_config = pki.get_client_config()
         sslctx = client.build_client_sslctx(client_config)
-        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertIsNone(base.validate_base_sslctx(sslctx))
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 
         # client_pki=True:
         pki = TempPKI(client_pki=True)
         client_config = pki.get_client_config()
         sslctx = client.build_client_sslctx(client_config)
-        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertIsNone(base.validate_base_sslctx(sslctx))
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
 
     def test_validate_request(self):

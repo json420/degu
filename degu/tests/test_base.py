@@ -156,17 +156,17 @@ class TestFunctions(TestCase):
         self.assertEqual(sslctx.protocol, base.TLS.protocol)
         self.assertTrue(sslctx.options & ssl.OP_NO_SSLv2)
         self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertIsNone(base.validate_base_sslctx(sslctx))
 
     def test_validate_sslctx(self):
         # Bad type:
         with self.assertRaises(TypeError) as cm:
-            base.validate_sslctx('foo')
+            base.validate_base_sslctx('foo')
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad protocol:
         with self.assertRaises(ValueError) as cm:
-            base.validate_sslctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
+            base.validate_base_sslctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
         self.assertEqual(str(cm.exception),
             'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
         )
@@ -182,14 +182,14 @@ class TestFunctions(TestCase):
         # Missing ssl.OP_NO_COMPRESSION:
         sslctx.options |= ssl.OP_NO_SSLv2
         with self.assertRaises(ValueError) as cm:
-            base.validate_sslctx(sslctx)
+            base.validate_base_sslctx(sslctx)
         self.assertEqual(str(cm.exception),
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
         # All good:
         sslctx.options |= ssl.OP_NO_COMPRESSION
-        self.assertIsNone(base.validate_sslctx(sslctx))
+        self.assertIsNone(base.validate_base_sslctx(sslctx))
 
     def test_read_lines_iter(self):
         tmp = TempDir()
