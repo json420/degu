@@ -48,7 +48,7 @@ Although not particularly useful, it's still a working example in only 2 lines
 of code.
 
 It's fun and easy to create a throw-away HTTP server on which to run our
-``example_app``.  We'll create a sever that only accepts connections from the
+``example_app``.  We'll create a server that only accepts connections from the
 IPv4 looback device:
 
 >>> from degu.misc import TempServer
