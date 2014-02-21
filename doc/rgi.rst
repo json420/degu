@@ -51,7 +51,7 @@ RGI applications take a single *request* argument, somewhat similar to the WSGI
 ...     'method': 'POST',
 ...     'script': ['foo'],
 ...     'path': ['bar', 'baz'],
-...     'query': 'hello=world',
+...     'query': 'stuff=junk',
 ...     'body': Input(rfile, 1776),  # Explained below
 ...     'headers': {
 ...         'accept': 'application/json',
@@ -76,7 +76,7 @@ application when making its HTTP client request.
 An RGI application must return a ``(status, reason, headers, body)`` response
 tuple, for example:
 
->>> response = (200, 'OK', {'content-type': 'application/json'}, b'{"Hello": "World"}')
+>>> response = (200, 'OK', {'content-length': 12}, b'hello, world')
 
 RGI doesn't use anything like the WSGI ``start_response()`` callable.  Instead,
 applications and middleware convey the HTTP response in total via a single
@@ -111,7 +111,7 @@ For example, consider this simple RGI app:
 >>> def demo_app(request):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello, world!'
+...     body = b'hello, world'
 ...     headers = {'content-length': len(body)}
 ...     return (200, 'OK', headers, body)
 ...
@@ -119,13 +119,13 @@ For example, consider this simple RGI app:
 Here's what ``demo_app()`` returns for a suitable GET request:
 
 >>> demo_app({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
+(200, 'OK', {'content-length': 12}, b'hello, world')
 
 However, note that ``demo_app()`` isn't actually HTTP 1.1 compliant as it should
 not return a response body for a HEAD request:
 
 >>> demo_app({'method': 'HEAD', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
+(200, 'OK', {'content-length': 12}, b'hello, world')
 
 Now consider this example middleware that checks for just such a faulty
 application and overrides its response:
@@ -145,7 +145,7 @@ application and overrides its response:
 
 >>> middleware = Middleware(demo_app)
 >>> middleware({'method': 'GET', 'path': []})
-(200, 'OK', {'content-length': 13}, b'Hello, world!')
+(200, 'OK', {'content-length': 12}, b'hello, world')
 
 But ``Middleware`` will intercept the faulty response to a HEAD request:
 
@@ -179,7 +179,7 @@ And in terms of the HTTP response, this WSGI application:
 ...     if environ['REQUEST_METHOD'] not in {'GET', 'HEAD'}:
 ...         start_response('405 Method Not Allowed', [])
 ...         return []
-...     body = b'Hello world'
+...     body = b'hello, world'
 ...     headers = [
 ...         ('Content-Length', str(len(body))),
 ...         ('Content-Type', 'text/plain'),
@@ -194,7 +194,7 @@ Would translate into this RGI application:
 >>> def rgi_app(request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello world'
+...     body = b'hello, world'
 ...     headers = {
 ...         'content-length': len(body),
 ...         'content-type': 'text/plain',
