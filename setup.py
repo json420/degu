@@ -47,7 +47,7 @@ def run_sphinx_doctest():
     tree = path.dirname(path.abspath(__file__))
     doc = path.join(tree, 'doc')
     doctest = path.join(tree, 'doc', '_build', 'doctest')
-    cmd = [sys.executable, sphinx_build, '-E', '-b', 'doctest', doc, doctest]
+    cmd = [sys.executable, sphinx_build, '-EW', '-b', 'doctest', doc, doctest]
     subprocess.check_call(cmd)
 
 

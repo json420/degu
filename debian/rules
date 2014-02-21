@@ -8,7 +8,7 @@ override_dh_auto_clean:
 	rm -rf build/ doc/_build/
 
 override_dh_auto_build:
-	sphinx-build -b html doc/ doc/_build/html/
+	sphinx-build -EW -b html doc/ doc/_build/html/
 	set -ex; for python in $(shell py3versions -r); do \
 		$$python setup.py build \
 				--executable=/usr/bin/python3; \

@@ -4,6 +4,11 @@
 .. module:: degu.misc
    :synopsis: Test fixtures and other handy tidbits
 
-.. automodule:: degu.misc
+
+.. autoclass:: TempPKI
+
 
 .. autoclass:: TempServer
+
+
+.. autoclass:: TempSSLServer

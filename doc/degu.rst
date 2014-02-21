@@ -59,3 +59,7 @@ tuples:
     A 2-tuple with the IPv4 any-IP *address*.
 
     >>> IPv4_ANY = ('0.0.0.0', 0)
+
+
+
+.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
