@@ -41,7 +41,7 @@ Example: SSL reverse-proxy
 Here's a minimal :doc:`rgi` application:
 
 >>> def example_app(request):
-...     return (200, 'OK', {'x-msg': 'Hello world'}, None)
+...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
 Although not particularly useful, it's still a working example in only 2 lines
@@ -63,7 +63,7 @@ above ``server``:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 >>> client.request('GET', '/')
-Response(status=200, reason='OK', headers={'x-msg': 'Hello world'}, body=None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
 by ``example_app``.  The Degu client API and the RGI application API have been
@@ -130,7 +130,7 @@ our ``proxy_server``:
 >>> sslctx = build_client_sslctx(pki.get_client_config())
 >>> proxy_client = SSLClient(sslctx, proxy_server.address)
 >>> proxy_client.request('GET', '/')
-Response(status=200, reason='OK', headers={'x-msg': 'Hello world'}, body=None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 This example is based on real-world Degu usage.  This is more or less how
 `Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_ (although many details
