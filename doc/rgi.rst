@@ -2,11 +2,12 @@ REST Gateway Interface
 ======================
 
 Note that this design is done out of deep respect for the `WSGI`_ standard.
-Considering the delicate balance needed for compatibility on multiple fronts,
-WSGI is an exceedingly good design.
+Considering the delicate balance needed for backward compatibility on multiple
+fronts, WSGI is an exceedingly good design.
 
 *RGI* (REST Gateway Interface) is largely a thought experiment in what you could
-do with something WSGI-like assuming you did *not* need `CGI`_ compatibility.
+do with something WSGI-like assuming you didn't need `CGI`_ compatibility, and
+likewise didn't need to be compatible with any existing HTTP servers.
 
 RGI focuses on improvement in a number of areas:
 
@@ -28,8 +29,9 @@ RGI focuses on improvement in a number of areas:
        the request body and the response body.
 
 
-Birds Eye View
---------------
+
+Request & Response
+------------------
 
 RGI applications take a single *request* argument, somewhat similar to the WSGI
 *environ*.  For example:
@@ -150,11 +152,56 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 >>> middleware({'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
 
-This pattern is very cumbersome with WSGI.
 
 
-Request Body
-------------
+WSGI to RGI
+-----------
+
+Here's a table of common WSGI to RGI equivalents for the HTTP request:
+
+    =============================  ========================================
+    WSGI                           RGI
+    =============================  ========================================
+    ``environ['REQUEST_METHOD']``  ``request['method']``
+    ``environ['SCRIPT_NAME']``     ``request['script']``
+    ``environ['PATH_INFO']``       ``request['path']``
+    ``environ['QUERY_STRING']``    ``request['query']``
+    ``environ['CONTENT_TYPE']``    ``request['headers']['content-type']``
+    ``environ['CONTENT_LENGTH']``  ``request['headers']['content-length']``
+    ``environ['HTTP_FOO']``        ``request['headers']['foo']``
+    ``environ['HTTP_BAR_BAZ']``    ``request['headers']['bar-baz']``
+    ``environ['wsgi.input']``      ``request['body']``
+    =============================  ========================================
+
+And in terms of the HTTP response, this WSGI application:
+
+>>> def wsgi_app(environ, start_response):
+...     if environ['REQUEST_METHOD'] not in {'GET', 'HEAD'}:
+...         start_response('405 Method Not Allowed', [])
+...         return []
+...     body = b'Hello world'
+...     headers = [
+...         ('Content-Length', str(len(body))),
+...         ('Content-Type', 'text/plain'),
+...     ]
+...     start_response('200 OK', headers)
+...     if environ['REQUEST_METHOD'] == 'GET':
+...         return [body]
+...     return []  # No response body for HEAD
+
+Would translate into this RGI application:
+
+>>> def rgi_app(request):
+...     if request['method'] not in {'GET', 'HEAD'}:
+...         return (405, 'Method Not Allowed', {}, None)
+...     body = b'Hello world'
+...     headers = {
+...         'content-length': len(body),
+...         'content-type': 'text/plain',
+...     }
+...     if request['method'] == 'GET':
+...         return (200, 'OK', headers, body)
+...     return (200, 'OK', headers, None)  # No response body for HEAD
 
 
 

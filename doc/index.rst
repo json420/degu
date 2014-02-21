@@ -47,11 +47,12 @@ Contents:
     install
     bugs
     tutorial
+    rgi
     degu
     degu.server
     degu.client
     degu.misc
-    rgi
+
 
 
 .. _`Degu`: https://launchpad.net/degu
