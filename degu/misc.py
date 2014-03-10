@@ -72,6 +72,8 @@ def address_to_url(scheme, address):
 
     """
     assert scheme in ('http', 'https')
+    if isinstance(address, (str, bytes)):
+        return None
     assert isinstance(address, tuple)
     assert len(address) in {4, 2}
     if len(address) == 2:  # IPv4?

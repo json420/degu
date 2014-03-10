@@ -510,9 +510,9 @@ class TestClient(TestCase):
     def test_init(self):
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            client.Client('192.168.1.1')
+            client.Client(1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
@@ -669,9 +669,9 @@ class TestSSLClient(TestCase):
 
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            client.SSLClient(sslctx, '192.168.1.1')
+            client.SSLClient(sslctx, 1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
