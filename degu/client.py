@@ -24,7 +24,6 @@ HTTP client.
 """
 
 import socket
-import ipaddress
 import ssl
 from collections import namedtuple
 import io
@@ -161,18 +160,22 @@ def read_response(rfile, method):
 
 class Client:
     def __init__(self, address, base_headers=None):
-
         if isinstance(address, tuple):  
             if len(address) == 4:
                 self.family = socket.AF_INET6
+                self.host = '[{}]:{}'.format(address[0], address[1])
             elif len(address) == 2:
                 self.family = None
+                self.host = '{}:{}'.format(address[0], address[1])
             else:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
+            self.server_hostname = address[0]
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
+            self.host = None
+            self.server_hostname = None
             if isinstance(address, str) and path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
@@ -182,12 +185,6 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        try: 
-            ipaddress.ip_address(address[0])
-            self.host = None
-        except ValueError:
-            # Only send a "host" header for non-numberic hostname:
-            self.host = address[0]
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
         if self.host:
@@ -278,7 +275,9 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        return self.sslctx.wrap_socket(sock, server_hostname=self.host)
+        return self.sslctx.wrap_socket(sock,
+            server_hostname=self.server_hostname,
+        )
 
 
 def create_client(url, base_headers=None):
