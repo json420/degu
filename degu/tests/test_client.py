@@ -47,7 +47,6 @@ BAD_ADDRESSES = (
 
 # Some good address permutations:
 GOOD_ADDRESSES = (
-    ('::1', 5678),
     ('127.0.0.1', 5678),
     ('example.com', 80),
     ('example.com', 443),
@@ -57,12 +56,11 @@ GOOD_ADDRESSES = (
 
 # Expected host for each of the above good addresses:
 HOSTS = (
-    None,
-    None,
-    'example.com',
-    'example.com',
-    None,
-    None,
+    '127.0.0.1:5678',
+    'example.com:80',
+    'example.com:443',
+    '[::1]:5678',
+    '[fe80::290:f5ff:fef0:d35c]:5678',
 )
 
 
@@ -510,9 +508,9 @@ class TestClient(TestCase):
     def test_init(self):
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            client.Client('192.168.1.1')
+            client.Client(1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
@@ -523,6 +521,28 @@ class TestClient(TestCase):
             self.assertEqual(str(cm.exception),
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
+
+        # Non-absolute/non-normalized AF_UNIX filename:
+        with self.assertRaises(ValueError) as cm:
+            client.Client('foo')
+        self.assertEqual(str(cm.exception),
+            "address: bad socket filename: 'foo'"
+        )
+
+        # `str` (AF_UNIX)
+        tmp = TempDir()
+        filename = tmp.join('my.socket')
+        inst = client.Client(filename)
+        self.assertIs(inst.address, filename)
+        self.assertIs(inst.family, socket.AF_UNIX)
+        self.assertIsNone(inst.host)
+
+        # `bytes` (AF_UNIX):
+        address = b'\x0000022'
+        inst = client.Client(address)
+        self.assertIs(inst.address, address)
+        self.assertIs(inst.family, socket.AF_UNIX)
+        self.assertIsNone(inst.host)
 
         # A number of good address permutations:
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
@@ -669,9 +689,9 @@ class TestSSLClient(TestCase):
 
         # Bad address type:
         with self.assertRaises(TypeError) as cm:
-            client.SSLClient(sslctx, '192.168.1.1')
+            client.SSLClient(sslctx, 1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', tuple, str, '192.168.1.1')
+            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:

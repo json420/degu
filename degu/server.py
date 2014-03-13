@@ -27,6 +27,7 @@ import socket
 import ssl
 import logging
 import threading
+from os import path
 
 from .base import (
     TYPE_ERROR,
@@ -45,7 +46,7 @@ from .base import (
 )
 
 
-SERVER_SOCKET_TIMEOUT = 15
+SERVER_SOCKET_TIMEOUT = 5
 log = logging.getLogger()
 
 
@@ -459,17 +460,26 @@ class Server:
     scheme = 'http'
 
     def __init__(self, address, app):
-        if not isinstance(address, tuple):
-            raise TypeError(
-                TYPE_ERROR.format('address', tuple, type(address), address)
-            )
-        if len(address) == 4:
-            family = socket.AF_INET6
-        elif len(address) == 2:
-            family = socket.AF_INET
+        if isinstance(address, tuple):  
+            if len(address) == 4:
+                family = socket.AF_INET6
+            elif len(address) == 2:
+                family = socket.AF_INET
+            else:
+                raise ValueError(
+                    'address: must have 2 or 4 items; got {!r}'.format(address)
+                )
+        elif isinstance(address, str):
+            if path.abspath(address) != address:
+                raise ValueError(
+                    'address: bad socket filename: {!r}'.format(address)
+                )
+            family = socket.AF_UNIX
+        elif isinstance(address, bytes):
+            family = socket.AF_UNIX
         else:
-            raise ValueError(
-                'address: must have 2 or 4 items; got {!r}'.format(address)
+            raise TypeError(
+                TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))

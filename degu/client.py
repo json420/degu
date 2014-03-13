@@ -24,11 +24,11 @@ HTTP client.
 """
 
 import socket
-import ipaddress
 import ssl
 from collections import namedtuple
 import io
 import os
+from os import path
 from urllib.parse import urlparse, ParseResult
 
 
@@ -160,21 +160,31 @@ def read_response(rfile, method):
 
 class Client:
     def __init__(self, address, base_headers=None):
-        if not isinstance(address, tuple):
+        if isinstance(address, tuple):  
+            if len(address) == 4:
+                self.family = socket.AF_INET6
+                self.host = '[{}]:{}'.format(address[0], address[1])
+            elif len(address) == 2:
+                self.family = None
+                self.host = '{}:{}'.format(address[0], address[1])
+            else:
+                raise ValueError(
+                    'address: must have 2 or 4 items; got {!r}'.format(address)
+                )
+            self.server_hostname = address[0]
+        elif isinstance(address, (str, bytes)):
+            self.family = socket.AF_UNIX
+            self.host = None
+            self.server_hostname = None
+            if isinstance(address, str) and path.abspath(address) != address:
+                raise ValueError(
+                    'address: bad socket filename: {!r}'.format(address)
+                )
+        else:
             raise TypeError(
-                TYPE_ERROR.format('address', tuple, type(address), address)
-            )
-        if len(address) not in {2, 4}:
-            raise ValueError(
-                'address: must have 2 or 4 items; got {!r}'.format(address)
+                TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        try: 
-            ipaddress.ip_address(address[0])
-            self.host = None
-        except ValueError:
-            # Only send a "host" header for non-numberic hostname:
-            self.host = address[0]
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
         if self.host:
@@ -189,11 +199,11 @@ class Client:
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
-        if len(self.address) == 4:
-            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            sock.connect(self.address)
-        else:
+        if self.family is None:
             sock = socket.create_connection(self.address)
+        else:
+            sock = socket.socket(self.family, socket.SOCK_STREAM)
+            sock.connect(self.address)
         #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
         return sock
 
@@ -207,14 +217,15 @@ class Client:
     def close(self):
         self.response_body = None
         if getattr(self, 'conn', None) is not None:
+            conn = self.conn
+            self.conn = None
             try:
-                self.conn.sock.shutdown(socket.SHUT_RDWR)
+                conn.sock.shutdown(socket.SHUT_RDWR)
+                conn.rfile.close()
+                conn.wfile.close()
+                conn.sock.close()
             except OSError:
                 pass
-            self.conn.rfile.close()
-            self.conn.wfile.close()
-            self.conn.sock.close()
-            self.conn = None
 
     def request(self, method, uri, headers=None, body=None):
         if self.response_body and not self.response_body.closed:
@@ -264,7 +275,9 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        return self.sslctx.wrap_socket(sock, server_hostname=self.host)
+        return self.sslctx.wrap_socket(sock,
+            server_hostname=self.server_hostname,
+        )
 
 
 def create_client(url, base_headers=None):

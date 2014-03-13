@@ -3,10 +3,19 @@
 import time
 import logging
 import json
+import argparse
 
 from degu import IPv6_LOOPBACK
 from degu.sslhelpers import random_id
 from degu.misc import TempServer
+from degu.tests.helpers import TempDir
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--unix', action='store_true', default=False,
+    help='Use AF_UNIX instead of AF_INET6'
+)
+args = parser.parse_args()
 
 
 logging.basicConfig(
@@ -32,7 +41,12 @@ def echo_app(request):
     return (200, 'OK', headers, body)
 
 
-server = TempServer(IPv6_LOOPBACK, None, echo_app)
+if args.unix:
+    tmp = TempDir()
+    address = tmp.join('my.socket')
+else:
+    address = IPv6_LOOPBACK
+server = TempServer(address, None, echo_app)
 client = server.get_client()
 print(client)
 
