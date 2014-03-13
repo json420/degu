@@ -36,18 +36,11 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Hack so we can unit test Python 3.4 as planned, but still also work with
-# Python 3.3 for the time being; note this does not make Degu running under
-# Python 3.4 *network* compatible with Degu running under Python 3.3
+# FIXME: This is a left-over from supporting both Python 3.3 and 3.4; there is
+# still some use in this constant as a single point of definition, but we should
+# probably drop this now that we're supporting only Python 3.4 and greater:
 _TLS = namedtuple('TSL', 'protocol name ciphers')
-if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
-    TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
-else:
-    TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
-
-# FIXME: CouchDB isn't playing nice with TLSv1.2, so till we have our own
-# replicator, we need to stick with TLSv1:
-TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
+TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
 
 
 class EmptyLineError(ConnectionError):

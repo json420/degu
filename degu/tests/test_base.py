@@ -88,20 +88,9 @@ class TestConstants(TestCase):
     def test_TLS(self):
         self.assertIsInstance(base.TLS, tuple)
         self.assertIsInstance(base.TLS, base._TLS)
-        self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
-        self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1')
-        self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
-        # FIXME: CouchDB isn't playing nice with TLSv1.2, so till we have our
-        # own replicator, we need to stick with TLSv1:
-        return
-        if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
-            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
-            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
-            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
-        else:
-            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
-            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1')
-            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
+        self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
+        self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
 
 
 class TestEmptyLineError(TestCase):
