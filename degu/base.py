@@ -82,13 +82,13 @@ def build_base_sslctx():
     """
     Build an ssl.SSLContext with the shared server and client features.
     """
-    sslctx = ssl.SSLContext(TLS.protocol)
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 
     # By setting this to something so restrictive, we make sure that the client
     # wont connect to a server unless it provides perfect forward secrecy:
     #   TLSv1:   ECDHE-RSA-AES256-SHA
     #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    sslctx.set_ciphers(TLS.ciphers)
+    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
 
     # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
     # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
@@ -106,8 +106,8 @@ def build_base_sslctx():
 def validate_base_sslctx(sslctx):
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
-    if sslctx.protocol != TLS.protocol:
-        raise ValueError('sslctx.protocol must be ssl.{}'.format(TLS.name))
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
     if not (sslctx.options & ssl.OP_NO_SSLv2):
         raise ValueError('sslctx.options must include ssl.OP_NO_SSLv2')
     if not (sslctx.options & ssl.OP_NO_COMPRESSION):

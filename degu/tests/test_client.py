@@ -657,7 +657,7 @@ class TestSSLClient(TestCase):
         with self.assertRaises(ValueError) as cm:
             client.SSLClient(sslctx, None)
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
         )
 
         # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
@@ -665,7 +665,7 @@ class TestSSLClient(TestCase):
         # we cannot unset the ssl.OP_NO_SSLv2 bit, we can't unit test to check
         # that Degu enforces this, so for now, we set the bit here so it works
         # with Python 3.3.3 still; see: http://bugs.python.org/issue20207
-        sslctx = ssl.SSLContext(base.TLS.protocol)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         sslctx.options |= ssl.OP_NO_SSLv2
 
         # not (options & ssl.OP_NO_COMPRESSION)
