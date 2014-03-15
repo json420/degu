@@ -87,6 +87,24 @@ def build_server_sslctx(config):
     return sslctx
 
 
+def build_server_sslctx2(config):
+    import ssl
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
+    sslctx.set_ecdh_curve('prime256v1')
+    sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+    sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+    sslctx.options |= ssl.OP_NO_COMPRESSION
+    sslctx.load_cert_chain(config['cert_file'], config['key_file'])
+    if 'ca_file' in config or 'ca_path' in config:
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+        sslctx.load_verify_locations(
+            cafile=config.get('ca_file'),
+            capath=config.get('ca_path'),
+        )
+    return sslctx
+
+
 def parse_request(line):
     """
     Parse the request line.

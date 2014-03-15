@@ -80,6 +80,26 @@ def build_client_sslctx(config):
     return sslctx
 
 
+def build_client_sslctx2(config):
+    import ssl
+    sslctx = ssl.SSLContext(TLS.protocol)
+    sslctx.verify_mode = ssl.CERT_REQUIRED
+    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
+    sslctx.options |= ssl.OP_NO_COMPRESSION
+    if 'ca_file' in config or 'ca_path' in config:
+        sslctx.load_verify_locations(
+            cafile=config.get('ca_file'),
+            capath=config.get('ca_path'),
+        )
+    else:
+        sslctx.set_default_verify_paths()
+    if 'cert_file' in config:
+        sslctx.load_cert_chain(config['cert_file'],
+            keyfile=config.get('key_file')
+        )
+    return sslctx
+
+
 def validate_client_sslctx(sslctx):
     validate_base_sslctx(sslctx)
     if sslctx.verify_mode != ssl.CERT_REQUIRED:
