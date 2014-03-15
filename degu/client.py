@@ -82,7 +82,7 @@ def build_client_sslctx(config):
 
 def build_client_sslctx2(config):
     import ssl
-    sslctx = ssl.SSLContext(TLS.protocol)
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
     sslctx.options |= ssl.OP_NO_COMPRESSION

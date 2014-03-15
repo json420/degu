@@ -255,6 +255,16 @@ class PKI:
             config['ca_file'] = self.path(client_ca_id, 'ca')
         return config
 
+    def get_anonymous_server_config(self, server_id):
+        """
+        Server will accept connections from unauthenticated client.
+        """
+        return {
+            'cert_file': self.path(server_id, 'cert'),
+            'key_file': self.path(server_id, 'key'),
+            'allow_unauthenticated_clients': True,
+        }
+
     def get_client_config(self, server_ca_id, client_id=None):
         config = {
             'ca_file': self.path(server_ca_id, 'ca'),
@@ -264,3 +274,9 @@ class PKI:
             config['cert_file'] = self.path(client_id, 'cert')
             config['key_file'] = self.path(client_id, 'key')
         return config
+
+    def get_anonymous_client_config(self, server_ca_id):
+        return {
+            'ca_file': self.path(server_ca_id, 'ca'),
+            'check_hostname': False,
+        }

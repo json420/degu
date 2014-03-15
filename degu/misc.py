@@ -83,7 +83,7 @@ def address_to_url(scheme, address):
 
 
 class TempPKI(PKI):
-    def __init__(self, client_pki=False, bits=1024):
+    def __init__(self, client_pki=True, bits=1024):
         # To make unit testing faster, we use 1024 bit keys by default, but this
         # is not the size you should use in production
         ssldir = tempfile.mkdtemp(prefix='TempPKI.')
@@ -109,6 +109,9 @@ class TempPKI(PKI):
 
     def get_server_config(self):
         return super().get_server_config(self.server_id, self.client_ca_id)
+
+    def get_anonymous_server_config(self):
+        return super().get_anonymous_server_config(self.server_id)
 
     def get_client_config(self):
         return super().get_client_config(self.server_ca_id, self.client_id)

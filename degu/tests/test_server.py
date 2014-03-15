@@ -48,23 +48,59 @@ random = SystemRandom()
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
-        # client_pki=False:
-        pki = TempPKI()
-        server_config = pki.get_server_config()
-        sslctx = server.build_server_sslctx(server_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
-        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
-
-        # client_pki=True:
         pki = TempPKI(client_pki=True)
-        server_config = pki.get_server_config()
-        sslctx = server.build_server_sslctx(server_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
+
+        # Typical config with client authentication:
+        config = pki.get_server_config()
+        self.assertEqual(set(config), {'cert_file', 'key_file', 'ca_file'})
+        sslctx = server.build_server_sslctx(config)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
         self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
         self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+
+        # New in Degu 0.3: should not be able to accept connections from
+        # unauthenticated clients by merely omitting ca_file/ca_path:
+        del config['ca_file']
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'must include ca_file or ca_path (or allow_unauthenticated_clients)'
+        )
+
+        # Typical config allowing anonymous clients:
+        config['allow_unauthenticated_clients'] = True
+        sslctx = server.build_server_sslctx(config)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
+        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
+        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+
+        # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
+        config['ca_file'] = 'whatever'
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'cannot include ca_file/ca_path allow_unauthenticated_clients'
+        )
+        config['ca_path'] = config.pop('ca_file')
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'cannot include ca_file/ca_path allow_unauthenticated_clients'
+        )
+
+        # True is only allowed value for allow_unauthenticated_clients:
+        config.pop('ca_path')
+        for bad in (1, 0, False, None):
+            config['allow_unauthenticated_clients'] = bad
+            with self.assertRaises(ValueError) as cm:
+                server.build_server_sslctx(config)
+            self.assertEqual(str(cm.exception),
+                'True is only allowed value for allow_unauthenticated_clients'
+            )
 
     def test_parse_request(self):
         # Bad separators:
