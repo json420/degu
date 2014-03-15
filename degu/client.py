@@ -62,25 +62,6 @@ class UnconsumedResponseError(Exception):
 
 
 def build_client_sslctx(config):
-    sslctx = build_base_sslctx()
-    sslctx.verify_mode = ssl.CERT_REQUIRED
-    # Configure certificate authorities used to verify server certs
-    if 'ca_file' in config or 'ca_path' in config:
-        sslctx.load_verify_locations(
-            cafile=config.get('ca_file'),
-            capath=config.get('ca_path'),
-        )
-    else:
-        sslctx.set_default_verify_paths()
-    # Configure client certificate, if provided
-    if 'cert_file' in config:
-        sslctx.load_cert_chain(config['cert_file'],
-            keyfile=config.get('key_file')
-        )
-    return sslctx
-
-
-def build_client_sslctx2(config):
     import ssl
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
