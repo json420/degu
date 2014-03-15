@@ -85,13 +85,6 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
-    def test_TLS(self):
-        self.assertIsInstance(base.TLS, tuple)
-        self.assertIsInstance(base.TLS, base._TLS)
-        self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
-        self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
-
 
 class TestEmptyLineError(TestCase):
     def test_init(self):

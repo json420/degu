@@ -36,12 +36,6 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# FIXME: This is a left-over from supporting both Python 3.3 and 3.4; there is
-# still some use in this constant as a single point of definition, but we should
-# probably drop this now that we're supporting only Python 3.4 and greater:
-_TLS = namedtuple('TSL', 'protocol name ciphers')
-TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
-
 
 class EmptyLineError(ConnectionError):
     pass
