@@ -795,7 +795,8 @@ class TestSSLServer(TestCase):
         self.assertIs(inst.app, good_app)
 
     def test_repr(self):
-        sslctx = base.build_base_sslctx()
+        pki = TempPKI()
+        sslctx = server.build_server_sslctx(pki.get_server_config())
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)

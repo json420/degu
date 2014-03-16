@@ -425,8 +425,8 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception), "scheme must be 'http', got 'https'")
 
     def test_create_sslclient(self):
-        sslctx = base.build_base_sslctx()
-        sslctx.verify_mode = ssl.CERT_REQUIRED
+        pki = TempPKI()
+        sslctx = client.build_client_sslctx(pki.get_client_config())
 
         # IPv6, with port:
         url = 'https://[fe80::e8b:fdff:fe75:402c]:54321/'
@@ -719,8 +719,8 @@ class TestSSLClient(TestCase):
         class Custom(client.SSLClient):
             pass
 
-        sslctx = base.build_base_sslctx()
-        sslctx.verify_mode = ssl.CERT_REQUIRED
+        pki = TempPKI()
+        sslctx = client.build_client_sslctx(pki.get_client_config())
 
         for address in GOOD_ADDRESSES:
             inst = client.SSLClient(sslctx, address)

@@ -34,7 +34,6 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
-    build_base_sslctx,
     validate_base_sslctx,
     makefiles,
     read_lines_iter,
@@ -62,7 +61,9 @@ class UnconsumedResponseError(Exception):
 
 
 def build_client_sslctx(config):
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed
     import ssl
+
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
@@ -78,6 +79,7 @@ def build_client_sslctx(config):
         sslctx.load_cert_chain(config['cert_file'],
             keyfile=config.get('key_file')
         )
+    assert sslctx.check_hostname is False
     return sslctx
 
 

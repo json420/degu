@@ -32,7 +32,6 @@ from os import path
 from .base import (
     TYPE_ERROR,
     EmptyLineError,
-    build_base_sslctx,
     validate_base_sslctx,
     makefiles,
     read_lines_iter,
