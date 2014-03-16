@@ -127,20 +127,34 @@ def build_server_sslctx(config):
 
         Ciphers:     ``'ECDHE-RSA-AES256-GCM-SHA384'``
 
-        ECDH Curve:  ``'prime256'``
+        ECDH Curve:  ``'secp384r1'``
 
         Options:     ``OP_NO_COMPRESSION``
                      ``OP_SINGLE_ECDH_USE``
                      ``OP_CIPHER_SERVER_PREFERENCE``
         ===========  =================================
 
+
+    FIXME: There is a good chance we should not use ECDH, and if we do, it's not
+    overly clear what curve would be the best choice.  See:
+
+        http://safecurves.cr.yp.to/
+
+    To see the available curves supported by openssl, run this::
+
+        openssl ecparam -list_curves
+
+    Also, we should not rule out Diffie–Hellman.  It seems like a more
+    conservative choice at this point, and considering the use cases Degu is
+    aimed at, it's not a deal-breaker if creating the connection is more
+    expensive, as long as we get good performance using the connection.
     """
-    # Lazily import `ssl` module to be memory friendly when SSL isn't needed
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
-    sslctx.set_ecdh_curve('prime256v1')
+    sslctx.set_ecdh_curve('secp384r1')
     sslctx.options |= ssl.OP_NO_COMPRESSION
     sslctx.options |= ssl.OP_SINGLE_ECDH_USE
     sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
