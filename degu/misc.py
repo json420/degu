@@ -99,9 +99,6 @@ class TempPKI(PKI):
             self.client_id = self.create_key(bits)
             self.create_csr(self.client_id)
             self.issue_cert(self.client_id, self.client_ca_id)
-        else:
-            self.client_ca_id = None
-            self.client_id = None
 
     def __del__(self):
         if path.isdir(self.ssldir):
@@ -115,6 +112,9 @@ class TempPKI(PKI):
 
     def get_client_config(self):
         return super().get_client_config(self.server_ca_id, self.client_id)
+
+    def get_anonymous_client_config(self):
+        return super().get_anonymous_client_config(self.server_ca_id)
 
 
 class _TempProcess:
