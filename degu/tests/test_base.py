@@ -132,14 +132,6 @@ class TestBodyClosedError(TestCase):
 
 
 class TestFunctions(TestCase):
-    def test_build_base_sslctx(self):
-        sslctx = base.build_base_sslctx()
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertTrue(sslctx.options & ssl.OP_NO_SSLv2)
-        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
-
     def test_validate_sslctx(self):
         # Bad type:
         with self.assertRaises(TypeError) as cm:

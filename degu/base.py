@@ -72,31 +72,6 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def build_base_sslctx():
-    """
-    Build an ssl.SSLContext with the shared server and client features.
-    """
-    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-
-    # By setting this to something so restrictive, we make sure that the client
-    # wont connect to a server unless it provides perfect forward secrecy:
-    #   TLSv1:   ECDHE-RSA-AES256-SHA
-    #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
-
-    # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
-    # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
-    # Python 3.4 is still setting this, so we are too:
-    sslctx.options |= ssl.OP_NO_SSLv2
-
-    # Protect against CRIME-like attacks, plus better media file transfer rates;
-    # note that on Debian/Ubuntu systems, libssl (openssl) is built with TSL
-    # compression disabled system-wide, so we can't deep unit test for this
-    # using SSLSocket.compression() as that will always return None:
-    sslctx.options |= ssl.OP_NO_COMPRESSION
-    return sslctx
-
-
 def validate_base_sslctx(sslctx):
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
