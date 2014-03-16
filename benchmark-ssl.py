@@ -1,11 +1,45 @@
 #!/usr/bin/python3
 
+"""
+Benchmark file transfer rate over SSL.
+
+This benchmark simulates file-transfer as used by Dmedia, a scenario where there
+is little HTTP overhead (because the files are large), and also little concern
+for the cost of creating the SSL connection (both because the files are large,
+and also because Dmedia will typically request many files through the same
+connection).
+
+Our goal is to be able to saturate a 10 gigabit local Ethernet connection with a
+single connection, and a single CPU core.  On Haswell processors, we're already
+very close to this as the GCM modes (authenticated encryption) in TLS 1.2 are
+very fast.
+
+Example results on an i7-4900MQ (2.8 GHz, 64-bit Ubuntu 14.04, Python 3.4)::
+
+    cipher: ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256)
+    runs: [2.8518437089987856, 2.8778152399991086, 2.858511821999855]
+    fastest run: 2.8518437089987856
+    transfer rate in fastest run: 941 MB/s
+
+That's 7528 M bit/s, so we're about 75% the way there.  Of course, with multiple
+parallel connections on multiple cores, we can fully saturate 10 gigabit today.
+
+Even on 64-bit systems, there is a small performance improvement with AES-128,
+but perhaps not enough to justify the switch (something to consider though)::
+
+    cipher: ('ECDHE-RSA-AES128-GCM-SHA256', 'TLSv1/SSLv3', 128)
+    runs: [2.647685547000947, 2.6391498539996974, 2.6463401510009135]
+    fastest run: 2.6391498539996974
+    transfer rate in fastest run: 1.02 GB/s
+"""
+
 import time
 import logging
-import json
+import os
+import math
 
 from degu import IPv6_LOOPBACK
-from degu.sslhelpers import random_id
+from degu.base import Output
 from degu.misc import TempPKI, TempSSLServer
 
 
@@ -21,40 +55,76 @@ logging.basicConfig(
 log = logging.getLogger()
 
 
-def echo_app(request):
-    data = request['body'].read()
-    obj = json.loads(data.decode())
-    body = json.dumps({'pong': obj['ping']}).encode()
+BYTES10 = (
+    'bytes',
+    'kB',
+    'MB',
+    'GB',
+    'TB',
+    'PB',
+    'EB',
+    'ZB',
+    'YB',
+)
+
+
+def bytes10(size):
+    if size is None:
+        return None
+    if size < 0:
+        raise ValueError('size must be >= 0; got {!r}'.format(size))
+    if size == 0:
+        return '0 bytes'
+    if size == 1:
+        return '1 byte'
+    i = min(int(math.floor(math.log(size, 1000))), len(BYTES10) - 1)
+    s = (size / (1000 ** i) if i > 0 else size)
+    return (
+        '{:.3g} {}'.format(s, BYTES10[i])
+    )
+
+
+MiB = 1048576
+chunk_size = 8 * MiB
+chunk_count = 64  # 512 MiB
+chunk = os.urandom(chunk_size)
+chunks = tuple(chunk for i in range(chunk_count))
+content_length = chunk_size * chunk_count
+
+
+def file_app(request):
+    body = Output(chunks, content_length)
     headers = {
-        'content-length': len(body),
-        'content-type': 'application/json',
+        'content-length': content_length,
+        'content-type': 'video/quicktime',
     }
     return (200, 'OK', headers, body)
 
 
-pki = TempPKI(client_pki=True)
-server = TempSSLServer(pki, IPv6_LOOPBACK, None, echo_app)
+pki = TempPKI()
+server = TempSSLServer(pki, IPv6_LOOPBACK, None, file_app)
 client = server.get_client()
 print(client)
 
-marker = random_id()
-body = json.dumps({'ping': marker}).encode()
-headers = {
-    'content-length': len(body),
-    'accept': 'application/json',
-    'content-type': 'application/json',
-}
-count = 10000
+
+count = 5
 deltas = []
-for i in range(5):
+for i in range(3):
     client.close()
     start = time.monotonic()
     for i in range(count):
-        r = client.request('POST', '/', headers, body)
-        assert json.loads(r.body.read().decode()) == {'pong': marker}
+        r = client.request('GET', '/')
+        cipher = client.conn.sock.cipher()
+        for block in r.body:
+            pass
     deltas.append(time.monotonic() - start)
 client.close()
 server.terminate()
-delta = min(deltas)
-print('{:.2f} requests/second'.format(count / delta))
+fastest = min(deltas)
+rate = (content_length * count) / fastest
+print('')
+print('cipher: {}'.format(cipher))
+print('runs: {}'.format(deltas))
+print('fastest run: {}'.format(fastest))
+print('transfer rate in fastest run: {}/s'.format(bytes10(int(rate))))
 
