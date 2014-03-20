@@ -83,24 +83,67 @@ class TestNamedTuples(TestCase):
 
 class TestFunctions(TestCase):
     def test_build_client_sslctx(self):
-        # Empty config, will verify against system-wide CAs:
+        # Empty config, will verify against system-wide CAs, and check_hostname
+        # should default to True:
         sslctx = client.build_client_sslctx({})
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, True)
 
-        # client_pki=False:
+        # We don't not allow check_hostname to be False when verifying against
+        # the system-wide CAs:
+        with self.assertRaises(ValueError) as cm:
+            client.build_client_sslctx({'check_hostname': False})
+        self.assertEqual(str(cm.exception),
+            'check_hostname must be True when using default verify paths'
+        )
+
+        # Should work fine when explicitly providing {'check_hostname': True}:
+        sslctx = client.build_client_sslctx({'check_hostname': True})
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, True)
+
+        # Authenticated client config:
         pki = TempPKI()
-        client_config = pki.get_client_config()
-        sslctx = client.build_client_sslctx(client_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
+        config = pki.get_client_config()
+        self.assertEqual(set(config),
+            {'ca_file', 'cert_file', 'key_file', 'check_hostname'}
+        )
+        self.assertIs(config['check_hostname'], False)
+        sslctx = client.build_client_sslctx(config)
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, False)
 
-        # client_pki=True:
-        pki = TempPKI(client_pki=True)
-        client_config = pki.get_client_config()
-        sslctx = client.build_client_sslctx(client_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
+        # check_hostname should default to True:
+        del config['check_hostname']
+        sslctx = client.build_client_sslctx(config)
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
         self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, True)
+
+        # Anonymous client config:
+        config = pki.get_anonymous_client_config()
+        self.assertEqual(set(config), {'ca_file', 'check_hostname'})
+        self.assertIs(config['check_hostname'], False)
+        sslctx = client.build_client_sslctx(config)
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, False)
+
+        # check_hostname should default to True:
+        del config['check_hostname']
+        sslctx = client.build_client_sslctx(config)
+        self.assertIsInstance(sslctx, ssl.SSLContext)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertIs(sslctx.check_hostname, True)
 
     def test_validate_request(self):
         # Bad method:

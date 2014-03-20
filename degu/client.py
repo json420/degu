@@ -61,8 +61,14 @@ class UnconsumedResponseError(Exception):
 
 
 def build_client_sslctx(config):
-    # Lazily import `ssl` module to be memory friendly when SSL isn't needed
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
+
+    # In typical P2P Degu usage, hostname checking is meaningless because we
+    # wont be trusting centralized certificate authorities; however, it's still
+    # prudent to make *check_hostname* default to True:
+    check_hostname = config.get('check_hostname', True)
+    assert isinstance(check_hostname, bool)
 
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
@@ -74,12 +80,16 @@ def build_client_sslctx(config):
             capath=config.get('ca_path'),
         )
     else:
+        if not check_hostname:
+            raise ValueError(
+                'check_hostname must be True when using default verify paths'
+            )
         sslctx.set_default_verify_paths()
     if 'cert_file' in config:
         sslctx.load_cert_chain(config['cert_file'],
             keyfile=config.get('key_file')
         )
-    assert sslctx.check_hostname is False
+    sslctx.check_hostname = check_hostname
     return sslctx
 
 
