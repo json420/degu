@@ -1070,6 +1070,12 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertEqual(response.reason, 'OK')
         self.assertIsNone(response.body)
 
+        # Test when check_hostname is True:
+        client.close()
+        client.sslctx.check_hostname = True
+        with self.assertRaises(ssl.CertificateError) as cm:
+            client.request('GET', '/')
+
 
 class TestLiveServerUnixSocket(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
