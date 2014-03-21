@@ -36,19 +36,6 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Hack so we can unit test Python 3.4 as planned, but still also work with
-# Python 3.3 for the time being; note this does not make Degu running under
-# Python 3.4 *network* compatible with Degu running under Python 3.3
-_TLS = namedtuple('TSL', 'protocol name ciphers')
-if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
-    TLS = _TLS(ssl.PROTOCOL_TLSv1_2, 'PROTOCOL_TLSv1_2', 'ECDHE-RSA-AES256-GCM-SHA384')
-else:
-    TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
-
-# FIXME: CouchDB isn't playing nice with TLSv1.2, so till we have our own
-# replicator, we need to stick with TLSv1:
-TLS = _TLS(ssl.PROTOCOL_TLSv1, 'PROTOCOL_TLSv1', 'ECDHE-RSA-AES256-SHA')
-
 
 class EmptyLineError(ConnectionError):
     pass
@@ -85,36 +72,11 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def build_base_sslctx():
-    """
-    Build an ssl.SSLContext with the shared server and client features.
-    """
-    sslctx = ssl.SSLContext(TLS.protocol)
-
-    # By setting this to something so restrictive, we make sure that the client
-    # wont connect to a server unless it provides perfect forward secrecy:
-    #   TLSv1:   ECDHE-RSA-AES256-SHA
-    #   TLSv1.2: ECDHE-RSA-AES256-GCM-SHA384
-    sslctx.set_ciphers(TLS.ciphers)
-
-    # FIXME: According to the docs, ssl.OP_NO_SSLv2 has no effect on
-    # ssl.PROTOCOL_TLSv1; however, the ssl.create_default_context() function in
-    # Python 3.4 is still setting this, so we are too:
-    sslctx.options |= ssl.OP_NO_SSLv2
-
-    # Protect against CRIME-like attacks, plus better media file transfer rates;
-    # note that on Debian/Ubuntu systems, libssl (openssl) is built with TSL
-    # compression disabled system-wide, so we can't deep unit test for this
-    # using SSLSocket.compression() as that will always return None:
-    sslctx.options |= ssl.OP_NO_COMPRESSION
-    return sslctx
-
-
 def validate_base_sslctx(sslctx):
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
-    if sslctx.protocol != TLS.protocol:
-        raise ValueError('sslctx.protocol must be ssl.{}'.format(TLS.name))
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
     if not (sslctx.options & ssl.OP_NO_SSLv2):
         raise ValueError('sslctx.options must include ssl.OP_NO_SSLv2')
     if not (sslctx.options & ssl.OP_NO_COMPRESSION):

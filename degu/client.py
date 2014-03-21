@@ -34,7 +34,6 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
-    build_base_sslctx,
     validate_base_sslctx,
     makefiles,
     read_lines_iter,
@@ -62,21 +61,35 @@ class UnconsumedResponseError(Exception):
 
 
 def build_client_sslctx(config):
-    sslctx = build_base_sslctx()
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
+    import ssl
+
+    # In typical P2P Degu usage, hostname checking is meaningless because we
+    # wont be trusting centralized certificate authorities; however, it's still
+    # prudent to make *check_hostname* default to True:
+    check_hostname = config.get('check_hostname', True)
+    assert isinstance(check_hostname, bool)
+
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
-    # Configure certificate authorities used to verify server certs
+    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
+    sslctx.options |= ssl.OP_NO_COMPRESSION
     if 'ca_file' in config or 'ca_path' in config:
         sslctx.load_verify_locations(
             cafile=config.get('ca_file'),
             capath=config.get('ca_path'),
         )
     else:
+        if not check_hostname:
+            raise ValueError(
+                'check_hostname must be True when using default verify paths'
+            )
         sslctx.set_default_verify_paths()
-    # Configure client certificate, if provided
     if 'cert_file' in config:
         sslctx.load_cert_chain(config['cert_file'],
             keyfile=config.get('key_file')
         )
+    sslctx.check_hostname = check_hostname
     return sslctx
 
 

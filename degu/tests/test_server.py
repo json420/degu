@@ -48,23 +48,59 @@ random = SystemRandom()
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
-        # client_pki=False:
-        pki = TempPKI()
-        server_config = pki.get_server_config()
-        sslctx = server.build_server_sslctx(server_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
-        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
-
-        # client_pki=True:
         pki = TempPKI(client_pki=True)
-        server_config = pki.get_server_config()
-        sslctx = server.build_server_sslctx(server_config)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
+
+        # Typical config with client authentication:
+        config = pki.get_server_config()
+        self.assertEqual(set(config), {'cert_file', 'key_file', 'ca_file'})
+        sslctx = server.build_server_sslctx(config)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
         self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
         self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+
+        # New in Degu 0.3: should not be able to accept connections from
+        # unauthenticated clients by merely omitting ca_file/ca_path:
+        del config['ca_file']
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'must include ca_file or ca_path (or allow_unauthenticated_clients)'
+        )
+
+        # Typical config allowing anonymous clients:
+        config['allow_unauthenticated_clients'] = True
+        sslctx = server.build_server_sslctx(config)
+        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
+        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
+        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+
+        # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
+        config['ca_file'] = 'whatever'
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'cannot include ca_file/ca_path allow_unauthenticated_clients'
+        )
+        config['ca_path'] = config.pop('ca_file')
+        with self.assertRaises(ValueError) as cm:
+            server.build_server_sslctx(config)
+        self.assertEqual(str(cm.exception),
+            'cannot include ca_file/ca_path allow_unauthenticated_clients'
+        )
+
+        # True is only allowed value for allow_unauthenticated_clients:
+        config.pop('ca_path')
+        for bad in (1, 0, False, None):
+            config['allow_unauthenticated_clients'] = bad
+            with self.assertRaises(ValueError) as cm:
+                server.build_server_sslctx(config)
+            self.assertEqual(str(cm.exception),
+                'True is only allowed value for allow_unauthenticated_clients'
+            )
 
     def test_parse_request(self):
         # Bad separators:
@@ -668,7 +704,7 @@ class TestSSLServer(TestCase):
         with self.assertRaises(ValueError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
         )
 
         # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
@@ -676,7 +712,7 @@ class TestSSLServer(TestCase):
         # we cannot unset the ssl.OP_NO_SSLv2 bit, we can't unit test to check
         # that Degu enforces this, so for now, we set the bit here so it works
         # with Python 3.3.3 still; see: http://bugs.python.org/issue20207
-        sslctx = ssl.SSLContext(base.TLS.protocol)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         sslctx.options |= ssl.OP_NO_SSLv2
 
         # not (options & ssl.OP_NO_COMPRESSION)
@@ -759,7 +795,8 @@ class TestSSLServer(TestCase):
         self.assertIs(inst.app, good_app)
 
     def test_repr(self):
-        sslctx = base.build_base_sslctx()
+        pki = TempPKI()
+        sslctx = server.build_server_sslctx(pki.get_server_config())
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
@@ -977,7 +1014,7 @@ def ssl_app(request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
-    assert request['ssl_cipher'] == (base.TLS.ciphers, 'TLSv1/SSLv3', 256), request['ssl_cipher']
+    assert request['ssl_cipher'] == ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256)
     assert request['ssl_compression'] is None
     return (200, 'OK', {}, None)
 
@@ -1032,6 +1069,12 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertIsNone(response.body)
+
+        # Test when check_hostname is True:
+        client.close()
+        client.sslctx.check_hostname = True
+        with self.assertRaises(ssl.CertificateError) as cm:
+            client.request('GET', '/')
 
 
 class TestLiveServerUnixSocket(TestLiveServer):

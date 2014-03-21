@@ -85,24 +85,6 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
-    def test_TLS(self):
-        self.assertIsInstance(base.TLS, tuple)
-        self.assertIsInstance(base.TLS, base._TLS)
-        self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
-        self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1')
-        self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
-        # FIXME: CouchDB isn't playing nice with TLSv1.2, so till we have our
-        # own replicator, we need to stick with TLSv1:
-        return
-        if hasattr(ssl, 'PROTOCOL_TLSv1_2'):
-            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1_2)
-            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1_2')
-            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-GCM-SHA384')
-        else:
-            self.assertIs(base.TLS.protocol, ssl.PROTOCOL_TLSv1)
-            self.assertIs(base.TLS.name, 'PROTOCOL_TLSv1')
-            self.assertEqual(base.TLS.ciphers, 'ECDHE-RSA-AES256-SHA')
-
 
 class TestEmptyLineError(TestCase):
     def test_init(self):
@@ -150,14 +132,6 @@ class TestBodyClosedError(TestCase):
 
 
 class TestFunctions(TestCase):
-    def test_build_base_sslctx(self):
-        sslctx = base.build_base_sslctx()
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, base.TLS.protocol)
-        self.assertTrue(sslctx.options & ssl.OP_NO_SSLv2)
-        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
-
     def test_validate_sslctx(self):
         # Bad type:
         with self.assertRaises(TypeError) as cm:
@@ -168,7 +142,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.validate_base_sslctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
         self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.{}'.format(base.TLS.name)
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
         )
 
         # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
@@ -176,7 +150,7 @@ class TestFunctions(TestCase):
         # we cannot unset the ssl.OP_NO_SSLv2 bit, we can't unit test to check
         # that Degu enforces this, so for now, we set the bit here so it works
         # with Python 3.3.3 still; see: http://bugs.python.org/issue20207
-        sslctx = ssl.SSLContext(base.TLS.protocol)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         sslctx.options |= ssl.OP_NO_SSLv2
 
         # Missing ssl.OP_NO_COMPRESSION:

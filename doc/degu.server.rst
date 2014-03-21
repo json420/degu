@@ -134,6 +134,12 @@ The :class:`SSLServer` class
 .. class:: SSLServer(sslctx, addresss, app)
 
 
+Functions
+---------
+
+.. autofunction:: build_server_sslctx
+
+
 .. _`multiprocessing.Process`: http://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket.socket.bind()`: http://docs.python.org/3/library/socket.html#socket.socket.bind
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6

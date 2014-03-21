@@ -31,29 +31,8 @@ from degu import sslhelpers, misc
 
 class TestTempPKI(TestCase):
     def test_init(self):
-        # Test when client_pki=False:
-        pki = misc.TempPKI()
-        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
-        self.assertGreater(path.getsize(pki.path(pki.server_id, 'cert')), 0)
-        self.assertIsNone(pki.client_ca_id)
-        self.assertIsNone(pki.client_id)
-        self.assertEqual(pki.get_server_config(), {
-            'cert_file': pki.path(pki.server_id, 'cert'),
-            'key_file': pki.path(pki.server_id, 'key'),
-        })
-        self.assertEqual(pki.get_client_config(), {
-            'ca_file': pki.path(pki.server_ca_id, 'ca'),
-            'check_hostname': False,
-        })
-        self.assertTrue(path.isdir(pki.ssldir))
-        pki.__del__()
-        self.assertFalse(path.exists(pki.ssldir))
-        pki.__del__()
-
         # Test when client_pki=True:
-        pki = misc.TempPKI(client_pki=True)
+        pki = misc.TempPKI()
         self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'key')), 0)
         self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
         self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
@@ -67,11 +46,40 @@ class TestTempPKI(TestCase):
             'key_file': pki.path(pki.server_id, 'key'),
             'ca_file': pki.path(pki.client_ca_id, 'ca'),
         })
+        self.assertEqual(pki.get_anonymous_server_config(), {
+            'cert_file': pki.path(pki.server_id, 'cert'),
+            'key_file': pki.path(pki.server_id, 'key'),
+            'allow_unauthenticated_clients': True,
+        })
         self.assertEqual(pki.get_client_config(), {
             'ca_file': pki.path(pki.server_ca_id, 'ca'),
             'check_hostname': False,
             'cert_file': pki.path(pki.client_id, 'cert'),
             'key_file': pki.path(pki.client_id, 'key'),
+        })
+        self.assertEqual(pki.get_anonymous_client_config(), {
+            'ca_file': pki.path(pki.server_ca_id, 'ca'),
+            'check_hostname': False,
+        })
+        self.assertTrue(path.isdir(pki.ssldir))
+        pki.__del__()
+        self.assertFalse(path.exists(pki.ssldir))
+        pki.__del__()
+
+        # Test when client_pki=False:
+        pki = misc.TempPKI(client_pki=False)
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
+        self.assertGreater(path.getsize(pki.path(pki.server_id, 'cert')), 0)
+        self.assertEqual(pki.get_anonymous_server_config(), {
+            'cert_file': pki.path(pki.server_id, 'cert'),
+            'key_file': pki.path(pki.server_id, 'key'),
+            'allow_unauthenticated_clients': True,
+        })
+        self.assertEqual(pki.get_anonymous_client_config(), {
+            'ca_file': pki.path(pki.server_ca_id, 'ca'),
+            'check_hostname': False,
         })
         self.assertTrue(path.isdir(pki.ssldir))
         pki.__del__()
