@@ -34,7 +34,6 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
-    validate_base_sslctx,
     makefiles,
     read_lines_iter,
     parse_headers,
@@ -94,7 +93,15 @@ def build_client_sslctx(config):
 
 
 def validate_client_sslctx(sslctx):
-    validate_base_sslctx(sslctx)
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
+    import ssl
+
+    if not isinstance(sslctx, ssl.SSLContext):
+        raise TypeError('sslctx must be an ssl.SSLContext')
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
+    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
     if sslctx.verify_mode != ssl.CERT_REQUIRED:
         raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
     return sslctx
