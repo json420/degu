@@ -181,6 +181,31 @@ def build_server_sslctx(config):
     return sslctx
 
 
+def validate_server_sslctx(sslctx):
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
+    import ssl
+
+    if not isinstance(sslctx, ssl.SSLContext):
+        raise TypeError('sslctx must be an ssl.SSLContext')
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
+
+    # We consider ssl.CERT_OPTIONAL to be a bad grey area:
+    if sslctx.verify_mode == ssl.CERT_OPTIONAL:
+        raise ValueError('sslctx.verify_mode cannot be ssl.CERT_OPTIONAL')
+    assert sslctx.verify_mode in (ssl.CERT_REQUIRED, ssl.CERT_NONE)
+
+    # Check the options:
+    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
+    if not (sslctx.options & ssl.OP_SINGLE_ECDH_USE):
+        raise ValueError('sslctx.options must include ssl.OP_SINGLE_ECDH_USE')
+    if not (sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE):
+        raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
+
+    return sslctx
+
+
 def parse_request(line):
     """
     Parse the request line.
