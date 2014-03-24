@@ -24,7 +24,6 @@ HTTP server.
 """
 
 import socket
-import ssl
 import logging
 import threading
 from os import path

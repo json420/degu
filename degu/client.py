@@ -24,7 +24,6 @@ HTTP client.
 """
 
 import socket
-import ssl
 from collections import namedtuple
 import io
 import os
