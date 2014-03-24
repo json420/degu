@@ -805,8 +805,24 @@ class TestSSLServer(TestCase):
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
-        # Good sslctx from here on:
+        # not (options & ssl.OP_SINGLE_ECDH_USE)
         sslctx.options |= ssl.OP_NO_COMPRESSION
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(sslctx, '::1', good_app)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+        )
+
+        # not (options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(sslctx, '::1', good_app)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+        )
+
+        # Good sslctx from here on:
+        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
 
         # Bad address type:
         with self.assertRaises(TypeError) as cm:

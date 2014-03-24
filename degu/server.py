@@ -135,8 +135,10 @@ def build_server_sslctx(config):
         ===========  =================================
 
 
-    FIXME: There is a good chance we should not use ECDH, and if we do, it's not
-    overly clear what curve would be the best choice.  See:
+    FIXME: There is a good chance we should not use ECDHE, and if we do, it's
+    not overly clear what curve would be the best choice.  In fact, it seems
+    current openssl implementations don't offer a conservative, uncontroversial
+    option.  See:
 
         http://safecurves.cr.yp.to/
 
@@ -661,9 +663,8 @@ class SSLServer(Server):
     scheme = 'https'
 
     def __init__(self, sslctx, address, app):
-        validate_base_sslctx(sslctx)
+        self.sslctx = validate_server_sslctx(sslctx)
         super().__init__(address, app)
-        self.sslctx = sslctx
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(
