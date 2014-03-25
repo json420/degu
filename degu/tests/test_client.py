@@ -409,54 +409,66 @@ class TestFunctions(TestCase):
         inst = client.create_client(url)
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]:54321'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]:54321'})
 
         # IPv6, no port (should default to 80):
         url = 'http://[fe80::e8b:fdff:fe75:402c]/'
         inst = client.create_client(url)
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 80))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]'})
 
         # IPv4, with port:
         url = 'http://10.17.76.69:54321/'
         inst = client.create_client(url)
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69:54321'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69:54321'})
 
         # IPv4, no port (should default to 80):
         url = 'http://10.17.76.69/'
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('10.17.76.69', 80))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('10.17.76.69', 80))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69'})
 
         # Name, with port:
         url = 'http://www.example.com:54321/'
         inst = client.create_client(url)
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('www.example.com', 54321))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:54321'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('www.example.com', 54321))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:54321'})
 
         # Name, no port (should default to 80):
         url = 'http://www.example.com/'
         inst = client.create_client(url)
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('www.example.com', 80))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com'})
         inst = client.create_client(urlparse(url))
         self.assertIsInstance(inst, client.Client)
         self.assertEqual(inst.address, ('www.example.com', 80))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com'})
 
         # Bad scheme:
         url = 'https://www.example.com/'
@@ -477,10 +489,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]:54321'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 54321))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]:54321'})
 
         # IPv6, no port (should default to 443):
         url = 'https://[fe80::e8b:fdff:fe75:402c]/'
@@ -488,10 +502,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('fe80::e8b:fdff:fe75:402c', 443))
+        self.assertEqual(inst.base_headers, {'host': '[fe80::e8b:fdff:fe75:402c]'})
 
         # IPv4, with port:
         url = 'https://10.17.76.69:54321/'
@@ -499,10 +515,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69:54321'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('10.17.76.69', 54321))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69:54321'})
 
         # IPv4, no port (should default to 443):
         url = 'https://10.17.76.69/'
@@ -510,10 +528,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('10.17.76.69', 443))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('10.17.76.69', 443))
+        self.assertEqual(inst.base_headers, {'host': '10.17.76.69'})
 
         # Name, with port:
         url = 'https://www.example.com:54321/'
@@ -521,10 +541,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('www.example.com', 54321))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:54321'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('www.example.com', 54321))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:54321'})
 
         # Name, no port (should default to 443):
         url = 'https://www.example.com/'
@@ -532,10 +554,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('www.example.com', 443))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com'})
         inst = client.create_sslclient(sslctx, urlparse(url))
         self.assertIsInstance(inst, client.SSLClient)
         self.assertIs(inst.sslctx, sslctx)
         self.assertEqual(inst.address, ('www.example.com', 443))
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com'})
 
         # Bad scheme:
         url = 'http://www.example.com/'
@@ -578,26 +602,22 @@ class TestClient(TestCase):
         inst = client.Client(filename)
         self.assertIs(inst.address, filename)
         self.assertIs(inst.family, socket.AF_UNIX)
-        self.assertIsNone(inst.host)
+        self.assertEqual(inst.base_headers, {})
 
         # `bytes` (AF_UNIX):
         address = b'\x0000022'
         inst = client.Client(address)
         self.assertIs(inst.address, address)
         self.assertIs(inst.family, socket.AF_UNIX)
-        self.assertIsNone(inst.host)
+        self.assertEqual(inst.base_headers, {})
 
         # A number of good address permutations:
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.Client(address)
             self.assertIs(inst.address, address)
-            self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
-            if host is None:
-                self.assertEqual(inst.base_headers, {})
-            else:
-                self.assertEqual(inst.base_headers, {'host': inst.host})
+            self.assertEqual(inst.base_headers, {})
 
     def test_del(self):
         class ClientSubclass(client.Client):
@@ -750,13 +770,9 @@ class TestSSLClient(TestCase):
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
-            self.assertEqual(inst.host, host)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
-            if host is None:
-                self.assertEqual(inst.base_headers, {})
-            else:
-                self.assertEqual(inst.base_headers, {'host': inst.host})
+            self.assertEqual(inst.base_headers, {})
 
     def test_repr(self):
         class Custom(client.SSLClient):
