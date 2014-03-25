@@ -24,7 +24,6 @@ HTTP server.
 """
 
 import socket
-import ssl
 import logging
 import threading
 from os import path
@@ -32,7 +31,6 @@ from os import path
 from .base import (
     TYPE_ERROR,
     EmptyLineError,
-    validate_base_sslctx,
     makefiles,
     read_lines_iter,
     parse_headers,
@@ -135,8 +133,10 @@ def build_server_sslctx(config):
         ===========  =================================
 
 
-    FIXME: There is a good chance we should not use ECDH, and if we do, it's not
-    overly clear what curve would be the best choice.  See:
+    FIXME: There is a good chance we should not use ECDHE, and if we do, it's
+    not overly clear what curve would be the best choice.  In fact, it seems
+    current openssl implementations don't offer a conservative, uncontroversial
+    option.  See:
 
         http://safecurves.cr.yp.to/
 
@@ -178,6 +178,31 @@ def build_server_sslctx(config):
         cafile=config.get('ca_file'),
         capath=config.get('ca_path'),
     )
+    return sslctx
+
+
+def validate_server_sslctx(sslctx):
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
+    import ssl
+
+    if not isinstance(sslctx, ssl.SSLContext):
+        raise TypeError('sslctx must be an ssl.SSLContext')
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
+
+    # We consider ssl.CERT_OPTIONAL to be a bad grey area:
+    if sslctx.verify_mode == ssl.CERT_OPTIONAL:
+        raise ValueError('sslctx.verify_mode cannot be ssl.CERT_OPTIONAL')
+    assert sslctx.verify_mode in (ssl.CERT_REQUIRED, ssl.CERT_NONE)
+
+    # Check the options:
+    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
+    if not (sslctx.options & ssl.OP_SINGLE_ECDH_USE):
+        raise ValueError('sslctx.options must include ssl.OP_SINGLE_ECDH_USE')
+    if not (sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE):
+        raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
+
     return sslctx
 
 
@@ -636,9 +661,8 @@ class SSLServer(Server):
     scheme = 'https'
 
     def __init__(self, sslctx, address, app):
-        validate_base_sslctx(sslctx)
+        self.sslctx = validate_server_sslctx(sslctx)
         super().__init__(address, app)
-        self.sslctx = sslctx
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(

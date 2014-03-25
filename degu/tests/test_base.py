@@ -132,39 +132,6 @@ class TestBodyClosedError(TestCase):
 
 
 class TestFunctions(TestCase):
-    def test_validate_sslctx(self):
-        # Bad type:
-        with self.assertRaises(TypeError) as cm:
-            base.validate_base_sslctx('foo')
-        self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            base.validate_base_sslctx(ssl.SSLContext(ssl.PROTOCOL_SSLv3))
-        self.assertEqual(str(cm.exception),
-            'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
-        )
-
-        # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
-        # default (which is good); Degu enforces this (also good), but because
-        # we cannot unset the ssl.OP_NO_SSLv2 bit, we can't unit test to check
-        # that Degu enforces this, so for now, we set the bit here so it works
-        # with Python 3.3.3 still; see: http://bugs.python.org/issue20207
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        sslctx.options |= ssl.OP_NO_SSLv2
-
-        # Missing ssl.OP_NO_COMPRESSION:
-        sslctx.options |= ssl.OP_NO_SSLv2
-        with self.assertRaises(ValueError) as cm:
-            base.validate_base_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_NO_COMPRESSION'
-        )
-
-        # All good:
-        sslctx.options |= ssl.OP_NO_COMPRESSION
-        self.assertIsNone(base.validate_base_sslctx(sslctx))
-
     def test_read_lines_iter(self):
         tmp = TempDir()
         body = b'B' * (MAX_LINE_BYTES + 1)

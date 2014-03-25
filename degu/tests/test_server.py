@@ -102,6 +102,88 @@ class TestFunctions(TestCase):
                 'True is only allowed value for allow_unauthenticated_clients'
             )
 
+    def test_validate_server_sslctx(self):
+        # Bad type:
+        with self.assertRaises(TypeError) as cm:
+            server.validate_server_sslctx(ssl.SSLContext)
+        self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
+
+        # Wrong protocol:
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(ssl.SSLContext(ssl.PROTOCOL_TLSv1))
+        self.assertEqual(str(cm.exception),
+            'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
+        )
+
+        # Don't allow ssl.CERT_OPTIONAL:
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        sslctx.verify_mode = ssl.CERT_OPTIONAL
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.verify_mode cannot be ssl.CERT_OPTIONAL'
+        )
+
+        # options missing OP_NO_COMPRESSION:
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        self.assertIs(sslctx.verify_mode, ssl.CERT_NONE)
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_NO_COMPRESSION'
+        )
+
+        # options missing OP_SINGLE_ECDH_USE:
+        sslctx.options |= ssl.OP_NO_COMPRESSION
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+        )
+
+        # options missing OP_CIPHER_SERVER_PREFERENCE:
+        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+        )
+
+        # All good:
+        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+        self.assertIs(server.validate_server_sslctx(sslctx), sslctx)
+
+        # Now again, this time with CERT_REQUIRED:
+        # options missing OP_NO_COMPRESSION:
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        sslctx.verify_mode = ssl.CERT_REQUIRED
+        self.assertIs(sslctx.verify_mode, ssl.CERT_REQUIRED)
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_NO_COMPRESSION'
+        )
+
+        # options missing OP_SINGLE_ECDH_USE:
+        sslctx.options |= ssl.OP_NO_COMPRESSION
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+        )
+
+        # options missing OP_CIPHER_SERVER_PREFERENCE:
+        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+        with self.assertRaises(ValueError) as cm:
+            server.validate_server_sslctx(sslctx)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+        )
+
+        # All good:
+        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+        self.assertIs(server.validate_server_sslctx(sslctx), sslctx)
+
     def test_parse_request(self):
         # Bad separators:
         with self.assertRaises(ValueError) as cm:
@@ -723,8 +805,24 @@ class TestSSLServer(TestCase):
             'sslctx.options must include ssl.OP_NO_COMPRESSION'
         )
 
-        # Good sslctx from here on:
+        # not (options & ssl.OP_SINGLE_ECDH_USE)
         sslctx.options |= ssl.OP_NO_COMPRESSION
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(sslctx, '::1', good_app)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+        )
+
+        # not (options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
+        with self.assertRaises(ValueError) as cm:
+            server.SSLServer(sslctx, '::1', good_app)
+        self.assertEqual(str(cm.exception),
+            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+        )
+
+        # Good sslctx from here on:
+        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
 
         # Bad address type:
         with self.assertRaises(TypeError) as cm:

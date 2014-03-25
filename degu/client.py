@@ -24,7 +24,6 @@ HTTP client.
 """
 
 import socket
-import ssl
 from collections import namedtuple
 import io
 import os
@@ -34,7 +33,6 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
-    validate_base_sslctx,
     makefiles,
     read_lines_iter,
     parse_headers,
@@ -94,7 +92,15 @@ def build_client_sslctx(config):
 
 
 def validate_client_sslctx(sslctx):
-    validate_base_sslctx(sslctx)
+    # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
+    import ssl
+
+    if not isinstance(sslctx, ssl.SSLContext):
+        raise TypeError('sslctx must be an ssl.SSLContext')
+    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
+        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
+    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
     if sslctx.verify_mode != ssl.CERT_REQUIRED:
         raise ValueError('sslctx.verify_mode must be ssl.CERT_REQUIRED')
     return sslctx
@@ -176,10 +182,8 @@ class Client:
         if isinstance(address, tuple):  
             if len(address) == 4:
                 self.family = socket.AF_INET6
-                self.host = '[{}]:{}'.format(address[0], address[1])
             elif len(address) == 2:
                 self.family = None
-                self.host = '{}:{}'.format(address[0], address[1])
             else:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
@@ -187,7 +191,6 @@ class Client:
             self.server_hostname = address[0]
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
-            self.host = None
             self.server_hostname = None
             if isinstance(address, str) and path.abspath(address) != address:
                 raise ValueError(
@@ -200,8 +203,6 @@ class Client:
         self.address = address
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
-        if self.host:
-            self.base_headers['host'] = self.host
         self.conn = None
         self.response_body = None  # Previous Input or ChunkedInput
 
@@ -307,6 +308,9 @@ def create_client(url, base_headers=None):
     if t.scheme != 'http':
         raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
     port = (80 if t.port is None else t.port)
+    if not base_headers:
+        base_headers = {}
+    base_headers['host'] = t.netloc
     return Client((t.hostname, port), base_headers)
 
 
@@ -318,5 +322,8 @@ def create_sslclient(sslctx, url, base_headers=None):
     if t.scheme != 'https':
         raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
     port = (443 if t.port is None else t.port)
+    if not base_headers:
+        base_headers = {}
+    base_headers['host'] = t.netloc
     return SSLClient(sslctx, (t.hostname, port), base_headers)
 

@@ -24,7 +24,6 @@ Common HTTP parser and IO abstractions used by server and client.
 """
 
 import io
-import ssl
 from collections import namedtuple
 
 
@@ -70,17 +69,6 @@ class BodyClosedError(Exception):
     def __init__(self, body):
         self.body = body
         super().__init__('cannot iterate, {!r} is closed'.format(body))
-
-
-def validate_base_sslctx(sslctx):
-    if not isinstance(sslctx, ssl.SSLContext):
-        raise TypeError('sslctx must be an ssl.SSLContext')
-    if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
-        raise ValueError('sslctx.protocol must be ssl.PROTOCOL_TLSv1_2')
-    if not (sslctx.options & ssl.OP_NO_SSLv2):
-        raise ValueError('sslctx.options must include ssl.OP_NO_SSLv2')
-    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
-        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
 
 
 def read_lines_iter(rfile):
