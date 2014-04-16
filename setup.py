@@ -32,7 +32,7 @@ if sys.version_info < (3, 4):
 import os
 from os import path
 import subprocess
-from distutils.core import setup, Extension
+from distutils.core import setup
 from distutils.cmd import Command
 
 import degu

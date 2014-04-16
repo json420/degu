@@ -1,8 +1,6 @@
 #!/usr/bin/python3
 
-import time
 import logging
-import json
 
 from degu import IPv6_LOOPBACK
 from degu.misc import TempPKI, TempSSLServer, echo_app
