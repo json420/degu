@@ -24,7 +24,6 @@ Common HTTP parser and IO abstractions used by server and client.
 """
 
 import io
-from collections import namedtuple
 
 
 MAX_LINE_BYTES = 4096

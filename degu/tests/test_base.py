@@ -25,12 +25,11 @@ Unit tests for the `degu.base` module`
 
 from unittest import TestCase
 import os
-import ssl
 from random import SystemRandom
 
 from .helpers import TempDir, DummySocket
 from degu.sslhelpers import random_id
-from degu.base import MAX_LINE_BYTES, MAX_HEADER_COUNT
+from degu.base import MAX_LINE_BYTES
 from degu import base
 
 

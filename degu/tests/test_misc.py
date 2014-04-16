@@ -26,7 +26,7 @@ Unit tests the `degu.misc` module.
 from unittest import TestCase
 from os import path
 
-from degu import sslhelpers, misc
+from degu import misc
 
 
 class TestTempPKI(TestCase):

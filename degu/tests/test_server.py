@@ -328,7 +328,7 @@ class TestFunctions(TestCase):
         self.assertIs(environ['script'], script)
         self.assertIs(environ['path'], path)
 
-        with self.assertRaises(IndexError) as cm:
+        with self.assertRaises(IndexError):
             server.shift_path(environ)
         self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
         self.assertIs(environ['script'], script)
@@ -1101,7 +1101,7 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(None, timeout_app)
         self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
-        with self.assertRaises(base.EmptyLineError) as cm:
+        with self.assertRaises(base.EmptyLineError):
             client.request('POST', '/foo')
         self.assertIsNone(client.conn)
         self.assertIsNone(client.response_body)

@@ -39,15 +39,26 @@ import degu
 from degu.tests.run import run_tests
 
 
+TREE = path.dirname(__file__)
+
+
 def run_sphinx_doctest():
     sphinx_build = '/usr/share/sphinx/scripts/python3/sphinx-build'
     if not os.access(sphinx_build, os.R_OK | os.X_OK):
         print('warning, cannot read and execute: {!r}'.format(sphinx_build))
         return
-    tree = path.dirname(path.abspath(__file__))
-    doc = path.join(tree, 'doc')
-    doctest = path.join(tree, 'doc', '_build', 'doctest')
+    doc = path.join(TREE, 'doc')
+    doctest = path.join(TREE, 'doc', '_build', 'doctest')
     cmd = [sys.executable, sphinx_build, '-EW', '-b', 'doctest', doc, doctest]
+    subprocess.check_call(cmd)
+
+
+def run_pyflakes3():
+    pyflakes3 = '/usr/bin/pyflakes3'
+    if not os.access(pyflakes3, os.R_OK | os.X_OK):
+        print('WARNING: cannot read and execute: {!r}'.format(pyflakes3))
+        return
+    cmd = [pyflakes3, path.join(TREE, 'degu')]
     subprocess.check_call(cmd)
 
 
@@ -66,6 +77,7 @@ class Test(Command):
         if not run_tests():
             raise SystemExit('2')
         run_sphinx_doctest()
+        run_pyflakes3()
 
 
 setup(

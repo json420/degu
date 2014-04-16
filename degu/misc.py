@@ -32,7 +32,6 @@ from os import path
 import shutil
 import json
 from hashlib import sha1
-from urllib.parse import urlparse
 
 from .sslhelpers import PKI
 from . import start_server, start_sslserver
