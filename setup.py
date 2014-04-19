@@ -42,24 +42,42 @@ from degu.tests.run import run_tests
 TREE = path.dirname(__file__)
 
 
-def run_sphinx_doctest():
-    sphinx_build = '/usr/share/sphinx/scripts/python3/sphinx-build'
-    if not os.access(sphinx_build, os.R_OK | os.X_OK):
-        print('warning, cannot read and execute: {!r}'.format(sphinx_build))
+def run_under_same_interpreter(script, args):
+    print('\n** running: {}...'.format(script), file=sys.stderr)
+    assert isinstance(script, str)
+    assert path.abspath(script) == script
+    assert isinstance(args, list)
+    if not os.access(script, os.R_OK | os.X_OK):
+        print('WARNING: cannot read and execute: {!r}'.format(script),
+            file=sys.stderr
+        )
         return
+    cmd = [sys.executable, script] + args
+    print('check_call:', cmd, file=sys.stderr)
+    subprocess.check_call(cmd)
+    print('** PASSED: {}\n'.format(script), file=sys.stderr)
+
+
+def run_sphinx_doctest():
+    script = '/usr/share/sphinx/scripts/python3/sphinx-build'
     doc = path.join(TREE, 'doc')
     doctest = path.join(TREE, 'doc', '_build', 'doctest')
-    cmd = [sys.executable, sphinx_build, '-EW', '-b', 'doctest', doc, doctest]
-    subprocess.check_call(cmd)
+    args = ['-EW', '-b', 'doctest', doc, doctest]
+    run_under_same_interpreter(script, args)
 
 
 def run_pyflakes3():
-    pyflakes3 = '/usr/bin/pyflakes3'
-    if not os.access(pyflakes3, os.R_OK | os.X_OK):
-        print('WARNING: cannot read and execute: {!r}'.format(pyflakes3))
-        return
-    cmd = [pyflakes3, path.join(TREE, 'degu')]
-    subprocess.check_call(cmd)
+    script = '/usr/bin/pyflakes3'
+    names = [
+        'degu',
+        'setup.py',
+        'benchmark.py',
+        'benchmark-parsing.py',
+        'benchmark-ssl.py',
+        'run-echo-app.py',
+    ]
+    args = [path.join(TREE, name) for name in names]
+    run_under_same_interpreter(script, args)
 
 
 class Test(Command):
@@ -96,3 +114,4 @@ setup(
         'test': Test,
     },
 )
+
