@@ -39,7 +39,7 @@ import degu
 from degu.tests.run import run_tests
 
 
-TREE = path.dirname(__file__)
+TREE = path.dirname(path.abspath(__file__))
 
 
 def run_under_same_interpreter(script, args):
