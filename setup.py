@@ -42,16 +42,16 @@ from degu.tests.run import run_tests
 TREE = path.dirname(path.abspath(__file__))
 
 
-def run_under_same_interpreter(script, args):
+def run_under_same_interpreter(opname, script, args):
     print('\n** running: {}...'.format(script), file=sys.stderr)
-    assert isinstance(script, str)
-    assert path.abspath(script) == script
-    assert isinstance(args, list)
     if not os.access(script, os.R_OK | os.X_OK):
-        print('WARNING: cannot read and execute: {!r}'.format(script),
+        print('ERROR: cannot read and execute: {!r}'.format(script),
             file=sys.stderr
         )
-        return
+        print('Consider running `setup.py test --skip-{}`'.format(opname),
+            file=sys.stderr
+        )
+        sys.exit(3)
     cmd = [sys.executable, script] + args
     print('check_call:', cmd, file=sys.stderr)
     subprocess.check_call(cmd)
@@ -63,7 +63,7 @@ def run_sphinx_doctest():
     doc = path.join(TREE, 'doc')
     doctest = path.join(TREE, 'doc', '_build', 'doctest')
     args = ['-EW', '-b', 'doctest', doc, doctest]
-    run_under_same_interpreter(script, args)
+    run_under_same_interpreter('sphinx', script, args)
 
 
 def run_pyflakes3():
@@ -77,25 +77,31 @@ def run_pyflakes3():
         'run-echo-app.py',
     ]
     args = [path.join(TREE, name) for name in names]
-    run_under_same_interpreter(script, args)
+    run_under_same_interpreter('flakes', script, args)
 
 
 class Test(Command):
-    description = 'run unit tests and doc tests'
+    description = 'run unit tests and doctests'
 
-    user_options = []
+    user_options = [
+        ('skip-sphinx', None, 'do not run Sphinx doctests'),
+        ('skip-flakes', None, 'do not run pyflakes static checks'),
+    ]
 
     def initialize_options(self):
-        pass
+        self.skip_sphinx = 0
+        self.skip_flakes = 0
 
     def finalize_options(self):
         pass
 
     def run(self):
         if not run_tests():
-            raise SystemExit('2')
-        run_sphinx_doctest()
-        run_pyflakes3()
+            sys.exit(2)
+        if not self.skip_sphinx:
+            run_sphinx_doctest()
+        if not self.skip_flakes:
+            run_pyflakes3()
 
 
 setup(
