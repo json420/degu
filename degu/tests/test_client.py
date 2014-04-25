@@ -31,6 +31,7 @@ from urllib.parse import urlparse
 
 from .helpers import TempDir, DummySocket, DummyFile
 from degu.base import TYPE_ERROR
+from degu.sslhelpers import random_id
 from degu.misc import TempPKI
 from degu import base, client
 
@@ -65,13 +66,6 @@ HOSTS = (
 
 
 class TestNamedTuples(TestCase):
-    def test_Connection(self):
-        tup = client.Connection('da sock', 'da rfile', 'da wfile')
-        self.assertIsInstance(tup, tuple)
-        self.assertEqual(tup.sock, 'da sock')
-        self.assertEqual(tup.rfile, 'da rfile')
-        self.assertEqual(tup.wfile, 'da wfile')
-
     def test_Response(self):
         tup = client.Response('da status', 'da reason', 'da headers', 'da body')
         self.assertIsInstance(tup, tuple)
@@ -571,6 +565,57 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception), "scheme must be 'https', got 'http'")
 
 
+class TestConnection(TestCase):
+    def test_init(self):
+        sock = DummySocket()
+        key = random_id().lower()
+        value = random_id()
+        base_headers = {key: value}
+        inst = client.Connection(sock, base_headers)
+        self.assertIsInstance(inst, client.Connection)
+        self.assertIs(inst.sock, sock)
+        self.assertIs(inst.base_headers, base_headers)
+        self.assertEqual(inst.base_headers, {key: value})
+        self.assertIs(inst.rfile, sock._rfile)
+        self.assertIs(inst.wfile, sock._wfile)
+        self.assertIsNone(inst.response_body)
+        self.assertIs(inst.closed, False)
+        self.assertEqual(sock._calls, [
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+        ])
+
+    def test_del(self):
+        class ConnectionSubclass(client.Connection):
+            def __init__(self):
+                self._calls = 0
+
+            def close(self):
+                self._calls += 1
+
+        inst = ConnectionSubclass()
+        self.assertEqual(inst._calls, 0)
+        self.assertIsNone(inst.__del__())
+        self.assertEqual(inst._calls, 1)
+        self.assertIsNone(inst.__del__())
+        self.assertEqual(inst._calls, 2)
+
+    def test_close(self):
+        sock = DummySocket()
+        inst = client.Connection(sock, None)
+        sock._calls.clear()
+
+        # When Connection.closed is False:
+        self.assertIsNone(inst.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIs(inst.closed, True)
+
+        # Now when Connection.closed is True:
+        self.assertIsNone(inst.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIs(inst.closed, True)
+
+
 class TestClient(TestCase):
     def test_init(self):
         # Bad address type:
@@ -614,25 +659,11 @@ class TestClient(TestCase):
         # A number of good address permutations:
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.Client(address)
+            self.assertIsInstance(inst, client.Client)
             self.assertIs(inst.address, address)
             self.assertIsNone(inst.conn)
             self.assertIsNone(inst.response_body)
             self.assertEqual(inst.base_headers, {})
-
-    def test_del(self):
-        class ClientSubclass(client.Client):
-            def __init__(self):
-                self._calls = 0
-
-            def close(self):
-                self._calls += 1
-
-        inst = ClientSubclass()
-        self.assertEqual(inst._calls, 0)
-        self.assertIsNone(inst.__del__())
-        self.assertEqual(inst._calls, 1)
-        self.assertIsNone(inst.__del__())
-        self.assertEqual(inst._calls, 2)
 
     def test_repr(self):
         class Custom(client.Client):
@@ -648,7 +679,6 @@ class TestClient(TestCase):
         class ClientSubclass(client.Client):
             def __init__(self, sock):
                 self._sock = sock
-                self.conn = None
 
             def create_socket(self):
                 return self._sock
@@ -656,42 +686,28 @@ class TestClient(TestCase):
         sock = DummySocket()
         inst = ClientSubclass(sock)
         conn = inst.connect()
-        self.assertIs(conn, inst.conn)
         self.assertIsInstance(conn, client.Connection)
-        self.assertEqual(conn, (sock, sock._rfile, sock._wfile))
+        self.assertIs(conn.sock, sock)
+        self.assertIs(conn.rfile, sock._rfile)
+        self.assertIs(conn.wfile, sock._wfile)
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
 
-        # Should do nothing when conn is not None:
-        sock._calls.clear()
-        self.assertIs(inst.connect(), conn)
-        self.assertIs(conn, inst.conn)
-        self.assertEqual(sock._calls, [])
-
-    def test_close(self):
-        inst = client.Client(('::1',  5678))
-
-        # Should set response_body to None even if conn is None:
-        inst.response_body = 'foo'
-        self.assertIsNone(inst.close())
-        self.assertIsNone(inst.response_body)
-        self.assertIsNone(inst.conn)
-
-        # Now try it when conn is not None:
-        sock = DummySocket()
-        rfile = DummyFile()
-        wfile = DummyFile()
-        conn = client.Connection(sock, rfile, wfile)
-        inst.response_body = 'foo'
-        inst.conn = conn
-        self.assertIsNone(inst.close())
-        self.assertIsNone(inst.response_body)
-        self.assertIsNone(inst.conn)
-        self.assertEqual(rfile._calls, ['close'])
-        self.assertEqual(wfile._calls, ['close'])
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR), 'close'])
+        # Should return a new Connection instance each time:
+        conn2 = inst.connect()
+        self.assertIsNot(conn2, conn)
+        self.assertIsInstance(conn2, client.Connection)
+        self.assertIs(conn2.sock, sock)
+        self.assertIs(conn2.rfile, sock._rfile)
+        self.assertIs(conn2.wfile, sock._wfile)
+        self.assertEqual(sock._calls, [
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+        ])
 
     def test_request(self):
         # Test when the previous response body wasn't consumed:

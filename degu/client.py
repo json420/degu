@@ -45,7 +45,6 @@ from .base import (
 )
 
 
-Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
 CLIENT_SOCKET_TIMEOUT = 15
 
@@ -177,6 +176,60 @@ def read_response(rfile, method):
     return Response(status, reason, headers, body)
 
 
+class Connection:
+    __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body', 'closed')
+
+    def __init__(self, sock, base_headers):
+        self.sock = sock
+        self.base_headers = base_headers
+        (self.rfile, self.wfile) = makefiles(sock)
+        self.response_body = None  # Previous Input or ChunkedInput
+        self.closed = False
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if not self.closed:
+            self.sock.shutdown(socket.SHUT_RDWR)
+            self.closed = True
+        assert self.closed is True
+
+    def request(self, method, uri, headers=None, body=None):
+        if self.response_body and not self.response_body.closed:
+            raise UnconsumedResponseError(self.response_body)
+        if headers is None:
+            headers = {}
+        if isinstance(body, io.BufferedReader):
+            if 'content-length' in headers:
+                content_length = headers['content-length']
+            else:
+                content_length = os.stat(body.fileno()).st_size
+            body = FileOutput(body, content_length)
+        validate_request(method, uri, headers, body)
+        headers.update(self.base_headers)
+        try:
+            preamble = ''.join(iter_request_lines(method, uri, headers))
+            self.wfile.write(preamble.encode('latin_1'))
+            if isinstance(body, (bytes, bytearray)):
+                self.wfile.write(body)
+            elif isinstance(body, (Output, FileOutput)):
+                for buf in body:
+                    self.wfile.write(buf)
+            elif isinstance(body, ChunkedOutput):
+                for chunk in body:
+                    write_chunk(self.wfile, chunk)
+            else:
+                assert body is None
+            self.wfile.flush()
+            response = read_response(self.rfile, method)
+            self.response_body = response.body
+            return response
+        except Exception:
+            self.close()
+            raise
+
+
 class Client:
     def __init__(self, address, base_headers=None):
         if isinstance(address, tuple):  
@@ -203,11 +256,6 @@ class Client:
         self.address = address
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
-        self.conn = None
-        self.response_body = None  # Previous Input or ChunkedInput
-
-    def __del__(self):
-        self.close()
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
@@ -222,59 +270,7 @@ class Client:
         return sock
 
     def connect(self):
-        if self.conn is None:
-            sock = self.create_socket()
-            (rfile, wfile) = makefiles(sock)
-            self.conn = Connection(sock, rfile, wfile)
-        return self.conn
-
-    def close(self):
-        self.response_body = None
-        if getattr(self, 'conn', None) is not None:
-            conn = self.conn
-            self.conn = None
-            try:
-                conn.sock.shutdown(socket.SHUT_RDWR)
-                conn.rfile.close()
-                conn.wfile.close()
-                conn.sock.close()
-            except OSError:
-                pass
-
-    def request(self, method, uri, headers=None, body=None):
-        if self.response_body and not self.response_body.closed:
-            raise UnconsumedResponseError(self.response_body)
-        if headers is None:
-            headers = {}
-        if isinstance(body, io.BufferedReader):
-            if 'content-length' in headers:
-                content_length = headers['content-length']
-            else:
-                content_length = os.stat(body.fileno()).st_size
-            body = FileOutput(body, content_length)
-        validate_request(method, uri, headers, body)
-        headers.update(self.base_headers)
-        conn = self.connect()
-        try:
-            preamble = ''.join(iter_request_lines(method, uri, headers))
-            conn.wfile.write(preamble.encode('latin_1'))
-            if isinstance(body, (bytes, bytearray)):
-                conn.wfile.write(body)
-            elif isinstance(body, (Output, FileOutput)):
-                for buf in body:
-                    conn.wfile.write(buf)
-            elif isinstance(body, ChunkedOutput):
-                for chunk in body:
-                    write_chunk(conn.wfile, chunk)
-            else:
-                assert body is None
-            conn.wfile.flush()
-            response = read_response(conn.rfile, method)
-            self.response_body = response.body
-            return response
-        except Exception:
-            self.close()
-            raise
+        return Connection(self.create_socket())
 
 
 class SSLClient(Client):
