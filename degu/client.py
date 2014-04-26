@@ -270,7 +270,7 @@ class Client:
         return sock
 
     def connect(self):
-        return Connection(self.create_socket())
+        return Connection(self.create_socket(), self.base_headers.copy())
 
 
 class SSLClient(Client):

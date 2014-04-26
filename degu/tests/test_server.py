@@ -996,8 +996,10 @@ def timeout_app(request):
 class TestLiveServer(TestCase):
     def build_with_app(self, build_func, *build_args):
         httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
-        return (httpd, httpd.get_client())
-  
+        client = httpd.get_client()
+        conn = client.connect()
+        return (httpd, conn)
+
     def test_chunked_request(self):
         (httpd, client) = self.build_with_app(None, chunked_request_app)
 
@@ -1121,7 +1123,9 @@ class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
         httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
-        return (httpd, httpd.get_client())
+        client = httpd.get_client()
+        conn = client.connect()
+        return (httpd, conn)
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
@@ -1181,7 +1185,9 @@ class TestLiveServerUnixSocket(TestLiveServer):
         filename = tmp.join('my.socket')
         httpd = TempServer(filename, build_func, *build_args)
         httpd._tmp = tmp
-        return (httpd, httpd.get_client())
+        client = httpd.get_client()
+        conn = client.connect()
+        return (httpd, conn)
 
     def test_timeout(self):
         self.skipTest('FIXME')
