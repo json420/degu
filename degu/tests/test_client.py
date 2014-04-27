@@ -615,6 +615,22 @@ class TestConnection(TestCase):
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
         self.assertIs(inst.closed, True)
 
+    def test_request(self):
+        # Test when the previous response body wasn't consumed:
+        class DummyBody:
+            closed = False
+
+        sock = DummySocket()
+        inst = client.Connection(sock, None)
+        sock._calls.clear()
+        inst.response_body = DummyBody
+        with self.assertRaises(client.UnconsumedResponseError) as cm:
+            inst.request(None, None)
+        self.assertIs(cm.exception.body, DummyBody)
+        self.assertEqual(str(cm.exception),
+            'previous response body not consumed: {!r}'.format(DummyBody)
+        )
+
 
 class TestClient(TestCase):
     def test_init(self):
@@ -661,8 +677,6 @@ class TestClient(TestCase):
             inst = client.Client(address)
             self.assertIsInstance(inst, client.Client)
             self.assertIs(inst.address, address)
-            self.assertIsNone(inst.conn)
-            self.assertIsNone(inst.response_body)
             self.assertEqual(inst.base_headers, {})
 
     def test_repr(self):
@@ -677,14 +691,18 @@ class TestClient(TestCase):
 
     def test_connect(self):
         class ClientSubclass(client.Client):
-            def __init__(self, sock):
+            def __init__(self, sock, base_headers):
                 self._sock = sock
+                self.base_headers = base_headers
 
             def create_socket(self):
                 return self._sock
 
+        key = random_id().lower()
+        value = random_id()
         sock = DummySocket()
-        inst = ClientSubclass(sock)
+        base_headers = {key: value}
+        inst = ClientSubclass(sock, base_headers)
         conn = inst.connect()
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
@@ -708,20 +726,6 @@ class TestClient(TestCase):
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
-
-    def test_request(self):
-        # Test when the previous response body wasn't consumed:
-        class DummyBody:
-            closed = False
-
-        inst = client.Client(('::1', 5678))
-        inst.response_body = DummyBody
-        with self.assertRaises(client.UnconsumedResponseError) as cm:
-            inst.request(None, None)
-        self.assertIs(cm.exception.body, DummyBody)
-        self.assertEqual(str(cm.exception),
-            'previous response body not consumed: {!r}'.format(DummyBody)
-        )
 
 
 class TestSSLClient(TestCase):
@@ -786,8 +790,6 @@ class TestSSLClient(TestCase):
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
-            self.assertIsNone(inst.conn)
-            self.assertIsNone(inst.response_body)
             self.assertEqual(inst.base_headers, {})
 
     def test_repr(self):
