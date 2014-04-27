@@ -190,8 +190,12 @@ class Connection:
         self.close()
 
     def close(self):
+        self.response_body = None
         if not self.closed:
-            self.sock.shutdown(socket.SHUT_RDWR)
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             self.closed = True
         assert self.closed is True
 
