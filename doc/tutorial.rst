@@ -63,7 +63,8 @@ above ``server``:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
->>> client.request('GET', '/')
+>>> conn = client.connect()
+>>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
@@ -73,20 +74,13 @@ designed to complement each other.  Think of them almost like inverse functions.
 For example, here's an RGI application that implements a `reverse-proxy`_:
 
 >>> from degu.base import build_uri, make_output_from_input
->>> import threading
 >>> class ProxyApp:
 ...     def __init__(self, address):
-...         self.address = address
-...         self.threadlocal = threading.local()
-... 
-...     def get_client(self):
-...         if not hasattr(self.threadlocal, 'client'):
-...             self.threadlocal.client = Client(self.address)
-...         return self.threadlocal.client
+...         self.client = Client(address)
 ... 
 ...     def __call__(self, request):
-...         client = self.get_client()
-...         response = client.request(
+...         conn = self.client.connect()
+...         response = conn.request(
 ...             request['method'],
 ...             build_uri(request['path'], request['query']),
 ...             request['headers'],
@@ -130,8 +124,9 @@ our ``proxy_server``:
 
 >>> from degu.client import SSLClient, build_client_sslctx
 >>> sslctx = build_client_sslctx(pki.get_client_config())
->>> proxy_client = SSLClient(sslctx, proxy_server.address)
->>> proxy_client.request('GET', '/')
+>>> client = SSLClient(sslctx, proxy_server.address)
+>>> conn = client.connect()
+>>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 This example is based on real-world Degu usage.  This is more or less how

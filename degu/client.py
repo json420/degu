@@ -191,13 +191,14 @@ class Connection:
 
     def close(self):
         self.response_body = None
-        if not self.closed:
+        self.closed = True
+        if self.sock is not None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-            self.closed = True
-        assert self.closed is True
+            self.sock = None
+        assert self.sock is None
 
     def request(self, method, uri, headers=None, body=None):
         if self.response_body and not self.response_body.closed:
@@ -274,7 +275,7 @@ class Client:
         return sock
 
     def connect(self):
-        return Connection(self.create_socket(), self.base_headers.copy())
+        return Connection(self.create_socket(), self.base_headers)
 
 
 class SSLClient(Client):

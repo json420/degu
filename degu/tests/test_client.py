@@ -29,7 +29,7 @@ import socket
 import ssl
 from urllib.parse import urlparse
 
-from .helpers import TempDir, DummySocket, DummyFile
+from .helpers import TempDir, DummySocket
 from degu.base import TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
