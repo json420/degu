@@ -34,7 +34,7 @@ Multiple requests can be made using the same connection:
 >>> conn.request('PUT', '/foo/bar')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-In some circumstance you might want to explicitly close a connection using
+In some circumstances you might want to explicitly close a connection using
 :meth:`Connection.close()`, although this will likewise be done automatically
 when the connection instance is garbage collected:
 
@@ -46,12 +46,13 @@ The *address* argument
 ----------------------
 
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
-can be a:
+can be:
 
-    * A ``(host,port)`` 2-tuple where the *host* is an IPv4 IP, an IPv6 IP, or
+    * A ``(host, port)`` 2-tuple where the *host* is an IPv4 IP, an IPv6 IP, or
       a DNS name
 
-    * A ``(host,port,flowinfo,scopeid)`` 4-tuple where the *host* is an IPv6 IP
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
+      IPv6 IP
 
     * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
@@ -59,26 +60,26 @@ can be a:
       socket
  
 
-If *address* is a ``(host,port)`` 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  For example, these
-are all valid 2-tuple *address* values::
+If your *address* is a 2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  For example, all
+three of these are valid 2-tuple *address* values::
 
     ('8.8.8.8', 80)
     ('2001:4860:4860::8888', 80)
     ('www.example.com', 80)
 
-If *address* is a ``(host,port,flowinfo,scopeid)`` 4-tuple, ``AF_INET6`` is
-assumed and the *address* is passed directly to `socket.socket.connect()`_ when
-creating a connection, thereby giving you access to full IPv6 address semantics,
-including the *scopeid* needed for `link-local addresses`_.  For example, this
-*address* would connect to a server listening on a link-local address::
+If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
+passed directly to `socket.socket.connect()`_ when creating a connection,
+thereby giving you access to full IPv6 semantics, including the *scopeid* needed
+for `link-local addresses`_.  For example, this 4-tuple *address* would connect
+to a hypothetical server listening on a IPv6 link-local address::
 
     ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
 
-Finally, if *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
-assumed and again the *address* is passed directly to `socket.socket.connect()`_
-when creating a connection.  For example, these are both valid ``AF_UNIX``
-*address* values::
+Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
+assumed and again your *address* is passed directly to
+`socket.socket.connect()`_ when creating a connection.  For example, these are
+both valid ``AF_UNIX`` *address* values::
 
     '/tmp/my.socket'
     b'\x0000022'
