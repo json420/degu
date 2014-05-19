@@ -72,7 +72,7 @@ If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
 passed directly to `socket.socket.connect()`_ when creating a connection,
 thereby giving you access to full IPv6 semantics, including the *scopeid* needed
 for `link-local addresses`_.  For example, this 4-tuple *address* would connect
-to a hypothetical server listening on a IPv6 link-local address::
+to a hypothetical server listening on an IPv6 link-local address::
 
     ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
 
