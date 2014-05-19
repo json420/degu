@@ -996,13 +996,15 @@ def timeout_app(request):
 class TestLiveServer(TestCase):
     def build_with_app(self, build_func, *build_args):
         httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
-        return (httpd, httpd.get_client())
-  
+        client = httpd.get_client()
+        return (httpd, client)
+
     def test_chunked_request(self):
         (httpd, client) = self.build_with_app(None, chunked_request_app)
+        conn = client.connect()
 
         body = base.ChunkedOutput(CHUNKS)
-        response = client.request('POST', '/', {}, body)
+        response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
@@ -1014,7 +1016,7 @@ class TestLiveServer(TestCase):
         )
 
         body = base.ChunkedOutput([b''])
-        response = client.request('POST', '/', {}, body)
+        response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
@@ -1026,7 +1028,7 @@ class TestLiveServer(TestCase):
         )
 
         body = base.ChunkedOutput(CHUNKS)
-        response = client.request('POST', '/', {}, body)
+        response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
@@ -1039,28 +1041,29 @@ class TestLiveServer(TestCase):
 
     def test_chunked_response(self):
         (httpd, client) = self.build_with_app(None, chunked_response_app)
+        conn = client.connect()
 
-        response = client.request('GET', '/foo')
+        response = conn.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(tuple(response.body), CHUNKS)
 
-        response = client.request('GET', '/bar')
+        response = conn.request('GET', '/bar')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(list(response.body), [b''])
 
-        response = client.request('GET', '/baz')
+        response = conn.request('GET', '/baz')
         self.assertEqual(response.status, 404)
         self.assertEqual(response.reason, 'Not Found')
         self.assertEqual(response.headers, {})
         self.assertIsNone(response.body)
 
-        response = client.request('GET', '/foo')
+        response = conn.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
@@ -1069,28 +1072,29 @@ class TestLiveServer(TestCase):
 
     def test_response(self):
         (httpd, client) = self.build_with_app(None, response_app)
+        conn = client.connect()
 
-        response = client.request('GET', '/foo')
+        response = conn.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
 
-        response = client.request('GET', '/bar')
+        response = conn.request('GET', '/bar')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': 0})
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), b'')
 
-        response = client.request('GET', '/baz')
+        response = conn.request('GET', '/baz')
         self.assertEqual(response.status, 404)
         self.assertEqual(response.reason, 'Not Found')
         self.assertEqual(response.headers, {})
         self.assertIsNone(response.body)
 
-        response = client.request('GET', '/foo')
+        response = conn.request('GET', '/foo')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
@@ -1099,13 +1103,14 @@ class TestLiveServer(TestCase):
 
     def test_timeout(self):
         (httpd, client) = self.build_with_app(None, timeout_app)
-        self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
         with self.assertRaises(base.EmptyLineError):
-            client.request('POST', '/foo')
-        self.assertIsNone(client.conn)
-        self.assertIsNone(client.response_body)
-        self.assertEqual(client.request('POST', '/foo'), (200, 'OK', {}, None))
+            conn.request('POST', '/foo')
+        self.assertIs(conn.closed, True)
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
 
 
 def ssl_app(request):
@@ -1121,7 +1126,8 @@ class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
         httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
-        return (httpd, httpd.get_client())
+        client = httpd.get_client()
+        return (httpd, client)
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
@@ -1131,21 +1137,22 @@ class TestLiveSSLServer(TestLiveServer):
 
         # Test from a non-SSL client:
         client = Client(httpd.address)
+        conn = client.connect()
         with self.assertRaises(ConnectionResetError) as cm:
-            client.request('GET', '/')
+            conn.request('GET', '/')
         self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
-        self.assertIsNone(client.conn)
-        self.assertIsNone(client.response_body)
+        self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.response_body)
 
         # Test with no client cert:
         client = httpd.get_client({'ca_file': client_config['ca_file']})
         with self.assertRaises(ssl.SSLError) as cm:
-            client.request('GET', '/')
+            client.connect()
         self.assertTrue(
             str(cm.exception).startswith('[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]')
         )
-        self.assertIsNone(client.conn)
-        self.assertIsNone(client.response_body)
+        self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.response_body)
 
         # Test with the wrong client cert (not signed by client CA):
         client = httpd.get_client({
@@ -1154,25 +1161,26 @@ class TestLiveSSLServer(TestLiveServer):
             'key_file': server_config['key_file'],
         })
         with self.assertRaises(ssl.SSLError) as cm:
-            client.request('GET', '/')
+            client.connect()
         self.assertTrue(
             str(cm.exception).startswith('[SSL: TLSV1_ALERT_UNKNOWN_CA]')
         )
-        self.assertIsNone(client.conn)
-        self.assertIsNone(client.response_body)
+        self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.response_body)
 
         # Test with a properly configured SSLClient:
         client = httpd.get_client()
-        response = client.request('GET', '/')
+        conn = client.connect()
+        response = conn.request('GET', '/')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertIsNone(response.body)
 
         # Test when check_hostname is True:
-        client.close()
+        conn.close()
         client.sslctx.check_hostname = True
         with self.assertRaises(ssl.CertificateError) as cm:
-            client.request('GET', '/')
+            client.connect()
 
 
 class TestLiveServerUnixSocket(TestLiveServer):
@@ -1181,7 +1189,8 @@ class TestLiveServerUnixSocket(TestLiveServer):
         filename = tmp.join('my.socket')
         httpd = TempServer(filename, build_func, *build_args)
         httpd._tmp = tmp
-        return (httpd, httpd.get_client())
+        client = httpd.get_client()
+        return (httpd, client)
 
     def test_timeout(self):
         self.skipTest('FIXME')

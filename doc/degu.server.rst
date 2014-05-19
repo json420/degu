@@ -36,7 +36,8 @@ You can create a suitable :class:`degu.client.Client` instance with the returned
 
 >>> from degu.client import Client
 >>> client = Client(address)
->>> response = client.request('GET', '/')
+>>> conn = client.connect()
+>>> response = conn.request('GET', '/')
 >>> response.body.read()
 b'Hello, world!'
 

@@ -20,6 +20,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.doctest',
     'sphinx.ext.coverage',
+    'sphinx.ext.viewcode',
 ]
 templates_path = ['_templates']
 source_suffix = '.rst'

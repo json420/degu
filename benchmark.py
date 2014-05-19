@@ -64,11 +64,12 @@ count = 10000
 deltas = []
 for i in range(5):
     start = time.monotonic()
+    conn = client.connect()
     for i in range(count):
-        r = client.request('POST', '/', headers, body)
+        r = conn.request('POST', '/', headers, body)
         assert json.loads(r.body.read().decode()) == {'pong': marker}
     deltas.append(time.monotonic() - start)
-    client.close()
+    conn.close()
 server.terminate()
 delta = min(deltas)
 print('{:.2f} requests/second'.format(count / delta))

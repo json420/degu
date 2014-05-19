@@ -45,7 +45,6 @@ from .base import (
 )
 
 
-Connection = namedtuple('Connection', 'sock rfile wfile')
 Response = namedtuple('Response', 'status reason headers body')
 CLIENT_SOCKET_TIMEOUT = 15
 
@@ -58,13 +57,22 @@ class UnconsumedResponseError(Exception):
         )
 
 
+class ClosedConnectionError(Exception):
+    def __init__(self, conn):
+        self.conn = conn
+        super().__init__(
+            'cannot use request() when connection is closed: {!r}'.format(conn)
+        )
+
+
 def build_client_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
     # In typical P2P Degu usage, hostname checking is meaningless because we
-    # wont be trusting centralized certificate authorities; however, it's still
-    # prudent to make *check_hostname* default to True:
+    # wont be trusting centralized certificate authorities, and will typically
+    # only connect to servers via their IP address; however, it's still prudent
+    # make *check_hostname* default to True:
     check_hostname = config.get('check_hostname', True)
     assert isinstance(check_hostname, bool)
 
@@ -177,7 +185,83 @@ def read_response(rfile, method):
     return Response(status, reason, headers, body)
 
 
+class Connection:
+    """
+    Represents a specific connection to an HTTP (or HTTPS) server.
+
+    A `Connection` is statefull and is *not* thread-safe.
+    """
+
+    __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body')
+
+    def __init__(self, sock, base_headers):
+        self.sock = sock
+        self.base_headers = base_headers
+        (self.rfile, self.wfile) = makefiles(sock)
+        self.response_body = None  # Previous Input or ChunkedInput
+
+    def __del__(self):
+        self.close()
+
+    @property
+    def closed(self):
+        return self.sock is None
+
+    def close(self):
+        self.response_body = None  # Always deference previous response_body
+        if self.sock is not None:
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            self.sock = None
+
+    def request(self, method, uri, headers=None, body=None):
+        if self.sock is None:
+            raise ClosedConnectionError(self)
+        if not (self.response_body is None or self.response_body.closed):
+            response_body = self.response_body
+            self.close()
+            raise UnconsumedResponseError(response_body)
+        if headers is None:
+            headers = {}
+        if isinstance(body, io.BufferedReader):
+            if 'content-length' in headers:
+                content_length = headers['content-length']
+            else:
+                content_length = os.stat(body.fileno()).st_size
+            body = FileOutput(body, content_length)
+        validate_request(method, uri, headers, body)
+        headers.update(self.base_headers)
+        try:
+            preamble = ''.join(iter_request_lines(method, uri, headers))
+            self.wfile.write(preamble.encode('latin_1'))
+            if isinstance(body, (bytes, bytearray)):
+                self.wfile.write(body)
+            elif isinstance(body, (Output, FileOutput)):
+                for buf in body:
+                    self.wfile.write(buf)
+            elif isinstance(body, ChunkedOutput):
+                for chunk in body:
+                    write_chunk(self.wfile, chunk)
+            else:
+                assert body is None
+            self.wfile.flush()
+            response = read_response(self.rfile, method)
+            self.response_body = response.body
+            return response
+        except Exception:
+            self.close()
+            raise
+
+
 class Client:
+    """
+    Represents an HTTP server to which Degu can make client connections.
+
+    A `Client` is stateless and thread-safe.
+    """
+
     def __init__(self, address, base_headers=None):
         if isinstance(address, tuple):  
             if len(address) == 4:
@@ -203,78 +287,26 @@ class Client:
         self.address = address
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
-        self.conn = None
-        self.response_body = None  # Previous Input or ChunkedInput
-
-    def __del__(self):
-        self.close()
+        for key in self.base_headers:
+            assert isinstance(key, str)
+            if key.casefold() != key:
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        for key in ('content-length', 'transfer-encoding'):
+            if key in self.base_headers:
+                raise ValueError('base_headers cannot include {!r}'.format(key))
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
         if self.family is None:
-            sock = socket.create_connection(self.address)
-        else:
-            sock = socket.socket(self.family, socket.SOCK_STREAM)
-            sock.connect(self.address)
-        #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
+            return socket.create_connection(self.address)
+        sock = socket.socket(self.family, socket.SOCK_STREAM)
+        sock.connect(self.address)
         return sock
 
     def connect(self):
-        if self.conn is None:
-            sock = self.create_socket()
-            (rfile, wfile) = makefiles(sock)
-            self.conn = Connection(sock, rfile, wfile)
-        return self.conn
-
-    def close(self):
-        self.response_body = None
-        if getattr(self, 'conn', None) is not None:
-            conn = self.conn
-            self.conn = None
-            try:
-                conn.sock.shutdown(socket.SHUT_RDWR)
-                conn.rfile.close()
-                conn.wfile.close()
-                conn.sock.close()
-            except OSError:
-                pass
-
-    def request(self, method, uri, headers=None, body=None):
-        if self.response_body and not self.response_body.closed:
-            raise UnconsumedResponseError(self.response_body)
-        if headers is None:
-            headers = {}
-        if isinstance(body, io.BufferedReader):
-            if 'content-length' in headers:
-                content_length = headers['content-length']
-            else:
-                content_length = os.stat(body.fileno()).st_size
-            body = FileOutput(body, content_length)
-        validate_request(method, uri, headers, body)
-        headers.update(self.base_headers)
-        conn = self.connect()
-        try:
-            preamble = ''.join(iter_request_lines(method, uri, headers))
-            conn.wfile.write(preamble.encode('latin_1'))
-            if isinstance(body, (bytes, bytearray)):
-                conn.wfile.write(body)
-            elif isinstance(body, (Output, FileOutput)):
-                for buf in body:
-                    conn.wfile.write(buf)
-            elif isinstance(body, ChunkedOutput):
-                for chunk in body:
-                    write_chunk(conn.wfile, chunk)
-            else:
-                assert body is None
-            conn.wfile.flush()
-            response = read_response(conn.rfile, method)
-            self.response_body = response.body
-            return response
-        except Exception:
-            self.close()
-            raise
+        return Connection(self.create_socket(), self.base_headers)
 
 
 class SSLClient(Client):

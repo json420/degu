@@ -110,15 +110,15 @@ print(client)
 count = 5
 deltas = []
 for i in range(3):
-    client.close()
+    conn = client.connect()
     start = time.monotonic()
     for i in range(count):
-        r = client.request('GET', '/')
-        cipher = client.conn.sock.cipher()
+        r = conn.request('GET', '/')
+        cipher = conn.sock.cipher()
         for block in r.body:
             pass
     deltas.append(time.monotonic() - start)
-client.close()
+    conn.close()
 server.terminate()
 fastest = min(deltas)
 rate = (content_length * count) / fastest
