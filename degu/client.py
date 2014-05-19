@@ -201,7 +201,7 @@ class Connection:
         assert self.sock is None
 
     def request(self, method, uri, headers=None, body=None):
-        if self.response_body and not self.response_body.closed:
+        if not (self.response_body is None or self.response_body.closed):
             raise UnconsumedResponseError(self.response_body)
         if headers is None:
             headers = {}
