@@ -177,6 +177,12 @@ def read_response(rfile, method):
 
 
 class Connection:
+    """
+    Represents a specific connection to an HTTP server.
+
+    A `Connection` is statefull and is *not* thread-safe.
+    """
+
     __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body', 'closed')
 
     def __init__(self, sock, base_headers):
@@ -236,6 +242,12 @@ class Connection:
 
 
 class Client:
+    """
+    Represents an HTTP server to which Degu can make client connections.
+
+    A `Client` is stateless and thread-safe.
+    """
+
     def __init__(self, address, base_headers=None):
         if isinstance(address, tuple):  
             if len(address) == 4:
