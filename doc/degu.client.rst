@@ -4,6 +4,13 @@
 .. module:: degu.client
    :synopsis: Low-level HTTP client
 
+The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
+
+:mod:`degu.client` is similar in abstraction level to the `http.client`_ module
+in the Python3 standard library, and has an API that overall should feel
+familiar to those experienced with `http.client`_ (although there are some major
+differences).
+
 For example, say we define a simple RGI application and create a
 :class:`degu.misc.TempServer` instance:
 
@@ -271,7 +278,7 @@ both valid ``AF_UNIX`` *address* values::
         :class:`degu.base.ChunkedInput` instance.
 
 
-
-.. _`socket.create_connection()`: http://docs.python.org/3/library/socket.html#socket.create_connection
-.. _`socket.socket.connect()`: http://docs.python.org/3/library/socket.html#socket.socket.connect
-.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`http.client`: https://docs.python.org/3/library/http.client.html
+.. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
+.. _`socket.socket.connect()`: https://docs.python.org/3/library/socket.html#socket.socket.connect
+.. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
