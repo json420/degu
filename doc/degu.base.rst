@@ -11,6 +11,12 @@ This module provides the low level HTTP parser and IO abstractions used by both
 Input abstractions
 ------------------
 
+.. autoclass:: Output
+
+.. autoclass:: ChunkedOutput
+
+.. autoclass:: FileOutput
+
 .. autoclass:: Input
 
 .. autoclass:: ChunkedInput

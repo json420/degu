@@ -96,7 +96,7 @@ address::
 
     A :class:`Client` instance is stateless and thread-safe.  It contains the
     information needed to create actual :class:`Connection` instances, but does
-    not itself create or reference any socket resources.
+    not itself reference any socket resources.
 
     .. attribute:: address
 
@@ -108,7 +108,7 @@ address::
 
     .. method:: connect()
 
-        Returns a :class:`Connection` instance.
+        Create a new :class:`Connection` instance.
 
 
 
@@ -124,12 +124,12 @@ address::
     *sslctx* must be an ``ssl.SSLContext`` instance configured for
     ``ssl.PROTOCOL_TLSv1_2``.
 
-    The *address* and *base_headers* arguments are passed to the
-    :class:`Client` constructor unchanged.
+    The *address* and *base_headers* arguments are passed unchanged to the
+    :class:`Client` constructor.
 
     An :class:`SSLClient` instance is stateless and thread-safe.  It contains
     the information needed to create actual :class:`Connection` instances, but
-    does not itself create or reference any socket resources.
+    does not itself reference any socket resources.
 
     .. attribute:: sslctx
 
@@ -147,7 +147,15 @@ address::
     Note that connections are created using :meth:`Client.connect()` rather than
     by directly creating an instance of this class.
 
-    A :class:`Connection` is statefull and is *not* thread-safe.
+    *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
+
+    *base_headers* will be the same *base_headers* passed to the
+    :class:`Client` constructor.
+
+    Note that headers in *base_headers* will unconditionally override the same
+    headers should they be passed to :meth:`Connection.request()`.
+
+    A :class:`Connection` instance is statefull and is *not* thread-safe.
 
     .. attribute :: closed
 
@@ -173,6 +181,31 @@ address::
 
     .. method:: request(method, uri, headers=None, body=None)
 
+        Make an HTTP request.
+
+        The *method* must be ``'GET'``, ``'PUT'``, ``'POST'``, ``'DELETE'``, or
+        ``'HEAD'``.
+
+        The *uri* must be an ``str`` starting with ``'/'``, optionally including
+        a query string.  For example, these are all valid *uri* values::
+
+            /
+            /foo/bar
+            /foo/bar?stuff=junk
+
+        The *headers*, if provided, must be a ``dict``.  All header names (keys)
+        must be lowercase as produced by ``str.casefold()``.
+
+        The *body*, if provided, must be a ``bytes``, ``bytearray``, or
+        ``io.BufferedReader`` instance, or an instance of one of the three
+        :mod:`degu.base` output wrapper classes:
+
+            * :class:`degu.base.Output`
+            * :class:`degu.base.ChunkedOutput`
+            * :class:`degu.base.FileOutput`
+
+        The return value is a :class:`Response` namedtuple.
+
 
 
 :class:`Response` namedtuple
@@ -180,7 +213,7 @@ address::
 
 .. class:: Response(status, reason, headers, body)
 
-    HTTP Response nametuple returned by :meth:`Connection.request()`.
+    HTTP response nametuple returned by :meth:`Connection.request()`.
 
     For example, :meth:`Connection.request()` might return something like this:
 
