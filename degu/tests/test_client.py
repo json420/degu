@@ -608,28 +608,53 @@ class TestConnection(TestCase):
         # When Connection.closed is False:
         self.assertIsNone(inst.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(inst.sock)
+        self.assertIsNone(inst.response_body)
         self.assertIs(inst.closed, True)
 
         # Now when Connection.closed is True:
         self.assertIsNone(inst.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(inst.sock)
+        self.assertIsNone(inst.response_body)
         self.assertIs(inst.closed, True)
 
     def test_request(self):
+        # Test when the connection has already been closed:
+        sock = DummySocket()
+        conn = client.Connection(sock, None)
+        sock._calls.clear()
+        conn.sock = None
+        with self.assertRaises(client.ClosedConnectionError) as cm:
+            conn.request(None, None)
+        self.assertIs(cm.exception.conn, conn)
+        self.assertEqual(str(cm.exception),
+            'cannot use request() when connection is closed: {!r}'.format(conn)
+        )
+        self.assertEqual(sock._calls, [])
+        self.assertIsNone(conn.sock)
+        self.assertIsNone(conn.response_body)
+        self.assertIs(conn.closed, True)
+
         # Test when the previous response body wasn't consumed:
         class DummyBody:
             closed = False
 
         sock = DummySocket()
-        inst = client.Connection(sock, None)
+        conn = client.Connection(sock, None)
         sock._calls.clear()
-        inst.response_body = DummyBody
+        conn.response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
-            inst.request(None, None)
+            conn.request(None, None)
         self.assertIs(cm.exception.body, DummyBody)
         self.assertEqual(str(cm.exception),
             'previous response body not consumed: {!r}'.format(DummyBody)
         )
+        # Make sure Connection.close() was called:
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(conn.sock)
+        self.assertIsNone(conn.response_body)
+        self.assertIs(conn.closed, True)
 
 
 class TestClient(TestCase):

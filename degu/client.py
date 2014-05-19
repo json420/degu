@@ -57,13 +57,22 @@ class UnconsumedResponseError(Exception):
         )
 
 
+class ClosedConnectionError(Exception):
+    def __init__(self, conn):
+        self.conn = conn
+        super().__init__(
+            'cannot use request() when connection is closed: {!r}'.format(conn)
+        )
+
+
 def build_client_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
     # In typical P2P Degu usage, hostname checking is meaningless because we
-    # wont be trusting centralized certificate authorities; however, it's still
-    # prudent to make *check_hostname* default to True:
+    # wont be trusting centralized certificate authorities, and will typically
+    # only connect to servers via their IP address; however, it's still prudent
+    # make *check_hostname* default to True:
     check_hostname = config.get('check_hostname', True)
     assert isinstance(check_hostname, bool)
 
@@ -178,37 +187,42 @@ def read_response(rfile, method):
 
 class Connection:
     """
-    Represents a specific connection to an HTTP server.
+    Represents a specific connection to an HTTP (or HTTPS) server.
 
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body', 'closed')
+    __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body')
 
     def __init__(self, sock, base_headers):
         self.sock = sock
         self.base_headers = base_headers
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Input or ChunkedInput
-        self.closed = False
 
     def __del__(self):
         self.close()
 
+    @property
+    def closed(self):
+        return self.sock is None
+
     def close(self):
-        self.response_body = None
-        self.closed = True
+        self.response_body = None  # Always deference previous response_body
         if self.sock is not None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
             self.sock = None
-        assert self.sock is None
 
     def request(self, method, uri, headers=None, body=None):
+        if self.sock is None:
+            raise ClosedConnectionError(self)
         if not (self.response_body is None or self.response_body.closed):
-            raise UnconsumedResponseError(self.response_body)
+            response_body = self.response_body
+            self.close()
+            raise UnconsumedResponseError(response_body)
         if headers is None:
             headers = {}
         if isinstance(body, io.BufferedReader):
