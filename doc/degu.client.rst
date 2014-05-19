@@ -93,8 +93,7 @@ both valid ``AF_UNIX`` *address* values::
 
     Represents an HTTP server to which Degu can make client connections.
 
-    The *address* must be a 2-tuple, a 4-tuple, an ``str``, or a ``bytes``
-    instance.
+    The *address* must be a 2-tuple, a 4-tuple, an ``str``, or ``bytes``.
 
     The *base_headers*, if provided, must be a ``dict``.  All header names
     (keys) must be lowercase as produced by ``str.casefold()``.
@@ -192,7 +191,7 @@ both valid ``AF_UNIX`` *address* values::
         ``True``.
 
         Note that a connection is automatically closed when any unhandled
-        exception occurs in :meth:`Connection.request()`, and likewise
+        exception occurs in :meth:`Connection.request()`, and is likewise
         automatically closed when the connection instance is garbage collected.
 
     .. method:: request(method, uri, headers=None, body=None)
@@ -238,7 +237,7 @@ both valid ``AF_UNIX`` *address* values::
     Response(status=200, reason='OK', headers={}, body=None)
 
     Note that as a namedtuple, :class:`Response` doesn't do any type checking or
-    argument validation itself.  The nature of the following attributes rely
+    argument validation itself.  The nature of the following attributes relies
     solely on the behavior of :meth:`Connection.request()`:
 
     .. attribute :: status
