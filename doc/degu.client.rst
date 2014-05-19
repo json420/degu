@@ -48,11 +48,10 @@ The *address* argument
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be a:
 
-    * A ``(host, port)`` 2-tuple with an IPv4 IP, an IPv6 IP, or a DNS domain
-      name
+    * A ``(host,port)`` 2-tuple where the *host* is an IPv4 IP, an IPv6 IP, or
+      a DNS name
 
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple with a fully specified IPv6
-      address
+    * A ``(host,port,flowinfo,scopeid)`` 4-tuple where the *host* is an IPv6 IP
 
     * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
@@ -60,23 +59,29 @@ can be a:
       socket
  
 
-If your *address* is a ``(host, port)`` 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  The *host* can be an
-IPv6 IP, an IPv4 IP, or a DNS name.  For example, these are all valid 2-tuple
-*address* values::
+If *address* is a ``(host,port)`` 2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  For example, these
+are all valid 2-tuple *address* values::
 
-    ('2001:4860:4860::8888', 80)
     ('8.8.8.8', 80)
+    ('2001:4860:4860::8888', 80)
     ('www.example.com', 80)
 
-If your *address* is a ``(host, port, flowinfo, scopeid)`` 4-tuple, it's passed
-directly to `socket.socket.connect()`_ when creating a connection, thereby
-giving you access to full IPv6 address semantics, including the *scopeid* needed
-for `link-local addresses`_.  In this case the *host* must be an IPv6 IP.  For
-example, this *address* would connect to a server listening on a link-local
-address::
+If *address* is a ``(host,port,flowinfo,scopeid)`` 4-tuple, ``AF_INET6`` is
+assumed and the *address* is passed directly to `socket.socket.connect()`_ when
+creating a connection, thereby giving you access to full IPv6 address semantics,
+including the *scopeid* needed for `link-local addresses`_.  For example, this
+*address* would connect to a server listening on a link-local address::
 
     ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
+
+Finally, if *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
+assumed and again the *address* is passed directly to `socket.socket.connect()`_
+when creating a connection.  For example, these are both valid ``AF_UNIX``
+*address* values::
+
+    '/tmp/my.socket'
+    b'\x0000022'
 
 
 
@@ -87,9 +92,11 @@ address::
 
     Represents an HTTP server to which Degu can make client connections.
 
-    *address* must be a 2-tuple, a 4-tuple, an ``str``, or a ``bytes`` instance.
+    The *address* must be a 2-tuple, a 4-tuple, an ``str``, or a ``bytes``
+    instance.
 
-    *base_headers* must be ``None`` or a ``dict`` instance.
+    The *base_headers*, if provided, must be a ``dict``.  All header names
+    (keys) must be lowercase as produced by ``str.casefold()``.
 
     Note that headers in *base_headers* will unconditionally override the same
     headers should they be passed to :meth:`Connection.request()`.
@@ -112,8 +119,8 @@ address::
 
 
 
-:class:`SSLClient` class
-------------------------
+:class:`SSLClient` subclass
+---------------------------
 
 .. class:: SSLClient(sslctx, address, base_headers=None)
 
@@ -121,7 +128,7 @@ address::
 
     This subclass inherits all attributes and methods from :class:`Client`.
 
-    *sslctx* must be an ``ssl.SSLContext`` instance configured for
+    The *sslctx* must be an ``ssl.SSLContext`` instance configured for
     ``ssl.PROTOCOL_TLSv1_2``.
 
     The *address* and *base_headers* arguments are passed unchanged to the
@@ -147,9 +154,9 @@ address::
     Note that connections are created using :meth:`Client.connect()` rather than
     by directly creating an instance of this class.
 
-    *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
+    The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
 
-    *base_headers* will be the same *base_headers* passed to the
+    The *base_headers* will be the same *base_headers* passed to the
     :class:`Client` constructor.
 
     Note that headers in *base_headers* will unconditionally override the same
@@ -157,9 +164,17 @@ address::
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
+    .. attribute :: sock
+
+        The *sock* passed to the constructor.
+
+    .. attribute :: base_headers
+
+        The *base_headers* passed to the constructor.
+
     .. attribute :: closed
 
-        Initially ``False``, but will be ``True`` once closed.
+        Will be ``True`` if the connection has been closed, otherwise ``False``.
 
     .. method:: close()
 
