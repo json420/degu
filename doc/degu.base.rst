@@ -8,14 +8,18 @@ This module provides the low level HTTP parser and IO abstractions used by both
 :mod:`degu.server` and :mod:`degu.client`.
 
 
-Input abstractions
-------------------
+Output abstractions
+-------------------
 
 .. autoclass:: Output
 
 .. autoclass:: ChunkedOutput
 
 .. autoclass:: FileOutput
+
+
+Input abstractions
+------------------
 
 .. autoclass:: Input
 
