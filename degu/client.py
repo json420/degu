@@ -287,17 +287,22 @@ class Client:
         self.address = address
         self.base_headers = ({} if base_headers is None else base_headers)
         assert isinstance(self.base_headers, dict)
+        for key in self.base_headers:
+            assert isinstance(key, str)
+            if key.casefold() != key:
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        for key in ('content-length', 'transfer-encoding'):
+            if key in self.base_headers:
+                raise ValueError('base_headers cannot include {!r}'.format(key))
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
         if self.family is None:
-            sock = socket.create_connection(self.address)
-        else:
-            sock = socket.socket(self.family, socket.SOCK_STREAM)
-            sock.connect(self.address)
-        #sock.settimeout(CLIENT_SOCKET_TIMEOUT)
+            return socket.create_connection(self.address)
+        sock = socket.socket(self.family, socket.SOCK_STREAM)
+        sock.connect(self.address)
         return sock
 
     def connect(self):

@@ -103,7 +103,9 @@ both valid ``AF_UNIX`` *address* values::
     The *address* must be a 2-tuple, a 4-tuple, an ``str``, or ``bytes``.
 
     The *base_headers*, if provided, must be a ``dict``.  All header names
-    (keys) must be lowercase as produced by ``str.casefold()``.
+    (keys) must be lowercase as produced by ``str.casefold()``, and
+    *base_headers* cannot include a ``'content-length'`` or a
+    ``'transfer-encoding'``.
 
     Note that headers in *base_headers* will unconditionally override the same
     headers should they be passed to :meth:`Connection.request()`.

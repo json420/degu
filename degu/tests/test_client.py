@@ -682,6 +682,39 @@ class TestClient(TestCase):
             "address: bad socket filename: 'foo'"
         )
 
+        # Non-casefolded header names in base_headers:
+        base_headers = {
+            'Accept': 'application/json',
+            'x-stuff': 'junk',
+        }
+        with self.assertRaises(ValueError) as cm:
+            client.Client(('127.0.0.1', 5984), base_headers)
+        self.assertEqual(str(cm.exception),
+            "non-casefolded header name: 'Accept'"
+        )
+
+        # 'content-length' in base_headers:
+        base_headers = {
+            'content-length': 17,
+            'x-stuff': 'junk',
+        }
+        with self.assertRaises(ValueError) as cm:
+            client.Client(('127.0.0.1', 5984), base_headers)
+        self.assertEqual(str(cm.exception),
+            "base_headers cannot include 'content-length'"
+        )
+
+        # 'transfer-encoding' in base_headers:
+        base_headers = {
+            'transfer-encoding': 'chunked',
+            'x-stuff': 'junk',
+        }
+        with self.assertRaises(ValueError) as cm:
+            client.Client(('127.0.0.1', 5984), base_headers)
+        self.assertEqual(str(cm.exception),
+            "base_headers cannot include 'transfer-encoding'"
+        )
+
         # `str` (AF_UNIX)
         tmp = TempDir()
         filename = tmp.join('my.socket')
