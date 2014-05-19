@@ -4,13 +4,56 @@
 .. module:: degu.client
    :synopsis: Low-level HTTP client
 
+For example, say we define a simple RGI application and create a
+:class:`degu.misc.TempServer` instance:
 
-Connection *address*
---------------------
+>>> def example_app(request):
+...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...
+>>> from degu.misc import TempServer
+>>> server = TempServer(('127.0.0.1', 0), None, example_app)
+
+
+We can then create a :class:`Client` instance like this:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+And then create a :class:`Connection` using :meth:`Client.connect()` like this:
+
+>>> conn = client.connect()
+
+And finally make a request to our server using :meth:`Connection.request()` like
+this, which will return a :class:`Response` namedtuple:
+
+>>> conn.request('GET', '/')
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+In some circumstance you might want to explicitly close a connection using
+:meth:`Connection.close()`, although this will likewise be done automatically
+when the :class:`Connection` instance is garbage collected:
+
+>>> conn.close()
+
+
+
+The *address* argument
+----------------------
 
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
-can be a ``(host, port)`` 2-tuple or a ``(host, port, flowinfo, scopeid)``
-4-tuple.
+can be a:
+
+    * A ``(host, port)`` 2-tuple with an IPv4 IP, an IPv6 IP, or a DNS domain
+      name
+
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple with a fully specified IPv6
+      address
+
+    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+
+    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
+      socket
+ 
 
 If your *address* is a ``(host, port)`` 2-tuple, it's passed directly to
 `socket.create_connection()`_ when creating a connection.  The *host* can be an
@@ -32,18 +75,111 @@ address::
 
 
 
-The :class:`Client` class
--------------------------
+:class:`Client` class
+---------------------
 
 .. class:: Client(address, base_headers=None)
+
+    Represents an HTTP server to which Degu can make client connections.
+
+    A :class:`Client` instance is stateless and thread-safe.
+
+    .. attribute:: address
+
+        The *address* passed to the constructor.
+
+    .. attribute:: base_headers
+
+        The *base_headers* passed to the constructor.
+
+    .. method:: connect()
+
+        Returns a :class:`Connection` instance.
+
+
+
+:class:`SSLClient` class
+------------------------
+
+.. class:: SSLClient(sslctx, address, base_headers=None)
+
+    Represents an HTTPS server to which Degu can make client connections.
+
+    An :class:`SSLClient` instance is stateless and thread-safe.
+
+    This subclass inherits all attributes and methods from :class:`Client`.
+
+    .. attribute:: sslctx
+
+        The *sslctx* passed to the constructor.
+
+
+
+:class:`Connection` class
+-------------------------
+
+.. class:: Connection(sock, base_headers)
+
+    Represents a specific connection to an HTTP (or HTTPS) server.
+
+    This is normally not created directly, but is instead created using
+    :meth:`Client.connect()`.
+
+    A :class:`Connection` is statefull and is *not* thread-safe.
+
+    .. method:: close()
 
     .. method:: request(method, uri, headers=None, body=None)
 
 
-The :class:`SSLClient` class
+
+:class:`Response` namedtuple
 ----------------------------
 
-.. class:: SSLClient(sslctx, address, base_headers=None)
+.. class:: Response(status, reason, headers, body)
+
+    HTTP Response nametuple returned by :meth:`Connection.request()`.
+
+    For example, :meth:`Connection.request()` might return something like this:
+
+    >>> from degu.client import Response
+    >>> Response(200, 'OK', {}, None)
+    Response(status=200, reason='OK', headers={}, body=None)
+
+    Note that as a namedtuple, :class:`Response` doesn't do any type checking or
+    argument validation itself.  The nature of the following attributes relies
+    on the behavior of :meth:`Connection.request()`:
+
+    .. attribute :: status
+
+        The HTTP response status from the server.
+
+        This will be an ``int`` such that::
+
+            100 <= status <= 599
+
+    .. attribute :: reason
+
+        The HTTP response reason from the server.
+
+        This will be an ``str`` like ``'OK'`` or ``'Not Found'``.
+
+    .. attribute :: headers
+
+        The HTTP response headers from the server.
+
+        This will be a ``dict`` instance, possibly empty.  The keys will all be
+        lowercase normalized using ``str.casefold()``, regardless how they were
+        returned by the server.
+
+    .. attribute :: body
+
+        The HTTP response body from the server.
+
+        If no response body was returned, this will be ``None``.
+
+
+
 
 
 
