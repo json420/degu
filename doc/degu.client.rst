@@ -29,9 +29,14 @@ this, which will return a :class:`Response` namedtuple:
 >>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
+Multiple requests can be made using the same connection:
+
+>>> conn.request('PUT', '/foo/bar')
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
 In some circumstance you might want to explicitly close a connection using
 :meth:`Connection.close()`, although this will likewise be done automatically
-when the :class:`Connection` instance is garbage collected:
+when the connection instance is garbage collected:
 
 >>> conn.close()
 
@@ -82,7 +87,16 @@ address::
 
     Represents an HTTP server to which Degu can make client connections.
 
-    A :class:`Client` instance is stateless and thread-safe.
+    *address* must be a 2-tuple, a 4-tuple, an ``str``, or a ``bytes`` instance.
+
+    *base_headers* must be ``None`` or a ``dict`` instance.
+
+    Note that headers in *base_headers* will unconditionally override the same
+    headers should they be passed to :meth:`Connection.request()`.
+
+    A :class:`Client` instance is stateless and thread-safe.  It contains the
+    information needed to create actual :class:`Connection` instances, but does
+    not itself create or reference any socket resources.
 
     .. attribute:: address
 
@@ -105,9 +119,17 @@ address::
 
     Represents an HTTPS server to which Degu can make client connections.
 
-    An :class:`SSLClient` instance is stateless and thread-safe.
-
     This subclass inherits all attributes and methods from :class:`Client`.
+
+    *sslctx* must be an ``ssl.SSLContext`` instance configured for
+    ``ssl.PROTOCOL_TLSv1_2``.
+
+    The *address* and *base_headers* arguments are passed to the
+    :class:`Client` constructor unchanged.
+
+    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
+    the information needed to create actual :class:`Connection` instances, but
+    does not itself create or reference any socket resources.
 
     .. attribute:: sslctx
 
@@ -122,12 +144,32 @@ address::
 
     Represents a specific connection to an HTTP (or HTTPS) server.
 
-    This is normally not created directly, but is instead created using
-    :meth:`Client.connect()`.
+    Note that connections are created using :meth:`Client.connect()` rather than
+    by directly creating an instance of this class.
 
     A :class:`Connection` is statefull and is *not* thread-safe.
 
+    .. attribute :: closed
+
+        Initially ``False``, but will be ``True`` once closed.
+
     .. method:: close()
+
+        Shutdown the underlying ``socket.socket`` instance.
+
+        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
+        immediately preventing further reading from or writing to the socket.
+
+        Once a connection is closed, no further requests can be made via that
+        same connection instance.  To make subsequent requests, a new connection
+        must be created with :meth:`Client.connect()`.
+
+        After this method has been called, :attr:`Connection.closed` will be
+        ``True``.
+
+        Note that a connection is automatically closed when any unhandled
+        exception occurs in :meth:`Connection.request()`, and likewise
+        automatically closed when the connection instance is garbage collected.
 
     .. method:: request(method, uri, headers=None, body=None)
 
@@ -147,8 +189,8 @@ address::
     Response(status=200, reason='OK', headers={}, body=None)
 
     Note that as a namedtuple, :class:`Response` doesn't do any type checking or
-    argument validation itself.  The nature of the following attributes relies
-    on the behavior of :meth:`Connection.request()`:
+    argument validation itself.  The nature of the following attributes rely
+    solely on the behavior of :meth:`Connection.request()`:
 
     .. attribute :: status
 
@@ -176,10 +218,9 @@ address::
 
         The HTTP response body from the server.
 
-        If no response body was returned, this will be ``None``.
-
-
-
+        If no response body was returned, this will be ``None``.  Otherwise,
+        this will be either a :class:`degu.base.Input` or
+        :class:`degu.base.ChunkedInput` instance.
 
 
 

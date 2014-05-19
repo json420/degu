@@ -50,6 +50,7 @@ Contents:
     degu
     degu.server
     degu.client
+    degu.base
     degu.misc
 
 
