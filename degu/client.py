@@ -264,7 +264,7 @@ class Client:
     """
     Represents an HTTP server to which Degu can make client connections.
 
-    A `Client` is stateless and thread-safe.
+    A `Client` instance is stateless and thread-safe.
     """
 
     def __init__(self, address, base_headers=None):
@@ -315,6 +315,12 @@ class Client:
 
 
 class SSLClient(Client):
+    """
+    Represents an HTTPS server to which Degu can make client connections.
+
+    An `SSLClient` instance is stateless and thread-safe.
+    """
+
     def __init__(self, sslctx, address, default_headers=None):
         self.sslctx = validate_client_sslctx(sslctx)
         super().__init__(address, default_headers)
