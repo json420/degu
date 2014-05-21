@@ -219,21 +219,19 @@ class Connection:
     def request(self, method, uri, headers=None, body=None):
         if self.sock is None:
             raise ClosedConnectionError(self)
-        if not (self.response_body is None or self.response_body.closed):
-            response_body = self.response_body
-            self.close()
-            raise UnconsumedResponseError(response_body)
-        if headers is None:
-            headers = {}
-        if isinstance(body, io.BufferedReader):
-            if 'content-length' in headers:
-                content_length = headers['content-length']
-            else:
-                content_length = os.stat(body.fileno()).st_size
-            body = FileOutput(body, content_length)
-        validate_request(method, uri, headers, body)
-        headers.update(self.base_headers)
         try:
+            if not (self.response_body is None or self.response_body.closed):
+                raise UnconsumedResponseError(self.response_body)
+            if headers is None:
+                headers = {}
+            if isinstance(body, io.BufferedReader):
+                if 'content-length' in headers:
+                    content_length = headers['content-length']
+                else:
+                    content_length = os.stat(body.fileno()).st_size
+                body = FileOutput(body, content_length)
+            validate_request(method, uri, headers, body)
+            headers.update(self.base_headers)
             preamble = ''.join(iter_request_lines(method, uri, headers))
             self.wfile.write(preamble.encode('latin_1'))
             if isinstance(body, (bytes, bytearray)):
