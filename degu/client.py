@@ -46,22 +46,29 @@ from .base import (
 
 
 Response = namedtuple('Response', 'status reason headers body')
-CLIENT_SOCKET_TIMEOUT = 15
-
-
-class UnconsumedResponseError(Exception):
-    def __init__(self, body):
-        self.body = body
-        super().__init__(
-            'previous response body not consumed: {!r}'.format(body)
-        )
 
 
 class ClosedConnectionError(Exception):
+    """
+    Raised by `Connection.request()` when connection is already closed.
+    """
+
     def __init__(self, conn):
         self.conn = conn
         super().__init__(
             'cannot use request() when connection is closed: {!r}'.format(conn)
+        )
+
+
+class UnconsumedResponseError(Exception):
+    """
+    Raised by `Connection.request()` when previous response body not fully read.
+    """
+
+    def __init__(self, body):
+        self.body = body
+        super().__init__(
+            'previous response body not consumed: {!r}'.format(body)
         )
 
 

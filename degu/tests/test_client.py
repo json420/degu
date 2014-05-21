@@ -75,6 +75,26 @@ class TestNamedTuples(TestCase):
         self.assertEqual(tup.body, 'da body')
 
 
+class TestClosedConnectionError(TestCase):
+    def test_init(self):
+        conn = random_id()
+        exc = client.ClosedConnectionError(conn)
+        self.assertIs(exc.conn, conn)
+        self.assertEqual(str(exc),
+            'cannot use request() when connection is closed: {!r}'.format(conn)
+        )
+
+
+class TestUnconsumedResponseError(TestCase):
+    def test_init(self):
+        body = random_id()
+        exc = client.UnconsumedResponseError(body)
+        self.assertIs(exc.body, body)
+        self.assertEqual(str(exc),
+            'previous response body not consumed: {!r}'.format(body)
+        )
+
+
 class TestFunctions(TestCase):
     def test_build_client_sslctx(self):
         # Empty config, will verify against system-wide CAs, and check_hostname

@@ -38,7 +38,7 @@ from .helpers import TempDir, DummySocket, DummyFile
 import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
-from degu.client import Client, CLIENT_SOCKET_TIMEOUT
+from degu.client import Client
 from degu.base import TYPE_ERROR
 from degu import base, server
 
@@ -988,7 +988,7 @@ def timeout_app(request):
         return (200, 'OK', {}, None)
     if request['path'] == ['bar']:
         # Used to test timeout on client side:
-        time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
+        #time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
         return (200, 'OK', {}, None)
     return (404, 'Not Found', {}, None)
 
