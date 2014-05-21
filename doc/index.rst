@@ -56,7 +56,7 @@ Contents:
 
 
 .. _`Degu`: https://launchpad.net/degu
-.. _`http.client`: http://docs.python.org/3/library/http.client.html
+.. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 
@@ -66,4 +66,4 @@ Contents:
 .. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/daily
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
-.. _`Python 3.4`: http://docs.python.org/3.4/
+.. _`Python 3.4`: https://docs.python.org/3/

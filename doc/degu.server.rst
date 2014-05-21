@@ -141,9 +141,9 @@ Functions
 .. autofunction:: build_server_sslctx
 
 
-.. _`multiprocessing.Process`: http://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
-.. _`socket.socket.bind()`: http://docs.python.org/3/library/socket.html#socket.socket.bind
+.. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
+.. _`socket.socket.bind()`: https://docs.python.org/3/library/socket.html#socket.socket.bind
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
-.. _`socket.socket`: http://docs.python.org/3/library/socket.html#socket-objects
-.. _`socket.socket.getsockname()`: http://docs.python.org/3/library/socket.html#socket.socket.getsockname
-.. _`socket.create_connection()`: http://docs.python.org/3/library/socket.html#socket.create_connection
+.. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
+.. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection

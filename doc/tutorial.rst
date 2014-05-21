@@ -200,13 +200,13 @@ Degu is focused on:
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
-.. _`Python3`: http://docs.python.org/3/
+.. _`Python3`: https://docs.python.org/3/
 .. _`Avahi`: http://avahi.org/
-.. _`multiprocessing.Process`: http://docs.python.org/3/library/multiprocessing.html#the-process-class
-.. _`http.client`: http://docs.python.org/3/library/http.client.html
+.. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#the-process-class
+.. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`CouchDB`: http://couchdb.apache.org/
 .. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
 .. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
-.. _`ssl.SSLContext`: http://docs.python.org/3/library/ssl.html#ssl-contexts
+.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
