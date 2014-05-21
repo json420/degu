@@ -58,18 +58,45 @@ That just spun-up a :class:`degu.server.Server` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
 :class:`degu.misc.TempServer` instance is garbage collected).
 
-Now we'll need a :class:`degu.client.Client` so we can make requests to our
+Now we'll need a :class:`degu.client.Client` so we can make connections to our
 above ``server``:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
+
+A :class:`degu.client.Client` is stateless and thread-safe, and does not itself
+reference any socket resources.  In order to make requests, we'll need to
+create a :class:`degu.client.Connection`, with with we can make one or more
+requests:
+
 >>> conn = client.connect()
 >>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-Notice that the client ``Repsonse`` namedtuple is the exact same tuple returned
-by ``example_app``.  The Degu client API and the RGI application API have been
-designed to complement each other.  Think of them almost like inverse functions.
+In contrast to the client, a :class:`degu.client.Connection` is statefull and is
+*not* thread-safe.  The separation between clients and connections is so that
+the the per-connection memory usage can be a bit lower, plus it lays the ground
+work for eventually making it easy to use Degu in an async fashion.
+
+As both the Degu client and server are built for HTTP/1.1 only, connection
+reuse is assumed.  We can make another request to our ``server`` using the same
+connection:
+
+>>> conn.request('PUT', '/foo')
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+After you're done using a connection, it's a good idea to explicitly close it,
+although note that a connection is also automatically closed when garbage
+collected.
+
+Close the connection like this:
+
+>>> conn.close()
+
+Notice that the :class:`degu.client.Response` namedtuple returned above is the
+exact same tuple returned by our ``example_app``.  The Degu client API and the
+RGI application API have been designed to complement each other.  Think of them
+almost like inverse functions.
 
 For example, here's an RGI application that implements a `reverse-proxy`_:
 
