@@ -121,7 +121,7 @@ Here's what ``demo_app()`` returns for a suitable GET request:
 >>> demo_app({'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
-However, note that ``demo_app()`` isn't actually HTTP 1.1 compliant as it should
+However, note that ``demo_app()`` isn't actually HTTP/1.1 compliant as it should
 not return a response body for a HEAD request:
 
 >>> demo_app({'method': 'HEAD', 'path': []})

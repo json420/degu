@@ -7,7 +7,7 @@ Let's immediately clarify where Degu is *not* a good fit:
 
     Degu is *not* meant for production web-sites, public REST APIs, nor any
     other public HTTP server reachable across the Internet.  The Degu server
-    only supports a subset of HTTP 1.1 features and is likely not compatible
+    only supports a subset of HTTP/1.1 features and is likely not compatible
     with a broad range of HTTP clients.
 
 If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
