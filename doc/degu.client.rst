@@ -49,8 +49,8 @@ when the connection instance is garbage collected:
 
 
 
-The *address* argument
-----------------------
+Connection *address*
+--------------------
 
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:

@@ -44,7 +44,6 @@ Contents:
     :maxdepth: 2
 
     install
-    bugs
     tutorial
     rgi
     degu
