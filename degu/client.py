@@ -84,7 +84,7 @@ def build_client_sslctx(config):
     # In typical P2P Degu usage, hostname checking is meaningless because we
     # wont be trusting centralized certificate authorities, and will typically
     # only connect to servers via their IP address; however, it's still prudent
-    # make *check_hostname* default to True:
+    # to make *check_hostname* default to True:
     check_hostname = config.get('check_hostname', True)
     if not isinstance(check_hostname, bool):
         raise TypeError(TYPE_ERROR.format(

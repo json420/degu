@@ -93,8 +93,100 @@ both valid ``AF_UNIX`` *address* values::
 
 
 
+HTTP 'host' header
+------------------
+
+Considering the highly specialized P2P use case that Degu is aimed at, sending
+an HTTP ``'host'`` header along with *every* request isn't particularly
+meaningful.
+
+For one, the Degu server itself doesn't support named-based virtual hosts, and
+will typically be reached via an IP address alone, not via a DNS name.  For
+another, Degu supports HTTP over ``AF_UNIX``, a scenario where the HTTP
+``'host'`` header tends to be *extra* meaningless.
+
+A strait-forward way to minimize the overhead of the HTTP protocol is to simply
+send fewer headers along with each request and response, and the Degu client
+aggressively pursues this optimization path.  By default, :class:`Client` and
+:class:`SSLClient` don't include *any* extra headers in their requests that
+weren't provided to :meth:`Connection.request()`.
+
+Of particular note, the Degu client doesn't by default include an HTTP
+``{'connection': 'keep-alive'}`` header, which is only needed for backward
+compatibly with HTTP/1.0 servers (in HTTP/1.1, connection-reuse is assumed).
+Likewise, the Degu client doesn't by default include an HTTP ``'user-agent'``
+header.
+
+If you need to include specific HTTP headers in every request, just provide them
+in the *base_headers* when creating a :class:`Client` or an :class:`SSLClient`
+instance.
+
+However, note that when the Degu client does *not* include an HTTP ``'host'``
+header with every request, it's not operating in a strictly `HTTP/1.1`_
+compliant fashion, and that this is incompatible with at least one of the HTTP
+servers that the Degu client aims to support (`Apache 2.4`_).
+
+When making requests to Apache, or to other servers with similar requirements,
+consider using the :func:`create_client()` or :func:`create_sslclient()`
+convenience function, which will automatically add an appropriate ``'host'``
+header in the *base_headers* for the resulting :class:`Client` or
+:class:`SSLClient`, respectively.
+
+
+
 Helper functions
 ----------------
+
+.. function:: create_client(url, base_headers=None)
+
+    Convenience function to create a :class:`Client` from a *url*.
+
+    For example:
+
+    >>> from degu.client import create_client
+    >>> client = create_client('http://example.com')
+    >>> client.address
+    ('example.com', 80)
+    >>> client.base_headers
+    {'host': 'example.com'}
+
+    Unlike when directly creating a :class:`Client` instance, this function will
+    automatically include an appropriate ``'host'`` header in *base_headers*.
+    Note that this is needed for compatibility with Apache, even when connecting
+    to Apache via an IP address alone.
+
+    A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
+
+    If the *url* doesn't include a port, the port will default to ``80``.
+
+
+.. function:: create_sslclient(sslctx, url, base_headers=None)
+
+    Convenience function to create an :class:`SSLClient` from a *url*.
+
+    For example:
+
+    >>> from degu.client import create_sslclient, build_client_sslctx
+    >>> from degu.misc import TempPKI
+    >>> pki = TempPKI()
+    >>> sslctx = build_client_sslctx(pki.get_client_config())
+    >>> sslclient = create_sslclient(sslctx, 'https://example.com')
+    >>> sslclient.address
+    ('example.com', 443)
+    >>> sslclient.base_headers
+    {'host': 'example.com'}
+
+    Unlike when directly creating an :class:`SSLClient` instance, this function
+    will automatically include an appropriate ``'host'`` header in
+    *base_headers*.  Note that this is needed for compatibility with Apache,
+    even when connecting to Apache via an IP address alone.
+
+    A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
+
+    If the *url* doesn't include a port, the port will default to ``443``.
+
+    Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
+
 
 .. function:: build_client_sslctx(config)
 
@@ -161,6 +253,13 @@ Helper functions
     This means your main process doesn't need to import any unnecessary modules
     or consume any unnecessary resources.
 
+    For unit testing and experimentation, consider using
+    :class:`degu.misc.TempPKI`, for example:
+
+    >>> from degu.misc import TempPKI
+    >>> pki = TempPKI()
+    >>> sslctx = build_client_sslctx(pki.get_client_config())
+
 
 
 :class:`Client` class
@@ -208,7 +307,8 @@ Helper functions
     This subclass inherits all attributes and methods from :class:`Client`.
 
     The *sslctx* must be an ``ssl.SSLContext`` instance configured for
-    ``ssl.PROTOCOL_TLSv1_2``.
+    ``ssl.PROTOCOL_TLSv1_2``.  It's best to build *sslctx* using
+    :func:`build_client_sslctx()`.
 
     The *address* and *base_headers* arguments are passed unchanged to the
     :class:`Client` constructor.
@@ -350,11 +450,12 @@ Helper functions
         :class:`degu.base.ChunkedInput` instance.
 
 
-
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`socket.socket.connect()`: https://docs.python.org/3/library/socket.html#socket.socket.connect
 .. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`HTTP/1.1`: http://www.w3.org/Protocols/rfc2616/rfc2616.html
+.. _`Apache 2.4`: https://httpd.apache.org/docs/2.4/
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
