@@ -97,6 +97,63 @@ class TestUnconsumedResponseError(TestCase):
 
 class TestFunctions(TestCase):
     def test_build_client_sslctx(self):
+        # Bad config type:
+        with self.assertRaises(TypeError) as cm:
+            client.build_client_sslctx('bad')
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('config', dict, str, 'bad')
+        )
+
+        # Bad config['check_hostname'] type:
+        with self.assertRaises(TypeError) as cm:
+            client.build_client_sslctx({'check_hostname': 0})
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("config['check_hostname']", bool, int, 0)
+        )
+
+        # config['key_file'] without config['cert_file']:
+        with self.assertRaises(ValueError) as cm:
+            client.build_client_sslctx({'key_file': '/my/client.key'})
+        self.assertEqual(str(cm.exception), 
+            "config['key_file'] provided without config['cert_file']"
+        )
+
+        # Non absulute, non normalized paths:
+        good = {
+            'ca_file': '/my/sever.ca',
+            'ca_path': '/my/sever.ca.dir',
+            'cert_file': '/my/client.cert',
+            'key_file': '/my/client.key',
+        }
+        for key in good.keys():
+            # Relative path:
+            bad = good.copy()
+            value = 'relative/path'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                client.build_client_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+            # Non-normalized path with directory traversal:
+            bad = good.copy()
+            value = '/my/../secret/path'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                client.build_client_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+            # Non-normalized path with trailing slash:
+            bad = good.copy()
+            value = '/sorry/very/strict/'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                client.build_client_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+
         # Empty config, will verify against system-wide CAs, and check_hostname
         # should default to True:
         sslctx = client.build_client_sslctx({})

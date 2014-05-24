@@ -76,12 +76,37 @@ def build_client_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
+    if not isinstance(config, dict):
+        raise TypeError(
+            TYPE_ERROR.format('config', dict, type(config), config)
+        )
+
     # In typical P2P Degu usage, hostname checking is meaningless because we
     # wont be trusting centralized certificate authorities, and will typically
     # only connect to servers via their IP address; however, it's still prudent
     # make *check_hostname* default to True:
     check_hostname = config.get('check_hostname', True)
-    assert isinstance(check_hostname, bool)
+    if not isinstance(check_hostname, bool):
+        raise TypeError(TYPE_ERROR.format(
+            "config['check_hostname']", bool, type(check_hostname), check_hostname
+        ))
+
+    # Don't allow 'key_file' to be provided without the 'cert_file':
+    if 'key_file' in config and 'cert_file' not in config:
+        raise ValueError(
+            "config['key_file'] provided without config['cert_file']"
+        )
+
+    # For safety and clarity, force all paths to be absolute, normalized paths:
+    for key in ('ca_file', 'ca_path', 'cert_file', 'key_file'):
+        if key in config:
+            value = config[key]
+            if value != path.abspath(value):
+                raise ValueError(
+                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                        key, value
+                    )
+                )
 
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
@@ -93,7 +118,7 @@ def build_client_sslctx(config):
             capath=config.get('ca_path'),
         )
     else:
-        if not check_hostname:
+        if check_hostname is not True:
             raise ValueError(
                 'check_hostname must be True when using default verify paths'
             )
