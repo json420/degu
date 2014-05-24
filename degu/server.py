@@ -152,6 +152,22 @@ def build_server_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
+    if not isinstance(config, dict):
+        raise TypeError(
+            TYPE_ERROR.format('config', dict, type(config), config)
+        )
+
+    # For safety and clarity, force all paths to be absolute, normalized paths:
+    for key in ('cert_file', 'key_file', 'ca_file', 'ca_path'):
+        if key in config:
+            value = config[key]
+            if value != path.abspath(value):
+                raise ValueError(
+                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                        key, value
+                    )
+                )
+
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
     sslctx.set_ecdh_curve('secp384r1')

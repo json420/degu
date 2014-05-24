@@ -48,6 +48,50 @@ random = SystemRandom()
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
+        # Bad config type:
+        with self.assertRaises(TypeError) as cm:
+            server.build_server_sslctx('bad')
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('config', dict, str, 'bad')
+        )
+
+        # Non absulute, non normalized paths:
+        good = {
+            'cert_file': '/my/server.cert',
+            'key_file': '/my/server.key',
+            'ca_file': '/my/client.ca',
+            'ca_path': '/my/client.ca.dir',
+        }
+        for key in good.keys():
+            # Relative path:
+            bad = good.copy()
+            value = 'relative/path'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                server.build_server_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+            # Non-normalized path with directory traversal:
+            bad = good.copy()
+            value = '/my/../secret/path'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                server.build_server_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+            # Non-normalized path with trailing slash:
+            bad = good.copy()
+            value = '/sorry/very/strict/'
+            bad[key] = value
+            with self.assertRaises(ValueError) as cm:
+                server.build_server_sslctx(bad)
+            self.assertEqual(str(cm.exception),
+                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+            )
+
+
         pki = TempPKI(client_pki=True)
 
         # Typical config with client authentication:
@@ -79,7 +123,7 @@ class TestFunctions(TestCase):
         self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
-        config['ca_file'] = 'whatever'
+        config['ca_file'] = '/my/client.ca'
         with self.assertRaises(ValueError) as cm:
             server.build_server_sslctx(config)
         self.assertEqual(str(cm.exception),
