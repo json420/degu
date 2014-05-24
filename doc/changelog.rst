@@ -63,7 +63,7 @@ Two things motivated these breaking API changes:
       ``on_connection()`` handler to allow 3rd party applications to do things
       like extended per-connection authentication; splitting the client creation
       from the connection creation allows most 3rd party code to remain
-      obviously as to whether such a ``on_connection()`` handler is in use (as
+      oblivious as to whether such a ``on_connection()`` handler is in use (as
       most code an merely create connections using the provided client, rather
       than themselves creating clients)
 
