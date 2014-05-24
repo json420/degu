@@ -41,7 +41,7 @@ def run(statement, K=250):
     # Choose fastest of 5 runs:
     elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
-    print('{:>14,}: {}'.format(rate, statement))
+    print('{:>12,}: {}'.format(rate, statement))
 
 
 print('Validate and decode line_bytes:')
@@ -50,6 +50,7 @@ run("line_bytes[-2:] == b'\\r\\n'")
 run("line_bytes[:-2].decode('latin_1')")
 run("line_bytes[:-2].decode('utf-8')")
 run("line_bytes[:-2].decode()")
+run("line_bytes.decode()")
 
 print('\nBuild Request/Response Preamble:')
 run("''.join(iter_request_lines('GET', '/foo/bar?stuff=junk', headers))")
