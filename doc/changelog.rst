@@ -15,7 +15,7 @@ Changes:
 
     * :meth:`degu.client.Connection.close()` now only calls
       ``socket.socket.shutdown()``, which is more correct, and also eliminates
-      annoying exceptions that could occur when the
+      annoying exceptions that could occur when a
       :class:`degu.client.Connection` (previously ``Client`` or ``SSLClient``)
       is garbage collected immediately prior to a script exiting
 

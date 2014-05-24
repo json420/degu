@@ -116,11 +116,11 @@ aggressively pursues this optimization path.  By default, :class:`Client` and
 :class:`SSLClient` don't include *any* extra headers in their requests that
 weren't provided to :meth:`Connection.request()`.
 
-Of particular note, the Degu client doesn't by default include an HTTP
-``{'connection': 'keep-alive'}`` header, which is only needed for backward
-compatibly with HTTP/1.0 servers (in HTTP/1.1, connection-reuse is assumed).
-Likewise, the Degu client doesn't by default include an HTTP ``'user-agent'``
-header.
+Of particular note, in addition to the ``'host'`` header, the Degu client
+doesn't by default include an HTTP ``{'connection': 'keep-alive'}`` header,
+which is only needed for backward compatibly with HTTP/1.0 servers (in HTTP/1.1,
+connection-reuse is assumed).  Likewise, the Degu client doesn't by default
+include an HTTP ``'user-agent'`` header.
 
 If you need to include specific HTTP headers in every request, just provide them
 in the *base_headers* when creating a :class:`Client` or an :class:`SSLClient`
