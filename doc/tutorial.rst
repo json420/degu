@@ -74,9 +74,7 @@ requests:
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 In contrast to the client, a :class:`degu.client.Connection` is statefull and is
-*not* thread-safe.  The separation between clients and connections is so that
-the the per-connection memory usage can be a bit lower, plus it lays the ground
-work for eventually making it easy to use Degu in an async fashion.
+*not* thread-safe.
 
 As both the Degu client and server are built for HTTP/1.1 only, connection
 reuse is assumed.  We can make another request to our ``server`` using the same

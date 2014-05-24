@@ -51,8 +51,3 @@ Several things motivated this change:
       from the connection creation allows most 3rd party code to remain
       obviously as to whether such a ``on_connection()`` handler is in use
 
-    * This split is a baby step toward making it easy to use the Degu client in
-      an asynchronous fashion (although note Degu currently doesn't provide
-      direct integration with ``asyncio`` or similar, and async support is a low
-      priority considering how Degu is currently being used by the Novacut
-      project, where high throughput at low concurrency is more important)
