@@ -47,6 +47,11 @@ when the connection instance is garbage collected:
 
 >>> conn.close()
 
+For SSL (specifically, for TLS 1.2), you'll need an :class:`SSLClient` instance.
+
+Also, see the :func:`create_client()` and :func:`create_sslclient()`
+convenience functions, especially when connecting to Apache servers.
+
 
 
 Connection *address*
@@ -190,7 +195,7 @@ Helper functions
 
 .. function:: build_client_sslctx(config)
 
-    Build an appropriately configured `ssl.SSLContext`_.
+    Build an `ssl.SSLContext`_ appropriately configured for client use.
 
     The *config* must be a ``dict`` instance, which can be empty, or can
     contain any of the following keys:
@@ -214,7 +219,7 @@ Helper functions
           respectively; you can omit ``'key_file'`` if the private key is
           included in the client certificate file
 
-    For example, typical Degu P2P usage will use a *config* something like this:
+    For example, typical Degu P2P use will use a *config* something like this:
 
     >>> from degu.client import build_client_sslctx
     >>> config = {
@@ -250,8 +255,8 @@ Helper functions
 
     This function is also advantageous because the *config* is simple and easy
     to serialize/deserialize on its way to a new `multiprocessing.Process`_.
-    This means your main process doesn't need to import any unnecessary modules
-    or consume any unnecessary resources.
+    This means that your main process doesn't need to import any unnecessary
+    modules or consume any unnecessary resources.
 
     For unit testing and experimentation, consider using
     :class:`degu.misc.TempPKI`, for example:

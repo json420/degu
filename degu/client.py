@@ -73,6 +73,20 @@ class UnconsumedResponseError(Exception):
 
 
 def build_client_sslctx(config):
+    """
+    Build an ``ssl.SSLContext`` appropriately configured for client use.
+
+    For example:
+
+    >>> config = {
+    ...     'check_hostname': False,
+    ...     'ca_file': '/my/server.ca',
+    ...     'cert_file': '/my/client.cert',
+    ...     'key_file': '/my/client.key',
+    ... }
+    >>> sslctx = build_client_sslctx(config)  #doctest: +SKIP
+
+    """
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
@@ -81,7 +95,7 @@ def build_client_sslctx(config):
             TYPE_ERROR.format('config', dict, type(config), config)
         )
 
-    # In typical P2P Degu usage, hostname checking is meaningless because we
+    # In typical Degu P2P usage, hostname checking is meaningless because we
     # wont be trusting centralized certificate authorities, and will typically
     # only connect to servers via their IP address; however, it's still prudent
     # to make *check_hostname* default to True:
