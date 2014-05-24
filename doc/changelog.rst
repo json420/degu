@@ -36,7 +36,7 @@ now stateless and thread-safe, do not themselves reference any socket resources.
 On the other hand, :class:`degu.client.Connection` instances are statefull and
 are *not* thread-safe.
 
-Several things motivated this change:
+Two things motivated this change:
 
     * Justifiably, ``Client`` and ``SSLClient`` do rather thorough type and
       value checking on their constructor arguments; whereas previously you had
