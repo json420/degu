@@ -335,8 +335,8 @@ Helper functions
 
     Represents a specific connection to an HTTP (or HTTPS) server.
 
-    Note that connections are created using :meth:`Client.connect()` rather than
-    by directly creating an instance of this class.
+    Note that typically connections are created using :meth:`Client.connect()`
+    rather than by directly creating an instance of this class.
 
     The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
 
