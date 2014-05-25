@@ -47,7 +47,8 @@ when the connection instance is garbage collected:
 
 >>> conn.close()
 
-For SSL (specifically, for TLS 1.2), you'll need an :class:`SSLClient` instance.
+For SSL (specifically, for TLS 1.2), you'll need to create an :class:`SSLClient`
+instance.
 
 Also, see the :func:`create_client()` and :func:`create_sslclient()`
 convenience functions, especially when connecting to Apache servers.
