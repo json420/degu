@@ -55,37 +55,89 @@ Bind *address*
 --------------
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
-must be a 4-tuple for IPv6 or a 2-tuple for IPv4.  This *address* argument is
-passed directly to `socket.socket.bind()`_, thereby giving you access to full
-IPv6 address semantics, including the *scopeid* needed for
-`link-local addresses`_.
+can be:
+
+    * A ``(host, port)`` 2-tuple for ``AF_INET``, where the *host* is an IPv4 IP
+
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple for ``AF_INET6``, where the
+      *host* is an IPv6 IP
+
+    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+
+    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
+      socket (typically an empty ``b''`` so that the abstract name is assigned
+      by the kernel)
+
+In all cases, your *address* argument is passed directly to
+`socket.socket.bind()`_.  Among other things, this gives you access to full
+IPv6 address semantics when using an ``AF_INET6`` 4-tuple, including the
+*scopeid* needed for `link-local addresses`_.
+
+Typically you'll run your ``AF_INET`` or ``AF_INET6`` Degu server on a random,
+unprivileged port, so if your *address* is a 2-tuple or 4-tuple, you'll
+typically supply ``0`` for the *port*, in which case a random port will be
+assigned by the kernel.
+
+However, after you create your :class:`Server` or :class:`SSLServer` instance,
+you'll need to know what random port was assigned by the kernel (for example, so
+you can advertise this port to peers on the local network).
+
+The :attr:`Server.address` instance attribute will be the value returned by
+`socket.socket.getsockname()`_ for the socket upon which your server is
+listening.  For example, assuming port ``54321`` was assigned, the
+:attr:`Server.address` would be something like this for ``AF_INET``::
+
+    ('127.0.0.1', 54321)
+
+Or something like this for ``AF_INET6``::
+
+    ('::1', 54321, 0, 0)
+
+Likewise, you'll typically bind your ``AF_INET`` or ``AF_INET6`` Degu server to
+either the special loopback-IP or the special any-IP.
+
+For example, these are the two most common ``AF_INET`` 2-tuple *address*
+values, for the looback-IP and the any-IP, respectively::
+
+    ('127.0.0.1', 0)
+    ('0.0.0.0', 0)
+
+And these are the two most common ``AF_INET6`` 4-tuple *address* values, for the
+looback-IP and the any-IP, respectively::
+
+    ('::1', 0, 0, 0)
+    ('::', 0, 0, 0)
 
 .. note::
 
     Although Python's `socket.socket.bind()`_ will accept a 2-tuple for an
-    ``AF_INET6`` family socket, Degu does not allow this.  An IPv6 *address*
-    must always be a 4-tuple.  This restriction gives Degu a simple, unambiguous
-    way of selecting between the ``AF_INET6`` and ``AF_INET`` families, without
-    needing to inspect ``address[0]`` (the host portion).
+    ``AF_INET6`` family socket, the Degu server does not allow this.  An IPv6
+    *address* must always be a 4-tuple.  This restriction gives Degu a simple,
+    unambiguous way of selecting between the ``AF_INET6`` and ``AF_INET``
+    families, without needing to inspect ``address[0]`` (the host portion).
 
-Typically you will use Degu for per-user server instances listening on random,
-unprivileged ports (as opposed to system-wide server instances listening on
-static, privileged ports).  In this case, ``address[1]`` (the port) should be
-``0``.  For example, to bind to the IPv6 any-IP address, you would specify this
-*address*::
+On the other hand, if your ``AF_UNIX`` *address* is an ``str`` instance, it must
+be the absolute, normalized filename of a socket file that does *not* yet exist.
+For example, this is a valid ``str`` *address* value::
 
-    ('::', 0, 0, 0)
+    '/tmp/my/server.socket'
 
-However, after you create your :class:`Server` or :class:`SSLServer` instance,
-you'll need to know what random port was assigned by the operating system (for
-example, so you can advertise this port to peers on the local network).
+To avoid race conditions, you should strongly consider using a random, temporary
+filename for your socket.
 
-The :attr:`Server.address` instance attribute will be the 4-tuple or 2-tuple
-returned by `socket.socket.getsockname()`_ for the socket upon which your
-server is listening.  In our example, assuming port ``54321`` was assigned,
-the :attr:`Server.address` would be::
+Finally, if your ``AF_UNIX`` *address* is a ``bytes`` instance, you should
+typically provide an empty ``b''``, in which cases the Linux abstract socket
+name will be assigned by the kernel.  For example, if you provide this *address*
+value::
 
-    ('::', 54321, 0, 0)
+    b''
+
+The :attr:`Server.address` instance attribute would then contain the ``AF_UNIX``
+Linux abstract socket name assigned by the kernel, something like::
+
+    b'\x0000022'
+
+
 
 
 The :class:`Server` class
