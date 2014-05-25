@@ -94,7 +94,7 @@ Or something like this for ``AF_INET6``::
     ('::1', 54321, 0, 0)
 
 Likewise, you'll typically bind your ``AF_INET`` or ``AF_INET6`` Degu server to
-either the special loopback-IP or the special any-IP.
+either the special loopback-IP or the special any-IP addresses.
 
 For example, these are the two most common ``AF_INET`` 2-tuple *address*
 values, for the looback-IP and the any-IP, respectively::

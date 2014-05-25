@@ -9,8 +9,15 @@ Changes:
 
     * Greatly expand and enhance documentation for the :mod:`degu.client` module
 
+    * Modest update to the :mod:`degu.server` module documentation, in
+      particular to cover HTTP over ``AF_UNIX``
+
     * Add a number of additional sanity and security checks in
-      :func:`degu.client.build_client_sslctx()`, update its unit tests
+      :func:`degu.client.build_client_sslctx()`, expand its unit tests
+      accordingly
+
+    * Likewise, add additional checks in checks in
+      :func:`degu.server.build_server_sslctx()`, expand its unit tests
       accordingly
 
     * :meth:`degu.client.Connection.close()` now only calls
@@ -62,7 +69,7 @@ Two things motivated these breaking API changes:
     * In the near future, the Degu client API will support an 
       ``on_connection()`` handler to allow 3rd party applications to do things
       like extended per-connection authentication; splitting the client creation
-      from the connection creation allows most 3rd party code to remain
+      out from the connection creation allows most 3rd party code to remain
       oblivious as to whether such a ``on_connection()`` handler is in use (as
       most code can merely create connections using the provided client, rather
       than themselves creating clients)
