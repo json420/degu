@@ -238,8 +238,6 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    __slots__ = ('sock', 'rfile', 'wfile', 'base_headers', 'response_body')
-
     def __init__(self, sock, base_headers):
         self.sock = sock
         self.base_headers = base_headers
