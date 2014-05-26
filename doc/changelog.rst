@@ -2,6 +2,17 @@ Changelog
 =========
 
 
+0.6 (unreleased)
+----------------
+
+Changes:
+
+    * With Key-Sharing Dictionaries (`PEP 412`_), an instance ``__dict__`` uses
+      slightly less memory than ``__slots__``, so drop ``__slots__`` from
+      :class:`degu.client.Connection`.
+
+
+
 0.5 (May 2014)
 --------------
 
@@ -74,3 +85,5 @@ Two things motivated these breaking API changes:
       most code can merely create connections using the provided client, rather
       than themselves creating clients)
 
+
+.. _`PEP 412`: http://legacy.python.org/dev/peps/pep-0412/
