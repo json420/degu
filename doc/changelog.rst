@@ -16,7 +16,7 @@ Changes:
       :func:`degu.client.build_client_sslctx()`, expand its unit tests
       accordingly
 
-    * Likewise, add additional checks in checks in
+    * Likewise, add additional checks in
       :func:`degu.server.build_server_sslctx()`, expand its unit tests
       accordingly
 
