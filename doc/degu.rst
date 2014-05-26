@@ -1,5 +1,5 @@
-:mod:`degu` - Embedding helpers
-===============================
+:mod:`degu` --- Embedding helpers
+=================================
 
 .. module:: degu
    :synopsis: helper functions for embedding Degu in other applications
