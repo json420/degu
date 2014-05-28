@@ -87,6 +87,26 @@ def read_lines_iter(rfile):
     raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
 
 
+def read_preamble(rfile):
+    line = rfile.readline(MAX_LINE_BYTES)
+    if not line:
+        raise EmptyLineError()
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    first_line = line[:-2].decode('latin_1')
+    header_lines = []
+    for i in range(10):
+        line = rfile.readline(MAX_LINE_BYTES)
+        if line[-2:] != b'\r\n':
+            raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+        if len(line) == 2:
+            return (first_line, header_lines)
+        header_lines.append(line[:-2].decode('latin_1'))
+    if rfile.readline(2) != b'\r\n':
+        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
+    return (first_line, header_lines)
+
+
 def read_chunk(rfile):
     line_bytes = rfile.readline(MAX_LINE_BYTES)
     if line_bytes[-2:] != b'\r\n':
