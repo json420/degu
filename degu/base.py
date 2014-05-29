@@ -92,13 +92,17 @@ def read_preamble(rfile):
     if not line:
         raise EmptyLineError()
     if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+        raise ValueError(
+            'bad line termination: {!r}'.format(line[-2:])
+        )
     first_line = line[:-2].decode('latin_1')
     header_lines = []
     for i in range(MAX_HEADER_COUNT):
         line = rfile.readline(MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
-            raise ValueError('bad header line termination: {!r}'.format(line[-2:]))
+            raise ValueError(
+                'bad header line termination: {!r}'.format(line[-2:])
+            )
         if len(line) == 2:
             return (first_line, header_lines)
         header_lines.append(line[:-2].decode('latin_1'))
@@ -109,7 +113,7 @@ def read_preamble(rfile):
 
 def read_chunk(rfile):
     """
-    Read a chunk from chunk-encoded request or response body.
+    Read a chunk from a chunk-encoded request or response body.
 
     See "Chunked Transfer Coding":
 
