@@ -209,7 +209,7 @@ Helper functions
 
         * ``'ca_file'`` and/or ``'ca_path'`` - an ``str`` providing the path of
           the file or directory, respectively, containing the trusted CA
-          certificates use to verify server certificates when making
+          certificates used to verify server certificates when making
           connections; if neither of these are provided, then the default
           system-wide CA certificates are used; also note that when neither of
           these of these are provided, ``'check_hostname'`` must be ``True``, as

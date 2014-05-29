@@ -88,6 +88,28 @@ def read_lines_iter(rfile):
 
 
 def read_preamble(rfile):
+    """
+    Read the HTTP request or response preamble, do low-level parsing.
+
+    The return value will be a ``(first_line, header_lines)`` tuple.
+
+    For example:
+
+    >>> from io import BytesIO
+    >>> from degu.base import read_preamble
+    >>> lines = [
+    ...     'first\\r\\n',
+    ...     'header1\\r\\n',
+    ...     'header2\\r\\n',
+    ...     '\\r\\n',
+    ... ]
+    >>> rfile = BytesIO(''.join(lines).encode('latin_1'))
+    >>> read_preamble(rfile)
+    ('first', ['header1', 'header2'])
+
+    Over time, there is a good chance that parts of Degu will be replaced with
+    high-performance C extensions... and this function is a good candidate.
+    """
     line = rfile.readline(MAX_LINE_BYTES)
     if not line:
         raise EmptyLineError()
@@ -103,7 +125,7 @@ def read_preamble(rfile):
             raise ValueError(
                 'bad header line termination: {!r}'.format(line[-2:])
             )
-        if len(line) == 2:
+        if len(line) == 2:  # Stop on the first empty CRLF terminated line
             return (first_line, header_lines)
         header_lines.append(line[:-2].decode('latin_1'))
     if rfile.read(2) != b'\r\n':
@@ -138,6 +160,15 @@ def read_chunk(rfile):
 
 
 def write_chunk(wfile, chunk):
+    """
+    Write a chunk to a chunk-encoded request or response body.
+
+    See "Chunked Transfer Coding":
+
+        http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
+
+    Note this function currently doesn't support chunk-extensions.
+    """
     size_line = '{:x}\r\n'.format(len(chunk))
     total = wfile.write(size_line.encode())
     total += wfile.write(chunk)
