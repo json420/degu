@@ -95,31 +95,42 @@ def read_preamble(rfile):
         raise ValueError('bad line termination: {!r}'.format(line[-2:]))
     first_line = line[:-2].decode('latin_1')
     header_lines = []
-    for i in range(10):
+    for i in range(MAX_HEADER_COUNT):
         line = rfile.readline(MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
-            raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+            raise ValueError('bad header line termination: {!r}'.format(line[-2:]))
         if len(line) == 2:
             return (first_line, header_lines)
         header_lines.append(line[:-2].decode('latin_1'))
-    if rfile.readline(2) != b'\r\n':
+    if rfile.read(2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
     return (first_line, header_lines)
 
 
 def read_chunk(rfile):
-    line_bytes = rfile.readline(MAX_LINE_BYTES)
-    if line_bytes[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line_bytes))
-    size = int(line_bytes.split(b';')[0], 16)
+    """
+    Read a chunk from chunk-encoded request or response body.
+
+    See "Chunked Transfer Coding":
+
+        http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
+
+    Note this function currently ignores any chunk-extension that may be
+    present. 
+    """
+    line = rfile.readline(MAX_LINE_BYTES)
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
+    size = int(line[:-2].split(b';')[0], 16)
     if size < 0:
         raise ValueError('negative chunk size: {}'.format(size))
-    chunk = rfile.read(size + 2)
-    if len(chunk) != size + 2:
-        raise UnderFlowError(len(chunk), size + 2)
-    if chunk[-2:] != b'\r\n':
-        raise ValueError('bad chunk termination: {!r}'.format(chunk[-2:]))
-    return chunk[:-2]
+    chunk = rfile.read(size)
+    if len(chunk) != size:
+        raise UnderFlowError(len(chunk), size)
+    crlf = rfile.read(2)
+    if crlf != b'\r\n':
+        raise ValueError('bad chunk data termination: {!r}'.format(crlf))
+    return chunk
 
 
 def write_chunk(wfile, chunk):

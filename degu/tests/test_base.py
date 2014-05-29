@@ -314,8 +314,9 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
-            'bad line termination: {!r}'.format(termed[:MAX_LINE_BYTES])
+            "bad chunk size termination: b'DD'"
         )
+
         self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
 
@@ -323,7 +324,9 @@ class TestFunctions(TestCase):
         rfile = tmp.prepare(b'1e61\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), "bad line termination: b'1e61\\n'")
+        self.assertEqual(str(cm.exception),
+            "bad chunk size termination: b'1\\n'"
+        )
         self.assertEqual(rfile.tell(), 5)
         self.assertFalse(rfile.closed)
 
@@ -331,7 +334,9 @@ class TestFunctions(TestCase):
         rfile = tmp.prepare(b'')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), "bad line termination: b''")
+        self.assertEqual(str(cm.exception),
+            "bad chunk size termination: b''"
+        )
         self.assertEqual(rfile.tell(), 0)
         self.assertFalse(rfile.closed)
 
@@ -340,7 +345,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 16: b'\\r\\n'"
+            "invalid literal for int() with base 16: b''"
         )
         self.assertEqual(rfile.tell(), 2)
         self.assertFalse(rfile.closed)
@@ -350,7 +355,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 16: b'17.6\\r\\n'"
+            "invalid literal for int() with base 16: b'17.6'"
         )
         self.assertEqual(rfile.tell(), 6)
         self.assertFalse(rfile.closed)
@@ -381,7 +386,7 @@ class TestFunctions(TestCase):
         rfile = tmp.prepare(size + small_data + b'\r\n')
         with self.assertRaises(base.UnderFlowError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7779')
+        self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7777')
         self.assertEqual(rfile.tell(), 6674)
         self.assertFalse(rfile.closed)
 
@@ -389,7 +394,7 @@ class TestFunctions(TestCase):
         rfile = tmp.prepare(size + data + b'TT\r\n')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), "bad chunk termination: b'TT'")
+        self.assertEqual(str(cm.exception), "bad chunk data termination: b'TT'")
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
