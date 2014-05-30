@@ -1,4 +1,4 @@
-# degu: an embedded HTTP server and client library
+1# degu: an embedded HTTP server and client library
 # Copyright (C) 2014 Novacut Inc
 #
 # This file is part of `degu`.
@@ -25,6 +25,7 @@ Unit tests for the `degu.base` module`
 
 from unittest import TestCase
 import os
+import io
 from random import SystemRandom
 
 from .helpers import TempDir, DummySocket
@@ -59,6 +60,24 @@ def casefold_headers(headers):
     return dict(
         (key.casefold(), value) for (key, value) in headers.items()
     )
+
+
+def random_lines(header_count=10):
+    first_line = random_id()
+    header_lines = [random_id() for i in range(header_count)]
+    return (first_line, header_lines)
+
+
+def encode_preamble(first_line, header_lines):
+    lines = [first_line + '\r\n']
+    lines.extend(line + '\r\n' for line in header_lines)
+    lines.append('\r\n')
+    return ''.join(lines).encode('latin_1')
+
+
+def random_body():
+    size = random.randint(1, 34969)
+    return os.urandom(size)
 
 
 class TestConstants(TestCase):
@@ -299,6 +318,171 @@ class TestFunctions(TestCase):
             list(base.read_lines_iter(rfile))
         self.assertEqual(rfile.tell(), len(preamble) * 2)
         self.assertFalse(rfile.closed)
+
+    def test_read_preamble(self):
+        # No data at all, likely connection closed by other end:
+        rfile = io.BytesIO(b'')
+        with self.assertRaises(base.EmptyLineError):
+            base.read_preamble(rfile)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        # Just a \n:
+        rfile = io.BytesIO(b'\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad line termination: b'\\n'"
+        )
+        self.assertEqual(rfile.tell(), 1)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        body = random_body()
+        rfile = io.BytesIO(b'\n' + body)
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad line termination: b'\\n'"
+        )
+        self.assertEqual(rfile.tell(), 1)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), body)
+
+        # Just a \r\n:
+        rfile = io.BytesIO(b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception), 'first preamble line is empty')
+        self.assertEqual(rfile.tell(), 2)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        # \n is present within MAX_LINE_BYTES, but isn't preceeded by a \r:
+        rfile = io.BytesIO(b'DDD\ndddd\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad line termination: b'D\\n'"
+        )
+        self.assertEqual(rfile.tell(), 4)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'dddd\r\n')
+
+        # Short, no termination:
+        line = random_id().encode('latin_1')
+        rfile = io.BytesIO(line)
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'bad line termination: {!r}'.format(line[-2:])
+        )
+        self.assertEqual(rfile.tell(), 24)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        # Too long but terminated:
+        rfile = io.BytesIO((b'D' * base.MAX_LINE_BYTES) + b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad line termination: b'DD'"
+        )
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'\r\n')
+
+        rfile = io.BytesIO((b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad line termination: b'D\\r'"
+        )
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'\n')
+
+        # Too many headers:
+        (first_line, header_lines) = random_lines(11)
+        preamble = encode_preamble(first_line, header_lines)
+        rfile = io.BytesIO(preamble)
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many headers (> {!r})'.format(base.MAX_HEADER_COUNT)
+        )
+        self.assertEqual(rfile.tell(), 288)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(),
+            header_lines[-1][2:].encode('latin_1') + b'\r\n\r\n'
+        )
+
+        (first_line, header_lines) = random_lines(11)
+        preamble = encode_preamble(first_line, header_lines)
+        body = random_body()
+        rfile = io.BytesIO(preamble + body)
+        with self.assertRaises(ValueError) as cm:
+            base.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many headers (> {!r})'.format(base.MAX_HEADER_COUNT)
+        )
+        self.assertEqual(rfile.tell(), 288)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(),
+            header_lines[-1][2:].encode('latin_1') + b'\r\n\r\n' + body
+        )
+
+        # Two good, static test values: first line only:
+        rfile = io.BytesIO(b'hello\r\n\r\n')
+        self.assertEqual(base.read_preamble(rfile), ('hello', []))
+        self.assertEqual(rfile.tell(), 9)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        rfile = io.BytesIO(b'hello\r\n\r\nworld')
+        self.assertEqual(base.read_preamble(rfile), ('hello', []))
+        self.assertEqual(rfile.tell(), 9)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'world')
+
+        # Two good, static test values: first line plus one header:
+        rfile = io.BytesIO(b'hello\r\nworld\r\n\r\n')
+        self.assertEqual(base.read_preamble(rfile), ('hello', ['world']))
+        self.assertEqual(rfile.tell(), 16)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        rfile = io.BytesIO(b'hello\r\nworld\r\n\r\nbody')
+        self.assertEqual(base.read_preamble(rfile), ('hello', ['world']))
+        self.assertEqual(rfile.tell(), 16)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Two good, static test values: first line plus *two* headers:
+        rfile = io.BytesIO(b'hello\r\nnaughty\r\nnurse\r\n\r\n')
+        self.assertEqual(base.read_preamble(rfile), ('hello', ['naughty', 'nurse']))
+        self.assertEqual(rfile.tell(), 25)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'')
+
+        rfile = io.BytesIO(b'hello\r\nnaughty\r\nnurse\r\n\r\nbody')
+        self.assertEqual(base.read_preamble(rfile), ('hello', ['naughty', 'nurse']))
+        self.assertEqual(rfile.tell(), 25)
+        self.assertFalse(rfile.closed)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Some good random value permutations:
+        for header_count in range(11):
+            (first_line, header_lines) = random_lines(header_count)
+            preamble = encode_preamble(first_line, header_lines)
+            body = random_body()
+            rfile = io.BytesIO(preamble + body)
+            self.assertEqual(base.read_preamble(rfile),
+                (first_line, header_lines)
+            )
+            self.assertEqual(rfile.tell(), len(preamble))
+            self.assertEqual(rfile.read(), body)
 
     def test_read_chunk(self):
         tmp = TempDir()

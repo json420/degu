@@ -117,6 +117,8 @@ def read_preamble(rfile):
         raise ValueError(
             'bad line termination: {!r}'.format(line[-2:])
         )
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
     first_line = line[:-2].decode('latin_1')
     header_lines = []
     for i in range(MAX_HEADER_COUNT):
