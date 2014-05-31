@@ -405,6 +405,7 @@ class TestFunctions(TestCase):
 
         # Too many headers:
         (first_line, header_lines) = random_lines(11)
+        self.assertEqual(len(header_lines), 11)
         preamble = encode_preamble(first_line, header_lines)
         rfile = io.BytesIO(preamble)
         with self.assertRaises(ValueError) as cm:
@@ -419,6 +420,7 @@ class TestFunctions(TestCase):
         )
 
         (first_line, header_lines) = random_lines(11)
+        self.assertEqual(len(header_lines), 11)
         preamble = encode_preamble(first_line, header_lines)
         body = random_body()
         rfile = io.BytesIO(preamble + body)
@@ -440,11 +442,11 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
         self.assertEqual(rfile.read(), b'')
 
-        rfile = io.BytesIO(b'hello\r\n\r\nworld')
+        rfile = io.BytesIO(b'hello\r\n\r\nbody')
         self.assertEqual(base.read_preamble(rfile), ('hello', []))
         self.assertEqual(rfile.tell(), 9)
         self.assertFalse(rfile.closed)
-        self.assertEqual(rfile.read(), b'world')
+        self.assertEqual(rfile.read(), b'body')
 
         # Two good, static test values: first line plus one header:
         rfile = io.BytesIO(b'hello\r\nworld\r\n\r\n')
@@ -461,13 +463,17 @@ class TestFunctions(TestCase):
 
         # Two good, static test values: first line plus *two* headers:
         rfile = io.BytesIO(b'hello\r\nnaughty\r\nnurse\r\n\r\n')
-        self.assertEqual(base.read_preamble(rfile), ('hello', ['naughty', 'nurse']))
+        self.assertEqual(base.read_preamble(rfile),
+            ('hello', ['naughty', 'nurse'])
+        )
         self.assertEqual(rfile.tell(), 25)
         self.assertFalse(rfile.closed)
         self.assertEqual(rfile.read(), b'')
 
         rfile = io.BytesIO(b'hello\r\nnaughty\r\nnurse\r\n\r\nbody')
-        self.assertEqual(base.read_preamble(rfile), ('hello', ['naughty', 'nurse']))
+        self.assertEqual(base.read_preamble(rfile),
+            ('hello', ['naughty', 'nurse'])
+        )
         self.assertEqual(rfile.tell(), 25)
         self.assertFalse(rfile.closed)
         self.assertEqual(rfile.read(), b'body')
