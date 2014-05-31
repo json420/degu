@@ -195,6 +195,93 @@ Degu is focused on:
     `CouchDB`_ servers.
 
 
+HTTP/1.1 subset
+---------------
+
+For simplicity, performance, and especially security, the Degu server and client
+support only a subset of `HTTP/1.1`_ features.
+
+Although the Degu server and client *generally* operate in an HTTP/1.1
+compliant fashion themselves, they do *not* support all valid HTTP/1.1 features
+and permutations from the other endpoint.  However, the unsupported features are
+seldom used by other modern HTTP/1.1 servers and clients, so these restrictions
+don't particularly limit the servers and clients with which Degu can interact.
+
+Also, remember that Degu is primarily aimed at highly specialized P2P usage
+where Degu clients will only be talking to the Degu servers running on other
+devices on the same local network.  Degu is also aimed at using HTTP as a
+network-transparent RPC mechanism, including when communicating with servers
+running on the same host using HTTP over ``AF_UNIX``.
+
+In particular, Degu is restrictive when it comes to:
+
+**HTTP protocol version**
+
+    * Degu currently only supports HTTP/1.1 clients and servers; although in the
+      future Degu may support, say, the finalized HTTP/2.0 protocol, there is no
+      plan for Degu ever to support HTTP/1.0 (or older) clients and servers
+
+**HTTP headers**:
+
+    * Although allowed by HTTP/1.1, Degu doesn't support multiple occurrences of
+      the same header
+
+    * Although allowed by HTTP/1.1, Degu doesn't support headers whose value
+      spans multiple lines in the request or response preamble
+
+    * Although allowed by HTTP/1.1, Degu doesn't allow both a Content-Length and
+      a Transfer-Encoding header to be present in the same request or response
+      preamble
+
+    * Degu is less forgiving when it comes to white-space in the Header lines,
+      which must always have the form::
+
+        'Name: Value\r\n'
+
+    * Although Degu accepts mixed case header names from the other endpoint, the
+      Degu server and client always case-folder (lowercase) the header names
+      prior to passing control to 3rd-party application software
+
+    * Degu :doc:`rgi` server applications must only include case-folded header
+      names in their response tuple, and likewise, 3rd-party application
+      software must only include case-folded header names when calling
+      :meth:`degu.client.Connection.request()`
+
+    * The Degu server includes *zero* headers by default, although :doc:`rgi`
+      server applications are free to include whatever headers they see fit in
+      their response; of particular note, the Degu server doesn't by default
+      include a ``'date'`` header
+
+    * The Degu client includes *zero* headers by default, although 3rd-party
+      applications are free to include whatever headers they see fit in their
+      request; of particular note, the Degu client doesn't by default include a
+      ``'host'`` header
+
+    * A strait-forward way to minimize the overhead of the HTTP protocol is to
+      simply send fewer request and response headers; both the Degu server and
+      client aggressively peruse this optimization route, even at the expense of
+      of operating in a strictly HTTP/1.1 compliant fashion (again, 3rd-party
+      applications are free to include additional headers as needed)
+
+**HTTP request method**:
+
+    * Currently the Degu server and client only allow the request method to be
+      ``'GET'``, ``'HEAD'``, ``'DELETE``, ``'PUT'``, or ``'POST'``; in
+      particular this restriction is in place out of security consideration when
+      the Degu is used as a reverse proxy to something like `CouchDB`_; if this
+      is too restrictive for your application, please `file a bug`_ and we'll
+      consider relaxing this somewhat
+
+**HTTP request body**:
+
+    * A request body is only allowed when the request method is ``'PUT'`` or
+      ``'POST'``
+
+    * A request body is *not* allowed when the request method is ``'GET'``,
+      ``'HEAD'``, or ``'DELETE'``, and as such, neither a Content-Length nor a
+      Transfer-Encoding header should be preset in such requests
+
+
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
@@ -208,3 +295,5 @@ Degu is focused on:
 .. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`HTTP/1.1`: https://www.ietf.org/rfc/rfc2616.txt
+.. _`file a bug`: https://bugs.launchpad.net/degu
