@@ -11,6 +11,9 @@ Changes:
       slightly less memory than ``__slots__``, so drop ``__slots__`` from
       :class:`degu.client.Connection`.
 
+    * :func:`degu.base.parse_headers()` now raises a ``ValueError`` if there is
+      leading or trailing whitespace in a header name or header value
+
 
 Internal API changes:
 

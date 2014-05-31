@@ -157,11 +157,21 @@ def parse_headers(header_lines):
     >>> parse_headers(['Content-Type: application/json'])
     {'content-type': 'application/json'}
 
+    Over time, there is a good chance that parts of Degu will be replaced with
+    high-performance C extensions... and this function is a good candidate.
     """
     headers = {}
     for line in header_lines:
         (key, value) = line.split(': ')
         key = key.casefold()
+        if key.strip() != key:
+            raise ValueError(
+                'extraneous whitespace in header name: {!r}'.format(key)
+            )
+        if value.strip() != value:
+            raise ValueError(
+                'extraneous whitespace in {!r} header: {!r}'.format(key, value)
+            )
         if key in headers:
             raise ValueError('duplicate header: {!r}'.format(key))
         headers[key] = value
