@@ -70,23 +70,6 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
-def read_lines_iter(rfile):
-    line_bytes = rfile.readline(MAX_LINE_BYTES)
-    if not line_bytes:
-        raise EmptyLineError()
-    if line_bytes[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line_bytes))
-    yield line_bytes[:-2].decode('latin_1')
-    for i in range(MAX_HEADER_COUNT + 1):
-        line_bytes = rfile.readline(MAX_LINE_BYTES)
-        if line_bytes == b'\r\n':
-            return
-        if line_bytes[-2:] != b'\r\n':
-            raise ValueError('bad line termination: {!r}'.format(line_bytes))
-        yield line_bytes[:-2].decode('latin_1')
-    raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
-
-
 def read_preamble(rfile):
     """
     Read the HTTP request or response preamble, do low-level parsing.
