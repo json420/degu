@@ -497,7 +497,9 @@ class TestFunctions(TestCase):
         lines = ('Content-Length: 17', 'Transfer-Encoding: chunked')
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(lines)
-        self.assertEqual(str(cm.exception), 'content-length plus transfer-encoding')
+        self.assertEqual(str(cm.exception),
+            "cannot have both 'content-length' and 'transfer-encoding' headers"
+        )
 
         # Test a number of good single values:
         self.assertEqual(base.parse_headers(['Content-Type: application/json']),

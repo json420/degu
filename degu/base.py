@@ -76,20 +76,6 @@ def read_preamble(rfile):
 
     The return value will be a ``(first_line, header_lines)`` tuple.
 
-    For example:
-
-    >>> from io import BytesIO
-    >>> from degu.base import read_preamble
-    >>> lines = [
-    ...     'first\\r\\n',
-    ...     'header1\\r\\n',
-    ...     'header2\\r\\n',
-    ...     '\\r\\n',
-    ... ]
-    >>> rfile = BytesIO(''.join(lines).encode('latin_1'))
-    >>> read_preamble(rfile)
-    ('first', ['header1', 'header2'])
-
     Over time, there is a good chance that parts of Degu will be replaced with
     high-performance C extensions... and this function is a good candidate.
     """
@@ -161,49 +147,19 @@ def write_chunk(wfile, chunk):
     return total
 
 
-def parse_headers(lines):
+def parse_headers(header_lines):
     """
-    Parse the header lines.
+    Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
 
     The return value will be a ``dict`` mapping header names to header values,
-    and the header names will be case-folded.  For example:
+    and the header names will be case-folded (lowercase).  For example:
 
     >>> parse_headers(['Content-Type: application/json'])
     {'content-type': 'application/json'}
 
-    Although allowed by HTTP 1.1 (but seldom used in practice), this function
-    does not permit multiple occurrences of the same header name:
-
-    >>> parse_headers(['Content-Type: foo/bar', 'Content-Type: stuff/junk'])
-    Traceback (most recent call last):
-      ...
-    ValueError: duplicate header: 'content-type'
-
-    If parsing a Content-Length header, its value will be parsed into an ``int``
-    and validated:
-
-    >>> parse_headers(['Content-Length: 1776'])
-    {'content-length': 1776}
-
-    If parsing a Transfer-Encoding header, this functions will raise a
-    ``ValueError`` if the value is anything other than ``'chunked'``.
-
-    >>> parse_headers(['Transfer-Encoding: clumped'])
-    Traceback (most recent call last):
-      ...
-    ValueError: bad transfer-encoding: 'clumped'
-
-    Finally, this function will likewise raise a ValueError if the header lines
-    include both Content-Length and Transfer-Encoding headers:
-
-    >>> parse_headers(['Transfer-Encoding: chunked', 'Content-Length: 1776'])
-    Traceback (most recent call last):
-      ...
-    ValueError: content-length plus transfer-encoding
-
     """
     headers = {}
-    for line in lines:
+    for line in header_lines:
         (key, value) = line.split(': ')
         key = key.casefold()
         if key in headers:
@@ -212,14 +168,18 @@ def parse_headers(lines):
     if 'content-length' in headers:
         headers['content-length'] = int(headers['content-length'])
         if headers['content-length'] < 0:
-            raise ValueError('negative content-length: {!r}'.format(
-                    headers['content-length'])) 
+            raise ValueError(
+                'negative content-length: {!r}'.format(headers['content-length'])
+            ) 
         if 'transfer-encoding' in headers:
-            raise ValueError('content-length plus transfer-encoding') 
+            raise ValueError(
+                "cannot have both 'content-length' and 'transfer-encoding' headers"
+            ) 
     elif 'transfer-encoding' in headers:
         if headers['transfer-encoding'] != 'chunked':
-            raise ValueError('bad transfer-encoding: {!r}'.format(
-                    headers['transfer-encoding']))
+            raise ValueError(
+                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+            )
     return headers
 
 
