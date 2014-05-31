@@ -32,7 +32,7 @@ from .base import (
     TYPE_ERROR,
     EmptyLineError,
     makefiles,
-    read_lines_iter,
+    read_preamble,
     parse_headers,
     write_chunk,
     Input,
@@ -436,9 +436,9 @@ class Handler:
         """
         Builds the *environ* fragment unique to a single HTTP request.
         """
-        lines = tuple(read_lines_iter(self.rfile))
-        (method, path_list, query) = parse_request(lines[0])
-        headers = parse_headers(lines[1:])
+        (request_line, header_lines) = read_preamble(self.rfile)
+        (method, path_list, query) = parse_request(request_line)
+        headers = parse_headers(header_lines)
         # Hack for compatibility with the CouchDB replicator, which annoyingly
         # sends a {'content-length': 0} header with all GET and HEAD requests:
         if method in {'GET', 'HEAD'} and 'content-length' in headers:

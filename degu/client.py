@@ -34,7 +34,7 @@ from urllib.parse import urlparse, ParseResult
 from .base import (
     TYPE_ERROR,
     makefiles,
-    read_lines_iter,
+    read_preamble,
     parse_headers,
     write_chunk,
     Input,
@@ -219,9 +219,9 @@ def parse_status(line):
 
 
 def read_response(rfile, method):
-    lines = tuple(read_lines_iter(rfile))
-    (status, reason) = parse_status(lines[0])
-    headers = parse_headers(lines[1:])
+    (status_line, header_lines) = read_preamble(rfile)
+    (status, reason) = parse_status(status_line)
+    headers = parse_headers(header_lines)
     if 'content-length' in headers and method != 'HEAD':
         body = Input(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:

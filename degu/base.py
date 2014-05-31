@@ -114,9 +114,7 @@ def read_preamble(rfile):
     if not line:
         raise EmptyLineError()
     if line[-2:] != b'\r\n':
-        raise ValueError(
-            'bad line termination: {!r}'.format(line[-2:])
-        )
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
     if len(line) == 2:
         raise ValueError('first preamble line is empty')
     first_line = line[:-2].decode('latin_1')
