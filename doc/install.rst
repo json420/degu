@@ -4,6 +4,7 @@ Installation
 `Degu`_ packages are available for `Ubuntu`_ in the
 `Novacut Stable Releases PPA`_ and the `Novacut Daily Builds PPA`_.
 
+
 Install on Ubuntu
 -----------------
 
@@ -30,6 +31,11 @@ After which the documentation can be browsed at:
 
     file:///usr/share/doc/python3-degu-doc/html/index.html
 
+You can run the Degu unit tests against the installed ``python3-degu`` package
+like this::
+
+    python3 -m degu.tests.run
+
 Note that if you add both the stable and the daily PPA, the versions in the
 daily PPA will supersede the versions in the stable PPA.
 
@@ -54,6 +60,10 @@ Or create your own branch for your own work like this::
 
     bzr branch lp:degu lp:~/degu/mybranch
     bzr checkout lp:~/degu/mybranch
+
+You can run the Degu unit tests from within the source tree like this::
+
+    ./setup.py test
 
 
 
