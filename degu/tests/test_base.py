@@ -104,11 +104,12 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
 
-class TestEmptyLineError(TestCase):
+class TestEmptyPreambleError(TestCase):
     def test_init(self):
-        e = base.EmptyLineError('stuff and junk')
+        e = base.EmptyPreambleError('stuff and junk')
         self.assertIsInstance(e, Exception)
         self.assertIsInstance(e, ConnectionError)
+        self.assertIs(type(e), base.EmptyPreambleError)
         self.assertEqual(str(e), 'stuff and junk')
 
 
@@ -153,7 +154,7 @@ class TestFunctions(TestCase):
     def test_read_preamble(self):
         # No data at all, likely connection closed by other end:
         rfile = io.BytesIO(b'')
-        with self.assertRaises(base.EmptyLineError):
+        with self.assertRaises(base.EmptyPreambleError):
             base.read_preamble(rfile)
         self.assertEqual(rfile.tell(), 0)
         self.assertFalse(rfile.closed)

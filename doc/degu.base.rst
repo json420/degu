@@ -16,6 +16,24 @@ This module provides the low level HTTP parser and IO abstractions used by both
 
 
 
+Exceptions
+----------
+
+.. exception:: EmptyPreambleError
+
+    Raised by :func:`read_preamble()` when no data is received.
+
+    This is a ``ConnectionError`` subclass.  When no data is received when
+    trying to read the request or response preamble, this typically means the
+    connection was closed on the other end.
+
+    This exception is inspired by the `BadStatusLine`_ exception in the
+    ``http.client`` module in the standard Python3 library.  However, as
+    :exc:`EmptyPreambleError` is a ``ConnectionError`` subclass, there is no
+    reason to use this exception directly.
+
+
+
 Parsing functions
 -----------------
 
@@ -126,8 +144,8 @@ Parsing functions
       ...
     ValueError: bad transfer-encoding: 'clumped'
 
-    Finally, this function will also raise a ``ValueError`` both Content-Length
-    and Transfer-Encoding headers are included:
+    Finally, this function will also raise a ``ValueError`` if both
+    Content-Length and Transfer-Encoding headers are included:
 
     >>> parse_headers(['Transfer-Encoding: chunked', 'Content-Length: 1776'])
     Traceback (most recent call last):
@@ -182,4 +200,6 @@ sending to the server.
     Wraps output to be written to the rfile, read from an open file *fp*.
 
 
+
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
+.. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine

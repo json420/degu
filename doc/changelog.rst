@@ -12,6 +12,13 @@ Changes:
       :class:`degu.client.Connection`.
 
 
+Internal API changes:
+
+    * ``read_lines_iter()`` has been replaced by
+      :func:`degu.base.read_preamble()`
+
+    * ``EmptyLineError`` has been renamed to :exc:`degu.base.EmptyPreambleError`
+
 
 0.5 (May 2014)
 --------------

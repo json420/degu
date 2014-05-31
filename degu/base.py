@@ -35,7 +35,7 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-class EmptyLineError(ConnectionError):
+class EmptyPreambleError(ConnectionError):
     pass
 
 
@@ -81,7 +81,7 @@ def read_preamble(rfile):
     """
     line = rfile.readline(MAX_LINE_BYTES)
     if not line:
-        raise EmptyLineError()
+        raise EmptyPreambleError()
     if line[-2:] != b'\r\n':
         raise ValueError('bad line termination: {!r}'.format(line[-2:]))
     if len(line) == 2:

@@ -1150,7 +1150,7 @@ class TestLiveServer(TestCase):
         conn = client.connect()
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
-        with self.assertRaises(base.EmptyLineError):
+        with self.assertRaises(base.EmptyPreambleError):
             conn.request('POST', '/foo')
         self.assertIs(conn.closed, True)
         conn = client.connect()
