@@ -593,7 +593,7 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, address, app, conn_app=None):
+    def __init__(self, address, app):
         if isinstance(address, tuple):  
             if len(address) == 4:
                 family = socket.AF_INET6
@@ -617,13 +617,10 @@ class Server:
             )
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))
-        if not (conn_app is None or callable(conn_app)):
-            raise TypeError('conn_app: not callable: {!r}'.format(conn_app))
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
         self.app = app
-        self.conn_app = conn_app
         self.sock.listen(5)
 
     def __repr__(self):
@@ -678,9 +675,9 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, sslctx, address, app, conn_app=None):
+    def __init__(self, sslctx, address, app):
         self.sslctx = validate_server_sslctx(sslctx)
-        super().__init__(address, app, conn_app)
+        super().__init__(address, app)
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(
