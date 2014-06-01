@@ -604,14 +604,14 @@ class Server:
             )
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))
-        on_connect = getattr(app, 'on_connect', None)
-        if not (on_connect is None or callable(on_connect)):
-            raise TypeError('app.on_connect: not callable: {!r}'.format(app))
+        on_connection = getattr(app, 'on_connection', None)
+        if not (on_connection is None or callable(on_connection)):
+            raise TypeError('app.on_connection: not callable: {!r}'.format(app))
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
         self.app = app
-        self.on_connect = on_connect
+        self.on_connection = on_connection
         self.sock.listen(5)
 
     def __repr__(self):

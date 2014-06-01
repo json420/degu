@@ -62,18 +62,18 @@ This is best illustrated through an example middleware application:
 >>> class Middleware:
 ...     def __init__(self, app):
 ...         self.app = app
-...         if callable(getattr(app, 'on_connect', None)):
-...             self._on_connect = app.on_connect
+...         if callable(getattr(app, 'on_connection', None)):
+...             self._on_connection = app.on_connection
 ...         else:
-...             self._on_connect = None
+...             self._on_connection = None
 ... 
 ...     def __call__(self, request, connection):
 ...         return self.app(request, connection)
 ... 
-...     def on_connect(self, sock, connection):
-...         if self._on_connect is None:
+...     def on_connection(self, sock, connection):
+...         if self._on_connection is None:
 ...             return True
-...         return self._on_connect(sock, connection)
+...         return self._on_connection(sock, connection)
 ... 
 
 When an application has an ``on_connection()`` callable, it must return ``True``
@@ -124,7 +124,7 @@ For example:
 ...     def __call__(self, request, connection):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
-...     def on_connect(self, sock, connection):
+...     def on_connection(self, sock, connection):
 ...         assert isinstance(sock, ssl.SSLSocket)  # Require SSL
 ...         connection['_user'] = 'foo'
 ...         connection['_machine'] = 'bar'
