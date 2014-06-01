@@ -693,17 +693,17 @@ class BadApp:
 
 def good_app(request):
     return (200, 'OK', {}, None)
-    
+
 
 class BadConnectionHandler:
-    def __call__(self, request, connection):
+    def __call__(self, connection, request):
         pass
 
     on_connection = 'nope'
 
 
 class GoodConnectionHandler:
-    def __call__(self, request, connection):
+    def __call__(self, connection, request):
         pass
 
     def on_connection(self, sock, connection):

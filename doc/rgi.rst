@@ -67,8 +67,8 @@ This is best illustrated through an example middleware application:
 ...         else:
 ...             self._on_connection = None
 ... 
-...     def __call__(self, request, connection):
-...         return self.app(request, connection)
+...     def __call__(self, connection, request):
+...         return self.app(connection, request)
 ... 
 ...     def on_connection(self, sock, connection):
 ...         if self._on_connection is None:
@@ -121,7 +121,7 @@ added by future RGI servers, there is a simple, pythonic name-spacing rule: the
 For example:
 
 >>> class MyApp:
-...     def __call__(self, request, connection):
+...     def __call__(self, connection, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
 ...     def on_connection(self, sock, connection):
@@ -136,21 +136,41 @@ For example:
 Handling requests
 -----------------
 
-RGI applications take two arguments when handling requests: a *request* and
-a *connection*.
+RGI applications take two arguments when handling requests: a *connection* and
+a *request*.
 
 Both are ``dict`` instances that together provide the equivalent of the WSGI
 *environ* argument (note that there is no RGI equivalent of the WSGI
 ``start_response()`` callable).
 
-The difference is that the *request* argument contains only per-request
-information, and the *connection* argument contains only per-connection 
-information.  Additionally, applications can use the *connection* argument to
-store persistent per-connection state (for example, a database connection or a
-connection to an upstream HTTP servers in the case of a reverse proxy
-application).
+The difference is that the *connection* argument contains only per-connection
+information, and the *request* argument contains only per-request information. 
+Additionally, applications can use the *connection* argument to store persistent
+per-connection state (for example, a database connection or a connection to an
+upstream HTTP servers in the case of a reverse proxy application).
 
-The *request* argument will look something like this::
+As noted above, the *connection* argument will looks something like this::
+
+    connection = {
+        'scheme': 'https',
+        'protocol': 'HTTP/1.1',
+        'server': ('0.0.0.0', 12345),
+        'client': ('192.168.0.17', 23456),
+        'ssl_compression': None,
+        'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
+    }
+
+When needed, the RGI request handler callable can add additionally information
+to the *connection* ``dict``, and this same connection ``dict`` instance will
+be persistent throughout all request handled during the connections lifetime.
+
+In order to avoid conflicts with additional *connection* information that may be
+added by future RGI servers, and to avoid conflicts with information added by a
+possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
+rule: the request handler should only add keys whose name starts with ``'__'``
+(double underscore).
+
+On the other hand, the *request* argument will look something like this::
 
     request = {
         'method': 'POST',
@@ -177,35 +197,13 @@ are casefolded using ``str.casefold()``.  If the request includes a
 ``'headers'`` sub-dictionary is designed to be directly usable by a proxy
 application when making its HTTP client request.
 
-On the other hand, the *connection* argument will looks something like this, as
-mentioned above::
-
-    connection = {
-        'scheme': 'https',
-        'protocol': 'HTTP/1.1',
-        'server': ('0.0.0.0', 12345),
-        'client': ('192.168.0.17', 23456),
-        'ssl_compression': None,
-        'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
-    }
-
-When needed, the RGI request handler callable can add additionally information
-to the *connection* ``dict``, and this same connection ``dict`` instance will
-be persistent throughout all request handled during the connections lifetime.
-
-In order to avoid conflicts with additional *connection* information that may be
-added by future RGI servers, and to avoid conflicts with information added by a
-possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
-rule: the request handler should only add keys whose name starts with ``'__'``
-(double underscore).
-
 For example:
 
 >>> class MyProxyApp:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
-...     def __call__(self, request, connection):
+...     def __call__(self, connection, request):
 ...         if '__conn' not in connection:
 ...             connection['__conn'] = self.client.connect()
 ...         conn = connection['__conn']
@@ -249,7 +247,7 @@ clear why RGI is very middleware-friendly (and proxy-friendly) compared to WSGI.
 
 For example, consider this simple RGI application:
 
->>> def demo_app(request, connection):
+>>> def demo_app(connection, request):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -259,13 +257,13 @@ For example, consider this simple RGI application:
 
 Here's what ``demo_app()`` returns for a suitable GET request:
 
->>> demo_app({'method': 'GET', 'path': []}, {})
+>>> demo_app({}, {'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 However, note that ``demo_app()`` isn't actually HTTP/1.1 compliant as it should
 not return a response body for a HEAD request:
 
->>> demo_app({'method': 'HEAD', 'path': []}, {})
+>>> demo_app({}, {'method': 'HEAD', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 Now consider this example middleware that checks for just such a faulty
@@ -275,8 +273,8 @@ application and overrides its response:
 ...     def __init__(self, app):
 ...         self.app = app
 ...
-...     def __call__(self, request, connection):
-...         (status, reason, headers, body) = self.app(request, connection)
+...     def __call__(self, connection, request):
+...         (status, reason, headers, body) = self.app(connection, request)
 ...         if request['method'] == 'HEAD' and body is not None:
 ...             return (500, 'Internal Server Error', {}, None)
 ...         return (status, reason, headers, body)
@@ -285,12 +283,12 @@ application and overrides its response:
 ``Middleware`` will let the response to a GET request pass through unchanged: 
 
 >>> middleware = Middleware(demo_app)
->>> middleware({'method': 'GET', 'path': []}, {})
+>>> middleware({}, {'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 But ``Middleware`` will intercept the faulty response to a HEAD request:
 
->>> middleware({'method': 'HEAD', 'path': []}, {})
+>>> middleware({}, {'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
 
 
@@ -338,7 +336,7 @@ And in terms of the HTTP response, this WSGI application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(request, connection):
+>>> def rgi_app(connection, request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
