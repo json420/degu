@@ -277,13 +277,13 @@ running on the same host using HTTP over ``AF_UNIX``.
 
 In particular, Degu is restrictive when it comes to:
 
-**HTTP protocol version**
+**HTTP protocol version:**
 
     * Degu currently only supports HTTP/1.1 clients and servers; although in the
       future Degu may support, say, the finalized HTTP/2.0 protocol, there is no
       plan for Degu ever to support HTTP/1.0 (or older) clients and servers
 
-**HTTP headers**:
+**HTTP headers:**
 
     * Although allowed by HTTP/1.1, Degu doesn't support multiple occurrences of
       the same header
@@ -325,7 +325,7 @@ In particular, Degu is restrictive when it comes to:
       of operating in a strictly HTTP/1.1 compliant fashion (again, 3rd-party
       applications are free to include additional headers as needed)
 
-**HTTP request method**:
+**HTTP request method:**
 
     * Currently the Degu server and client only allow the request method to be
       ``'GET'``, ``'HEAD'``, ``'DELETE``, ``'PUT'``, or ``'POST'``; in
@@ -334,7 +334,7 @@ In particular, Degu is restrictive when it comes to:
       is too restrictive for your application, please `file a bug`_ and we'll
       consider relaxing this somewhat
 
-**HTTP request body**:
+**HTTP request body:**
 
     * A request body is only allowed when the request method is ``'PUT'`` or
       ``'POST'``
