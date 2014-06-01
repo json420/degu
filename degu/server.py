@@ -624,8 +624,9 @@ class Server:
         Builds the base *environ* used throughout instance lifetime.
         """
         return {
-            'server': self.address,
             'scheme': self.scheme,
+            'protocol': 'HTTP/1.1',
+            'server': self.address,
             'rgi.ResponseBody': Output,
             'rgi.FileResponseBody': FileOutput,
             'rgi.ChunkedResponseBody': ChunkedOutput,
