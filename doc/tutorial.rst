@@ -195,6 +195,68 @@ Degu is focused on:
     `CouchDB`_ servers.
 
 
+
+Example: HTTP over AF_UNIX
+--------------------------
+
+A highly differentiating feature of Degu is that both its server and client can
+*transparently* do HTTP over ``AF_UNIX``.
+
+When creating a server or client, the *address* argument itself conveys
+everything needed in order to do HTTP over ``AF_INET``, ``AF_INET6``, or
+``AF_UNIX``.  This way 3rd-party application software can pass around the single
+*address* argument, all while remaining gleefully unaware of what the underlying
+socket family will be.
+
+For example, when creating a server, if your *address* is an ``str``, then it
+must be the absolute, normalized path of a socket file that does *not* yet
+exist:
+
+>>> import tempfile
+>>> from os import path
+>>> tmpdir = tempfile.mkdtemp()
+>>> address = path.join(tmpdir, 'my.socket')
+
+We'll then create a :class:`degu.server.Server`, which in this case we'll again
+do via creating a :class:`degu.misc.TempServer` instance:
+
+>>> from degu.misc import TempServer
+>>> server = TempServer(address, None, example_app)
+
+Even though in this case the *address* we provide when creating a client will
+match the *address* we provided when creating a server, note that this wont
+always be true, depending on the exact *address* type and value.  You should
+always create a client using the resulting :attr:`degu.server.Server.address`
+attribute.
+
+So as in our previous example, we'll create a :class:`degu.client.Client` like
+this:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+And then, as in our previous example, wa can create a
+:class:`degu.client.Connection` and make a request like this:
+
+>>> conn = client.connect()
+>>> conn = client.connect()
+>>> conn.request('GET', '/')
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+The important point is that both the Degu server and client keep 3rd-party
+applications highly abstracted from what the underlying socket family will be
+for a given *address*, thereby backing up our claim that Degu can
+*transparently* do HTTP over ``AF_UNIX``.
+
+This is especially critical for `Novacut`_, which is built as a set of
+network-transparent services, most of which will usually all be running on the
+local host, but any of which could likewise be running on a remote host.
+
+For more details, see the documentation for the :mod:`degu.server` and
+:mod:`degu.client` modules.
+
+
+
 HTTP/1.1 subset
 ---------------
 
@@ -297,3 +359,4 @@ In particular, Degu is restrictive when it comes to:
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`HTTP/1.1`: https://www.ietf.org/rfc/rfc2616.txt
 .. _`file a bug`: https://bugs.launchpad.net/degu
+.. _`Novacut`: https://launchpad.net/novacut
