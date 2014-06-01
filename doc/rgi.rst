@@ -11,55 +11,156 @@ likewise didn't need to be compatible with any existing HTTP servers.
 
 RGI focuses on improvement in a number of areas:
 
-    1. Assuming you can drop CGI compatibility, the naming conventions in the
+    1. It's very useful to expose connection-level semantics to sever
+       applications, in addition to request-level semantics
+
+    2. Assuming you can drop CGI compatibility, the naming conventions in the
        WSGI *environ* leave much to be desired in terms of signal-to-noise ratio
 
-    2. ``start_response()`` is the bane of middleware components because
+    3. ``start_response()`` is the bane of middleware components because
        if they need to inspect or to modify the response status or response
        headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
-    3. A reverse proxy (aka gateway) application is a good model for the needs
+    4. A reverse proxy (aka gateway) application is a good model for the needs
        of middleware; in particular, we should not require middleware components
        to re-parse or otherwise transform any values in order to do something
        meaningful with these value (eg, a reverse proxy generally needs to use
        the full request headers in its own HTTP client request)
 
-    4. Eliminate ambiguity about Transfer-Encoding vs Content-Length, in both
-       the request body and the response body.
+    5. WSGI is somewhat ambiguous about Transfer-Encoding vs Content-Length,
+       especially in the request body, but only in the response body; RGI aims
+       to eliminate this ambiguity, and to do so in a way that allows proxy
+       applications to preserve these request and response body semantics
 
 
 
-Request & Response
-------------------
+Application callables
+---------------------
 
-RGI applications take a single *request* argument, somewhat similar to the WSGI
-*environ*.  For example:
+RGI applications must provide a callable object to handle requests (equivalent
+to the WSGI *application* callable).
 
-.. testsetup::
+However, if this application object itself has a callable ``on_connection``
+attribute, this is called whenever a new connection is received, before any
+requests are handled for that connection.
 
-    from os import path
-    from tempfile import TemporaryDirectory
-    from degu.base import Input
+Most server application interfaces (like WSGI and CGI) only offer request-level
+semantics, but don't offer any connection-level semantics, don't offer a way
+for application to do anything special when a new connection is first received
+or a way for applications to easily maintain per-connection state.
 
-    _tmpdir = TemporaryDirectory()
-    _rfile_name = path.join(_tmpdir.name, 'rfile')
-    open(_rfile_name, 'xb').close()
-    rfile = open(_rfile_name, 'rb')
+This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
+where *authentication* is done per-connection, and only *authorization* is done
+per-request.  This allows Dmedia to do extended per-connection authentication,
+in particular to verify the intrinsic machine and user identities behind the
+connection, based on the SSL certificate and SSL certificate authority under
+which the connection was made, respectively.
 
->>> request = {
-...     'method': 'POST',
-...     'script': ['foo'],
-...     'path': ['bar', 'baz'],
-...     'query': 'stuff=junk',
-...     'body': Input(rfile, 1776),  # Explained below
-...     'headers': {
-...         'accept': 'application/json',
-...         'content-length': 1776,
-...         'content-type': 'application/json',
-...     },
-... }
+This is best illustrated through an example middleware application:
 
+>>> class Middleware:
+...     def __init__(self, app):
+...         self.app = app
+...         if callable(getattr(app, 'on_connect', None)):
+...             self._on_connect = app.on_connect
+...         else:
+...             self._on_connect = None
+... 
+...     def __call__(self, request, connection):
+...         return self.app(request, connection)
+... 
+...     def on_connect(self, sock, connection):
+...         if self._on_connect is None:
+...             return True
+...         return self._on_connect(sock, connection)
+... 
+
+When an application has an ``on_connection()`` callable, it must return ``True``
+in order for the connection to be accepted.  If ``on_connection()`` does not
+return ``True``, or if any unhandled exception is raised, the connection will be
+rejected without any further processing, before any requests are handled.
+
+
+
+Handling connections
+--------------------
+
+If an RGI application has a callable ``on_connection`` attribute, it will be
+passed two arguments when handling connections: a *sock* and a *connection*.
+
+The *sock* will be either a ``socket.socket`` instance or an ``ssl.SSLSocket``
+instance.
+
+The *connection* will be a ``dict`` containing the per-connection environment
+already created by the server, which will be a subset of the equivalent
+information in the WSGI *environ*.  Importantly, ``on_connection()`` is called
+before any requests have been handled, and the *connection* argument will not
+contain any request related information.
+
+The *connection* argument will look something like this::
+
+    connection = {
+        'scheme': 'https',
+        'protocol': 'HTTP/1.1',
+        'server': ('0.0.0.0', 12345),
+        'client': ('192.168.0.17', 23456),
+        'ssl_compression': None,
+        'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
+    }
+
+When needed, the ``on_connection()`` callable can add additionally information
+to the *connection* ``dict``, and this same connection ``dict`` instance will be
+passed to the main ``application.__call__()`` method when handling each request.
+
+In order to avoid conflicts with additional *connection* information that may be
+added by future RGI servers, there is a simple, pythonic name-spacing rule: the
+``on_connection()`` callable should only add keys whose name starts with
+``'_'`` (underscore).
+
+For example:
+
+>>> class MyApp:
+...     def __call__(self, request, connection):
+...         return (200, 'OK', {'content-length': 12}, b'hello, world')
+... 
+...     def on_connect(self, sock, connection):
+...         assert isinstance(sock, ssl.SSLSocket)  # Require SSL
+...         connection['_user'] = 'foo'
+...         connection['_machine'] = 'bar'
+...         return True
+...
+
+
+Handling requests
+-----------------
+
+RGI applications take two arguments when handling requests: a *request* and
+a *connection*.
+
+Both are ``dict`` instances that together provide the equivalent of the WSGI
+*environ* argument.
+
+The difference is that the *request* argument contains only per-request
+information, and the *connection* argument contains only per-connection 
+information.  Additionally, applications can use the *connection* argument to
+store persistent per-connection state (for example, a database connection or a
+connection to an upstream HTTP servers in the case of a proxy application).
+
+The *request* argument will look something like this::
+
+    request = {
+        'method': 'POST',
+        'script': ['foo'],
+        'path': ['bar', 'baz'],
+        'query': 'stuff=junk',
+        'body': Input(rfile, 1776),  # Explained below
+        'headers': {
+            'accept': 'application/json',
+            'content-length': 1776,
+            'content-type': 'application/json',
+        },
+    }
 
 As RGI does not aim for CGI compatibility, it uses shorter, lowercase keys,
 (eg, ``'method'`` instead of ``'REQUEST_METHOD'``).  Also note that the
@@ -73,10 +174,45 @@ are casefolded using ``str.casefold()``.  If the request includes a
 ``'headers'`` sub-dictionary is designed to be directly usable by a proxy
 application when making its HTTP client request.
 
-An RGI application must return a ``(status, reason, headers, body)`` response
-tuple, for example:
+On the other hand, the *connection* argument will looks something like this, as
+mentioned above::
 
->>> response = (200, 'OK', {'content-length': 12}, b'hello, world')
+    connection = {
+        'scheme': 'https',
+        'protocol': 'HTTP/1.1',
+        'server': ('0.0.0.0', 12345),
+        'client': ('192.168.0.17', 23456),
+        'ssl_compression': None,
+        'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
+    }
+
+When needed, the RGI request handler callable can add additionally information
+to the *connection* ``dict``, and this same connection ``dict`` instance will
+be persistent throughout all request handled during the connections lifetime.
+
+In order to avoid conflicts with additional *connection* information that may be
+added by future RGI servers, and to avoid conflicts with information added by a
+possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
+rule: the request handler should only add keys whose name starts with ``'__'``
+(double underscore).
+
+For example:
+
+>>> class MyProxyApp:
+...     def __init__(self, client):
+...         self.client = client
+... 
+...     def __call__(self, request, connection):
+...         if '__conn' not in connection:
+...             connection['__conn'] = self.client.connect()
+...         conn = connection['__conn']
+...         return conn.request(server_request_to_client_request(request))
+... 
+
+An RGI application must return a ``(status, reason, headers, body)`` response
+tuple, for example::
+
+    response = (200, 'OK', {'content-length': 12}, b'hello, world')
 
 RGI doesn't use anything like the WSGI ``start_response()`` callable.  Instead,
 applications and middleware convey the HTTP response in total via a single
@@ -88,16 +224,18 @@ This design also makes it easier to unit test applications, middleware, and even
 servers.
 
 Note that the HTTP *status* code is returned as an integer, and the *reason* is
-returned as a separate string value.  A general design theme in RGI is that
-values should be kept in their most useful and native form for as long as
-possible, so that re-parsing isn't needed.  For example, the server might want
-to verify that a ``'content-range'`` header is present when the *status* is
-``206`` (Partial Content).
+returned as a separate string value (whereas in WSGI, both are provided together
+via a single *status* string).  A general design theme in RGI is that values
+should be kept in their most useful and native form for as long as possible, so
+that re-parsing isn't needed.  For example, the server might want to verify that
+a ``'content-range'`` header is present when the *status* is ``206`` (Partial
+Content).
 
 Also note that the response headers are a dictionary instead of a WSGI-style
 list of pairs.  The response header names must be casefolded with
 ``str.casefold()``, and the ``'content-length'``, if present, must be a
 non-negative ``int``.
+
 
 
 Examples
@@ -106,9 +244,9 @@ Examples
 A few examples will help make this clearer, and should especially help make it
 clear why RGI is very middleware-friendly (and proxy-friendly) compared to WSGI.
 
-For example, consider this simple RGI app:
+For example, consider this simple RGI application:
 
->>> def demo_app(request):
+>>> def demo_app(request, connection):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -118,13 +256,13 @@ For example, consider this simple RGI app:
 
 Here's what ``demo_app()`` returns for a suitable GET request:
 
->>> demo_app({'method': 'GET', 'path': []})
+>>> demo_app({'method': 'GET', 'path': []}, {})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 However, note that ``demo_app()`` isn't actually HTTP/1.1 compliant as it should
 not return a response body for a HEAD request:
 
->>> demo_app({'method': 'HEAD', 'path': []})
+>>> demo_app({'method': 'HEAD', 'path': []}, {})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 Now consider this example middleware that checks for just such a faulty
@@ -134,8 +272,8 @@ application and overrides its response:
 ...     def __init__(self, app):
 ...         self.app = app
 ...
-...     def __call__(self, request):
-...         (status, reason, headers, body) = self.app(request)
+...     def __call__(self, request, connection):
+...         (status, reason, headers, body) = self.app(request, connection)
 ...         if request['method'] == 'HEAD' and body is not None:
 ...             return (500, 'Internal Server Error', {}, None)
 ...         return (status, reason, headers, body)
@@ -144,12 +282,12 @@ application and overrides its response:
 ``Middleware`` will let the response to a GET request pass through unchanged: 
 
 >>> middleware = Middleware(demo_app)
->>> middleware({'method': 'GET', 'path': []})
+>>> middleware({'method': 'GET', 'path': []}, {})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 But ``Middleware`` will intercept the faulty response to a HEAD request:
 
->>> middleware({'method': 'HEAD', 'path': []})
+>>> middleware({'method': 'HEAD', 'path': []}, {})
 (500, 'Internal Server Error', {}, None)
 
 
@@ -157,21 +295,27 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 WSGI to RGI
 -----------
 
-Here's a table of common WSGI to RGI equivalents for the HTTP request:
+Here's a table of common WSGI to RGI equivalents:
 
-    =============================  ========================================
-    WSGI                           RGI
-    =============================  ========================================
-    ``environ['REQUEST_METHOD']``  ``request['method']``
-    ``environ['SCRIPT_NAME']``     ``request['script']``
-    ``environ['PATH_INFO']``       ``request['path']``
-    ``environ['QUERY_STRING']``    ``request['query']``
-    ``environ['CONTENT_TYPE']``    ``request['headers']['content-type']``
-    ``environ['CONTENT_LENGTH']``  ``request['headers']['content-length']``
-    ``environ['HTTP_FOO']``        ``request['headers']['foo']``
-    ``environ['HTTP_BAR_BAZ']``    ``request['headers']['bar-baz']``
-    ``environ['wsgi.input']``      ``request['body']``
-    =============================  ========================================
+==============================  ========================================
+WSGI                            RGI
+==============================  ========================================
+``environ['REQUEST_METHOD']``   ``request['method']``
+``environ['SCRIPT_NAME']``      ``request['script']``
+``environ['PATH_INFO']``        ``request['path']``
+``environ['QUERY_STRING']``     ``request['query']``
+``environ['CONTENT_TYPE']``     ``request['headers']['content-type']``
+``environ['CONTENT_LENGTH']``   ``request['headers']['content-length']``
+``environ['HTTP_FOO']``         ``request['headers']['foo']``
+``environ['HTTP_BAR_BAZ']``     ``request['headers']['bar-baz']``
+``environ['wsgi.input']``       ``request['body']``
+``environ['wsgi.url_scheme']``  ``connection['scheme']``
+``environ['SERVER_PROTOCOL']``  ``connection['protocol']``
+``environ['SERVER_NAME']``      ``connection['server'][0]``
+``environ['SERVER_PORT']``      ``connection['server'][1]``
+``environ['REMOTE_ADDR']``      ``connection['client'][0]``
+``environ['REMOTE_PORT']``      ``connection['client'][1]``
+==============================  ========================================
 
 And in terms of the HTTP response, this WSGI application:
 
@@ -191,7 +335,7 @@ And in terms of the HTTP response, this WSGI application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(request):
+>>> def rgi_app(request, connection):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -207,3 +351,4 @@ Would translate into this RGI application:
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`Dmedia`: https://launchpad.net/dmedia
