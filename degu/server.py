@@ -374,9 +374,7 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    __slots__ = ('closed', 'app', 'environ', 'sock', 'rfile', 'wfile')
-
-    def __init__(self, app, environ, sock):
+    def __init__(self, app, sock, environ):
         self.closed = False
         self.app = app
         self.environ = environ
@@ -649,7 +647,7 @@ class Server:
     def handle_requests(self, environ, base_sock, address):
         try:
             sock = self.build_connection(environ, base_sock, address)
-            handler = Handler(self.app, environ, sock)
+            handler = Handler(self.app, sock, environ)
             handler.handle()
         except Exception:
             log.exception('client: %r', address)

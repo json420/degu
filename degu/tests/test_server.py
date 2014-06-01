@@ -546,9 +546,9 @@ class TestFunctions(TestCase):
 class TestHandler(TestCase):
     def test_init(self):
         app = random_id()
-        environ = random_id()
         sock = DummySocket()
-        handler = server.Handler(app, environ, sock)
+        environ = random_id()
+        handler = server.Handler(app, sock, environ)
         self.assertIs(handler.closed, False)
         self.assertIs(handler.app, app)
         self.assertIs(handler.environ, environ)
