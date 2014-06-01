@@ -54,19 +54,6 @@ class UnconsumedRequestError(Exception):
         )
 
 
-def hello_world_app(request):
-    if request['method'] not in {'GET', 'HEAD'}:
-        return (405, 'Method Not Allowed', {}, None)
-    body = b'Hello, world!'
-    headers = {
-        'content-length': len(body),
-        'content-type': 'text/plain; charset=utf-8',
-    }
-    if request['method'] == 'GET':
-        return (200, 'OK', headers, body)
-    return (200, 'OK', headers, None)  # Should not return body for HEAD request
-
-
 def build_server_sslctx(config):
     """
     Build a strictly configured server-side SSLContext.
