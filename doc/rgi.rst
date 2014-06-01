@@ -162,7 +162,7 @@ As noted above, the *connection* argument will looks something like this::
 
 When needed, the RGI request handler callable can add additionally information
 to the *connection* ``dict``, and this same connection ``dict`` instance will
-be persistent throughout all request handled during the connections lifetime.
+be persistent throughout all request handled during the connection's lifetime.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, and to avoid conflicts with information added by a
