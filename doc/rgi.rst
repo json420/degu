@@ -132,6 +132,7 @@ For example:
 ...
 
 
+
 Handling requests
 -----------------
 
@@ -139,13 +140,15 @@ RGI applications take two arguments when handling requests: a *request* and
 a *connection*.
 
 Both are ``dict`` instances that together provide the equivalent of the WSGI
-*environ* argument.
+*environ* argument (note that there is no RGI equivalent of the WSGI
+``start_response()`` callable).
 
 The difference is that the *request* argument contains only per-request
 information, and the *connection* argument contains only per-connection 
 information.  Additionally, applications can use the *connection* argument to
 store persistent per-connection state (for example, a database connection or a
-connection to an upstream HTTP servers in the case of a proxy application).
+connection to an upstream HTTP servers in the case of a reverse proxy
+application).
 
 The *request* argument will look something like this::
 
