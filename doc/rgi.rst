@@ -150,7 +150,7 @@ Additionally, applications can use the *connection* argument to store persistent
 per-connection state (for example, a database connection or a connection to an
 upstream HTTP servers in the case of a reverse proxy application).
 
-As noted above, the *connection* argument will looks something like this::
+As noted above, the *connection* argument will look something like this::
 
     connection = {
         'scheme': 'https',
