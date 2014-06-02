@@ -92,7 +92,7 @@ chunks = tuple(chunk for i in range(chunk_count))
 content_length = chunk_size * chunk_count
 
 
-def file_app(request):
+def file_app(connection, request):
     body = Output(chunks, content_length)
     headers = {
         'content-length': content_length,

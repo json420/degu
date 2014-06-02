@@ -30,7 +30,7 @@ logging.basicConfig(
 log = logging.getLogger()
 
 
-def echo_app(request):
+def echo_app(connection, request):
     data = request['body'].read()
     obj = json.loads(data.decode())
     body = json.dumps({'pong': obj['ping']}).encode()
