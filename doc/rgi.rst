@@ -109,9 +109,10 @@ The *connection* argument will look something like this::
         'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
     }
 
-When needed, the ``on_connection()`` callable can add additionally information
-to the *connection* ``dict``, and this same connection ``dict`` instance will be
-passed to the main ``application.__call__()`` method when handling each request.
+When needed, the ``on_connection()`` callable can add additional information to
+the *connection* ``dict``, and this same connection ``dict`` instance will be
+passed to the main ``application.__call__()`` method when handling each request
+within the lifetime of that connection.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, there is a simple, pythonic name-spacing rule: the
