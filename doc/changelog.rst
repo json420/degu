@@ -21,6 +21,15 @@ Internal API changes:
       :func:`degu.base.read_preamble()`
 
     * ``EmptyLineError`` has been renamed to :exc:`degu.base.EmptyPreambleError`
+    
+Breaking API changes:
+
+    * RGI server applications now take two arguments when handling requests: a
+      *connection* and a *request*, both ``dict`` instances
+
+    * If an RGI application object itself has a callable ``on_connection()``
+      attribute, this is called upon receiving a new connection, before any
+      requests have been handled for that connection
 
 
 0.5 (May 2014)
