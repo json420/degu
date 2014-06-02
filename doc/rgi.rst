@@ -297,11 +297,17 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 WSGI to RGI
 -----------
 
-Here's a table of common WSGI to RGI equivalents:
+Here's a table of common WSGI to RGI equivalents when handling requests:
 
 ==============================  ========================================
 WSGI                            RGI
 ==============================  ========================================
+``environ['wsgi.url_scheme']``  ``connection['scheme']``
+``environ['SERVER_PROTOCOL']``  ``connection['protocol']``
+``environ['SERVER_NAME']``      ``connection['server'][0]``
+``environ['SERVER_PORT']``      ``connection['server'][1]``
+``environ['REMOTE_ADDR']``      ``connection['client'][0]``
+``environ['REMOTE_PORT']``      ``connection['client'][1]``
 ``environ['REQUEST_METHOD']``   ``request['method']``
 ``environ['SCRIPT_NAME']``      ``request['script']``
 ``environ['PATH_INFO']``        ``request['path']``
@@ -311,15 +317,24 @@ WSGI                            RGI
 ``environ['HTTP_FOO']``         ``request['headers']['foo']``
 ``environ['HTTP_BAR_BAZ']``     ``request['headers']['bar-baz']``
 ``environ['wsgi.input']``       ``request['body']``
-``environ['wsgi.url_scheme']``  ``connection['scheme']``
-``environ['SERVER_PROTOCOL']``  ``connection['protocol']``
-``environ['SERVER_NAME']``      ``connection['server'][0]``
-``environ['SERVER_PORT']``      ``connection['server'][1]``
-``environ['REMOTE_ADDR']``      ``connection['client'][0]``
-``environ['REMOTE_PORT']``      ``connection['client'][1]``
 ==============================  ========================================
 
-And in terms of the HTTP response, this WSGI application:
+Note that the above RGI equivalents for these *environ* variables:
+
+    * ``environ['SERVER_NAME']``
+    * ``environ['SERVER_PORT']``
+    * ``environ['REMOTE_ADDR']``
+    * ``environ['REMOTE_PORT']``
+
+...will *only* be true when the socket family is ``AF_INET`` or ``AF_INET6``,
+but will *not* be true when the socket family is ``AF_UNIX``.
+
+An important distinction in the RGI specification, and in Degu as an
+implementation, is that they directly expose (and use) the *address* from the
+underlying Python3 `socket API`_.
+
+To further clarify things with a specific application example, this simple WSGI
+application:
 
 >>> def wsgi_app(environ, start_response):
 ...     if environ['REQUEST_METHOD'] not in {'GET', 'HEAD'}:
@@ -349,8 +364,14 @@ Would translate into this RGI application:
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 
+Also note that most RGI applications will probably ignore the information in the
+*connection* argument when handling requests.  However, when needed, the
+separation between per-connection state and per-request state offers unique
+possibilities provided by few (if any) current HTTP server application APIs.
+
 
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`Dmedia`: https://launchpad.net/dmedia
+.. _`socket API`: https://docs.python.org/3/library/socket.html
