@@ -38,15 +38,21 @@ from . import start_server, start_sslserver
 from .client import Client, SSLClient, build_client_sslctx
 
 
-def echo_app(request):
-    obj = request.copy()
-    for name in ('ResponseBody', 'FileResponseBody', 'ChunkedResponseBody'):
-        key = 'rgi.' + name
-        obj[key] = repr(obj[key])
-    if obj['body'] is not None:
+def get_value(value):
+    if not isinstance(value, (dict, list, tuple, str, int, float, bool)):
+        return repr(value)
+    return value
+
+
+def echo_app(connection, request):
+    obj = {'connection': {}, 'request': {}}
+    for (key, value) in connection.items():
+        obj['connection'][key] = get_value(value)
+    for (key, value) in request.items():
+        obj['request'][key] = get_value(value)
+    if request['body'] is not None:
         data = obj['body'].read()
         obj['echo.content_sha1'] = sha1(data).hexdigest()
-        obj['body'] = repr(obj['body'])
     body = json.dumps(obj, sort_keys=True, indent=4).encode()
     headers = {
         'content-type': 'application/json',
