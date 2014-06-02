@@ -54,19 +54,6 @@ class UnconsumedRequestError(Exception):
         )
 
 
-def hello_world_app(request):
-    if request['method'] not in {'GET', 'HEAD'}:
-        return (405, 'Method Not Allowed', {}, None)
-    body = b'Hello, world!'
-    headers = {
-        'content-length': len(body),
-        'content-type': 'text/plain; charset=utf-8',
-    }
-    if request['method'] == 'GET':
-        return (200, 'OK', headers, body)
-    return (200, 'OK', headers, None)  # Should not return body for HEAD request
-
-
 def build_server_sslctx(config):
     """
     Build a strictly configured server-side SSLContext.
@@ -387,12 +374,10 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    __slots__ = ('closed', 'app', 'environ', 'sock', 'rfile', 'wfile')
-
-    def __init__(self, app, environ, sock):
+    def __init__(self, app, sock, connection):
         self.closed = False
         self.app = app
-        self.environ = environ
+        self.connection = connection
         self.sock = sock
         (self.rfile, self.wfile) = makefiles(sock)
 
@@ -407,7 +392,7 @@ class Handler:
         self.close()
 
     def handle(self):
-        client = self.environ['client']
+        client = self.connection['client']
         count = 0
         try:
             while not self.closed:
@@ -417,15 +402,14 @@ class Handler:
             log.info('handled %d requests from %r', count, client)
 
     def handle_one(self):
-        request = self.environ.copy()
         try:
-            request.update(self.build_request())
+            request = self.build_request()
         except (ConnectionError, socket.timeout):
             return self.shutdown()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
-        response = self.app(request)
+        response = self.app(self.connection, request)
         if request_body and not request_body.closed:
             raise UnconsumedRequestError(request_body)
         validate_response(request, response)
@@ -433,7 +417,7 @@ class Handler:
 
     def build_request(self):
         """
-        Builds the *environ* fragment unique to a single HTTP request.
+        Builds the *connection* fragment unique to a single HTTP request.
         """
         (request_line, header_lines) = read_preamble(self.rfile)
         (method, path_list, query) = parse_request(request_line)
@@ -577,7 +561,7 @@ class Handler:
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closed connection to %r after %d %r',
-                    self.environ['client'], status, reason)
+                    self.connection['client'], status, reason)
 
     def write_status_only(self, status, reason):
         assert isinstance(status, int)
@@ -593,7 +577,7 @@ class Handler:
 class Server:
     scheme = 'http'
 
-    def __init__(self, address, app, conn_app=None):
+    def __init__(self, address, app):
         if isinstance(address, tuple):  
             if len(address) == 4:
                 family = socket.AF_INET6
@@ -617,13 +601,14 @@ class Server:
             )
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))
-        if not (conn_app is None or callable(conn_app)):
-            raise TypeError('conn_app: not callable: {!r}'.format(conn_app))
+        on_connection = getattr(app, 'on_connection', None)
+        if not (on_connection is None or callable(on_connection)):
+            raise TypeError('app.on_connection: not callable: {!r}'.format(app))
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
         self.app = app
-        self.conn_app = conn_app
+        self.on_connection = on_connection
         self.sock.listen(5)
 
     def __repr__(self):
@@ -636,8 +621,9 @@ class Server:
         Builds the base *environ* used throughout instance lifetime.
         """
         return {
-            'server': self.address,
             'scheme': self.scheme,
+            'protocol': 'HTTP/1.1',
+            'server': self.address,
             'rgi.ResponseBody': Output,
             'rgi.FileResponseBody': FileOutput,
             'rgi.ChunkedResponseBody': ChunkedOutput,
@@ -660,7 +646,7 @@ class Server:
     def handle_requests(self, environ, base_sock, address):
         try:
             sock = self.build_connection(environ, base_sock, address)
-            handler = Handler(self.app, environ, sock)
+            handler = Handler(self.app, sock, environ)
             handler.handle()
         except Exception:
             log.exception('client: %r', address)
@@ -678,9 +664,9 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, sslctx, address, app, conn_app=None):
+    def __init__(self, sslctx, address, app):
         self.sslctx = validate_server_sslctx(sslctx)
-        super().__init__(address, app, conn_app)
+        super().__init__(address, app)
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(

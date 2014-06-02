@@ -40,7 +40,7 @@ Example: SSL reverse-proxy
 
 Here's a minimal :doc:`rgi` application:
 
->>> def example_app(request):
+>>> def example_app(connection, request):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
@@ -103,8 +103,10 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
 ... 
-...     def __call__(self, request):
-...         conn = self.client.connect()
+...     def __call__(self, connection, request):
+...         if '__conn' not in connection:
+...             connection['__conn'] = self.client.connect()
+...         conn = connection['__conn']
 ...         response = conn.request(
 ...             request['method'],
 ...             build_uri(request['path'], request['query']),

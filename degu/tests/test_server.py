@@ -546,12 +546,12 @@ class TestFunctions(TestCase):
 class TestHandler(TestCase):
     def test_init(self):
         app = random_id()
-        environ = random_id()
         sock = DummySocket()
-        handler = server.Handler(app, environ, sock)
+        connection = random_id()
+        handler = server.Handler(app, sock, connection)
         self.assertIs(handler.closed, False)
         self.assertIs(handler.app, app)
-        self.assertIs(handler.environ, environ)
+        self.assertIs(handler.connection, connection)
         self.assertIs(handler.sock, sock)
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
@@ -691,8 +691,23 @@ class BadApp:
     """
 
 
-def good_app(request):
+def good_app(connection, request):
     return (200, 'OK', {}, None)
+
+
+class BadConnectionHandler:
+    def __call__(self, connection, request):
+        pass
+
+    on_connection = 'nope'
+
+
+class GoodConnectionHandler:
+    def __call__(self, connection, request):
+        pass
+
+    def on_connection(self, sock, connection):
+        pass
 
 
 class TestServer(TestCase):
@@ -735,6 +750,24 @@ class TestServer(TestCase):
         self.assertEqual(str(cm.exception),
             'app: not callable: {!r}'.format(bad_app)
         )
+
+        # app.on_connection not callable:
+        bad_app = BadConnectionHandler()
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app.on_connection: not callable: {!r}'.format(bad_app)
+        )
+
+        # Good app.on_connection:
+        app = GoodConnectionHandler()
+        inst = server.Server(degu.IPv6_LOOPBACK, app)
+        self.assertEqual(inst.scheme, 'http')
+        self.assertIsInstance(inst.sock, socket.socket)
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, app)
+        self.assertEqual(inst.on_connection, app.on_connection)
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -810,8 +843,9 @@ class TestServer(TestCase):
         address = (random_id(), random_id())
         inst = ServerSubclass(address)
         self.assertEqual(inst.build_base_environ(), {
-            'server': address,
             'scheme': 'http',
+            'protocol': 'HTTP/1.1',
+            'server': address,
             'rgi.ResponseBody': base.Output,
             'rgi.FileResponseBody': base.FileOutput,
             'rgi.ChunkedResponseBody': base.ChunkedOutput,
@@ -900,6 +934,24 @@ class TestSSLServer(TestCase):
             'app: not callable: {!r}'.format(bad_app)
         )
 
+        # app.on_connection not callable:
+        bad_app = BadConnectionHandler()
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, bad_app)
+        self.assertEqual(str(cm.exception),
+            'app.on_connection: not callable: {!r}'.format(bad_app)
+        )
+
+        # Good app.on_connection:
+        app = GoodConnectionHandler()
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
+        self.assertEqual(inst.scheme, 'https')
+        self.assertIsInstance(inst.sock, socket.socket)
+        port = inst.sock.getsockname()[1]
+        self.assertEqual(inst.address, ('::1', port, 0, 0))
+        self.assertIs(inst.app, app)
+        self.assertEqual(inst.on_connection, app.on_connection)
+
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.scheme, 'https')
@@ -960,8 +1012,9 @@ class TestSSLServer(TestCase):
         address = (random_id(), random_id())
         inst = SSLServerSubclass(address)
         self.assertEqual(inst.build_base_environ(), {
-            'server': address,
             'scheme': 'https',
+            'protocol': 'HTTP/1.1',
+            'server': address,
             'rgi.ResponseBody': base.Output,
             'rgi.FileResponseBody': base.FileOutput,
             'rgi.ChunkedResponseBody': base.ChunkedOutput,
@@ -976,7 +1029,7 @@ CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 
 
-def chunked_request_app(request):
+def chunked_request_app(connection, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
@@ -990,15 +1043,15 @@ def chunked_request_app(request):
     return (200, 'OK', headers, body)
 
 
-def chunked_response_app(request):
+def chunked_response_app(connection, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = request['rgi.ChunkedResponseBody'](CHUNKS)
+        body = connection['rgi.ChunkedResponseBody'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = request['rgi.ChunkedResponseBody']([b''])
+        body = connection['rgi.ChunkedResponseBody']([b''])
     else:
         return (404, 'Not Found', {}, None)
     return (200, 'OK', headers, body)
@@ -1009,21 +1062,21 @@ DATA2 = os.urandom(3469)
 DATA = DATA1 + DATA2
 
 
-def response_app(request):
+def response_app(connection, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = request['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
+        body = connection['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
     elif request['path'] == ['bar']:
-        body = request['rgi.ResponseBody']([b'', b''], 0)
+        body = connection['rgi.ResponseBody']([b'', b''], 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
     return (200, 'OK', headers, body)
 
 
-def timeout_app(request):
+def timeout_app(connection, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['body'] is None
@@ -1157,12 +1210,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
 
 
-def ssl_app(request):
+def ssl_app(connection, request):
+    assert connection['ssl_cipher'] == (
+        'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
+    )
+    assert connection['ssl_compression'] is None
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
-    assert request['ssl_cipher'] == ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256)
-    assert request['ssl_compression'] is None
     return (200, 'OK', {}, None)
 
 
