@@ -374,10 +374,10 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    def __init__(self, app, sock, environ):
+    def __init__(self, app, sock, connection):
         self.closed = False
         self.app = app
-        self.environ = environ
+        self.connection = connection
         self.sock = sock
         (self.rfile, self.wfile) = makefiles(sock)
 
@@ -392,7 +392,7 @@ class Handler:
         self.close()
 
     def handle(self):
-        client = self.environ['client']
+        client = self.connection['client']
         count = 0
         try:
             while not self.closed:
@@ -402,7 +402,7 @@ class Handler:
             log.info('handled %d requests from %r', count, client)
 
     def handle_one(self):
-        request = self.environ.copy()
+        request = self.connection.copy()
         try:
             request.update(self.build_request())
         except (ConnectionError, socket.timeout):
@@ -418,7 +418,7 @@ class Handler:
 
     def build_request(self):
         """
-        Builds the *environ* fragment unique to a single HTTP request.
+        Builds the *connection* fragment unique to a single HTTP request.
         """
         (request_line, header_lines) = read_preamble(self.rfile)
         (method, path_list, query) = parse_request(request_line)
@@ -562,7 +562,7 @@ class Handler:
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closed connection to %r after %d %r',
-                    self.environ['client'], status, reason)
+                    self.connection['client'], status, reason)
 
     def write_status_only(self, status, reason):
         assert isinstance(status, int)

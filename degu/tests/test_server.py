@@ -547,11 +547,11 @@ class TestHandler(TestCase):
     def test_init(self):
         app = random_id()
         sock = DummySocket()
-        environ = random_id()
-        handler = server.Handler(app, sock, environ)
+        connection = random_id()
+        handler = server.Handler(app, sock, connection)
         self.assertIs(handler.closed, False)
         self.assertIs(handler.app, app)
-        self.assertIs(handler.environ, environ)
+        self.assertIs(handler.connection, connection)
         self.assertIs(handler.sock, sock)
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
