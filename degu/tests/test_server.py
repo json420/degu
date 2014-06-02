@@ -691,7 +691,7 @@ class BadApp:
     """
 
 
-def good_app(request):
+def good_app(connection, request):
     return (200, 'OK', {}, None)
 
 
@@ -1029,7 +1029,7 @@ CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 
 
-def chunked_request_app(request):
+def chunked_request_app(connection, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
@@ -1043,15 +1043,15 @@ def chunked_request_app(request):
     return (200, 'OK', headers, body)
 
 
-def chunked_response_app(request):
+def chunked_response_app(connection, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = request['rgi.ChunkedResponseBody'](CHUNKS)
+        body = connection['rgi.ChunkedResponseBody'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = request['rgi.ChunkedResponseBody']([b''])
+        body = connection['rgi.ChunkedResponseBody']([b''])
     else:
         return (404, 'Not Found', {}, None)
     return (200, 'OK', headers, body)
@@ -1062,21 +1062,21 @@ DATA2 = os.urandom(3469)
 DATA = DATA1 + DATA2
 
 
-def response_app(request):
+def response_app(connection, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = request['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
+        body = connection['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
     elif request['path'] == ['bar']:
-        body = request['rgi.ResponseBody']([b'', b''], 0)
+        body = connection['rgi.ResponseBody']([b'', b''], 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
     return (200, 'OK', headers, body)
 
 
-def timeout_app(request):
+def timeout_app(connection, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['body'] is None
@@ -1210,12 +1210,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
 
 
-def ssl_app(request):
+def ssl_app(connection, request):
+    assert connection['ssl_cipher'] == (
+        'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
+    )
+    assert connection['ssl_compression'] is None
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
-    assert request['ssl_cipher'] == ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256)
-    assert request['ssl_compression'] is None
     return (200, 'OK', {}, None)
 
 

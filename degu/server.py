@@ -402,15 +402,14 @@ class Handler:
             log.info('handled %d requests from %r', count, client)
 
     def handle_one(self):
-        request = self.connection.copy()
         try:
-            request.update(self.build_request())
+            request = self.build_request()
         except (ConnectionError, socket.timeout):
             return self.shutdown()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
-        response = self.app(request)
+        response = self.app(self.connection, request)
         if request_body and not request_body.closed:
             raise UnconsumedRequestError(request_body)
         validate_response(request, response)
