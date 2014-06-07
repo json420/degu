@@ -12,7 +12,7 @@ likewise didn't need to be compatible with any existing HTTP servers.
 RGI focuses on improvement in a number of areas:
 
     1. It's very useful to expose connection-level semantics to sever
-       applications, in addition to request-level semantics
+       applications, in addition to traditional request-level semantics
 
     2. Assuming you can drop CGI compatibility, the naming conventions in the
        WSGI *environ* leave much to be desired in terms of signal-to-noise ratio
@@ -22,16 +22,17 @@ RGI focuses on improvement in a number of areas:
        headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
-    4. A reverse proxy (aka gateway) application is a good model for the needs
+    4. A reverse-proxy (aka gateway) application is a good model for the needs
        of middleware; in particular, we should not require middleware components
-       to re-parse or otherwise transform any values in order to do something
-       meaningful with these value (eg, a reverse proxy generally needs to use
-       the full request headers in its own HTTP client request)
+       to re-parse or otherwise transform any values in order to use them (for
+       example, a reverse-proxy generally needs to use the full request headers
+       in its own HTTP client request)
 
     5. WSGI is somewhat ambiguous about Transfer-Encoding vs Content-Length,
-       especially in the request body, but only in the response body; RGI aims
-       to eliminate this ambiguity, and to do so in a way that allows proxy
-       applications to preserve these request and response body semantics
+       especially in the request body, but also in the response body; RGI aims
+       to eliminate this ambiguity, and to do so in a way that allows
+       reverse-proxy applications to preserve these request and response body
+       transfer semantics across their forwarded request and response
 
 
 
