@@ -36,6 +36,101 @@ RGI focuses on improvement in a number of areas:
 
 
 
+Big picture
+-----------
+
+RGI applications don't take a *start_response* callable, and instead convey
+their entire response through a single 4-tuple return value::
+
+    (status, reason, headers, body)
+
+RGI applications take two arguments, a *connection* and a *request*, both of
+which are ``dict`` instances.  In combination, these two argument provide the
+equivalent of the WSGI *environ* argument, the difference being that the
+*connection* provides strictly per-connection information, and the *request*
+provides strictly per-request information.
+
+For example, this WSGI *environ*::
+
+    environ = {
+        'wsgi.url_scheme': 'http',
+        'SERVER_PROTOCOL': 'HTTP/1.1',
+        'SERVER_NAME': '192.168.1.2',
+        'SERVER_PORT': '12345',
+        'REMOTE_ADDR': '192.168.1.3',
+        'REMOTE_PORT': '23456',
+        'REQUEST_METHOD': 'PUT',
+        'SCRIPT_NAME': '/foo',
+        'PATH_INFO': '/bar/baz',
+        'QUERY_STRING': 'stuff=junk',
+        'CONTENT_TYPE': 'application/json',
+        'CONTENT_LENGTH': '1776',
+        'HTTP_ACCEPT': 'application/json',
+        'wsgi.input': <request body>,
+    }
+
+Would translate into this RGI *connection* and *request*::
+
+    connection = {
+        'scheme': 'http',
+        'protocol': 'HTTP/1.1',
+        'server': ('192.168.1.2', 12345)
+        'client': ('192.168.1.3', 23456),
+    }
+
+    request = {
+        'method': 'PUT',
+        'script': ['foo'],
+        'path': ['bar', 'baz'],
+        'query': 'stuff=junk',
+        'headers': {
+            'content-type': 'application/json',
+            'content-length': '1776',
+            'accept': 'application/json',
+        },
+        'body': <request body>,
+    }
+
+To clarify things with a specific application example, this simple WSGI
+application:
+
+>>> def wsgi_app(environ, start_response):
+...     if environ['REQUEST_METHOD'] not in {'GET', 'HEAD'}:
+...         start_response('405 Method Not Allowed', [])
+...         return []
+...     body = b'hello, world'
+...     headers = [
+...         ('Content-Length', str(len(body))),
+...         ('Content-Type', 'text/plain'),
+...     ]
+...     start_response('200 OK', headers)
+...     if environ['REQUEST_METHOD'] == 'GET':
+...         return [body]
+...     return []  # No response body for HEAD
+
+Would translate into this RGI application:
+
+>>> def rgi_app(connection, request):
+...     if request['method'] not in {'GET', 'HEAD'}:
+...         return (405, 'Method Not Allowed', {}, None)
+...     body = b'hello, world'
+...     headers = {
+...         'content-length': len(body),
+...         'content-type': 'text/plain',
+...     }
+...     if request['method'] == 'GET':
+...         return (200, 'OK', headers, body)
+...     return (200, 'OK', headers, None)  # No response body for HEAD
+
+Note that many RGI applications will likely ignore the information in the
+*connection* argument when handling requests.  However, when needed, the
+separation between per-connection state and per-request state offers unique
+possibilities provided by few (if any) current HTTP server application APIs.
+
+These RGI design aspects are fleshed out below.
+
+
+
 Application callables
 ---------------------
 
@@ -333,42 +428,6 @@ but will *not* be true when the socket family is ``AF_UNIX``.
 An important distinction in the RGI specification, and in Degu as an
 implementation, is that they directly expose (and use) the *address* from the
 underlying Python3 `socket API`_.
-
-To further clarify things with a specific application example, this simple WSGI
-application:
-
->>> def wsgi_app(environ, start_response):
-...     if environ['REQUEST_METHOD'] not in {'GET', 'HEAD'}:
-...         start_response('405 Method Not Allowed', [])
-...         return []
-...     body = b'hello, world'
-...     headers = [
-...         ('Content-Length', str(len(body))),
-...         ('Content-Type', 'text/plain'),
-...     ]
-...     start_response('200 OK', headers)
-...     if environ['REQUEST_METHOD'] == 'GET':
-...         return [body]
-...     return []  # No response body for HEAD
-
-Would translate into this RGI application:
-
->>> def rgi_app(connection, request):
-...     if request['method'] not in {'GET', 'HEAD'}:
-...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'hello, world'
-...     headers = {
-...         'content-length': len(body),
-...         'content-type': 'text/plain',
-...     }
-...     if request['method'] == 'GET':
-...         return (200, 'OK', headers, body)
-...     return (200, 'OK', headers, None)  # No response body for HEAD
-
-Also note that most RGI applications will probably ignore the information in the
-*connection* argument when handling requests.  However, when needed, the
-separation between per-connection state and per-request state offers unique
-possibilities provided by few (if any) current HTTP server application APIs.
 
 
 
