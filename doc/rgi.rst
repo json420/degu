@@ -32,7 +32,7 @@ RGI focuses on improvement in a number of areas:
        especially in the request body, but also in the response body; RGI aims
        to eliminate this ambiguity, and to do so in a way that allows
        reverse-proxy applications to preserve these request and response body
-       transfer semantics across their forwarded request and response
+       transfer semantics exactly across their forwarded request and response
 
 
 
@@ -48,7 +48,7 @@ RGI applications are called with two arguments when handling requests, a
 *connection* and a *request*, both of which are ``dict`` instances:
 
 >>> def my_rgi_app(connection, request):
-...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
 In combination, these two argument provide the equivalent of the WSGI *environ*
@@ -72,7 +72,7 @@ For example, this WSGI *environ*::
         'CONTENT_TYPE': 'application/json',
         'CONTENT_LENGTH': '1776',
         'HTTP_ACCEPT': 'application/json',
-        'wsgi.input': <request body>,
+        'wsgi.input': <file-like request body>,
     }
 
 Would translate into this RGI *connection* and *request*::
@@ -94,7 +94,7 @@ Would translate into this RGI *connection* and *request*::
             'content-length': 1776,
             'accept': 'application/json',
         },
-        'body': <request body>,
+        'body': <file-like request body>,
     }
 
 To clarify things with a specific application example, this simple WSGI
@@ -224,6 +224,7 @@ added by future RGI servers, there is a simple, pythonic name-spacing rule: the
 
 For example:
 
+>>> import ssl
 >>> class MyApp:
 ...     def __call__(self, connection, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
@@ -251,16 +252,17 @@ Both are ``dict`` instances that together provide the equivalent of the WSGI
 The difference is that the *connection* argument contains only per-connection
 information, and the *request* argument contains only per-request information. 
 Additionally, applications can use the *connection* argument to store persistent
-per-connection state (for example, a database connection or a connection to an
-upstream HTTP servers in the case of a reverse proxy application).
+per-connection state (for example, a lazily created database connection or a
+connection to an upstream HTTP servers in the case of a reverse-proxy
+application).
 
 As noted above, the *connection* argument will look something like this::
 
     connection = {
         'scheme': 'https',
         'protocol': 'HTTP/1.1',
-        'server': ('0.0.0.0', 12345),
-        'client': ('192.168.0.17', 23456),
+        'server': ('0.0.0.0', 2345),
+        'client': ('192.168.0.3', 3456),
         'ssl_compression': None,
         'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
     }
@@ -282,12 +284,12 @@ On the other hand, the *request* argument will look something like this::
         'script': ['foo'],
         'path': ['bar', 'baz'],
         'query': 'stuff=junk',
-        'body': Input(rfile, 1776),  # Explained below
         'headers': {
             'accept': 'application/json',
             'content-length': 1776,
             'content-type': 'application/json',
         },
+        'body': <file-like request body>,
     }
 
 As RGI does not aim for CGI compatibility, it uses shorter, lowercase keys,
@@ -299,8 +301,8 @@ interpret the path.
 Importantly, the request headers are in a sub-dictionary.  The header names
 are casefolded using ``str.casefold()``.  If the request includes a
 ``'content-length'``, the value is converted into a ``int`` by the server.  The 
-``'headers'`` sub-dictionary is designed to be directly usable by a proxy
-application when making its HTTP client request.
+``'headers'`` sub-dictionary is designed to be directly usable by a
+reverse-proxy application when making its HTTP client request.
 
 For example:
 
@@ -312,7 +314,8 @@ For example:
 ...         if '__conn' not in connection:
 ...             connection['__conn'] = self.client.connect()
 ...         conn = connection['__conn']
-...         return conn.request(server_request_to_client_request(request))
+...         client_args = server_request_to_client_request(connection, request)
+...         return conn.request(*client_args)
 ... 
 
 An RGI application must return a ``(status, reason, headers, body)`` response
