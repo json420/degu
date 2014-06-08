@@ -44,11 +44,17 @@ their entire response through a single 4-tuple return value::
 
     (status, reason, headers, body)
 
-RGI applications take two arguments, a *connection* and a *request*, both of
-which are ``dict`` instances.  In combination, these two argument provide the
-equivalent of the WSGI *environ* argument, the difference being that the
-*connection* provides strictly per-connection information, and the *request*
-provides strictly per-request information.
+RGI applications are called with two arguments when handling requests, a
+*connection* and a *request*, both of which are ``dict`` instances:
+
+>>> def my_rgi_app(connection, request):
+...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...
+
+In combination, these two argument provide the equivalent of the WSGI *environ*
+argument, the difference being that the *connection* provides strictly
+per-connection information, and the *request* provides strictly per-request
+information.
 
 For example, this WSGI *environ*::
 
@@ -85,7 +91,7 @@ Would translate into this RGI *connection* and *request*::
         'query': 'stuff=junk',
         'headers': {
             'content-type': 'application/json',
-            'content-length': '1776',
+            'content-length': 1776,
             'accept': 'application/json',
         },
         'body': <request body>,
@@ -127,8 +133,6 @@ Note that many RGI applications will likely ignore the information in the
 separation between per-connection state and per-request state offers unique
 possibilities provided by few (if any) current HTTP server application APIs.
 
-These RGI design aspects are fleshed out below.
-
 
 
 Application callables
@@ -153,7 +157,8 @@ in particular to verify the intrinsic machine and user identities behind the
 connection, based on the SSL certificate and SSL certificate authority under
 which the connection was made, respectively.
 
-This is best illustrated through an example middleware application:
+The general connection and request handling mechanisms are best illustrated
+through an example middleware application:
 
 >>> class Middleware:
 ...     def __init__(self, app):
@@ -199,8 +204,8 @@ The *connection* argument will look something like this::
     connection = {
         'scheme': 'https',
         'protocol': 'HTTP/1.1',
-        'server': ('0.0.0.0', 12345),
-        'client': ('192.168.0.17', 23456),
+        'server': ('0.0.0.0', 2345),
+        'client': ('192.168.0.3', 3456),
         'ssl_compression': None,
         'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
     }
@@ -222,9 +227,10 @@ For example:
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
 ...     def on_connection(self, sock, connection):
-...         assert isinstance(sock, ssl.SSLSocket)  # Require SSL
-...         connection['_user'] = 'foo'
-...         connection['_machine'] = 'bar'
+...         if not isinstance(sock, ssl.SSLSocket):  # Require SSL 
+...             return False
+...         connection['_user'] = '<User public key hash>'
+...         connection['_machine'] = '<Machine public key hash>'
 ...         return True
 ...
 
