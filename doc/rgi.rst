@@ -113,6 +113,7 @@ application:
 ...     if environ['REQUEST_METHOD'] == 'GET':
 ...         return [body]
 ...     return []  # No response body for HEAD
+... 
 
 Would translate into this RGI application:
 
@@ -127,6 +128,7 @@ Would translate into this RGI application:
 ...     if request['method'] == 'GET':
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
+... 
 
 Note that many RGI applications will likely ignore the information in the
 *connection* argument when handling requests.  However, when needed, the
@@ -399,7 +401,7 @@ But ``Middleware`` will intercept the faulty response to a HEAD request:
 WSGI to RGI
 -----------
 
-Here's a table of common WSGI to RGI equivalents when handling requests:
+Here's a table of common `WSGI`_ to RGI equivalents when handling requests:
 
 ==============================  ========================================
 WSGI                            RGI
