@@ -56,9 +56,9 @@ For example, this WSGI *environ*::
         'wsgi.url_scheme': 'http',
         'SERVER_PROTOCOL': 'HTTP/1.1',
         'SERVER_NAME': '192.168.1.2',
-        'SERVER_PORT': '12345',
+        'SERVER_PORT': '2345',
         'REMOTE_ADDR': '192.168.1.3',
-        'REMOTE_PORT': '23456',
+        'REMOTE_PORT': '3456',
         'REQUEST_METHOD': 'PUT',
         'SCRIPT_NAME': '/foo',
         'PATH_INFO': '/bar/baz',
@@ -74,8 +74,8 @@ Would translate into this RGI *connection* and *request*::
     connection = {
         'scheme': 'http',
         'protocol': 'HTTP/1.1',
-        'server': ('192.168.1.2', 12345)
-        'client': ('192.168.1.3', 23456),
+        'server': ('192.168.1.2', 2345)
+        'client': ('192.168.1.3', 3456),
     }
 
     request = {
