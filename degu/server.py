@@ -580,8 +580,6 @@ class Server:
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
-            'rgi.Input': Input,
-            'rgi.ChunkedInput': ChunkedInput,
             'rgi.Output': Output,
             'rgi.ChunkedOutput': ChunkedOutput,
             'rgi.FileOutput': FileOutput,
