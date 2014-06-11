@@ -148,41 +148,6 @@ Functions
     ``environ['wsgi.file_wrapper']`` item).
 
 
-.. function:: client_request_from_server_request(connection, request)
-
-    Build client request arguments from an RGI server *connection* and *request*.
-
-    This function is especially useful for RGI reverse-proxy applications.  The
-    return value will be a ``(method, uri, headers, body)`` 4-tuple.  For
-    example:
-
-    >>> from degu.util import client_request_from_server_request
-    >>> from degu import base
-    >>> connection = {
-    ...     'rgi.Output': base.Output,
-    ...     'rgi.ChunkedOutput': base.ChunkedOutput,
-    ... }
-    ... 
-    >>> request = {
-    ...     'method': 'GET',
-    ...     'script': ['foo'],
-    ...     'path': ['bar'],
-    ...     'query': 'one=two',
-    ...     'headers': {'accept': 'text/plain'},
-    ...     'body': None,
-    ... }
-    ... 
-    >>> client_request_from_server_request(connection, request)
-    ('GET', '/bar?one=two', {'accept': 'text/plain'}, None)
-
-    Using the splat opperator (``*``) to unpack the tuple, these arguments can
-    be passed directly to :meth:`degu.client.Connection.request()`.
-
-    Note that the ``uri`` component is built using :func:`relative_uri()`, and
-    that the ``body`` component is built using :func:`output_from_input()`, so
-    please see their respective documentation for details.
-
-
 
 .. _`wsgiref.util`: https://docs.python.org/3/library/wsgiref.html#module-wsgiref.util
 .. _`Degu`: https://launchpad.net/degu
