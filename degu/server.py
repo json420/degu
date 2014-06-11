@@ -246,50 +246,6 @@ def parse_request(line):
     return (method, path_list, query)
 
 
-def reconstruct_uri(path_list, query):
-    """
-    Reconstruct a URI from a parsed path_list and query.
-
-    For example, when there is no query:
-
-    >>> reconstruct_uri(['foo', 'bar'], '')
-    '/foo/bar'
-
-    And when there is a query:
-
-    >>> reconstruct_uri(['foo', 'bar'], 'stuff=junk')
-    '/foo/bar?stuff=junk'
-
-    Also see `parse_request()`.
-    """
-    path_str = '/' + '/'.join(path_list)
-    if query:
-        return '?'.join((path_str, query))
-    return path_str
-
-
-def shift_path(request):
-    """
-
-    For example:
-
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz']}
-    >>> shift_path(request)
-    'bar'
-
-    And you can see *request* was updated in place:
-
-    >>> request['script']
-    ['foo', 'bar']
-    >>> request['path']
-    ['baz']
-
-    """
-    next = request['path'].pop(0)
-    request['script'].append(next)
-    return next
-
-
 def validate_response(request, response):
     """
     Deeply validate response from a RGI application.

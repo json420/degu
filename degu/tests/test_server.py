@@ -36,6 +36,7 @@ from hashlib import sha1
 
 from .helpers import TempDir, DummySocket, DummyFile
 import degu
+from degu import util
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client
@@ -307,7 +308,7 @@ class TestFunctions(TestCase):
             self.assertEqual(path_list, ['foo', 'bar'])
             self.assertEqual(query, 'stuff=junk')
 
-        # Test URI permutations:
+        # Test URI permutations and round-tripping with util.relative_uri():
         cases = [
             ('/', []),
             ('/foo', ['foo']),
@@ -323,9 +324,10 @@ class TestFunctions(TestCase):
                 self.assertEqual(method, 'GET')
                 self.assertEqual(path_list, P)
                 self.assertEqual(query, Q)
-                self.assertEqual(server.reconstruct_uri(path_list, Q), uri)
+                request = {'path': path_list, 'query': query}
+                self.assertEqual(util.relative_uri(request), uri)
 
-        # Test URI with a trailing "?" but no query (note that reconstruct_uri()
+        # Test URI with a trailing "?" but no query (note that relative_uri()
         # wont round-trip URI such as this):
         self.assertEqual(
             server.parse_request('GET /foo/bar? HTTP/1.1'),
@@ -339,44 +341,6 @@ class TestFunctions(TestCase):
             server.parse_request('GET /? HTTP/1.1'),
             ('GET', [], '')
         )
-
-    def test_reconstruct_uri(self):
-        self.assertEqual(server.reconstruct_uri([], ''), '/')
-        self.assertEqual(server.reconstruct_uri([], 'q'), '/?q')
-        self.assertEqual(server.reconstruct_uri(['foo'], ''), '/foo')
-        self.assertEqual(server.reconstruct_uri(['foo'], 'q'), '/foo?q')
-        self.assertEqual(server.reconstruct_uri(['foo', ''], ''), '/foo/')
-        self.assertEqual(server.reconstruct_uri(['foo', ''], 'q'), '/foo/?q')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar'], ''), '/foo/bar')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar'], 'q'), '/foo/bar?q')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar', ''], ''), '/foo/bar/')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar', ''], 'q'), '/foo/bar/?q')
-
-    def test_shift_path(self):
-        script = []
-        path = ['foo', 'bar', 'baz']
-        environ = {'script': script, 'path': path}
-
-        self.assertEqual(server.shift_path(environ), 'foo')
-        self.assertEqual(environ, {'script': ['foo'], 'path': ['bar', 'baz']})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        self.assertEqual(server.shift_path(environ), 'bar')
-        self.assertEqual(environ, {'script': ['foo', 'bar'], 'path': ['baz']})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        self.assertEqual(server.shift_path(environ), 'baz')
-        self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        with self.assertRaises(IndexError):
-            server.shift_path(environ)
-        self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
 
     def test_validate_response(self):
         # status:
