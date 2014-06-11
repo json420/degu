@@ -110,7 +110,7 @@ Functions
     >>> output_from_input(connection, None) is None
     True
 
-    Otherwise, if ``input_body.chucked`` is ``False``, then a
+    Otherwise, if ``input_body.chunked`` is ``False``, then a
     ``connection['rgi.Output']`` instance wrapping the *input_body* is returned.
     Specifically, in Degu, if the *input_body* is a :class:`degu.base.Input`
     instance, then a :class:`degu.base.Output` instance is returned:
@@ -126,7 +126,7 @@ Functions
     >>> list(output_body)
     [b'hello, world']
 
-    Likewise, if ``input_body.chucked`` is ``True``, then a
+    Likewise, if ``input_body.chunked`` is ``True``, then a
     ``connection['rgi.ChunkedOutput']`` instance wrapping the *input_body* is
     returned.  Specifically, in Degu, if the *input_body* is a
     :class:`degu.base.ChunkedInput` instance, a :class:`degu.base.ChunkedOutput`
@@ -145,7 +145,7 @@ Functions
     Note that the reason to pass the *connection* argument is so that this
     function is abstracted from the exact output wrapper classes used in RGI
     server implementations other than Degu (similar to the `WSGI`_
-    ``environ['wsgi.file_wrapper']`` item).
+    ``environ['wsgi.file_wrapper']``).
 
 
 
