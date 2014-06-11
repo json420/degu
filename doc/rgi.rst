@@ -49,7 +49,7 @@ return value::
     (status, reason, headers, body)
 
 Note that WSGI uses a single status string like ``'404 Not Found'``, whereas RGI
-uses a status integer like ``200`` plus a reason string like ``'Not Found'``.
+uses a status integer like ``404`` plus a reason string like ``'Not Found'``.
 
 RGI applications are called with two arguments when handling requests, a
 *connection* and a *request*, both of which are ``dict`` instances.  For
