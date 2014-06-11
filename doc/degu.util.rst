@@ -91,7 +91,8 @@ Functions
     Create an RGI output abstraction instance from an RGI input abstraction.
 
     This function is especially useful for RGI reverse-proxy applications when
-    building a client request from a server request.
+    building a client request body from a server request body, and when building
+    a server response body from a client response body.
 
     The *connection* argument must have at least ``'rgi.Output'`` and
     ``'rgi.ChunkedOutput'`` keys, which specify the classes used for the return
