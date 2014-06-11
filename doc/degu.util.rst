@@ -60,29 +60,29 @@ Functions
     '/bar/baz?stuff=junk'
 
     Note that ``request['script']`` is ignored by this function.  If you need
-    the original, absolute request URI, please use :func:`build_absolute_uri()`.
+    the original, absolute request URI, please use :func:`absolute_uri()`.
 
 
-.. function:: build_absolute_uri(request)
+.. function:: absolute_uri(request)
 
-    Reconstruct an absolute URI from an RGI *request* argument.
+    Create an absolute URI from an RGI *request* argument.
 
     For example, when there is no query:
 
-    >>> from degu.util import build_absolute_uri
+    >>> from degu.util import absolute_uri
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
-    >>> build_absolute_uri(request)
+    >>> absolute_uri(request)
     '/foo/bar/baz'
 
     And when there is a query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
-    >>> build_absolute_uri(request)
+    >>> absolute_uri(request)
     '/foo/bar/baz?stuff=junk'
 
     Note that in real-life scenarios this function probably wont be used as
-    often as :func:`relative_uri()` because RGI application should
-    generally be abstracted from their exact mount point within a REST API.
+    often as :func:`relative_uri()` because RGI application should generally be
+    abstracted from their exact mount point within a REST API.
 
 
 .. function:: output_from_input(connection, input_body)

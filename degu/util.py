@@ -80,20 +80,20 @@ def relative_uri(request):
     return uri
 
 
-def build_absolute_uri(request):
+def absolute_uri(request):
     """
     Reconstruct an absolute URI from an RGI *request* argument.
 
     For example, when there is no query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
-    >>> build_absolute_uri(request)
+    >>> absolute_uri(request)
     '/foo/bar/baz'
 
     And when there is a query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
-    >>> build_absolute_uri(request)
+    >>> absolute_uri(request)
     '/foo/bar/baz?stuff=junk'
 
     """
