@@ -103,7 +103,7 @@ def build_absolute_uri(request):
     return uri
 
 
-def make_output_from_input(connection, input_body):
+def output_from_input(connection, input_body):
     if input_body is None:
         return None
     if input_body.chunked:

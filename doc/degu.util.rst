@@ -85,7 +85,7 @@ Functions
     generally be abstracted from their exact mount point within a REST API.
 
 
-.. function:: make_output_from_input(connection, input_body)
+.. function:: output_from_input(connection, input_body)
 
     Create an RGI output abstraction from an RGI input abstraction.
 
@@ -93,15 +93,15 @@ Functions
 
     The *connection* argument must have at least ``'rgi.Output'`` and
     ``'rgi.ChunkedOutput'`` keys, which specify the classes used for the return
-    value, assuming the *input_body* isn't ``None``:
+    value instances, assuming the *input_body* isn't ``None``:
 
     >>> from degu import base
     >>> connection = {'rgi.Output': base.Output, 'rgi.ChunkedOutput': base.ChunkedOutput}
 
     If the *input_body* is ``None``, the same will be returned:
 
-    >>> from degu.util import make_output_from_input
-    >>> make_output_from_input(connection, None) is None
+    >>> from degu.util import output_from_input
+    >>> output_from_input(connection, None) is None
     True
 
     If ``input_body.chucked`` is ``False``, then an ``'rgi.Output'`` instance
@@ -112,7 +112,7 @@ Functions
     >>> from io import BytesIO
     >>> rfile = BytesIO(b'hello, world')
     >>> input_body = base.Input(rfile, 12)
-    >>> output_body = make_output_from_input(connection, input_body)
+    >>> output_body = output_from_input(connection, input_body)
     >>> isinstance(output_body, base.Output)
     True
     >>> output_body.source is input_body
@@ -127,7 +127,7 @@ Functions
 
     >>> rfile = BytesIO(b'5\r\nhello\r\n7\r\nnaughty\r\n5\r\nnurse\r\n0\r\n\r\n')
     >>> input_body = base.ChunkedInput(rfile)
-    >>> output_body = make_output_from_input(connection, input_body)
+    >>> output_body = output_from_input(connection, input_body)
     >>> isinstance(output_body, base.ChunkedOutput)
     True
     >>> output_body.source is input_body

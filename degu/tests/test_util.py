@@ -226,7 +226,7 @@ class TestFunctions(TestCase):
             {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
         )
 
-    def test_make_output_from_input(self):
+    def test_output_from_input(self):
         orig = {
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
@@ -234,14 +234,14 @@ class TestFunctions(TestCase):
         connection = deepcopy(orig)
 
         # input_body is None:
-        self.assertIsNone(util.make_output_from_input(connection, None))
+        self.assertIsNone(util.output_from_input(connection, None))
         self.assertEqual(connection, orig)
 
         # input_body is an Input instance:
         data = random_data()
         rfile = BytesIO(data)
         input_body = base.Input(rfile, len(data))
-        output_body = util.make_output_from_input(connection, input_body)
+        output_body = util.output_from_input(connection, input_body)
         self.assertIsInstance(output_body, base.Output)
         self.assertIs(output_body.source, input_body)
         self.assertEqual(output_body.content_length, len(data))
@@ -263,7 +263,7 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), total)
         rfile.seek(0)
         input_body = base.ChunkedInput(rfile)
-        output_body = util.make_output_from_input(connection, input_body)
+        output_body = util.output_from_input(connection, input_body)
         self.assertIsInstance(output_body, base.ChunkedOutput)
         self.assertIs(output_body.source, input_body)
         self.assertEqual(rfile.tell(), 0)
