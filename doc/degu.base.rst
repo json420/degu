@@ -154,8 +154,8 @@ Parsing functions
 
 
 
-Input abstractions
-------------------
+Input wrappers
+--------------
 
 In the server context, these input abstractions represent the HTTP request body
 sent by the client.
@@ -279,8 +279,8 @@ In the client context, they represent the HTTP response body sent by the server.
 
 
 
-Output abstractions
--------------------
+Output wrappers
+---------------
 
 In the server context, these output abstractions represent the HTTP response
 body that the server is sending to the client.
