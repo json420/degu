@@ -43,7 +43,7 @@ Functions
 
     Reconstruct a relative URI from an RGI *request* argument.
 
-    This function is especially useful for reverse-proxy applications when
+    This function is especially useful for RGI reverse-proxy applications when
     building the URI used in their forwarded HTTP client request.
 
     For example, when there is no query:
