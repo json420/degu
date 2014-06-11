@@ -39,7 +39,7 @@ Functions
     ['baz']
 
 
-.. function:: build_relative_uri(request)
+.. function:: relative_uri(request)
 
     Reconstruct a relative URI from an RGI *request* argument.
 
@@ -48,15 +48,15 @@ Functions
 
     For example, when there is no query:
 
-    >>> from degu.util import build_relative_uri
+    >>> from degu.util import relative_uri
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
-    >>> build_relative_uri(request)
+    >>> relative_uri(request)
     '/bar/baz'
 
     And when there is a query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
-    >>> build_relative_uri(request)
+    >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
     Note that ``request['script']`` is ignored by this function.  If you need
@@ -81,7 +81,7 @@ Functions
     '/foo/bar/baz?stuff=junk'
 
     Note that in real-life scenarios this function probably wont be used as
-    often as :func:`build_relative_uri()` because RGI application should
+    often as :func:`relative_uri()` because RGI application should
     generally be abstracted from their exact mount point within a REST API.
 
 

@@ -56,20 +56,20 @@ def shift_path(request):
     return next
 
 
-def build_relative_uri(request):
+def relative_uri(request):
     """
     Reconstruct a relative URI from an RGI *request* argument.
 
     For example, when there is no query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
-    >>> build_relative_uri(request)
+    >>> relative_uri(request)
     '/bar/baz'
 
     And when there is a query:
 
     >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
-    >>> build_relative_uri(request)
+    >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
     Note that ``request['script']`` is ignored by this function.
