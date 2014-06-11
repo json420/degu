@@ -165,12 +165,117 @@ In the client context, they represent the HTTP response body sent by the server.
 
 .. class:: Input(rfile, content_length)
 
-    Read input from *rfile* when the *content_length* is known in advance.
+    Represents a normal (non-chunk-encoded) HTTP request or response body.
+
+    .. attribute:: rfile
+    
+        The *rfile* passed to the constructor
+
+    .. attribute:: content_length
+
+        The *content_length* passed to the constructor.
+
+    .. attribute:: remaining
+
+        Remaining bytes available for reading in the HTTP body.
+
+        This attribute is initially set to :attr:`Input.content_length`.  Once
+        the entire HTTP body has been read, this attribute will be ``0``.
+
+    .. attribute:: closed
+
+        Initially ``False``, will be ``True`` after entire body has been read.
+
+    .. attribute:: chunked
+
+        Always ``False``, indicating a non-chunk-encoded HTTP body.
+
+        This attribute exists so that RGI applications can test whether an HTTP
+        body is chunk-encoded without having to check whether the body is an
+        instance of a particular class.
+
+        This allows the same input abstraction API to be easily used with any
+        RGI compliant server implementation, not just the Degu reference server.
+
+    .. method:: read(size=None)
+
+        Read part (or all) of the HTTP body.
+
+        If no *size* argument is provided, the entire HTTP body will be returned
+        as a single ``bytes`` instance.
+
+        If the *size* argument is provided, up to that many bytes will be read
+        and returned from the HTTP body.
+
+        If the entire HTTP body has already been read, this method will return
+        an empty ``b''``.
+
+    .. method:: __iter__()
+
+        Iterate through all the data in the HTTP body.
+
+        This method will yield the entire HTTP body as a series of ``bytes``
+        instances each up to 1 MiB in size.
+
+        The final item yielded will always be an empty ``b''``.
+
+        Note that you can only iterate through an :class:`Input` instance once.
 
 
 .. class:: ChunkedInput(rfile)
 
-    Read chunked-encoded input from *rfile*.
+    Represents a chunk-encoded HTTP request or response body.
+
+    .. attribute:: rfile
+    
+        The *rfile* passed to the constructor
+
+    .. attribute:: closed
+
+        Initially ``False``, will be ``True`` after entire body has been read.
+
+    .. attribute:: chunked
+
+        Always ``True``, indicating a chunk-encoded HTTP body.
+
+        This attribute exists so that RGI applications can test whether an HTTP
+        body is chunk-encoded without having to check whether the body is an
+        instance of a particular class.
+
+        This allows the same input abstraction API to be easily used with any
+        RGI compliant server implementation, not just the Degu reference server.
+
+    .. method:: read()
+
+        Read the entire HTTP body.
+
+        This method will return the concatenated chunks from a chunk-encoded
+        HTTP body as a single ``bytes`` instance.
+
+        If the entire HTTP body has already been read, this method will return
+        an empty ``b''``.
+
+    .. method:: readchunk():
+
+        Read the next chunk from the chunk-encoded HTTP body.
+
+        If all chunks have already been read from the chunk-encoded HTTP body,
+        this method will return an empty ``b''``.
+
+        Note that the final chunk will likewise be an empty ``b''``.
+
+    .. method:: __iter__()
+
+        Iterate through chunks in the chunk-encoded HTTP body.
+
+        This method will yield the HTTP body as a series of ``bytes`` instances
+        of whatever size the corresponding data chunks are in the chunk-encoded
+        HTTP body.
+
+        The final item yielded will always be an empty ``b''``.
+
+        Note that you can only iterate through a :class:`ChunkedInput` instance
+        once.
 
 
 
