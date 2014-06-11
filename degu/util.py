@@ -31,7 +31,7 @@ standard library:
 
 def shift_path(request):
     """
-    Shift path in RGI *request* argument.
+    Shift path to script in an RGI *request* argument.
 
     For example:
 
@@ -52,6 +52,30 @@ def shift_path(request):
     return next
 
 
+def build_relative_uri(request):
+    """
+    Reconstruct a relative URI from an RGI *request* argument.
+
+    For example, when there is no query:
+
+    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> build_relative_uri(request)
+    '/bar/baz'
+
+    And when there is a query:
+
+    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> build_relative_uri(request)
+    '/bar/baz?stuff=junk'
+
+    Note that ``request['script']`` is ignored by this function.
+    """
+    uri = '/' + '/'.join(request['path'])
+    if request['query']:
+        return '?'.join((uri, request['query']))
+    return uri
+
+
 def build_absolute_uri(request):
     """
     Reconstruct an absolute URI from an RGI *request* argument.
@@ -69,34 +93,8 @@ def build_absolute_uri(request):
     '/foo/bar/baz?stuff=junk'
 
     """
-    path_str = '/' + '/'.join(request['script'] + request['path'])
+    uri = '/' + '/'.join(request['script'] + request['path'])
     if request['query']:
-        return '?'.join((path_str, request['query']))
-    return path_str 
-
-
-def build_relative_uri(request):
-    """
-    Reconstruct a relative URI from an RGI *request* argument.
-
-    This function is especially useful for reverse-proxy applications.
-
-    For example, when there is no query:
-
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
-    >>> build_relative_uri(request)
-    '/bar/baz'
-
-    And when there is a query:
-
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
-    >>> build_relative_uri(request)
-    '/bar/baz?stuff=junk'
-
-    Note that ``request['script']`` is ignored by this function.
-    """
-    path_str = '/' + '/'.join(request['path'])
-    if request['query']:
-        return '?'.join((path_str, request['query']))
-    return path_str 
+        return '?'.join((uri, request['query']))
+    return uri
 

@@ -52,6 +52,7 @@ Contents:
     degu
     degu.server
     degu.client
+    degu.util
     degu.base
     degu.misc
     changelog
