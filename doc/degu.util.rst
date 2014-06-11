@@ -88,7 +88,7 @@ Functions
 
 .. function:: output_from_input(connection, input_body)
 
-    Create an RGI output abstraction from an RGI input abstraction.
+    Create an RGI output abstraction instance from an RGI input abstraction.
 
     This function is especially useful for RGI reverse-proxy applications when
     building a client request from a server request.
