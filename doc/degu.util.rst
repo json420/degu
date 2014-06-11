@@ -98,7 +98,11 @@ Functions
     value instances, assuming the *input_body* isn't ``None``:
 
     >>> from degu import base
-    >>> connection = {'rgi.Output': base.Output, 'rgi.ChunkedOutput': base.ChunkedOutput}
+    >>> connection = {
+    ...     'rgi.Output': base.Output,
+    ...     'rgi.ChunkedOutput': base.ChunkedOutput,
+    ... }
+    ... 
 
     If the *input_body* is ``None``, the same will be returned:
 
