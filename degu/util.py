@@ -102,3 +102,12 @@ def build_absolute_uri(request):
         return '?'.join((uri, request['query']))
     return uri
 
+
+def make_output_from_input(connection, input_body):
+    if input_body is None:
+        return None
+    if input_body.chunked:
+        return connection['rgi.ChunkedOutput'](input_body)
+    else:
+        return connection['rgi.Output'](input_body, input_body.content_length)
+

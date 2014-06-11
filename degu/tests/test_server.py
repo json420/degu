@@ -846,9 +846,11 @@ class TestServer(TestCase):
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.ResponseBody': base.Output,
-            'rgi.FileResponseBody': base.FileOutput,
-            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+            'rgi.Input': base.Input,
+            'rgi.ChunkedInput': base.ChunkedInput,
+            'rgi.Output': base.Output,
+            'rgi.ChunkedOutput': base.ChunkedOutput,
+            'rgi.FileOutput': base.FileOutput,
         })
 
 
@@ -1015,9 +1017,11 @@ class TestSSLServer(TestCase):
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.ResponseBody': base.Output,
-            'rgi.FileResponseBody': base.FileOutput,
-            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+            'rgi.Input': base.Input,
+            'rgi.ChunkedInput': base.ChunkedInput,
+            'rgi.Output': base.Output,
+            'rgi.ChunkedOutput': base.ChunkedOutput,
+            'rgi.FileOutput': base.FileOutput,
         })
 
 
@@ -1049,9 +1053,9 @@ def chunked_response_app(connection, request):
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = connection['rgi.ChunkedResponseBody'](CHUNKS)
+        body = connection['rgi.ChunkedOutput'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = connection['rgi.ChunkedResponseBody']([b''])
+        body = connection['rgi.ChunkedOutput']([b''])
     else:
         return (404, 'Not Found', {}, None)
     return (200, 'OK', headers, body)
@@ -1067,9 +1071,9 @@ def response_app(connection, request):
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = connection['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
+        body = connection['rgi.Output']([DATA1, DATA2], len(DATA))
     elif request['path'] == ['bar']:
-        body = connection['rgi.ResponseBody']([b'', b''], 0)
+        body = connection['rgi.Output']([b'', b''], 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}

@@ -24,8 +24,12 @@ Unit tests for the `degu.util` module`
 """
 
 from unittest import TestCase
+from io import BytesIO
+from copy import deepcopy
 
-from degu import util
+from .helpers import random_data, random_chunks
+
+from degu import base, util
 
 
 class TestFunctions(TestCase):
@@ -221,4 +225,53 @@ class TestFunctions(TestCase):
         self.assertEqual(request,
             {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
         )
+
+    def test_make_output_from_input(self):
+        orig = {
+            'rgi.Output': base.Output,
+            'rgi.ChunkedOutput': base.ChunkedOutput,
+        }
+        connection = deepcopy(orig)
+
+        # input_body is None:
+        self.assertIsNone(util.make_output_from_input(connection, None))
+        self.assertEqual(connection, orig)
+
+        # input_body is an Input instance:
+        data = random_data()
+        rfile = BytesIO(data)
+        input_body = base.Input(rfile, len(data))
+        output_body = util.make_output_from_input(connection, input_body)
+        self.assertIsInstance(output_body, base.Output)
+        self.assertIs(output_body.source, input_body)
+        self.assertEqual(output_body.content_length, len(data))
+        self.assertEqual(rfile.tell(), 0)
+        self.assertIs(input_body.closed, False)
+        self.assertIs(output_body.closed, False)
+        self.assertEqual(list(output_body), [data])
+        self.assertIs(input_body.closed, True)
+        self.assertIs(output_body.closed, True)
+        self.assertEqual(rfile.tell(), len(data))
+        self.assertEqual(connection, orig)
+
+        # input_body is a ChunkedInput instance:
+        chunks = random_chunks()
+        rfile = BytesIO()
+        total = 0
+        for chunk in chunks:
+            total += base.write_chunk(rfile, chunk)
+        self.assertEqual(rfile.tell(), total)
+        rfile.seek(0)
+        input_body = base.ChunkedInput(rfile)
+        output_body = util.make_output_from_input(connection, input_body)
+        self.assertIsInstance(output_body, base.ChunkedOutput)
+        self.assertIs(output_body.source, input_body)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertIs(input_body.closed, False)
+        self.assertIs(output_body.closed, False)
+        self.assertEqual(list(output_body), chunks)
+        self.assertIs(input_body.closed, True)
+        self.assertIs(output_body.closed, True)
+        self.assertEqual(rfile.tell(), total)
+        self.assertEqual(connection, orig)
 

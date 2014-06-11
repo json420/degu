@@ -1,4 +1,4 @@
-1# degu: an embedded HTTP server and client library
+# degu: an embedded HTTP server and client library
 # Copyright (C) 2014 Novacut Inc
 #
 # This file is part of `degu`.
