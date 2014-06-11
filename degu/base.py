@@ -352,8 +352,6 @@ class Input:
     Content-Length must be known in advance.
     """
 
-    __slots__ = ('closed', 'rfile', 'content_length', 'remaining')
-
     def __init__(self, rfile, content_length):
         if not isinstance(rfile, io.BufferedReader):
             raise TypeError('rfile must be an io.BufferedReader')
@@ -367,6 +365,7 @@ class Input:
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
+        self.chunked = False
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -404,8 +403,6 @@ class Input:
 
 
 class ChunkedInput:
-    __slots__ = ('rfile', 'closed')
-
     def __init__(self, rfile):
         if not isinstance(rfile, io.BufferedReader):
             raise TypeError('rfile must be an io.BufferedReader')
@@ -413,6 +410,7 @@ class ChunkedInput:
             raise ValueError('rfile is already closed')
         self.closed = False
         self.rfile = rfile
+        self.chunked = True
 
     def read(self):
         if self.closed:

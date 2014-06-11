@@ -968,6 +968,7 @@ class TestInput(TestCase):
         self.assertEqual(body.content_length, 18)
         self.assertEqual(body.remaining, 18)
         self.assertEqual(repr(body), 'Input({!r}, 18)'.format(rfile))
+        self.assertIs(body.chunked, False)
 
         # Should raise a TypeError if rfile isn't an io.BufferedReader:
         wfile = open(tmp.join('foo'), 'wb')
@@ -1070,6 +1071,7 @@ class TestChunkedInput(TestCase):
         body = base.ChunkedInput(rfile)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
+        self.assertIs(body.chunked, True)
 
         # Should raise a TypeError if rfile isn't an io.BufferedReader:
         wfile = open(tmp.join('foo'), 'wb')
