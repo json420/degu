@@ -305,8 +305,8 @@ In particular, Degu is restrictive when it comes to:
         'Name: Value\r\n'
 
     * Although Degu accepts mixed case header names from the other endpoint, the
-      Degu server and client always case-folder (lowercase) the header names
-      prior to passing control to 3rd-party application software
+      Degu server and client always case-fold (lowercase) the header names prior
+      to passing control to 3rd-party RGI server application software
 
     * Degu :doc:`rgi` server applications must only include case-folded header
       names in their response tuple, and likewise, 3rd-party application
