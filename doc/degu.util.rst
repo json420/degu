@@ -104,14 +104,14 @@ Functions
     ... }
     ... 
 
-    If the *input_body* is ``None``, the same will be returned:
+    If the *input_body* is ``None``, then ``None`` will be returned:
 
     >>> from degu.util import output_from_input
     >>> output_from_input(connection, None) is None
     True
 
     Otherwise, if ``input_body.chucked`` is ``False``, then a
-    ``connection['rgi.Output']`` instance wrapping the same is returned.
+    ``connection['rgi.Output']`` instance wrapping the *input_body* is returned.
     Specifically, in Degu, if the *input_body* is a :class:`degu.base.Input`
     instance, then a :class:`degu.base.Output` instance is returned:
 
@@ -127,8 +127,8 @@ Functions
     [b'hello, world']
 
     Likewise, if ``input_body.chucked`` is ``True``, then a
-    ``connection['rgi.ChunkedOutput']`` instance wrapping the same is returned.
-    Specifically, in Degu, if the *input_body* is a
+    ``connection['rgi.ChunkedOutput']`` instance wrapping the *input_body* is
+    returned.  Specifically, in Degu, if the *input_body* is a
     :class:`degu.base.ChunkedInput` instance, a :class:`degu.base.ChunkedOutput`
     instance is returned:
 
