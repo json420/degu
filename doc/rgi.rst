@@ -39,19 +39,27 @@ RGI focuses on improvement in a number of areas:
 Big picture
 -----------
 
-RGI applications don't take a *start_response* callable, and instead convey
-their entire response through a single 4-tuple return value::
+`WSGI`_ applications convey their response status and response headers by
+calling ``start_response(status, headers)``, and then separately convey their
+response body via their return value.
+
+In contrast, RGI applications convey their entire response through a 4-tuple
+return value::
 
     (status, reason, headers, body)
 
-RGI applications are called with two arguments when handling requests, a
-*connection* and a *request*, both of which are ``dict`` instances:
+Note that WSGI uses a single status string like ``'404 Not Found'``, whereas RGI
+uses a status integer like ``200`` plus a reason string like ``'Not Found'``.
 
->>> def my_rgi_app(connection, request):
+RGI applications are called with two arguments when handling requests, a
+*connection* and a *request*, both of which are ``dict`` instances.  For
+example:
+
+>>> def hello_world_app(connection, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-In combination, these two argument provide the equivalent of the WSGI *environ*
+In combination, these two arguments provide the equivalent of the WSGI *environ*
 argument, the difference being that the *connection* provides strictly
 per-connection information, and the *request* provides strictly per-request
 information.
@@ -130,10 +138,16 @@ Would translate into this RGI application:
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 ... 
 
-Note that many RGI applications will likely ignore the information in the
-*connection* argument when handling requests.  However, when needed, the
-separation between per-connection state and per-request state offers unique
-possibilities provided by few (if any) current HTTP server application APIs.
+Note that WSGI response headers are a ``list`` of ``(key, value)`` pairs,
+whereas RGI response headers are a ``dict`` with case-folded (lowercase) keys.
+
+Also note that when an RGI application includes a ``'content-length'`` response
+header, its value must be a non-negative ``int``, cannot be an ``str``.
+
+Many RGI applications will likely ignore the information in the *connection*
+argument when handling requests.  However, when needed, the separation between
+per-connection state and per-request state offers unique possibilities provided
+by few (if any) current HTTP server application APIs.
 
 
 
