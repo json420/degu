@@ -961,7 +961,6 @@ class TestInput(TestCase):
         tmp = TempDir()
         data = os.urandom(18)
         rfile = tmp.prepare(data)
-
         body = base.Input(rfile, 18)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
@@ -969,28 +968,6 @@ class TestInput(TestCase):
         self.assertEqual(body.remaining, 18)
         self.assertEqual(repr(body), 'Input({!r}, 18)'.format(rfile))
         self.assertIs(body.chunked, False)
-
-        # Should raise a TypeError if rfile isn't an io.BufferedReader:
-        wfile = open(tmp.join('foo'), 'wb')
-        with self.assertRaises(TypeError) as cm:
-            base.Input(wfile, 18)
-        self.assertEqual(str(cm.exception), 'rfile must be an io.BufferedReader')
-
-        # Should raise a TypeError if content_length isn't an int:
-        with self.assertRaises(TypeError) as cm:
-            base.Input(rfile, '18')
-        self.assertEqual(str(cm.exception), 'content_length must be an int')
-
-        # Should raise a ValueError if content_length < 0:
-        with self.assertRaises(ValueError) as cm:
-            base.Input(rfile, -1)
-        self.assertEqual(str(cm.exception), 'content_length must be >= 0')
-
-        # Should raise a TypeError if rfile closed:
-        rfile.close()
-        with self.assertRaises(ValueError) as cm:
-            base.Input(rfile, 18)
-        self.assertEqual(str(cm.exception), 'rfile is already closed')
 
     def test_read(self):
         tmp = TempDir()
@@ -1067,23 +1044,10 @@ class TestChunkedInput(TestCase):
         tmp = TempDir()
         data = os.urandom(18)
         rfile = tmp.prepare(data)
-
         body = base.ChunkedInput(rfile)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
         self.assertIs(body.chunked, True)
-
-        # Should raise a TypeError if rfile isn't an io.BufferedReader:
-        wfile = open(tmp.join('foo'), 'wb')
-        with self.assertRaises(TypeError) as cm:
-            base.ChunkedInput(wfile)
-        self.assertEqual(str(cm.exception), 'rfile must be an io.BufferedReader')
-
-        # Should raise a TypeError if rfile closed:
-        rfile.close()
-        with self.assertRaises(ValueError) as cm:
-            base.ChunkedInput(rfile)
-        self.assertEqual(str(cm.exception), 'rfile is already closed')
 
     def test_read(self):
         chunk1 = os.urandom(random.randrange(1, 1777))

@@ -353,18 +353,10 @@ class Input:
     """
 
     def __init__(self, rfile, content_length):
-        if not isinstance(rfile, io.BufferedReader):
-            raise TypeError('rfile must be an io.BufferedReader')
-        if rfile.closed:
-            raise ValueError('rfile is already closed')
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
+        self.closed = False
         self.chunked = False
 
     def __repr__(self):
@@ -403,13 +395,12 @@ class Input:
 
 
 class ChunkedInput:
+    """
+    Read from an HTTP chunk-encoded *rfile*.
+    """
     def __init__(self, rfile):
-        if not isinstance(rfile, io.BufferedReader):
-            raise TypeError('rfile must be an io.BufferedReader')
-        if rfile.closed:
-            raise ValueError('rfile is already closed')
-        self.closed = False
         self.rfile = rfile
+        self.closed = False
         self.chunked = True
 
     def read(self):
