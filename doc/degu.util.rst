@@ -104,10 +104,10 @@ Functions
     >>> output_from_input(connection, None) is None
     True
 
-    If ``input_body.chucked`` is ``False``, then an ``'rgi.Output'`` instance
-    wrapping the same is returned.  Specifically, in Degu, if the *input_body*
-    is a :class:`degu.base.Input` instance, then a :class:`degu.base.Output`
-    instance is returned:
+    If ``input_body.chucked`` is ``False``, then a ``connection['rgi.Output']``
+    instance wrapping the same is returned.  Specifically, in Degu, if the
+    *input_body* is a :class:`degu.base.Input` instance, then a
+    :class:`degu.base.Output` instance is returned:
 
     >>> from io import BytesIO
     >>> rfile = BytesIO(b'hello, world')
@@ -120,10 +120,11 @@ Functions
     >>> list(output_body)
     [b'hello, world']
 
-    If ``input_body.chucked`` is ``True``, then an ``'rgi.Output'`` instance
-    wrapping the same is returned.  Specifically, in Degu, if the *input_body*
-    is a :class:`degu.base.ChunkedInput` instance, a
-    :class:`degu.base.ChunkedOutput` instance is returned:
+    If ``input_body.chucked`` is ``True``, then a
+    ``connection['rgi.ChunkedOutput']`` instance wrapping the same is returned.
+    Specifically, in Degu, if the *input_body* is a
+    :class:`degu.base.ChunkedInput` instance, a :class:`degu.base.ChunkedOutput`
+    instance is returned:
 
     >>> rfile = BytesIO(b'5\r\nhello\r\n7\r\nnaughty\r\n5\r\nnurse\r\n0\r\n\r\n')
     >>> input_body = base.ChunkedInput(rfile)
