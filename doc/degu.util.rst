@@ -94,6 +94,10 @@ Functions
     building a client request body from a server request body, and when building
     a server response body from a client response body.
 
+    Importantly, this fuction will exactly, chunk-for-chunk, preserve the
+    semantics of a chunk-encoded body (determined by the presence of a
+    ``{'transfer-encoding': 'chunked'}`` header).
+
     The *connection* argument must have at least ``'rgi.Output'`` and
     ``'rgi.ChunkedOutput'`` keys, which specify the classes used for the return
     value instances, assuming the *input_body* isn't ``None``:
