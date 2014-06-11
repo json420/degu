@@ -22,11 +22,11 @@ RGI focuses on improvement in a number of areas:
        headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
-    4. A reverse-proxy (aka gateway) application is a good model for the needs
-       of middleware; in particular, we should not require middleware components
-       to re-parse or otherwise transform any values in order to use them (for
-       example, a reverse-proxy generally needs to use the full request headers
-       in its own HTTP client request)
+    4. A `reverse-proxy`_ (aka gateway) application is a good model for the
+       needs of middleware; in particular, we should not require middleware
+       applications to re-parse or otherwise transform any values in order to
+       use them (for example, a reverse-proxy generally needs to use the full
+       request headers in its own HTTP client request)
 
     5. WSGI is somewhat ambiguous about Transfer-Encoding vs Content-Length,
        especially in the request body, but also in the response body; RGI aims
@@ -253,7 +253,7 @@ The difference is that the *connection* argument contains only per-connection
 information, and the *request* argument contains only per-request information. 
 Additionally, applications can use the *connection* argument to store persistent
 per-connection state (for example, a lazily created database connection or a
-connection to an upstream HTTP servers in the case of a reverse-proxy
+connection to an upstream HTTP servers in the case of a `reverse-proxy`_
 application).
 
 As noted above, the *connection* argument will look something like this::
@@ -304,9 +304,12 @@ are casefolded using ``str.casefold()``.  If the request includes a
 ``'headers'`` sub-dictionary is designed to be directly usable by a
 reverse-proxy application when making its HTTP client request.
 
-For example:
+For example, we can implement a reverse-proxy with the help of the the
+:func:`degu.util.relative_uri()` and :func:`degu.util.output_from_input()`
+functions:
 
->>> class MyProxyApp:
+>>> from degu.util import relative_uri, output_from_input
+>>> class ReverseProxyApp:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
@@ -314,9 +317,19 @@ For example:
 ...         if '__conn' not in connection:
 ...             connection['__conn'] = self.client.connect()
 ...         conn = connection['__conn']
-...         client_args = server_request_to_client_request(connection, request)
-...         return conn.request(*client_args)
-... 
+...         response = conn.request(
+...             request['method'],
+...             relative_uri(request),
+...             request['headers'],
+...             output_from_input(connection, request['body'])
+...         )
+...         return (
+...             response.status,
+...             response.reason,
+...             response.headers,
+...             output_from_input(connection, response.body)
+...         )
+...
 
 An RGI application must return a ``(status, reason, headers, body)`` response
 tuple, for example::
@@ -444,5 +457,6 @@ underlying Python3 `socket API`_.
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
