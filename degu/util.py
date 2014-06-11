@@ -104,10 +104,25 @@ def absolute_uri(request):
 
 
 def output_from_input(connection, input_body):
+    """
+    Build an RGI output abstraction from an RGI input abstraction.
+    """
     if input_body is None:
         return None
     if input_body.chunked:
         return connection['rgi.ChunkedOutput'](input_body)
     else:
         return connection['rgi.Output'](input_body, input_body.content_length)
+
+
+def client_request_from_server_request(connection, request):
+    """
+    Build Degu client request arguments from an RGI server request.
+    """
+    return (
+        request['method'],
+        relative_uri(request),
+        request['headers'],
+        output_from_input(connection, request['body']),
+    )
 

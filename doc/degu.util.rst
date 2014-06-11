@@ -49,18 +49,19 @@ Functions
     For example, when there is no query:
 
     >>> from degu.util import relative_uri
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> request = {'path': ['bar', 'baz'], 'query': ''}
     >>> relative_uri(request)
     '/bar/baz'
 
     And when there is a query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = {'path': ['bar', 'baz'], 'query': 'stuff=junk'}
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
-    Note that ``request['script']`` is ignored by this function.  If you need
-    the original, absolute request URI, please use :func:`absolute_uri()`.
+    Note that if present, ``request['script']`` is ignored by this function.
+    If you need the original, absolute request URI, please use
+    :func:`absolute_uri()`.
 
 
 .. function:: absolute_uri(request)
@@ -89,7 +90,8 @@ Functions
 
     Create an RGI output abstraction from an RGI input abstraction.
 
-    This function is especially useful for RGI reverse-proxy applications.
+    This function is especially useful for RGI reverse-proxy applications when
+    building a client request from a server request.
 
     The *connection* argument must have at least ``'rgi.Output'`` and
     ``'rgi.ChunkedOutput'`` keys, which specify the classes used for the return
@@ -104,10 +106,10 @@ Functions
     >>> output_from_input(connection, None) is None
     True
 
-    If ``input_body.chucked`` is ``False``, then a ``connection['rgi.Output']``
-    instance wrapping the same is returned.  Specifically, in Degu, if the
-    *input_body* is a :class:`degu.base.Input` instance, then a
-    :class:`degu.base.Output` instance is returned:
+    Otherwise, if ``input_body.chucked`` is ``False``, then a
+    ``connection['rgi.Output']`` instance wrapping the same is returned.
+    Specifically, in Degu, if the *input_body* is a :class:`degu.base.Input`
+    instance, then a :class:`degu.base.Output` instance is returned:
 
     >>> from io import BytesIO
     >>> rfile = BytesIO(b'hello, world')
@@ -120,7 +122,7 @@ Functions
     >>> list(output_body)
     [b'hello, world']
 
-    If ``input_body.chucked`` is ``True``, then a
+    Likewise, if ``input_body.chucked`` is ``True``, then a
     ``connection['rgi.ChunkedOutput']`` instance wrapping the same is returned.
     Specifically, in Degu, if the *input_body* is a
     :class:`degu.base.ChunkedInput` instance, a :class:`degu.base.ChunkedOutput`
@@ -140,6 +142,41 @@ Functions
     function is abstracted from the exact output wrapper classes used in RGI
     server implementations other than Degu (similar to the `WSGI`_
     ``environ['wsgi.file_wrapper']`` item).
+
+
+.. function:: client_request_from_server_request(connection, request)
+
+    Build client request arguments from an RGI server *connection* and *request*.
+
+    This function is especially useful for RGI reverse-proxy applications.  The
+    return value will be a ``(method, uri, headers, body)`` 4-tuple.  For
+    example:
+
+    >>> from degu.util import client_request_from_server_request
+    >>> from degu import base
+    >>> connection = {
+    ...     'rgi.Output': base.Output,
+    ...     'rgi.ChunkedOutput': base.ChunkedOutput,
+    ... }
+    ... 
+    >>> request = {
+    ...     'method': 'GET',
+    ...     'script': ['foo'],
+    ...     'path': ['bar'],
+    ...     'query': 'one=two',
+    ...     'headers': {'accept': 'text/plain'},
+    ...     'body': None,
+    ... }
+    ... 
+    >>> client_request_from_server_request(connection, request)
+    ('GET', '/bar?one=two', {'accept': 'text/plain'}, None)
+
+    Using the splat opperator (``*``) to unpack the tuple, these arguments can
+    be passed directly to :meth:`degu.client.Connection.request()`.
+
+    Note that the ``uri`` component is built using :func:`relative_uri()`, and
+    that the ``body`` component is built using :func:`output_from_input()`, so
+    please see their respective documentation for details.
 
 
 
