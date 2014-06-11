@@ -255,7 +255,7 @@ In the client context, they represent the HTTP response body sent by the server.
         If the entire HTTP body has already been read, this method will return
         an empty ``b''``.
 
-    .. method:: readchunk():
+    .. method:: readchunk()
 
         Read the next chunk from the chunk-encoded HTTP body.
 
