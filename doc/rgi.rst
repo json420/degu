@@ -193,10 +193,11 @@ through an example middleware application:
 ...         return self._on_connection(sock, connection)
 ... 
 
-When an application has an ``on_connection()`` callable, it must return ``True``
-in order for the connection to be accepted.  If ``on_connection()`` does not
-return ``True``, or if any unhandled exception is raised, the connection will be
-rejected without any further processing, before any requests are handled.
+When an application has an ``on_connection()`` callable attribute, it must
+return ``True`` in order for the connection to be accepted.  If
+``on_connection()`` does not return ``True``, or if any unhandled exception is
+raised, the connection will be rejected without any further processing, before
+any requests are handled.
 
 
 
@@ -227,14 +228,14 @@ The *connection* argument will look something like this::
     }
 
 When needed, the ``on_connection()`` connection-handler can add additional
-information to the *connection* ``dict``, and this same connection ``dict``
+information to the *connection* ``dict``, and this same *connection* ``dict``
 instance will be passed to the main ``application.__call__()`` method when
 handling each request within the lifetime of that connection.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, there is a simple, pythonic name-spacing rule: the
-``on_connection()`` callable should only add keys whose name starts with
-``'_'`` (underscore).
+``on_connection()`` callable should only add keys that start with ``'_'``
+(underscore).
 
 For example:
 
@@ -267,7 +268,7 @@ The difference is that the *connection* argument contains only per-connection
 information, and the *request* argument contains only per-request information. 
 Additionally, applications can use the *connection* argument to store persistent
 per-connection state (for example, a lazily created database connection or a
-connection to an upstream HTTP servers in the case of a `reverse-proxy`_
+connection to an upstream HTTP server in the case of a `reverse-proxy`_
 application).
 
 As noted above, the *connection* argument will look something like this::
@@ -288,8 +289,8 @@ persistent throughout all request handled during the connection's lifetime.
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, and to avoid conflicts with information added by a
 possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
-rule: the request handler should only add keys whose name starts with ``'__'``
-(double underscore).
+rule: the request handler should only add keys that start with ``'__'`` (double
+underscore).
 
 On the other hand, the *request* argument will look something like this::
 
@@ -307,18 +308,20 @@ On the other hand, the *request* argument will look something like this::
     }
 
 As RGI does not aim for CGI compatibility, it uses shorter, lowercase keys,
-(eg, ``'method'`` instead of ``'REQUEST_METHOD'``).  Also note that the
-``'script'`` and ``'path'`` values are lists rather than strings.  This avoids
-complicated (and error prone) re-parsing to shift the path, or to otherwise
-interpret the path.
+(eg, ``'method'`` instead of ``'REQUEST_METHOD'``).  Note that the ``'script'``
+and ``'path'`` values are lists rather than strings.  This avoids complicated
+(and error prone) re-parsing to shift the path, or to otherwise interpret the
+path.
 
-Importantly, the request headers are in a sub-dictionary.  The header names
-are casefolded using ``str.casefold()``.  If the request includes a
-``'content-length'``, the value is converted into a ``int`` by the server.  The 
-``'headers'`` sub-dictionary is designed to be directly usable by a
-reverse-proxy application when making its HTTP client request.
+Importantly, the request headers are in a sub-dictionary.  The request header
+names (keys) will have been case-folded (lowercased) by the server, regardless
+of the case used in the client request.  If the request headers include a
+``'content-length'``, its value will have been validated and converted into an
+``int`` by the server.
 
-For example, we can implement a reverse-proxy with the help of the the
+The ``request['headers']`` sub-dictionary was designed to be directly usable by
+a reverse-proxy application when making its HTTP client request.  For example,
+we can implement a simple reverse-proxy with the help of the the
 :func:`degu.util.relative_uri()` and :func:`degu.util.output_from_input()`
 functions:
 

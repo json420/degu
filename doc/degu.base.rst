@@ -188,7 +188,7 @@ In the client context, they represent the HTTP response body sent by the server.
 
     .. attribute:: chunked
 
-        Always ``False``, indicating a non-chunk-encoded HTTP body.
+        Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.
 
         This attribute exists so that RGI applications can test whether an HTTP
         body is chunk-encoded without having to check whether the body is an
