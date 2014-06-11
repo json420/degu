@@ -22,7 +22,7 @@ Functions
     Shift component from ``'path'`` to ``'script'`` in an RGI *request* argument.
 
     This is an extremely common need when it comes to request routing, and in
-    particular RGI middleware applications that do request routing.
+    particular for RGI middleware applications that do request routing.
 
     For example:
 
