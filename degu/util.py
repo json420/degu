@@ -26,10 +26,6 @@ The module is heavily inspired by the `wsgiref.util` module in the Python3
 standard library:
 
     https://docs.python.org/3/library/wsgiref.html
-
-FIXME: There are duplicates of more or less equivalent functions in `degu.base`
-and `degu.server`.  Once the dust settles in `degu.util`, these duplicates
-should be removed.
 """
 
 
