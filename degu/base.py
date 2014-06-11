@@ -200,36 +200,6 @@ def makefiles(sock):
     )
 
 
-def make_output_from_input(input_body):
-    if isinstance(input_body, Input):
-        return Output(input_body, input_body.content_length)
-    if isinstance(input_body, ChunkedInput):
-        return ChunkedOutput(input_body)
-    if input_body is not None:
-        raise TypeError('bad input_body: {!r}'.format(type(input_body)))
-
-
-def build_uri(path_list, query):
-    """
-    Reconstruct a URI from a parsed path_list and query.
-
-    For example, when there is no query:
-
-    >>> build_uri(['foo', 'bar'], '')
-    '/foo/bar'
-
-    And when there is a query:
-
-    >>> build_uri(['foo', 'bar'], 'stuff=junk')
-    '/foo/bar?stuff=junk'
-
-    """
-    path_str = '/' + '/'.join(path_list)
-    if query:
-        return '?'.join((path_str, query))
-    return path_str  
-
-
 class Output:
     """
     Written to the wfile.

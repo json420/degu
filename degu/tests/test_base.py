@@ -633,60 +633,6 @@ class TestFunctions(TestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
 
-    def test_make_output_from_input(self):
-        tmp = TempDir()
-
-        data = os.urandom(17)
-        rfile = tmp.prepare(data)
-        input_body = base.Input(rfile, 17)
-        output_body = base.make_output_from_input(input_body)
-        self.assertIsInstance(output_body, base.Output)
-        self.assertIs(output_body.source, input_body)
-        self.assertEqual(output_body.content_length, 17)
-        self.assertIs(input_body.closed, False)
-        self.assertIs(output_body.closed, False)
-        self.assertEqual(list(output_body), [data])
-        self.assertIs(input_body.closed, True)
-        self.assertIs(output_body.closed, True)
-        self.assertIs(rfile.closed, False)
-
-        (filename, fp) = tmp.create('foo')
-        chunk1 = os.urandom(18)
-        chunk2 = os.urandom(21)
-        chunk3 = os.urandom(17)
-        for chunk in [chunk1, chunk2, chunk3, b'']:
-            base.write_chunk(fp, chunk)
-        fp.close()
-        rfile = open(filename, 'rb')
-        input_body = base.ChunkedInput(rfile)
-        output_body = base.make_output_from_input(input_body)
-        self.assertIsInstance(output_body, base.ChunkedOutput)
-        self.assertIs(output_body.source, input_body)
-        self.assertIs(input_body.closed, False)
-        self.assertIs(output_body.closed, False)
-        self.assertEqual(list(output_body), [chunk1, chunk2, chunk3, b''])
-        self.assertIs(input_body.closed, True)
-        self.assertIs(output_body.closed, True)
-        self.assertIs(rfile.closed, False)
-
-        self.assertIsNone(base.make_output_from_input(None))
-
-        with self.assertRaises(TypeError) as cm:
-            base.make_output_from_input(b'hello')
-        self.assertEqual(str(cm.exception), "bad input_body: <class 'bytes'>")
-
-    def test_build_uri(self):
-        self.assertEqual(base.build_uri([], ''), '/')
-        self.assertEqual(base.build_uri([], 'q'), '/?q')
-        self.assertEqual(base.build_uri(['foo'], ''), '/foo')
-        self.assertEqual(base.build_uri(['foo'], 'q'), '/foo?q')
-        self.assertEqual(base.build_uri(['foo', ''], ''), '/foo/')
-        self.assertEqual(base.build_uri(['foo', ''], 'q'), '/foo/?q')
-        self.assertEqual(base.build_uri(['foo', 'bar'], ''), '/foo/bar')
-        self.assertEqual(base.build_uri(['foo', 'bar'], 'q'), '/foo/bar?q')
-        self.assertEqual(base.build_uri(['foo', 'bar', ''], ''), '/foo/bar/')
-        self.assertEqual(base.build_uri(['foo', 'bar', ''], 'q'), '/foo/bar/?q')
-
 
 class TestOutput(TestCase):
     def test_init(self):
