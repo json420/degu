@@ -1298,6 +1298,16 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
 
+class TestLiveServerUnixSocket(TestLiveServer):
+    def build_with_app(self, build_func, *build_args):
+        tmp = TempDir()
+        filename = tmp.join('my.socket')
+        httpd = TempServer(filename, build_func, *build_args)
+        httpd._tmp = tmp
+        client = httpd.get_client()
+        return (httpd, client)
+
+
 def ssl_app(connection, request):
     assert connection['ssl_cipher'] == (
         'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
@@ -1370,14 +1380,4 @@ class TestLiveSSLServer(TestLiveServer):
             client.connect()
 
         httpd.terminate()
-
-
-class TestLiveServerUnixSocket(TestLiveServer):
-    def build_with_app(self, build_func, *build_args):
-        tmp = TempDir()
-        filename = tmp.join('my.socket')
-        httpd = TempServer(filename, build_func, *build_args)
-        httpd._tmp = tmp
-        client = httpd.get_client()
-        return (httpd, client)
 
