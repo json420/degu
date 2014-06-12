@@ -22,11 +22,11 @@ RGI focuses on improvement in a number of areas:
        headers, they cannot simply pass to a WSGI application the same
        ``start_response()`` callable they received from the server
 
-    4. A reverse-proxy (aka gateway) application is a good model for the needs
-       of middleware; in particular, we should not require middleware components
-       to re-parse or otherwise transform any values in order to use them (for
-       example, a reverse-proxy generally needs to use the full request headers
-       in its own HTTP client request)
+    4. A `reverse-proxy`_ (aka gateway) application is a good model for the
+       needs of middleware; in particular, we should not require middleware
+       applications to re-parse or otherwise transform any values in order to
+       use them (for example, a reverse-proxy generally needs to use the full
+       request headers in its own HTTP client request)
 
     5. WSGI is somewhat ambiguous about Transfer-Encoding vs Content-Length,
        especially in the request body, but also in the response body; RGI aims
@@ -39,19 +39,27 @@ RGI focuses on improvement in a number of areas:
 Big picture
 -----------
 
-RGI applications don't take a *start_response* callable, and instead convey
-their entire response through a single 4-tuple return value::
+`WSGI`_ applications convey their response status and response headers by
+calling ``start_response(status, headers)``, and then separately convey their
+response body via their return value.
+
+In contrast, RGI applications convey their entire response through a 4-tuple
+return value::
 
     (status, reason, headers, body)
 
-RGI applications are called with two arguments when handling requests, a
-*connection* and a *request*, both of which are ``dict`` instances:
+Note that WSGI uses a single status string like ``'404 Not Found'``, whereas RGI
+uses a status integer like ``404`` plus a reason string like ``'Not Found'``.
 
->>> def my_rgi_app(connection, request):
+RGI applications are called with two arguments when handling requests, a
+*connection* and a *request*, both of which are ``dict`` instances.  For
+example:
+
+>>> def hello_world_app(connection, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-In combination, these two argument provide the equivalent of the WSGI *environ*
+In combination, these two arguments provide the equivalent of the WSGI *environ*
 argument, the difference being that the *connection* provides strictly
 per-connection information, and the *request* provides strictly per-request
 information.
@@ -130,10 +138,16 @@ Would translate into this RGI application:
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 ... 
 
-Note that many RGI applications will likely ignore the information in the
-*connection* argument when handling requests.  However, when needed, the
-separation between per-connection state and per-request state offers unique
-possibilities provided by few (if any) current HTTP server application APIs.
+Note that WSGI response headers are a ``list`` of ``(key, value)`` pairs,
+whereas RGI response headers are a ``dict`` with case-folded (lowercase) keys.
+
+Also note that when an RGI application includes a ``'content-length'`` response
+header, its value must be a non-negative ``int``, cannot be an ``str``.
+
+Many RGI applications will likely ignore the information in the *connection*
+argument when handling requests.  However, when needed, the separation between
+per-connection state and per-request state offers unique possibilities provided
+by few (if any) current HTTP server application APIs.
 
 
 
@@ -147,17 +161,10 @@ However, if this application object itself has a callable ``on_connection``
 attribute, this is called whenever a new connection is received, before any
 requests are handled for that connection.
 
-Most server application interfaces (like WSGI and CGI) only offer request-level
+Most server application APIs (like `WSGI`_ and `CGI`_) only offer request-level
 semantics, but don't offer any connection-level semantics, don't offer a way
-for application to do anything special when a new connection is first received
+for applicationa to do anything special when a new connection is first received
 or a way for applications to easily maintain per-connection state.
-
-This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
-where *authentication* is done per-connection, and only *authorization* is done
-per-request.  This allows Dmedia to do extended per-connection authentication,
-in particular to verify the intrinsic machine and user identities behind the
-connection, based on the SSL certificate and SSL certificate authority under
-which the connection was made, respectively.
 
 The general connection and request handling mechanisms are best illustrated
 through an example middleware application:
@@ -179,10 +186,11 @@ through an example middleware application:
 ...         return self._on_connection(sock, connection)
 ... 
 
-When an application has an ``on_connection()`` callable, it must return ``True``
-in order for the connection to be accepted.  If ``on_connection()`` does not
-return ``True``, or if any unhandled exception is raised, the connection will be
-rejected without any further processing, before any requests are handled.
+When an application has an ``on_connection()`` callable attribute, it must
+return ``True`` in order for the connection to be accepted.  If
+``on_connection()`` does not return ``True``, or if any unhandled exception is
+raised, the connection will be rejected without any further processing, before
+any requests are handled.
 
 
 
@@ -213,14 +221,21 @@ The *connection* argument will look something like this::
     }
 
 When needed, the ``on_connection()`` connection-handler can add additional
-information to the *connection* ``dict``, and this same connection ``dict``
+information to the *connection* ``dict``, and this same *connection* ``dict``
 instance will be passed to the main ``application.__call__()`` method when
 handling each request within the lifetime of that connection.
 
+This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
+where *authentication* is done per-connection, and only *authorization* is done
+per-request.  This allows Dmedia to do extended per-connection authentication,
+in particular to verify the intrinsic machine and user identities behind the
+connection, based on the SSL certificate and SSL certificate authority under
+which the connection was made, respectively.
+
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, there is a simple, pythonic name-spacing rule: the
-``on_connection()`` callable should only add keys whose name starts with
-``'_'`` (underscore).
+``on_connection()`` callable should only add keys that start with ``'_'``
+(underscore).
 
 For example:
 
@@ -253,7 +268,7 @@ The difference is that the *connection* argument contains only per-connection
 information, and the *request* argument contains only per-request information. 
 Additionally, applications can use the *connection* argument to store persistent
 per-connection state (for example, a lazily created database connection or a
-connection to an upstream HTTP servers in the case of a reverse-proxy
+connection to an upstream HTTP server in the case of a `reverse-proxy`_
 application).
 
 As noted above, the *connection* argument will look something like this::
@@ -274,8 +289,8 @@ persistent throughout all request handled during the connection's lifetime.
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, and to avoid conflicts with information added by a
 possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
-rule: the request handler should only add keys whose name starts with ``'__'``
-(double underscore).
+rule: the request handler should only add keys that start with ``'__'`` (double
+underscore).
 
 On the other hand, the *request* argument will look something like this::
 
@@ -293,20 +308,25 @@ On the other hand, the *request* argument will look something like this::
     }
 
 As RGI does not aim for CGI compatibility, it uses shorter, lowercase keys,
-(eg, ``'method'`` instead of ``'REQUEST_METHOD'``).  Also note that the
-``'script'`` and ``'path'`` values are lists rather than strings.  This avoids
-complicated (and error prone) re-parsing to shift the path, or to otherwise
-interpret the path.
+(eg, ``'method'`` instead of ``'REQUEST_METHOD'``).  Note that the ``'script'``
+and ``'path'`` values are lists rather than strings.  This avoids complicated
+(and error prone) re-parsing to shift the path, or to otherwise interpret the
+path.
 
-Importantly, the request headers are in a sub-dictionary.  The header names
-are casefolded using ``str.casefold()``.  If the request includes a
-``'content-length'``, the value is converted into a ``int`` by the server.  The 
-``'headers'`` sub-dictionary is designed to be directly usable by a
-reverse-proxy application when making its HTTP client request.
+Importantly, the request headers are in a sub-dictionary.  The request header
+names (keys) will have been case-folded (lowercased) by the server, regardless
+of the case used in the client request.  If the request headers include a
+``'content-length'``, its value will have been validated and converted into an
+``int`` by the server.
 
-For example:
+The ``request['headers']`` sub-dictionary was designed to be directly usable by
+a reverse-proxy application when making its HTTP client request.  For example,
+we can implement a simple reverse-proxy with the help of the the
+:func:`degu.util.relative_uri()` and :func:`degu.util.output_from_input()`
+functions:
 
->>> class MyProxyApp:
+>>> from degu.util import relative_uri, output_from_input
+>>> class ReverseProxyApp:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
@@ -314,9 +334,19 @@ For example:
 ...         if '__conn' not in connection:
 ...             connection['__conn'] = self.client.connect()
 ...         conn = connection['__conn']
-...         client_args = server_request_to_client_request(connection, request)
-...         return conn.request(*client_args)
-... 
+...         response = conn.request(
+...             request['method'],
+...             relative_uri(request),
+...             request['headers'],
+...             output_from_input(connection, request['body'])
+...         )
+...         return (
+...             response.status,
+...             response.reason,
+...             response.headers,
+...             output_from_input(connection, response.body)
+...         )
+...
 
 An RGI application must return a ``(status, reason, headers, body)`` response
 tuple, for example::
@@ -444,5 +474,6 @@ underlying Python3 `socket API`_.
 
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html

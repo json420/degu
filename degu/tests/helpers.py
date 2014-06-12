@@ -27,8 +27,36 @@ import os
 from os import path
 import tempfile
 import shutil
+from random import SystemRandom
 
 from degu.sslhelpers import random_id
+
+
+random = SystemRandom()
+
+
+def random_data():
+    """
+    Return random bytes between 1 and 34969 (inclusive) bytes long.
+
+    In unit tests, this is used to simulate a random request or response body,
+    or a random chunk in a chuck-encoded request or response body.
+    """
+    size = random.randint(1, 34969)
+    return os.urandom(size)
+
+
+def random_chunks():
+    """
+    Return between 0 and 5 random chunks (inclusive).
+
+    There will always be 1 additional, final chunk, an empty ``b''``, as per the
+    HTTP/1.1 specification.
+    """
+    count = random.randint(0, 5)
+    chunks = [random_data() for i in range(count)]
+    chunks.append(b'')
+    return chunks
 
 
 class TempDir:

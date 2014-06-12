@@ -7,12 +7,17 @@ Changelog
 
 Changes:
 
-    * With Key-Sharing Dictionaries (`PEP 412`_), an instance ``__dict__`` uses
-      slightly less memory than ``__slots__``, so drop ``__slots__`` from
-      :class:`degu.client.Connection`.
-
     * :func:`degu.base.parse_headers()` now raises a ``ValueError`` if there is
       leading or trailing whitespace in a header name or header value
+
+    * Consolidate previously scattered and undocumented RGI server application
+      helper functions into the new :mod:`degu.util` module
+
+    * Document the :class:`degu.base.Input` and :class:`degu.base.ChunkedInput`
+      classes, plus add a new ``chunked`` instance attribute to both
+
+    * Largely rewrite the :doc:`rgi` specification to reflect the new
+      connection-level semantics
 
 
 Internal API changes:
@@ -21,15 +26,48 @@ Internal API changes:
       :func:`degu.base.read_preamble()`
 
     * ``EmptyLineError`` has been renamed to :exc:`degu.base.EmptyPreambleError`
-    
-Breaking API changes:
+
+
+Breaking public API changes:
 
     * RGI server applications now take two arguments when handling requests: a
-      *connection* and a *request*, both ``dict`` instances
+      *connection* and a *request*, both ``dict`` instances; per-connection
+      state that was previously present in the *request* argument has simply
+      been moved into the new *connection* argument, and the *request* argument
+      has otherwise not changed
 
     * If an RGI application object itself has a callable ``on_connection()``
       attribute, this is called upon receiving a new connection, before any
-      requests have been handled for that connection
+      requests have been handled for that connection (note this is only a
+      *breaking* API change if your application object happened to have an
+      ``on_connection`` attribute already used for some other purpose)
+
+For example, this is how you implemented a *hello, world* RGI application in
+Degu 0.5 and earlier:
+
+>>> def hello_world_app(request):
+...     return (200, 'OK', {'content-length': 12}, b'hello, world')
+...
+
+As of Degu 0.6, it must now be implemented like this:
+
+>>> def hello_world_app(connection, request):
+...     return (200, 'OK', {'content-length': 12}, b'hello, world')
+...
+
+Or here's a version that uses the connection-handling feature new in Degu 0.6:
+
+>>> class HelloWorldApp:
+... 
+...     def __call__(self, connection, request):
+...         return (200, 'OK', {'content-length': 12}, b'hello, world')
+... 
+...     def on_connection(self, sock, connection):
+...         return True
+... 
+
+For more details, please see the :doc:`rgi` specification.
+
 
 
 0.5 (May 2014)
@@ -56,7 +94,7 @@ Changes:
       :class:`degu.client.Connection` (previously ``Client`` or ``SSLClient``)
       is garbage collected immediately prior to a script exiting
 
-Breaking API changes:
+Breaking public API changes:
 
     * The ``Connection`` namedtuple has been replaced by the
       :class:`degu.client.Connection` class
@@ -104,5 +142,3 @@ Two things motivated these breaking API changes:
       most code can merely create connections using the provided client, rather
       than themselves creating clients)
 
-
-.. _`PEP 412`: http://legacy.python.org/dev/peps/pep-0412/

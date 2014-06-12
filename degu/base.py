@@ -200,36 +200,6 @@ def makefiles(sock):
     )
 
 
-def make_output_from_input(input_body):
-    if isinstance(input_body, Input):
-        return Output(input_body, input_body.content_length)
-    if isinstance(input_body, ChunkedInput):
-        return ChunkedOutput(input_body)
-    if input_body is not None:
-        raise TypeError('bad input_body: {!r}'.format(type(input_body)))
-
-
-def build_uri(path_list, query):
-    """
-    Reconstruct a URI from a parsed path_list and query.
-
-    For example, when there is no query:
-
-    >>> build_uri(['foo', 'bar'], '')
-    '/foo/bar'
-
-    And when there is a query:
-
-    >>> build_uri(['foo', 'bar'], 'stuff=junk')
-    '/foo/bar?stuff=junk'
-
-    """
-    path_str = '/' + '/'.join(path_list)
-    if query:
-        return '?'.join((path_str, query))
-    return path_str  
-
-
 class Output:
     """
     Written to the wfile.
@@ -352,21 +322,12 @@ class Input:
     Content-Length must be known in advance.
     """
 
-    __slots__ = ('closed', 'rfile', 'content_length', 'remaining')
-
     def __init__(self, rfile, content_length):
-        if not isinstance(rfile, io.BufferedReader):
-            raise TypeError('rfile must be an io.BufferedReader')
-        if rfile.closed:
-            raise ValueError('rfile is already closed')
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
+        self.closed = False
+        self.chunked = False
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -404,15 +365,13 @@ class Input:
 
 
 class ChunkedInput:
-    __slots__ = ('rfile', 'closed')
-
+    """
+    Read from an HTTP chunk-encoded *rfile*.
+    """
     def __init__(self, rfile):
-        if not isinstance(rfile, io.BufferedReader):
-            raise TypeError('rfile must be an io.BufferedReader')
-        if rfile.closed:
-            raise ValueError('rfile is already closed')
-        self.closed = False
         self.rfile = rfile
+        self.closed = False
+        self.chunked = True
 
     def read(self):
         if self.closed:

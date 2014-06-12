@@ -36,6 +36,7 @@ from hashlib import sha1
 
 from .helpers import TempDir, DummySocket, DummyFile
 import degu
+from degu import util
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client
@@ -307,7 +308,7 @@ class TestFunctions(TestCase):
             self.assertEqual(path_list, ['foo', 'bar'])
             self.assertEqual(query, 'stuff=junk')
 
-        # Test URI permutations:
+        # Test URI permutations and round-tripping with util.relative_uri():
         cases = [
             ('/', []),
             ('/foo', ['foo']),
@@ -323,9 +324,10 @@ class TestFunctions(TestCase):
                 self.assertEqual(method, 'GET')
                 self.assertEqual(path_list, P)
                 self.assertEqual(query, Q)
-                self.assertEqual(server.reconstruct_uri(path_list, Q), uri)
+                request = {'path': path_list, 'query': query}
+                self.assertEqual(util.relative_uri(request), uri)
 
-        # Test URI with a trailing "?" but no query (note that reconstruct_uri()
+        # Test URI with a trailing "?" but no query (note that relative_uri()
         # wont round-trip URI such as this):
         self.assertEqual(
             server.parse_request('GET /foo/bar? HTTP/1.1'),
@@ -339,44 +341,6 @@ class TestFunctions(TestCase):
             server.parse_request('GET /? HTTP/1.1'),
             ('GET', [], '')
         )
-
-    def test_reconstruct_uri(self):
-        self.assertEqual(server.reconstruct_uri([], ''), '/')
-        self.assertEqual(server.reconstruct_uri([], 'q'), '/?q')
-        self.assertEqual(server.reconstruct_uri(['foo'], ''), '/foo')
-        self.assertEqual(server.reconstruct_uri(['foo'], 'q'), '/foo?q')
-        self.assertEqual(server.reconstruct_uri(['foo', ''], ''), '/foo/')
-        self.assertEqual(server.reconstruct_uri(['foo', ''], 'q'), '/foo/?q')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar'], ''), '/foo/bar')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar'], 'q'), '/foo/bar?q')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar', ''], ''), '/foo/bar/')
-        self.assertEqual(server.reconstruct_uri(['foo', 'bar', ''], 'q'), '/foo/bar/?q')
-
-    def test_shift_path(self):
-        script = []
-        path = ['foo', 'bar', 'baz']
-        environ = {'script': script, 'path': path}
-
-        self.assertEqual(server.shift_path(environ), 'foo')
-        self.assertEqual(environ, {'script': ['foo'], 'path': ['bar', 'baz']})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        self.assertEqual(server.shift_path(environ), 'bar')
-        self.assertEqual(environ, {'script': ['foo', 'bar'], 'path': ['baz']})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        self.assertEqual(server.shift_path(environ), 'baz')
-        self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
-
-        with self.assertRaises(IndexError):
-            server.shift_path(environ)
-        self.assertEqual(environ, {'script': ['foo', 'bar', 'baz'], 'path': []})
-        self.assertIs(environ['script'], script)
-        self.assertIs(environ['path'], path)
 
     def test_validate_response(self):
         # status:
@@ -846,9 +810,9 @@ class TestServer(TestCase):
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.ResponseBody': base.Output,
-            'rgi.FileResponseBody': base.FileOutput,
-            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+            'rgi.Output': base.Output,
+            'rgi.ChunkedOutput': base.ChunkedOutput,
+            'rgi.FileOutput': base.FileOutput,
         })
 
 
@@ -1015,9 +979,9 @@ class TestSSLServer(TestCase):
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.ResponseBody': base.Output,
-            'rgi.FileResponseBody': base.FileOutput,
-            'rgi.ChunkedResponseBody': base.ChunkedOutput,
+            'rgi.Output': base.Output,
+            'rgi.ChunkedOutput': base.ChunkedOutput,
+            'rgi.FileOutput': base.FileOutput,
         })
 
 
@@ -1049,9 +1013,9 @@ def chunked_response_app(connection, request):
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = connection['rgi.ChunkedResponseBody'](CHUNKS)
+        body = connection['rgi.ChunkedOutput'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = connection['rgi.ChunkedResponseBody']([b''])
+        body = connection['rgi.ChunkedOutput']([b''])
     else:
         return (404, 'Not Found', {}, None)
     return (200, 'OK', headers, body)
@@ -1067,9 +1031,9 @@ def response_app(connection, request):
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = connection['rgi.ResponseBody']([DATA1, DATA2], len(DATA))
+        body = connection['rgi.Output']([DATA1, DATA2], len(DATA))
     elif request['path'] == ['bar']:
-        body = connection['rgi.ResponseBody']([b'', b''], 0)
+        body = connection['rgi.Output']([b'', b''], 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}

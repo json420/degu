@@ -1,4 +1,4 @@
-1# degu: an embedded HTTP server and client library
+# degu: an embedded HTTP server and client library
 # Copyright (C) 2014 Novacut Inc
 #
 # This file is part of `degu`.
@@ -633,60 +633,6 @@ class TestFunctions(TestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
 
-    def test_make_output_from_input(self):
-        tmp = TempDir()
-
-        data = os.urandom(17)
-        rfile = tmp.prepare(data)
-        input_body = base.Input(rfile, 17)
-        output_body = base.make_output_from_input(input_body)
-        self.assertIsInstance(output_body, base.Output)
-        self.assertIs(output_body.source, input_body)
-        self.assertEqual(output_body.content_length, 17)
-        self.assertIs(input_body.closed, False)
-        self.assertIs(output_body.closed, False)
-        self.assertEqual(list(output_body), [data])
-        self.assertIs(input_body.closed, True)
-        self.assertIs(output_body.closed, True)
-        self.assertIs(rfile.closed, False)
-
-        (filename, fp) = tmp.create('foo')
-        chunk1 = os.urandom(18)
-        chunk2 = os.urandom(21)
-        chunk3 = os.urandom(17)
-        for chunk in [chunk1, chunk2, chunk3, b'']:
-            base.write_chunk(fp, chunk)
-        fp.close()
-        rfile = open(filename, 'rb')
-        input_body = base.ChunkedInput(rfile)
-        output_body = base.make_output_from_input(input_body)
-        self.assertIsInstance(output_body, base.ChunkedOutput)
-        self.assertIs(output_body.source, input_body)
-        self.assertIs(input_body.closed, False)
-        self.assertIs(output_body.closed, False)
-        self.assertEqual(list(output_body), [chunk1, chunk2, chunk3, b''])
-        self.assertIs(input_body.closed, True)
-        self.assertIs(output_body.closed, True)
-        self.assertIs(rfile.closed, False)
-
-        self.assertIsNone(base.make_output_from_input(None))
-
-        with self.assertRaises(TypeError) as cm:
-            base.make_output_from_input(b'hello')
-        self.assertEqual(str(cm.exception), "bad input_body: <class 'bytes'>")
-
-    def test_build_uri(self):
-        self.assertEqual(base.build_uri([], ''), '/')
-        self.assertEqual(base.build_uri([], 'q'), '/?q')
-        self.assertEqual(base.build_uri(['foo'], ''), '/foo')
-        self.assertEqual(base.build_uri(['foo'], 'q'), '/foo?q')
-        self.assertEqual(base.build_uri(['foo', ''], ''), '/foo/')
-        self.assertEqual(base.build_uri(['foo', ''], 'q'), '/foo/?q')
-        self.assertEqual(base.build_uri(['foo', 'bar'], ''), '/foo/bar')
-        self.assertEqual(base.build_uri(['foo', 'bar'], 'q'), '/foo/bar?q')
-        self.assertEqual(base.build_uri(['foo', 'bar', ''], ''), '/foo/bar/')
-        self.assertEqual(base.build_uri(['foo', 'bar', ''], 'q'), '/foo/bar/?q')
-
 
 class TestOutput(TestCase):
     def test_init(self):
@@ -961,35 +907,13 @@ class TestInput(TestCase):
         tmp = TempDir()
         data = os.urandom(18)
         rfile = tmp.prepare(data)
-
         body = base.Input(rfile, 18)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 18)
         self.assertEqual(body.remaining, 18)
         self.assertEqual(repr(body), 'Input({!r}, 18)'.format(rfile))
-
-        # Should raise a TypeError if rfile isn't an io.BufferedReader:
-        wfile = open(tmp.join('foo'), 'wb')
-        with self.assertRaises(TypeError) as cm:
-            base.Input(wfile, 18)
-        self.assertEqual(str(cm.exception), 'rfile must be an io.BufferedReader')
-
-        # Should raise a TypeError if content_length isn't an int:
-        with self.assertRaises(TypeError) as cm:
-            base.Input(rfile, '18')
-        self.assertEqual(str(cm.exception), 'content_length must be an int')
-
-        # Should raise a ValueError if content_length < 0:
-        with self.assertRaises(ValueError) as cm:
-            base.Input(rfile, -1)
-        self.assertEqual(str(cm.exception), 'content_length must be >= 0')
-
-        # Should raise a TypeError if rfile closed:
-        rfile.close()
-        with self.assertRaises(ValueError) as cm:
-            base.Input(rfile, 18)
-        self.assertEqual(str(cm.exception), 'rfile is already closed')
+        self.assertIs(body.chunked, False)
 
     def test_read(self):
         tmp = TempDir()
@@ -1066,22 +990,10 @@ class TestChunkedInput(TestCase):
         tmp = TempDir()
         data = os.urandom(18)
         rfile = tmp.prepare(data)
-
         body = base.ChunkedInput(rfile)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
-
-        # Should raise a TypeError if rfile isn't an io.BufferedReader:
-        wfile = open(tmp.join('foo'), 'wb')
-        with self.assertRaises(TypeError) as cm:
-            base.ChunkedInput(wfile)
-        self.assertEqual(str(cm.exception), 'rfile must be an io.BufferedReader')
-
-        # Should raise a TypeError if rfile closed:
-        rfile.close()
-        with self.assertRaises(ValueError) as cm:
-            base.ChunkedInput(rfile)
-        self.assertEqual(str(cm.exception), 'rfile is already closed')
+        self.assertIs(body.chunked, True)
 
     def test_read(self):
         chunk1 = os.urandom(random.randrange(1, 1777))

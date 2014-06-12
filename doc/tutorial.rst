@@ -93,12 +93,14 @@ Close the connection like this:
 
 Notice that the :class:`degu.client.Response` namedtuple returned above is the
 exact same tuple returned by our ``example_app``.  The Degu client API and the
-RGI application API have been designed to complement each other.  Think of them
-almost like inverse functions.
+RGI application API have been carefully designed to complement each other.
+Think of them almost like inverse functions.
 
-For example, here's an RGI application that implements a `reverse-proxy`_:
+For example, here's an RGI application that implements a `reverse-proxy`_, which
+will use the :func:`degu.util.relative_uri()` and
+:func:`degu.util.output_from_input()` functions:
 
->>> from degu.base import build_uri, make_output_from_input
+>>> from degu.util import relative_uri, output_from_input
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -109,15 +111,15 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...         conn = connection['__conn']
 ...         response = conn.request(
 ...             request['method'],
-...             build_uri(request['path'], request['query']),
+...             relative_uri(request),
 ...             request['headers'],
-...             make_output_from_input(request['body'])
+...             output_from_input(connection, request['body'])
 ...         )
 ...         return (
 ...             response.status,
 ...             response.reason,
 ...             response.headers,
-...             make_output_from_input(response.body)
+...             output_from_input(connection, response.body)
 ...         )
 ...
 
@@ -303,8 +305,8 @@ In particular, Degu is restrictive when it comes to:
         'Name: Value\r\n'
 
     * Although Degu accepts mixed case header names from the other endpoint, the
-      Degu server and client always case-folder (lowercase) the header names
-      prior to passing control to 3rd-party application software
+      Degu server and client always case-fold (lowercase) the header names prior
+      to passing control to 3rd-party RGI server application software
 
     * Degu :doc:`rgi` server applications must only include case-folded header
       names in their response tuple, and likewise, 3rd-party application
