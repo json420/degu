@@ -1081,6 +1081,39 @@ class TestLiveServer(TestCase):
         client = httpd.get_client()
         return (httpd, client)
 
+    def test_timeout(self):
+        """
+        Do a realistic live socket timeout test.
+
+        This is a very important test that we absolutely want to run during
+        package builds on the build servers, despite the fact that it's a
+        rather time consuming test.
+
+        However, during day to day development, it's often handy to skip the
+        timeout tests for the sake of getting quicker feedback on a code change.
+
+        You can run all the unit tests minus the timeout tests like this::
+
+            $ ./setup.py test --skip-timeout
+
+        You can also accomplish the same with an environment variable:
+
+            $ DEGU_TEST_SKIP_TIMEOUT=true ./setup.py test
+
+        """
+        if os.environ.get('DEGU_TEST_SKIP_TIMEOUT') == 'true':
+            self.skipTest('skipping as DEGU_TEST_SKIP_TIMEOUT is set')
+        (httpd, client) = self.build_with_app(None, timeout_app)
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
+        with self.assertRaises(ConnectionError):
+            conn.request('POST', '/foo')
+        self.assertIs(conn.closed, True)
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        httpd.terminate()
+
     def test_chunked_request(self):
         (httpd, client) = self.build_with_app(None, chunked_request_app)
         conn = client.connect()
@@ -1184,18 +1217,6 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.headers, {'content-length': len(DATA)})
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
-        httpd.terminate()
-
-    def test_timeout(self):
-        (httpd, client) = self.build_with_app(None, timeout_app)
-        conn = client.connect()
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
-        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
-        with self.assertRaises(ConnectionError):
-            conn.request('POST', '/foo')
-        self.assertIs(conn.closed, True)
-        conn = client.connect()
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
         httpd.terminate()
 
     def test_always_accept_connections(self):
