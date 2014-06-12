@@ -166,13 +166,6 @@ semantics, but don't offer any connection-level semantics, don't offer a way
 for applicationa to do anything special when a new connection is first received
 or a way for applications to easily maintain per-connection state.
 
-This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
-where *authentication* is done per-connection, and only *authorization* is done
-per-request.  This allows Dmedia to do extended per-connection authentication,
-in particular to verify the intrinsic machine and user identities behind the
-connection, based on the SSL certificate and SSL certificate authority under
-which the connection was made, respectively.
-
 The general connection and request handling mechanisms are best illustrated
 through an example middleware application:
 
@@ -231,6 +224,13 @@ When needed, the ``on_connection()`` connection-handler can add additional
 information to the *connection* ``dict``, and this same *connection* ``dict``
 instance will be passed to the main ``application.__call__()`` method when
 handling each request within the lifetime of that connection.
+
+This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
+where *authentication* is done per-connection, and only *authorization* is done
+per-request.  This allows Dmedia to do extended per-connection authentication,
+in particular to verify the intrinsic machine and user identities behind the
+connection, based on the SSL certificate and SSL certificate authority under
+which the connection was made, respectively.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, there is a simple, pythonic name-spacing rule: the
