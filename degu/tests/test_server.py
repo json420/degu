@@ -1055,17 +1055,17 @@ def timeout_app(connection, request):
 
 
 class AppWithConnectionHandler:
-    def __init__(self,  marker, result):
+    def __init__(self,  marker, accept):
         assert isinstance(marker, bytes) and len(marker) > 0
-        assert isinstance(result, bool)
+        assert isinstance(accept, bool)
         self.marker = marker
-        self.result = result
+        self.accept = accept
 
     def __call__(self, connection, request):
         return (200, 'OK', {}, self.marker)
 
     def on_connection(self, sock, connection):
-        return self.result
+        return self.accept
 
 
 class TestLiveServer(TestCase):
@@ -1191,9 +1191,9 @@ class TestLiveServer(TestCase):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, True)
         (httpd, client) = self.build_with_app(None, app)
-        for i in range(10):
+        for i in range(17):
             conn = client.connect()
-            for j in range(17):
+            for j in range(69):
                 response = conn.request('GET', '/')
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
@@ -1206,7 +1206,7 @@ class TestLiveServer(TestCase):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, False)
         (httpd, client) = self.build_with_app(None, app)
-        for i in range(10):
+        for i in range(17):
             conn = client.connect()
             with self.assertRaises(ConnectionError):
                 conn.request('GET', '/')
