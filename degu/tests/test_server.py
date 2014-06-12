@@ -799,14 +799,14 @@ class TestServer(TestCase):
             'Custom({!r}, {!r})'.format(inst.address, good_app)
         )
 
-    def test_build_base_environ(self):
+    def test_build_base_connection(self):
         class ServerSubclass(server.Server):
             def __init__(self, address):
                 self.address = address
 
         address = (random_id(), random_id())
         inst = ServerSubclass(address)
-        self.assertEqual(inst.build_base_environ(), {
+        self.assertEqual(inst.build_base_connection(), {
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -968,14 +968,14 @@ class TestSSLServer(TestCase):
             'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
 
-    def test_build_base_environ(self):
+    def test_build_base_connection(self):
         class SSLServerSubclass(server.SSLServer):
             def __init__(self, address):
                 self.address = address
 
         address = (random_id(), random_id())
         inst = SSLServerSubclass(address)
-        self.assertEqual(inst.build_base_environ(), {
+        self.assertEqual(inst.build_base_connection(), {
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -1052,6 +1052,20 @@ def timeout_app(connection, request):
         #time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
         return (200, 'OK', {}, None)
     return (404, 'Not Found', {}, None)
+
+
+class AppWithConnectionHandler:
+    def __init__(self,  marker, accept):
+        assert isinstance(marker, bytes) and len(marker) > 0
+        assert isinstance(accept, bool)
+        self.marker = marker
+        self.accept = accept
+
+    def __call__(self, connection, request):
+        return (200, 'OK', {}, self.marker)
+
+    def on_connection(self, sock, connection):
+        return self.accept
 
 
 class TestLiveServer(TestCase):
@@ -1167,11 +1181,37 @@ class TestLiveServer(TestCase):
         conn = client.connect()
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
-        with self.assertRaises(base.EmptyPreambleError):
+        with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo')
         self.assertIs(conn.closed, True)
         conn = client.connect()
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+
+    def test_always_accept_connections(self):
+        marker = os.urandom(16)
+        app = AppWithConnectionHandler(marker, True)
+        (httpd, client) = self.build_with_app(None, app)
+        for i in range(17):
+            conn = client.connect()
+            for j in range(69):
+                response = conn.request('GET', '/')
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.reason, 'OK')
+                self.assertEqual(response.headers, {'content-length': 16})
+                self.assertIsInstance(response.body, base.Input)
+                self.assertEqual(response.body.read(), marker)
+            conn.close()
+
+    def test_always_reject_connections(self):
+        marker = os.urandom(16)
+        app = AppWithConnectionHandler(marker, False)
+        (httpd, client) = self.build_with_app(None, app)
+        for i in range(17):
+            conn = client.connect()
+            with self.assertRaises(ConnectionError):
+                conn.request('GET', '/')
+            self.assertIs(conn.closed, True)
+            self.assertIsNone(conn.sock)
 
 
 def ssl_app(connection, request):
@@ -1254,7 +1294,4 @@ class TestLiveServerUnixSocket(TestLiveServer):
         httpd._tmp = tmp
         client = httpd.get_client()
         return (httpd, client)
-
-    def test_timeout(self):
-        self.skipTest('FIXME')
 

@@ -42,7 +42,7 @@ from .base import (
 )
 
 
-SERVER_SOCKET_TIMEOUT = 5
+SERVER_SOCKET_TIMEOUT = 10
 log = logging.getLogger()
 
 
@@ -333,8 +333,8 @@ class Handler:
     def __init__(self, app, sock, connection):
         self.closed = False
         self.app = app
-        self.connection = connection
         self.sock = sock
+        self.connection = connection
         (self.rfile, self.wfile) = makefiles(sock)
 
     def close(self):
@@ -373,7 +373,7 @@ class Handler:
 
     def build_request(self):
         """
-        Builds the *connection* fragment unique to a single HTTP request.
+        Builds the *request* ``dict`` unique to a single HTTP request.
         """
         (request_line, header_lines) = read_preamble(self.rfile)
         (method, path_list, query) = parse_request(request_line)
@@ -572,9 +572,11 @@ class Server:
             self.__class__.__name__, self.address, self.app
         )
 
-    def build_base_environ(self):
+    def build_base_connection(self):
         """
-        Builds the base *environ* used throughout instance lifetime.
+        Builds the base connection used throughout instance lifetime.
+
+        Each new *connection* argument starts out as a copy of this.
         """
         return {
             'scheme': self.scheme,
@@ -586,35 +588,39 @@ class Server:
         }
 
     def serve_forever(self):
-        environ = self.build_base_environ()
+        base_connection = self.build_base_connection()
         while True:
             (sock, address) = self.sock.accept()
-            sock.settimeout(SERVER_SOCKET_TIMEOUT)
+            log.info('%s active threads, new connection from %r',
+                threading.active_count(), address
+            )
+            connection = base_connection.copy()
+            connection['client'] = address
             thread = threading.Thread(
-                target=self.handle_requests,
-                args=(environ.copy(), sock, address),
+                target=self.worker,
+                args=(sock, connection),
                 daemon=True
             )
             thread.start()
-            log.info('connection from %r, active_count=%d', address,
-                    threading.active_count())
 
-    def handle_requests(self, environ, base_sock, address):
+    def worker(self, sock, connection):
         try:
-            sock = self.build_connection(environ, base_sock, address)
-            handler = Handler(self.app, sock, environ)
-            handler.handle()
+            sock.settimeout(SERVER_SOCKET_TIMEOUT)
+            self.handler(sock, connection)
         except Exception:
-            log.exception('client: %r', address)
+            log.exception('client: %r', connection['client'])
         finally:
             try:
-                base_sock.shutdown(socket.SHUT_RDWR)
+                sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
 
-    def build_connection(self, environ, base_sock, address):
-        environ['client'] = address
-        return base_sock
+    def handler(self, sock, connection):
+        if self.on_connection is None or self.on_connection(sock, connection) is True:
+            handler = Handler(self.app, sock, connection)
+            handler.handle()
+        else:
+            log.warning('rejecting connection: %r', connection['client'])
 
 
 class SSLServer(Server):
@@ -629,12 +635,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def build_connection(self, environ, base_sock, address):
-        sock = self.sslctx.wrap_socket(base_sock, server_side=True)
-        environ.update({
-            'client': address,
+    def handler(self, sock, connection):
+        sock = self.sslctx.wrap_socket(sock, server_side=True)
+        connection.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        return sock
+        super().handler(sock, connection)
 
