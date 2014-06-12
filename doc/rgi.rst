@@ -161,13 +161,8 @@ However, if this application object itself has a callable ``on_connection``
 attribute, this is called whenever a new connection is received, before any
 requests are handled for that connection.
 
-Most server application APIs (like `WSGI`_ and `CGI`_) only offer request-level
-semantics, but don't offer any connection-level semantics, don't offer a way
-for applicationa to do anything special when a new connection is first received
-or a way for applications to easily maintain per-connection state.
-
-The general connection and request handling mechanisms are best illustrated
-through an example middleware application:
+The general connection and request handling API is best illustrated through an
+example middleware application:
 
 >>> class Middleware:
 ...     def __init__(self, app):
