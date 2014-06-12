@@ -1226,6 +1226,29 @@ class TestLiveServer(TestCase):
             self.assertIsNone(conn.sock)
         httpd.terminate()
 
+    def test_ok_status(self):
+        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        conn = client.connect()
+        # At no point should the connection be closed by the server:
+        for status in range(100, 400):
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+            # Again with a 2nd random reason string:
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+        conn.close() 
+        httpd.terminate()
+
     def test_error_status(self):
         (httpd, client) = self.build_with_app(None, standard_harness_app)
         for status in range(400, 600):
