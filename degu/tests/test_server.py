@@ -47,6 +47,13 @@ from degu import base, server
 random = SystemRandom()
 
 
+def standard_harness_app(connection, request):
+    if len(request['path']) == 3 and request['path'][0] == 'status':
+        code = int(request['path'][1])
+        reason = request['path'][2]
+        return (code, reason, {}, None)
+
+
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # Bad config type:
@@ -1113,6 +1120,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
+        httpd.terminate()
 
     def test_chunked_response(self):
         (httpd, client) = self.build_with_app(None, chunked_response_app)
@@ -1144,6 +1152,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(tuple(response.body), CHUNKS)
+        httpd.terminate()
 
     def test_response(self):
         (httpd, client) = self.build_with_app(None, response_app)
@@ -1175,6 +1184,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.headers, {'content-length': len(DATA)})
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
+        httpd.terminate()
 
     def test_timeout(self):
         (httpd, client) = self.build_with_app(None, timeout_app)
@@ -1186,6 +1196,7 @@ class TestLiveServer(TestCase):
         self.assertIs(conn.closed, True)
         conn = client.connect()
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        httpd.terminate()
 
     def test_always_accept_connections(self):
         marker = os.urandom(16)
@@ -1201,6 +1212,7 @@ class TestLiveServer(TestCase):
                 self.assertIsInstance(response.body, base.Input)
                 self.assertEqual(response.body.read(), marker)
             conn.close()
+        httpd.terminate()
 
     def test_always_reject_connections(self):
         marker = os.urandom(16)
@@ -1212,6 +1224,34 @@ class TestLiveServer(TestCase):
                 conn.request('GET', '/')
             self.assertIs(conn.closed, True)
             self.assertIsNone(conn.sock)
+        httpd.terminate()
+
+    def test_error_status(self):
+        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        for status in range(400, 600):
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            conn = client.connect()
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+            if status in {404, 409, 412}:
+                # Connection should not be closed for 404, 409, 412:
+                response = conn.request('GET', uri)
+                self.assertEqual(response.status, status)
+                self.assertEqual(response.reason, reason)
+                self.assertEqual(response.headers, {})
+                self.assertIsNone(response.body)
+                conn.close()
+            else:
+                # But connection should be closed for all other status >= 400:
+                with self.assertRaises(ConnectionError):
+                    conn.request('GET', uri)
+                self.assertIs(conn.closed, True)
+                self.assertIsNone(conn.sock)
+        httpd.terminate()
 
 
 def ssl_app(connection, request):
@@ -1284,6 +1324,8 @@ class TestLiveSSLServer(TestLiveServer):
         client.sslctx.check_hostname = True
         with self.assertRaises(ssl.CertificateError) as cm:
             client.connect()
+
+        httpd.terminate()
 
 
 class TestLiveServerUnixSocket(TestLiveServer):

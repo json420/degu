@@ -339,13 +339,9 @@ class Handler:
 
     def close(self):
         self.closed = True
+        self.wfile.close()  # Will block till write buffer is flushed
         self.rfile.close()
-        self.wfile.close()
         self.sock.close()
-
-    def shutdown(self):
-        self.sock.shutdown(socket.SHUT_RDWR)
-        self.close()
 
     def handle(self):
         client = self.connection['client']
@@ -358,10 +354,7 @@ class Handler:
             log.info('handled %d requests from %r', count, client)
 
     def handle_one(self):
-        try:
-            request = self.build_request()
-        except (ConnectionError, socket.timeout):
-            return self.shutdown()
+        request = self.build_request()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
@@ -516,8 +509,9 @@ class Handler:
         self.wfile.flush()
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
-            log.warning('closed connection to %r after %d %r',
-                    self.connection['client'], status, reason)
+            log.warning('closing connection to %r after %d %r',
+                self.connection['client'], status, reason
+            )
 
     def write_status_only(self, status, reason):
         assert isinstance(status, int)
@@ -612,6 +606,7 @@ class Server:
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
             except OSError:
                 pass
 
