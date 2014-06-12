@@ -1076,8 +1076,10 @@ class AppWithConnectionHandler:
 
 
 class TestLiveServer(TestCase):
+    address = degu.IPv4_LOOPBACK
+
     def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempServer(self.address, build_func, *build_args)
         client = httpd.get_client()
         return (httpd, client)
 
@@ -1096,7 +1098,7 @@ class TestLiveServer(TestCase):
 
             $ ./setup.py test --skip-timeout
 
-        You can also accomplish the same with an environment variable:
+        You can also accomplish the same with an environment variable::
 
             $ DEGU_TEST_SKIP_TIMEOUT=true ./setup.py test
 
@@ -1298,7 +1300,11 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
 
-class TestLiveServerUnixSocket(TestLiveServer):
+class TestLiveServer_AF_INET6(TestLiveServer):
+    address = degu.IPv6_LOOPBACK
+
+
+class TestLiveServer_AF_UNIX(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         tmp = TempDir()
         filename = tmp.join('my.socket')
@@ -1322,7 +1328,7 @@ def ssl_app(connection, request):
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempSSLServer(pki, self.address, build_func, *build_args)
         client = httpd.get_client()
         return (httpd, client)
 
@@ -1380,4 +1386,8 @@ class TestLiveSSLServer(TestLiveServer):
             client.connect()
 
         httpd.terminate()
+
+
+class TestLiveSSLServer_AF_INET6(TestLiveSSLServer):
+    address = degu.IPv6_LOOPBACK
 
