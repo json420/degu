@@ -620,7 +620,7 @@ class Server:
             handler = Handler(self.app, sock, connection)
             handler.handle()
         else:
-            log.warning('rejecting connection %r', connection['client'])
+            log.warning('rejecting connection: %r', connection['client'])
 
 
 class SSLServer(Server):
