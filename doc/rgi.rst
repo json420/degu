@@ -161,9 +161,9 @@ However, if this application object itself has a callable ``on_connection``
 attribute, this is called whenever a new connection is received, before any
 requests are handled for that connection.
 
-Most server application interfaces (like WSGI and CGI) only offer request-level
+Most server application APIs (like `WSGI`_ and `CGI`_) only offer request-level
 semantics, but don't offer any connection-level semantics, don't offer a way
-for application to do anything special when a new connection is first received
+for applicationa to do anything special when a new connection is first received
 or a way for applications to easily maintain per-connection state.
 
 This was motivated by the somewhat specialized way in which `Dmedia`_ uses SSL,
