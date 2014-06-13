@@ -820,6 +820,7 @@ class TestServer(TestCase):
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
             'rgi.FileOutput': base.FileOutput,
+            'requests': 0,
         })
 
 
@@ -989,6 +990,7 @@ class TestSSLServer(TestCase):
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
             'rgi.FileOutput': base.FileOutput,
+            'requests': 0,
         })
 
 

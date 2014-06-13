@@ -344,14 +344,9 @@ class Handler:
         self.sock.close()
 
     def handle(self):
-        client = self.connection['client']
-        count = 0
-        try:
-            while not self.closed:
-                self.handle_one()
-                count += 1
-        finally:
-            log.info('handled %d requests from %r', count, client)
+        while self.closed is False:
+            self.handle_one()
+            self.connection['requests'] += 1
 
     def handle_one(self):
         request = self.build_request()
@@ -579,14 +574,15 @@ class Server:
             'rgi.Output': Output,
             'rgi.ChunkedOutput': ChunkedOutput,
             'rgi.FileOutput': FileOutput,
+            'requests': 0,  # Number of fully handled requests
         }
 
     def serve_forever(self):
         base_connection = self.build_base_connection()
         while True:
             (sock, address) = self.sock.accept()
-            log.info('%s active threads, new connection from %r',
-                threading.active_count(), address
+            log.info('Connection from %r; active threads: %d',
+                address, threading.active_count()
             )
             connection = base_connection.copy()
             connection['client'] = address
@@ -601,7 +597,11 @@ class Server:
         try:
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
             self.handler(sock, connection)
-        except Exception:
+        except OSError:
+            log.info('Handled %d requests from %r', 
+                connection['requests'], connection['client']
+            )
+        except:
             log.exception('client: %r', connection['client'])
         finally:
             try:
