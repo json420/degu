@@ -597,12 +597,12 @@ class Server:
         try:
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
             self.handler(sock, connection)
-        except OSError:
-            log.info('Handled %d requests from %r', 
-                connection['requests'], connection['client']
+        except OSError as e:
+            log.info('Handled %d requests from %r: %r', 
+                connection['requests'], connection['client'], e
             )
         except:
-            log.exception('client: %r', connection['client'])
+            log.exception('Client: %r', connection['client'])
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
