@@ -47,6 +47,13 @@ from degu import base, server
 random = SystemRandom()
 
 
+def standard_harness_app(connection, request):
+    if len(request['path']) == 3 and request['path'][0] == 'status':
+        code = int(request['path'][1])
+        reason = request['path'][2]
+        return (code, reason, {}, None)
+
+
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # Bad config type:
@@ -813,6 +820,7 @@ class TestServer(TestCase):
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
             'rgi.FileOutput': base.FileOutput,
+            'requests': 0,
         })
 
 
@@ -982,6 +990,7 @@ class TestSSLServer(TestCase):
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
             'rgi.FileOutput': base.FileOutput,
+            'requests': 0,
         })
 
 
@@ -1069,10 +1078,45 @@ class AppWithConnectionHandler:
 
 
 class TestLiveServer(TestCase):
+    address = degu.IPv4_LOOPBACK
+
     def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(degu.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempServer(self.address, build_func, *build_args)
         client = httpd.get_client()
         return (httpd, client)
+
+    def test_timeout(self):
+        """
+        Do a realistic live socket timeout test.
+
+        This is a very important test that we absolutely want to run during
+        package builds on the build servers, despite the fact that it's a
+        rather time consuming test.
+
+        However, during day to day development, it's often handy to skip the
+        timeout tests for the sake of getting quicker feedback on a code change.
+
+        You can run all the unit tests minus the timeout tests like this::
+
+            $ ./setup.py test --skip-timeout
+
+        You can also accomplish the same with an environment variable::
+
+            $ DEGU_TEST_SKIP_TIMEOUT=true ./setup.py test
+
+        """
+        if os.environ.get('DEGU_TEST_SKIP_TIMEOUT') == 'true':
+            self.skipTest('skipping as DEGU_TEST_SKIP_TIMEOUT is set')
+        (httpd, client) = self.build_with_app(None, timeout_app)
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
+        with self.assertRaises(ConnectionError):
+            conn.request('POST', '/foo')
+        self.assertIs(conn.closed, True)
+        conn = client.connect()
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        httpd.terminate()
 
     def test_chunked_request(self):
         (httpd, client) = self.build_with_app(None, chunked_request_app)
@@ -1113,6 +1157,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
+        httpd.terminate()
 
     def test_chunked_response(self):
         (httpd, client) = self.build_with_app(None, chunked_response_app)
@@ -1144,6 +1189,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedInput)
         self.assertEqual(tuple(response.body), CHUNKS)
+        httpd.terminate()
 
     def test_response(self):
         (httpd, client) = self.build_with_app(None, response_app)
@@ -1175,17 +1221,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.headers, {'content-length': len(DATA)})
         self.assertIsInstance(response.body, base.Input)
         self.assertEqual(response.body.read(), DATA)
-
-    def test_timeout(self):
-        (httpd, client) = self.build_with_app(None, timeout_app)
-        conn = client.connect()
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
-        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
-        with self.assertRaises(ConnectionError):
-            conn.request('POST', '/foo')
-        self.assertIs(conn.closed, True)
-        conn = client.connect()
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        httpd.terminate()
 
     def test_always_accept_connections(self):
         marker = os.urandom(16)
@@ -1201,6 +1237,7 @@ class TestLiveServer(TestCase):
                 self.assertIsInstance(response.body, base.Input)
                 self.assertEqual(response.body.read(), marker)
             conn.close()
+        httpd.terminate()
 
     def test_always_reject_connections(self):
         marker = os.urandom(16)
@@ -1212,6 +1249,71 @@ class TestLiveServer(TestCase):
                 conn.request('GET', '/')
             self.assertIs(conn.closed, True)
             self.assertIsNone(conn.sock)
+        httpd.terminate()
+
+    def test_ok_status(self):
+        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        conn = client.connect()
+        # At no point should the connection be closed by the server:
+        for status in range(100, 400):
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+            # Again with a 2nd random reason string:
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+        conn.close() 
+        httpd.terminate()
+
+    def test_error_status(self):
+        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        for status in range(400, 600):
+            reason = random_id()
+            uri = '/status/{}/{}'.format(status, reason)
+            conn = client.connect()
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, status)
+            self.assertEqual(response.reason, reason)
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+            if status in {404, 409, 412}:
+                # Connection should not be closed for 404, 409, 412:
+                response = conn.request('GET', uri)
+                self.assertEqual(response.status, status)
+                self.assertEqual(response.reason, reason)
+                self.assertEqual(response.headers, {})
+                self.assertIsNone(response.body)
+                conn.close()
+            else:
+                # But connection should be closed for all other status >= 400:
+                with self.assertRaises(ConnectionError):
+                    conn.request('GET', uri)
+                self.assertIs(conn.closed, True)
+                self.assertIsNone(conn.sock)
+        httpd.terminate()
+
+
+class TestLiveServer_AF_INET6(TestLiveServer):
+    address = degu.IPv6_LOOPBACK
+
+
+class TestLiveServer_AF_UNIX(TestLiveServer):
+    def build_with_app(self, build_func, *build_args):
+        tmp = TempDir()
+        filename = tmp.join('my.socket')
+        httpd = TempServer(filename, build_func, *build_args)
+        httpd._tmp = tmp
+        client = httpd.get_client()
+        return (httpd, client)
 
 
 def ssl_app(connection, request):
@@ -1228,7 +1330,7 @@ def ssl_app(connection, request):
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, build_func, *build_args)
+        httpd = TempSSLServer(pki, self.address, build_func, *build_args)
         client = httpd.get_client()
         return (httpd, client)
 
@@ -1285,13 +1387,9 @@ class TestLiveSSLServer(TestLiveServer):
         with self.assertRaises(ssl.CertificateError) as cm:
             client.connect()
 
+        httpd.terminate()
 
-class TestLiveServerUnixSocket(TestLiveServer):
-    def build_with_app(self, build_func, *build_args):
-        tmp = TempDir()
-        filename = tmp.join('my.socket')
-        httpd = TempServer(filename, build_func, *build_args)
-        httpd._tmp = tmp
-        client = httpd.get_client()
-        return (httpd, client)
+
+class TestLiveSSLServer_AF_INET6(TestLiveSSLServer):
+    address = degu.IPv6_LOOPBACK
 

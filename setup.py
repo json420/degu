@@ -86,16 +86,20 @@ class Test(Command):
     user_options = [
         ('skip-sphinx', None, 'do not run Sphinx doctests'),
         ('skip-flakes', None, 'do not run pyflakes static checks'),
+        ('skip-timeout', None, 'skip the rather slow socket timeout tests'),
     ]
 
     def initialize_options(self):
         self.skip_sphinx = 0
         self.skip_flakes = 0
+        self.skip_timeout = 0
 
     def finalize_options(self):
         pass
 
     def run(self):
+        if self.skip_timeout:
+            os.environ['DEGU_TEST_SKIP_TIMEOUT'] = 'true'
         if not run_tests():
             sys.exit(2)
         if not self.skip_sphinx:

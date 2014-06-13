@@ -339,29 +339,17 @@ class Handler:
 
     def close(self):
         self.closed = True
+        self.wfile.close()  # Will block till write buffer is flushed
         self.rfile.close()
-        self.wfile.close()
         self.sock.close()
 
-    def shutdown(self):
-        self.sock.shutdown(socket.SHUT_RDWR)
-        self.close()
-
     def handle(self):
-        client = self.connection['client']
-        count = 0
-        try:
-            while not self.closed:
-                self.handle_one()
-                count += 1
-        finally:
-            log.info('handled %d requests from %r', count, client)
+        while self.closed is False:
+            self.handle_one()
+            self.connection['requests'] += 1
 
     def handle_one(self):
-        try:
-            request = self.build_request()
-        except (ConnectionError, socket.timeout):
-            return self.shutdown()
+        request = self.build_request()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
@@ -516,8 +504,9 @@ class Handler:
         self.wfile.flush()
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
-            log.warning('closed connection to %r after %d %r',
-                    self.connection['client'], status, reason)
+            log.warning('closing connection to %r after %d %r',
+                self.connection['client'], status, reason
+            )
 
     def write_status_only(self, status, reason):
         assert isinstance(status, int)
@@ -585,14 +574,15 @@ class Server:
             'rgi.Output': Output,
             'rgi.ChunkedOutput': ChunkedOutput,
             'rgi.FileOutput': FileOutput,
+            'requests': 0,  # Number of fully handled requests
         }
 
     def serve_forever(self):
         base_connection = self.build_base_connection()
         while True:
             (sock, address) = self.sock.accept()
-            log.info('%s active threads, new connection from %r',
-                threading.active_count(), address
+            log.info('Connection from %r; active threads: %d',
+                address, threading.active_count()
             )
             connection = base_connection.copy()
             connection['client'] = address
@@ -607,11 +597,16 @@ class Server:
         try:
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
             self.handler(sock, connection)
-        except Exception:
-            log.exception('client: %r', connection['client'])
+        except OSError as e:
+            log.info('Handled %d requests from %r: %r', 
+                connection['requests'], connection['client'], e
+            )
+        except:
+            log.exception('Client: %r', connection['client'])
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
             except OSError:
                 pass
 

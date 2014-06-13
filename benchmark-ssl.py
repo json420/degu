@@ -47,12 +47,10 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='\t'.join([
         '%(levelname)s',
-        '%(processName)s',
         '%(threadName)s',
         '%(message)s',
     ]),
 )
-log = logging.getLogger()
 
 
 BYTES10 = (
@@ -104,12 +102,11 @@ def file_app(connection, request):
 pki = TempPKI()
 server = TempSSLServer(pki, IPv6_LOOPBACK, None, file_app)
 client = server.get_client()
-print(client)
 
 
 count = 5
 deltas = []
-for i in range(3):
+for i in range(5):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
