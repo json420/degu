@@ -5,7 +5,7 @@ import logging
 import json
 import argparse
 
-from degu import IPv6_LOOPBACK
+import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempServer
 from degu.tests.helpers import TempDir
@@ -22,17 +22,14 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='\t'.join([
         '%(levelname)s',
-        '%(processName)s',
         '%(threadName)s',
         '%(message)s',
     ]),
 )
-log = logging.getLogger()
 
 
-def echo_app(connection, request):
-    data = request['body'].read()
-    obj = json.loads(data.decode())
+def ping_pong_app(connection, request):
+    obj = json.loads(request['body'].read().decode())
     body = json.dumps({'pong': obj['ping']}).encode()
     headers = {
         'content-length': len(body),
@@ -45,10 +42,9 @@ if args.unix:
     tmp = TempDir()
     address = tmp.join('my.socket')
 else:
-    address = IPv6_LOOPBACK
-server = TempServer(address, None, echo_app)
+    address = degu.IPv6_LOOPBACK
+server = TempServer(address, None, ping_pong_app)
 client = server.get_client()
-print(client)
 
 
 marker = random_id(60)
@@ -57,21 +53,21 @@ headers = {
     'content-length': len(body),
     'accept': 'application/json',
     'content-type': 'application/json',
+    'user-agent': 'Degu/{}'.format(degu.__version__),
 }
 
 
-count = 10000
+count = 5000
 deltas = []
-for i in range(5):
+for i in range(10):
     start = time.monotonic()
     conn = client.connect()
     for i in range(count):
-        r = conn.request('POST', '/', headers, body)
-        assert json.loads(r.body.read().decode()) == {'pong': marker}
+        data = conn.request('POST', '/', headers, body).body.read()
+        assert json.loads(data.decode()) == {'pong': marker}
     deltas.append(time.monotonic() - start)
     conn.close()
 server.terminate()
 delta = min(deltas)
-print('{:.2f} requests/second'.format(count / delta))
-
+print('\n{:.2f} requests/second'.format(count / delta))
 
