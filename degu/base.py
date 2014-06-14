@@ -162,8 +162,8 @@ def parse_headers(header_lines):
     """
     Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
 
-    The return value will be a ``dict`` mapping header names to header values,
-    and the header names will be case-folded (lowercase).  For example:
+    The return value will be a `dict` mapping header names to header values, and
+    the header names will be case-folded (lowercase).  For example:
 
     >>> parse_headers(['Content-Type: application/json'])
     {'content-type': 'application/json'}
@@ -171,6 +171,8 @@ def parse_headers(header_lines):
     Over time, there is a good chance that parts of Degu will be replaced with
     high-performance C extensions... and this function is a good candidate.
     """
+    if not header_lines:
+        return {}
     headers = {}
     for line in header_lines:
         (key, value) = line.split(': ')

@@ -127,14 +127,14 @@ Parsing functions
     A ``ValueError`` is raised if the Content-Length can't be parsed into an
     integer:
 
-    >>> parse_headers(['Content-Length: E81F3B'])
+    >>> parse_headers(['Content-Length: E81F3B'])  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     ValueError: invalid literal for int() with base 10: 'E81F3B'
 
     Likewise, a ``ValueError`` is raised if the Content-Length is negative:
 
-    >>> parse_headers(['Content-Length: -42'])
+    >>> parse_headers(['Content-Length: -42'])  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     ValueError: negative content-length: -42
@@ -142,7 +142,7 @@ Parsing functions
     If a Transfer-Encoding header is included, this functions will raise a
     ``ValueError`` if the value is anything other than ``'chunked'``.
 
-    >>> parse_headers(['Transfer-Encoding: clumped'])
+    >>> parse_headers(['Transfer-Encoding: clumped'])  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     ValueError: bad transfer-encoding: 'clumped'
@@ -150,10 +150,11 @@ Parsing functions
     Finally, this function will also raise a ``ValueError`` if both
     Content-Length and Transfer-Encoding headers are included:
 
-    >>> parse_headers(['Transfer-Encoding: chunked', 'Content-Length: 1776'])
+    >>> lines = ['Transfer-Encoding: chunked', 'Content-Length: 1776']
+    >>> parse_headers(lines)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: cannot have both 'content-length' and 'transfer-encoding' headers
+    ValueError: cannot have both content-length and transfer-encoding headers
 
 
 
