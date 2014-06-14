@@ -102,6 +102,17 @@ def read_preamble(rfile):
     return (first_line, header_lines)
 
 
+def write_preamble(wfile, first_line, headers):
+    total = wfile.write(first_line.encode('latin_1'))
+    total += wfile.write(b'\r\n')
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    return total
+
+
 def read_chunk(rfile):
     """
     Read a chunk from a chunk-encoded request or response body.
