@@ -62,7 +62,7 @@ def casefold_headers(headers):
     )
 
 
-def random_lines(header_count=10):
+def random_lines(header_count=15):
     first_line = random_id()
     header_lines = [random_id() for i in range(header_count)]
     return (first_line, header_lines)
@@ -236,8 +236,8 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.read(), b'\n')
 
         # Too many headers:
-        (first_line, header_lines) = random_lines(11)
-        self.assertEqual(len(header_lines), 11)
+        (first_line, header_lines) = random_lines(base.MAX_HEADER_COUNT + 1)
+        self.assertEqual(len(header_lines), 16)
         preamble = encode_preamble(first_line, header_lines)
         rfile = io.BytesIO(preamble)
         with self.assertRaises(ValueError) as cm:
@@ -245,14 +245,14 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             'too many headers (> {!r})'.format(base.MAX_HEADER_COUNT)
         )
-        self.assertEqual(rfile.tell(), 288)
+        self.assertEqual(rfile.tell(), 418)
         self.assertFalse(rfile.closed)
         self.assertEqual(rfile.read(),
             header_lines[-1][2:].encode('latin_1') + b'\r\n\r\n'
         )
 
-        (first_line, header_lines) = random_lines(11)
-        self.assertEqual(len(header_lines), 11)
+        (first_line, header_lines) = random_lines(base.MAX_HEADER_COUNT + 1)
+        self.assertEqual(len(header_lines), 16)
         preamble = encode_preamble(first_line, header_lines)
         body = random_body()
         rfile = io.BytesIO(preamble + body)
@@ -261,7 +261,7 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             'too many headers (> {!r})'.format(base.MAX_HEADER_COUNT)
         )
-        self.assertEqual(rfile.tell(), 288)
+        self.assertEqual(rfile.tell(), 418)
         self.assertFalse(rfile.closed)
         self.assertEqual(rfile.read(),
             header_lines[-1][2:].encode('latin_1') + b'\r\n\r\n' + body
@@ -311,7 +311,7 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.read(), b'body')
 
         # Some good random value permutations:
-        for header_count in range(11):
+        for header_count in range(base.MAX_HEADER_COUNT + 1):
             (first_line, header_lines) = random_lines(header_count)
             preamble = encode_preamble(first_line, header_lines)
             body = random_body()

@@ -26,8 +26,8 @@ Common HTTP parser and IO abstractions used by server and client.
 import io
 
 
-MAX_LINE_BYTES = 4096
-MAX_HEADER_COUNT = 10
+MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
+MAX_HEADER_COUNT = 15
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
