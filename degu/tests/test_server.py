@@ -1059,7 +1059,7 @@ def timeout_app(connection, request):
     if request['path'] == ['bar']:
         # Used to test timeout on client side:
         #time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
-        return (200, 'OK', {}, None)
+        return (400, 'Bad Request', {}, None)
     return (404, 'Not Found', {}, None)
 
 
@@ -1109,11 +1109,22 @@ class TestLiveServer(TestCase):
             self.skipTest('skipping as DEGU_TEST_SKIP_TIMEOUT is set')
         (httpd, client) = self.build_with_app(None, timeout_app)
         conn = client.connect()
+
+        # Make an inital request:
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
-        time.sleep(server.SERVER_SOCKET_TIMEOUT + 2)
+
+        # Wait till 1 second *before* the timeout should happen, to make sure
+        # connection is still open:
+        time.sleep(server.SERVER_SOCKET_TIMEOUT - 1)
+        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+
+        # Now tait till 1 second *after* the timeout should have happened, to
+        # make sure the connection was closed by the server:
+        time.sleep(server.SERVER_SOCKET_TIMEOUT + 1)
         with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo')
         self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.sock)
         conn = client.connect()
         self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
         httpd.terminate()
