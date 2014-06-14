@@ -466,10 +466,20 @@ class TestFunctions(TestCase):
             fp.close()
 
     def test_parse_headers(self):
-        # Bad separator:
+        # Too few values:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type:application/json'])
+            base.parse_headers(['foo:bar'])
         self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['foo bar'])
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+
+        # Too many values:
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['foo: bar: baz'])
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 2)'
+        )
 
         # Bad Content-Length:
         with self.assertRaises(ValueError) as cm:
