@@ -31,16 +31,20 @@ Internal API changes:
 Breaking public API changes:
 
     * RGI server applications now take two arguments when handling requests: a
-      *connection* and a *request*, both ``dict`` instances; per-connection
+      *connection* and a *request*, both ``dict`` instances; the per-connection
       state that was previously present in the *request* argument has simply
       been moved into the new *connection* argument, and the *request* argument
       has otherwise not changed
 
-    * If an RGI application object itself has a callable ``on_connection()``
-      attribute, this is called upon receiving a new connection, before any
-      requests have been handled for that connection (note this is only a
-      *breaking* API change if your application object happened to have an
-      ``on_connection`` attribute already used for some other purpose)
+    * If an RGI application object itself has an ``on_connect`` attribute, it
+      must be a callable accepting two arguments (a *sock* and a *connection*);
+      when defined, ``app.on_connect()`` will be called whenever a new
+      connection is recieved, before any requests have been handled for that
+      connection; if ``app.on_connect()`` does not return ``True``, or if any
+      unhandled exception occurs, the socket connection will be immediately
+      shutdown without further processing; note this is only a *breaking* API
+      change if your application object happened to have an ``on_connect``
+      attribute already used for some other purpose
 
 For example, this is how you implemented a *hello, world* RGI application in
 Degu 0.5 and earlier:
@@ -62,8 +66,16 @@ Or here's a version that uses the connection-handling feature new in Degu 0.6:
 ...     def __call__(self, connection, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
-...     def on_connection(self, sock, connection):
+...     def on_connect(self, sock, connection):
 ...         return True
+... 
+
+If the ``app.on_connect`` attribute exists, ``None`` is also a valid value.  If
+needed, this allows you to entirely disable the connection handler in a
+subclass.  For example:
+
+>>> class HelloWorldAppSubclass(HelloWorldApp):
+...     on_connect = None
 ... 
 
 For more details, please see the :doc:`rgi` specification.
@@ -134,11 +146,11 @@ Two things motivated these breaking API changes:
       that connections now are faster to create and have a lower per-connection
       memory footprint
 
-    * In the near future, the Degu client API will support an 
-      ``on_connection()`` handler to allow 3rd party applications to do things
-      like extended per-connection authentication; splitting the client creation
-      out from the connection creation allows most 3rd party code to remain
-      oblivious as to whether such an ``on_connection()`` handler is in use (as
-      most code can merely create connections using the provided client, rather
-      than themselves creating clients)
+    * In the near future, the Degu client API will support an  ``on_connect()``
+      handler to allow 3rd party applications to do things like extended
+      per-connection authentication; splitting the client creation out from the
+      connection creation allows most 3rd party code to remain oblivious as to
+      whether such an ``on_connect()`` handler is in use (as most code can
+      merely create connections using the provided client, rather than
+      themselves creating clients)
 

@@ -670,14 +670,14 @@ class BadConnectionHandler:
     def __call__(self, connection, request):
         pass
 
-    on_connection = 'nope'
+    on_connect = 'nope'
 
 
 class GoodConnectionHandler:
     def __call__(self, connection, request):
         pass
 
-    def on_connection(self, sock, connection):
+    def on_connect(self, sock, connection):
         pass
 
 
@@ -722,15 +722,15 @@ class TestServer(TestCase):
             'app: not callable: {!r}'.format(bad_app)
         )
 
-        # app.on_connection not callable:
+        # app.on_connect not callable:
         bad_app = BadConnectionHandler()
         with self.assertRaises(TypeError) as cm:
             server.Server(degu.IPv6_LOOPBACK, bad_app)
         self.assertEqual(str(cm.exception),
-            'app.on_connection: not callable: {!r}'.format(bad_app)
+            'app.on_connect: not callable: {!r}'.format(bad_app)
         )
 
-        # Good app.on_connection:
+        # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.Server(degu.IPv6_LOOPBACK, app)
         self.assertEqual(inst.scheme, 'http')
@@ -738,7 +738,7 @@ class TestServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connection, app.on_connection)
+        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -906,15 +906,15 @@ class TestSSLServer(TestCase):
             'app: not callable: {!r}'.format(bad_app)
         )
 
-        # app.on_connection not callable:
+        # app.on_connect not callable:
         bad_app = BadConnectionHandler()
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, bad_app)
         self.assertEqual(str(cm.exception),
-            'app.on_connection: not callable: {!r}'.format(bad_app)
+            'app.on_connect: not callable: {!r}'.format(bad_app)
         )
 
-        # Good app.on_connection:
+        # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
         self.assertEqual(inst.scheme, 'https')
@@ -922,7 +922,7 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connection, app.on_connection)
+        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
@@ -1073,7 +1073,7 @@ class AppWithConnectionHandler:
     def __call__(self, connection, request):
         return (200, 'OK', {}, self.marker)
 
-    def on_connection(self, sock, connection):
+    def on_connect(self, sock, connection):
         return self.accept
 
 

@@ -157,7 +157,7 @@ Application callables
 RGI applications must provide a callable object to handle requests (equivalent
 to the WSGI *application* callable).
 
-However, if this application object itself has a callable ``on_connection``
+However, if this application object itself has a callable ``on_connect``
 attribute, this is called whenever a new connection is received, before any
 requests are handled for that connection.
 
@@ -167,23 +167,23 @@ example middleware application:
 >>> class Middleware:
 ...     def __init__(self, app):
 ...         self.app = app
-...         if callable(getattr(app, 'on_connection', None)):
-...             self._on_connection = app.on_connection
+...         if callable(getattr(app, 'on_connect', None)):
+...             self._on_connect = app.on_connect
 ...         else:
-...             self._on_connection = None
+...             self._on_connect = None
 ... 
 ...     def __call__(self, connection, request):
 ...         return self.app(connection, request)
 ... 
-...     def on_connection(self, sock, connection):
-...         if self._on_connection is None:
+...     def on_connect(self, sock, connection):
+...         if self._on_connect is None:
 ...             return True
-...         return self._on_connection(sock, connection)
+...         return self._on_connect(sock, connection)
 ... 
 
-When an application has an ``on_connection()`` callable attribute, it must
+When an application has an ``on_connect()`` callable attribute, it must
 return ``True`` in order for the connection to be accepted.  If
-``on_connection()`` does not return ``True``, or if any unhandled exception is
+``on_connect()`` does not return ``True``, or if any unhandled exception is
 raised, the connection will be rejected without any further processing, before
 any requests are handled.
 
@@ -192,7 +192,7 @@ any requests are handled.
 Handling connections
 --------------------
 
-If an RGI application has a callable ``on_connection`` attribute, it will be
+If an RGI application has a callable ``on_connect`` attribute, it will be
 passed two arguments when handling connections: a *sock* and a *connection*.
 
 The *sock* will be either a ``socket.socket`` instance or an ``ssl.SSLSocket``
@@ -200,7 +200,7 @@ instance.
 
 The *connection* will be a ``dict`` containing the per-connection environment
 already created by the server, which will be a subset of the equivalent
-information in the WSGI *environ*.  Importantly, ``on_connection()`` is called
+information in the WSGI *environ*.  Importantly, ``on_connect()`` is called
 before any requests have been handled, and the *connection* argument will not
 contain any request related information.
 
@@ -215,7 +215,7 @@ The *connection* argument will look something like this::
         'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
     }
 
-When needed, the ``on_connection()`` connection-handler can add additional
+When needed, the ``on_connect()`` connection-handler can add additional
 information to the *connection* ``dict``, and this same *connection* ``dict``
 instance will be passed to the main ``application.__call__()`` method when
 handling each request within the lifetime of that connection.
@@ -229,7 +229,7 @@ which the connection was made, respectively.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, there is a simple, pythonic name-spacing rule: the
-``on_connection()`` callable should only add keys that start with ``'_'``
+``on_connect()`` callable should only add keys that start with ``'_'``
 (underscore).
 
 For example:
@@ -239,7 +239,7 @@ For example:
 ...     def __call__(self, connection, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
-...     def on_connection(self, sock, connection):
+...     def on_connect(self, sock, connection):
 ...         if not isinstance(sock, ssl.SSLSocket):  # Require SSL 
 ...             return False
 ...         connection['_user'] = '<User public key hash>'
@@ -283,7 +283,7 @@ persistent throughout all request handled during the connection's lifetime.
 
 In order to avoid conflicts with additional *connection* information that may be
 added by future RGI servers, and to avoid conflicts with information added by a
-possible ``on_connection()`` handler, there is a simple, pythonic name-spacing
+possible ``on_connect()`` handler, there is a simple, pythonic name-spacing
 rule: the request handler should only add keys that start with ``'__'`` (double
 underscore).
 
