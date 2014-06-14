@@ -175,14 +175,6 @@ def parse_headers(header_lines):
     for line in header_lines:
         (key, value) = line.split(': ')
         key = key.casefold()
-        if key.strip() != key:
-            raise ValueError(
-                'extraneous whitespace in header name: {!r}'.format(key)
-            )
-        if value.strip() != value:
-            raise ValueError(
-                'extraneous whitespace in {!r} header: {!r}'.format(key, value)
-            )
         if key in headers:
             raise ValueError('duplicate header: {!r}'.format(key))
         headers[key] = value
