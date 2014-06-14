@@ -171,8 +171,6 @@ def parse_headers(header_lines):
     Over time, there is a good chance that parts of Degu will be replaced with
     high-performance C extensions... and this function is a good candidate.
     """
-    if not header_lines:
-        return {}
     headers = {}
     for line in header_lines:
         (key, value) = line.split(': ')

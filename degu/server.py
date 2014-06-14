@@ -365,7 +365,7 @@ class Handler:
         """
         (request_line, header_lines) = read_preamble(self.rfile)
         (method, path_list, query) = parse_request(request_line)
-        headers = parse_headers(header_lines)
+        headers = (parse_headers(header_lines) if header_lines else {})
         # Hack for compatibility with the CouchDB replicator, which annoyingly
         # sends a {'content-length': 0} header with all GET and HEAD requests:
         if method in {'GET', 'HEAD'} and 'content-length' in headers:
