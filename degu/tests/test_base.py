@@ -466,73 +466,19 @@ class TestFunctions(TestCase):
             fp.close()
 
     def test_parse_headers(self):
-        # Bad separator:
+        # Too few values:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type:application/json'])
+            base.parse_headers(['foo:bar'])
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+        with self.assertRaises(ValueError) as cm:
+            base.parse_headers(['foo bar'])
         self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
 
-        # Extraneous whitespace in header name:
+        # Too many values:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type : application/json'])
+            base.parse_headers(['foo: bar: baz'])
         self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: 'content-type '"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers([' Content-Type: application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: ' content-type'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type\t: application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: 'content-type\\t'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['\tContent-Type: application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: '\\tcontent-type'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type\r: application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: 'content-type\\r'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['\rContent-Type: application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in header name: '\\rcontent-type'"
-        )
-
-        # Extraneous whitespace in header value:
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type: application/json '])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: 'application/json '"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type:  application/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: ' application/json'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type: application/json\t'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: 'application/json\\t'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type: \tapplication/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: '\\tapplication/json'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type: application/json\r'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: 'application/json\\r'"
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Type: \rapplication/json'])
-        self.assertEqual(str(cm.exception),
-            "extraneous whitespace in 'content-type' header: '\\rapplication/json'"
+            'too many values to unpack (expected 2)'
         )
 
         # Bad Content-Length:
@@ -553,17 +499,19 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
 
         # Duplicate header:
-        lines = ('Content-Type: text/plain', 'content-type: text/plain')
+        lines = ['Content-Type: text/plain', 'content-type: text/plain']
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(lines)
-        self.assertEqual(str(cm.exception), "duplicate header: 'content-type'")
+        self.assertEqual(str(cm.exception),
+            'duplicates in header_lines:\n  ' + '\n  '.join(lines)
+        )
 
         # Content-Length with Transfer-Encoding:
         lines = ('Content-Length: 17', 'Transfer-Encoding: chunked')
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(lines)
         self.assertEqual(str(cm.exception),
-            "cannot have both 'content-length' and 'transfer-encoding' headers"
+            'cannot have both content-length and transfer-encoding headers'
         )
 
         # Test a number of good single values:

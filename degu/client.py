@@ -221,7 +221,7 @@ def parse_status(line):
 def read_response(rfile, method):
     (status_line, header_lines) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
-    headers = parse_headers(header_lines)
+    headers = (parse_headers(header_lines) if header_lines else {})
     if 'content-length' in headers and method != 'HEAD':
         body = Input(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:

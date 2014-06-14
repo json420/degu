@@ -102,6 +102,17 @@ def read_preamble(rfile):
     return (first_line, header_lines)
 
 
+def write_preamble(wfile, first_line, headers):
+    total = wfile.write(first_line.encode('latin_1'))
+    total += wfile.write(b'\r\n')
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    return total
+
+
 def read_chunk(rfile):
     """
     Read a chunk from a chunk-encoded request or response body.
@@ -151,8 +162,8 @@ def parse_headers(header_lines):
     """
     Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
 
-    The return value will be a ``dict`` mapping header names to header values,
-    and the header names will be case-folded (lowercase).  For example:
+    The return value will be a `dict` mapping header names to header values, and
+    the header names will be case-folded (lowercase).  For example:
 
     >>> parse_headers(['Content-Type: application/json'])
     {'content-type': 'application/json'}
@@ -163,18 +174,11 @@ def parse_headers(header_lines):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(': ')
-        key = key.casefold()
-        if key.strip() != key:
-            raise ValueError(
-                'extraneous whitespace in header name: {!r}'.format(key)
-            )
-        if value.strip() != value:
-            raise ValueError(
-                'extraneous whitespace in {!r} header: {!r}'.format(key, value)
-            )
-        if key in headers:
-            raise ValueError('duplicate header: {!r}'.format(key))
-        headers[key] = value
+        headers[key.casefold()] = value
+    if len(headers) != len(header_lines):
+        raise ValueError(
+            'duplicates in header_lines:\n  ' + '\n  '.join(header_lines)
+        )
     if 'content-length' in headers:
         headers['content-length'] = int(headers['content-length'])
         if headers['content-length'] < 0:
@@ -183,7 +187,7 @@ def parse_headers(header_lines):
             ) 
         if 'transfer-encoding' in headers:
             raise ValueError(
-                "cannot have both 'content-length' and 'transfer-encoding' headers"
+                'cannot have both content-length and transfer-encoding headers'
             ) 
     elif 'transfer-encoding' in headers:
         if headers['transfer-encoding'] != 'chunked':
