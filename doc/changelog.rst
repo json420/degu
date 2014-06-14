@@ -7,11 +7,11 @@ Changelog
 
 Changes:
 
-    * Document many of the internal API functions in :mod:`degu.base` (note that
-      none of these are API stable yet)
-
     * Consolidate previously scattered and undocumented RGI server application
       helper functions into the new :mod:`degu.util` module
+
+    * Document some of the internal API functions in :mod:`degu.base` (note that
+      none of these are API stable yet)
 
     * Document the :class:`degu.base.Input` and :class:`degu.base.ChunkedInput`
       classes, plus add a new ``chunked`` instance attribute to both
