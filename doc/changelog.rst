@@ -7,8 +7,8 @@ Changelog
 
 Changes:
 
-    * :func:`degu.base.parse_headers()` now raises a ``ValueError`` if there is
-      leading or trailing whitespace in a header name or header value
+    * Document many of the internal API functions in :mod:`degu.base` (note that
+      none of these are API stable yet)
 
     * Consolidate previously scattered and undocumented RGI server application
       helper functions into the new :mod:`degu.util` module
