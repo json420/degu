@@ -110,10 +110,13 @@ Parsing functions
     Although allowed by HTTP/1.1 (but seldom used in practice), this function
     does not permit multiple occurrences of the same header name:
 
-    >>> parse_headers(['content-type: foo/bar', 'Content-Type: stuff/junk'])
+    >>> lines = ['content-type: foo/bar', 'Content-Type: stuff/junk']
+    >>> parse_headers(lines)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: duplicate header: 'content-type'
+    ValueError: duplicates in header_lines:
+      content-type: foo/bar
+      Content-Type: stuff/junk
 
     If a Content-Length header is included, its value will be parsed into an
     ``int`` and validated:

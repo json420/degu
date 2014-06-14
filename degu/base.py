@@ -174,10 +174,11 @@ def parse_headers(header_lines):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(': ')
-        key = key.casefold()
-        if key in headers:
-            raise ValueError('duplicate header: {!r}'.format(key))
-        headers[key] = value
+        headers[key.casefold()] = value
+    if len(headers) != len(header_lines):
+        raise ValueError(
+            'duplicates in header_lines:\n  ' + '\n  '.join(header_lines)
+        )
     if 'content-length' in headers:
         headers['content-length'] = int(headers['content-length'])
         if headers['content-length'] < 0:
@@ -186,7 +187,7 @@ def parse_headers(header_lines):
             ) 
         if 'transfer-encoding' in headers:
             raise ValueError(
-                "cannot have both 'content-length' and 'transfer-encoding' headers"
+                'cannot have both content-length and transfer-encoding headers'
             ) 
     elif 'transfer-encoding' in headers:
         if headers['transfer-encoding'] != 'chunked':

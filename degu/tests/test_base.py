@@ -489,17 +489,19 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
 
         # Duplicate header:
-        lines = ('Content-Type: text/plain', 'content-type: text/plain')
+        lines = ['Content-Type: text/plain', 'content-type: text/plain']
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(lines)
-        self.assertEqual(str(cm.exception), "duplicate header: 'content-type'")
+        self.assertEqual(str(cm.exception),
+            'duplicates in header_lines:\n  ' + '\n  '.join(lines)
+        )
 
         # Content-Length with Transfer-Encoding:
         lines = ('Content-Length: 17', 'Transfer-Encoding: chunked')
         with self.assertRaises(ValueError) as cm:
             base.parse_headers(lines)
         self.assertEqual(str(cm.exception),
-            "cannot have both 'content-length' and 'transfer-encoding' headers"
+            'cannot have both content-length and transfer-encoding headers'
         )
 
         # Test a number of good single values:
