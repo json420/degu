@@ -31,13 +31,13 @@ Internal API changes:
 Breaking public API changes:
 
     * RGI server applications now take two arguments when handling requests: a
-      *connection* and a *request*, both ``dict`` instances; the per-connection
+      *session* and a *request*, both ``dict`` instances; the per-connection
       state that was previously present in the *request* argument has simply
-      been moved into the new *connection* argument, and the *request* argument
+      been moved into the new *session* argument, and the *request* argument
       has otherwise not changed
 
     * If an RGI application object itself has an ``on_connect`` attribute, it
-      must be a callable accepting two arguments (a *sock* and a *connection*);
+      must be a callable accepting two arguments (a *sock* and a *session*);
       when defined, ``app.on_connect()`` will be called whenever a new
       connection is recieved, before any requests have been handled for that
       connection; if ``app.on_connect()`` does not return ``True``, or if any
@@ -55,7 +55,7 @@ Degu 0.5 and earlier:
 
 As of Degu 0.6, it must now be implemented like this:
 
->>> def hello_world_app(connection, request):
+>>> def hello_world_app(session, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
@@ -63,10 +63,10 @@ Or here's a version that uses the connection-handling feature new in Degu 0.6:
 
 >>> class HelloWorldApp:
 ... 
-...     def __call__(self, connection, request):
+...     def __call__(self, session, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
-...     def on_connect(self, sock, connection):
+...     def on_connect(self, sock, session):
 ...         return True
 ... 
 
