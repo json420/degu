@@ -86,7 +86,7 @@ Functions
     abstracted from their exact mount point within a REST API.
 
 
-.. function:: output_from_input(connection, input_body)
+.. function:: output_from_input(session, input_body)
 
     Create an RGI output abstraction instance from an RGI input abstraction.
 
@@ -98,12 +98,12 @@ Functions
     semantics of a chunk-encoded body (determined by the presence of a
     ``{'transfer-encoding': 'chunked'}`` header).
 
-    The *connection* argument must have at least ``'rgi.Output'`` and
+    The *session* argument must have at least ``'rgi.Output'`` and
     ``'rgi.ChunkedOutput'`` keys, which specify the classes used for the return
     value instances, assuming the *input_body* isn't ``None``:
 
     >>> from degu import base
-    >>> connection = {
+    >>> session = {
     ...     'rgi.Output': base.Output,
     ...     'rgi.ChunkedOutput': base.ChunkedOutput,
     ... }
@@ -112,18 +112,18 @@ Functions
     If the *input_body* is ``None``, then ``None`` will be returned:
 
     >>> from degu.util import output_from_input
-    >>> output_from_input(connection, None) is None
+    >>> output_from_input(session, None) is None
     True
 
     Otherwise, if ``input_body.chunked`` is ``False``, then a
-    ``connection['rgi.Output']`` instance wrapping the *input_body* is returned.
+    ``session['rgi.Output']`` instance wrapping the *input_body* is returned.
     Specifically, in Degu, if the *input_body* is a :class:`degu.base.Input`
     instance, then a :class:`degu.base.Output` instance is returned:
 
     >>> from io import BytesIO
     >>> rfile = BytesIO(b'hello, world')
     >>> input_body = base.Input(rfile, 12)
-    >>> output_body = output_from_input(connection, input_body)
+    >>> output_body = output_from_input(session, input_body)
     >>> isinstance(output_body, base.Output)
     True
     >>> output_body.source is input_body
@@ -132,14 +132,14 @@ Functions
     [b'hello, world']
 
     Likewise, if ``input_body.chunked`` is ``True``, then a
-    ``connection['rgi.ChunkedOutput']`` instance wrapping the *input_body* is
+    ``session['rgi.ChunkedOutput']`` instance wrapping the *input_body* is
     returned.  Specifically, in Degu, if the *input_body* is a
     :class:`degu.base.ChunkedInput` instance, a :class:`degu.base.ChunkedOutput`
     instance is returned:
 
     >>> rfile = BytesIO(b'5\r\nhello\r\n7\r\nnaughty\r\n5\r\nnurse\r\n0\r\n\r\n')
     >>> input_body = base.ChunkedInput(rfile)
-    >>> output_body = output_from_input(connection, input_body)
+    >>> output_body = output_from_input(session, input_body)
     >>> isinstance(output_body, base.ChunkedOutput)
     True
     >>> output_body.source is input_body
@@ -147,7 +147,7 @@ Functions
     >>> list(output_body)
     [b'hello', b'naughty', b'nurse', b'']
 
-    Note that the reason to pass the *connection* argument is so that this
+    Note that the reason to pass the *session* argument is so that this
     function is abstracted from the exact output wrapper classes used in RGI
     server implementations other than Degu (similar to the `WSGI`_
     ``environ['wsgi.file_wrapper']``).

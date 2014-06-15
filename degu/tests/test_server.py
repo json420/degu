@@ -47,7 +47,7 @@ from degu import base, server
 random = SystemRandom()
 
 
-def standard_harness_app(connection, request):
+def standard_harness_app(session, request):
     if len(request['path']) == 3 and request['path'][0] == 'status':
         code = int(request['path'][1])
         reason = request['path'][2]
@@ -518,11 +518,11 @@ class TestHandler(TestCase):
     def test_init(self):
         app = random_id()
         sock = DummySocket()
-        connection = random_id()
-        handler = server.Handler(app, sock, connection)
+        session = random_id()
+        handler = server.Handler(app, sock, session)
         self.assertIs(handler.closed, False)
         self.assertIs(handler.app, app)
-        self.assertIs(handler.connection, connection)
+        self.assertIs(handler.session, session)
         self.assertIs(handler.sock, sock)
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
@@ -662,22 +662,22 @@ class BadApp:
     """
 
 
-def good_app(connection, request):
+def good_app(session, request):
     return (200, 'OK', {}, None)
 
 
 class BadConnectionHandler:
-    def __call__(self, connection, request):
+    def __call__(self, session, request):
         pass
 
     on_connect = 'nope'
 
 
 class GoodConnectionHandler:
-    def __call__(self, connection, request):
+    def __call__(self, session, request):
         pass
 
-    def on_connect(self, sock, connection):
+    def on_connect(self, sock, session):
         pass
 
 
@@ -806,14 +806,14 @@ class TestServer(TestCase):
             'Custom({!r}, {!r})'.format(inst.address, good_app)
         )
 
-    def test_build_base_connection(self):
+    def test_build_base_session(self):
         class ServerSubclass(server.Server):
             def __init__(self, address):
                 self.address = address
 
         address = (random_id(), random_id())
         inst = ServerSubclass(address)
-        self.assertEqual(inst.build_base_connection(), {
+        self.assertEqual(inst.build_base_session(), {
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -976,14 +976,14 @@ class TestSSLServer(TestCase):
             'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
 
-    def test_build_base_connection(self):
+    def test_build_base_session(self):
         class SSLServerSubclass(server.SSLServer):
             def __init__(self, address):
                 self.address = address
 
         address = (random_id(), random_id())
         inst = SSLServerSubclass(address)
-        self.assertEqual(inst.build_base_connection(), {
+        self.assertEqual(inst.build_base_session(), {
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -1002,7 +1002,7 @@ CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 
 
-def chunked_request_app(connection, request):
+def chunked_request_app(session, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
@@ -1016,15 +1016,15 @@ def chunked_request_app(connection, request):
     return (200, 'OK', headers, body)
 
 
-def chunked_response_app(connection, request):
+def chunked_response_app(session, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = connection['rgi.ChunkedOutput'](CHUNKS)
+        body = session['rgi.ChunkedOutput'](CHUNKS)
     elif request['path'] == ['bar']:
-        body = connection['rgi.ChunkedOutput']([b''])
+        body = session['rgi.ChunkedOutput']([b''])
     else:
         return (404, 'Not Found', {}, None)
     return (200, 'OK', headers, body)
@@ -1035,21 +1035,21 @@ DATA2 = os.urandom(3469)
 DATA = DATA1 + DATA2
 
 
-def response_app(connection, request):
+def response_app(session, request):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = connection['rgi.Output']([DATA1, DATA2], len(DATA))
+        body = session['rgi.Output']([DATA1, DATA2], len(DATA))
     elif request['path'] == ['bar']:
-        body = connection['rgi.Output']([b'', b''], 0)
+        body = session['rgi.Output']([b'', b''], 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
     return (200, 'OK', headers, body)
 
 
-def timeout_app(connection, request):
+def timeout_app(session, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['body'] is None
@@ -1070,10 +1070,10 @@ class AppWithConnectionHandler:
         self.marker = marker
         self.accept = accept
 
-    def __call__(self, connection, request):
+    def __call__(self, session, request):
         return (200, 'OK', {}, self.marker)
 
-    def on_connect(self, sock, connection):
+    def on_connect(self, sock, session):
         return self.accept
 
 
@@ -1326,11 +1326,11 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         return (httpd, Client(httpd.address))
 
 
-def ssl_app(connection, request):
-    assert connection['ssl_cipher'] == (
+def ssl_app(session, request):
+    assert session['ssl_cipher'] == (
         'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
     )
-    assert connection['ssl_compression'] is None
+    assert session['ssl_compression'] is None
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None

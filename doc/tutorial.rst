@@ -40,7 +40,7 @@ Example: SSL reverse-proxy
 
 Here's a minimal :doc:`rgi` application:
 
->>> def example_app(connection, request):
+>>> def example_app(session, request):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
@@ -105,21 +105,21 @@ will use the :func:`degu.util.relative_uri()` and
 ...     def __init__(self, address):
 ...         self.client = Client(address)
 ... 
-...     def __call__(self, connection, request):
-...         if '__conn' not in connection:
-...             connection['__conn'] = self.client.connect()
-...         conn = connection['__conn']
+...     def __call__(self, session, request):
+...         if '__conn' not in session:
+...             session['__conn'] = self.client.connect()
+...         conn = session['__conn']
 ...         response = conn.request(
 ...             request['method'],
 ...             relative_uri(request),
 ...             request['headers'],
-...             output_from_input(connection, request['body'])
+...             output_from_input(session, request['body'])
 ...         )
 ...         return (
 ...             response.status,
 ...             response.reason,
 ...             response.headers,
-...             output_from_input(connection, response.body)
+...             output_from_input(session, response.body)
 ...         )
 ...
 

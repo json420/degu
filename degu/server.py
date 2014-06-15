@@ -330,11 +330,11 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    def __init__(self, app, sock, connection):
+    def __init__(self, app, sock, session):
         self.closed = False
         self.app = app
         self.sock = sock
-        self.connection = connection
+        self.session = session
         (self.rfile, self.wfile) = makefiles(sock)
 
     def close(self):
@@ -346,14 +346,14 @@ class Handler:
     def handle(self):
         while self.closed is False:
             self.handle_one()
-            self.connection['requests'] += 1
+            self.session['requests'] += 1
 
     def handle_one(self):
         request = self.build_request()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
-        response = self.app(self.connection, request)
+        response = self.app(self.session, request)
         if request_body and not request_body.closed:
             raise UnconsumedRequestError(request_body)
         validate_response(request, response)
@@ -505,7 +505,7 @@ class Handler:
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closing connection to %r after %d %r',
-                self.connection['client'], status, reason
+                self.session['client'], status, reason
             )
 
     def write_status_only(self, status, reason):
@@ -561,11 +561,11 @@ class Server:
             self.__class__.__name__, self.address, self.app
         )
 
-    def build_base_connection(self):
+    def build_base_session(self):
         """
-        Builds the base connection used throughout instance lifetime.
+        Builds the base session used throughout the server lifetime.
 
-        Each new *connection* argument starts out as a copy of this.
+        Each new *session* argument starts out as a copy of this.
         """
         return {
             'scheme': self.scheme,
@@ -578,31 +578,31 @@ class Server:
         }
 
     def serve_forever(self):
-        base_connection = self.build_base_connection()
+        base_session = self.build_base_session()
         while True:
             (sock, address) = self.sock.accept()
             log.info('Connection from %r; active threads: %d',
                 address, threading.active_count()
             )
-            connection = base_connection.copy()
-            connection['client'] = address
+            session = base_session.copy()
+            session['client'] = address
             thread = threading.Thread(
                 target=self.worker,
-                args=(sock, connection),
+                args=(sock, session),
                 daemon=True
             )
             thread.start()
 
-    def worker(self, sock, connection):
+    def worker(self, sock, session):
         try:
             sock.settimeout(SERVER_SOCKET_TIMEOUT)
-            self.handler(sock, connection)
+            self.handler(sock, session)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
-                connection['requests'], connection['client'], e
+                session['requests'], session['client'], e
             )
         except:
-            log.exception('Client: %r', connection['client'])
+            log.exception('Client: %r', session['client'])
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
@@ -610,12 +610,12 @@ class Server:
             except OSError:
                 pass
 
-    def handler(self, sock, connection):
-        if self.on_connect is None or self.on_connect(sock, connection) is True:
-            handler = Handler(self.app, sock, connection)
+    def handler(self, sock, session):
+        if self.on_connect is None or self.on_connect(sock, session) is True:
+            handler = Handler(self.app, sock, session)
             handler.handle()
         else:
-            log.warning('rejecting connection: %r', connection['client'])
+            log.warning('rejecting connection: %r', session['client'])
 
 
 class SSLServer(Server):
@@ -630,11 +630,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def handler(self, sock, connection):
+    def handler(self, sock, session):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
-        connection.update({
+        session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super().handler(sock, connection)
+        super().handler(sock, session)
 
