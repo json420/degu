@@ -35,7 +35,7 @@ from hashlib import sha1
 
 from .sslhelpers import PKI
 from . import start_server, start_sslserver
-from .client import Client, SSLClient, build_client_sslctx
+from .client import SSLClient, build_client_sslctx
 
 
 def get_value(value):
@@ -139,9 +139,6 @@ class TempServer(_TempProcess):
             address, build_func, *build_args
         )
         self.url = address_to_url('http', self.address)
-
-    def get_client(self):
-        return Client(self.address)
 
 
 class TempSSLServer(_TempProcess):

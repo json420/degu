@@ -1082,7 +1082,7 @@ class TestLiveServer(TestCase):
 
     def build_with_app(self, build_func, *build_args):
         httpd = TempServer(self.address, build_func, *build_args)
-        client = httpd.get_client()
+        client = Client(httpd.address)
         return (httpd, client)
 
     def test_timeout(self):
@@ -1323,8 +1323,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         filename = tmp.join('my.socket')
         httpd = TempServer(filename, build_func, *build_args)
         httpd._tmp = tmp
-        client = httpd.get_client()
-        return (httpd, client)
+        return (httpd, Client(httpd.address))
 
 
 def ssl_app(connection, request):
