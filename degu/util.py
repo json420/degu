@@ -99,14 +99,14 @@ def absolute_uri(request):
     return uri
 
 
-def output_from_input(connection, input_body):
+def output_from_input(session, input_body):
     """
     Build an RGI output abstraction from an RGI input abstraction.
     """
     if input_body is None:
         return None
     if input_body.chunked:
-        return connection['rgi.ChunkedOutput'](input_body)
+        return session['rgi.ChunkedOutput'](input_body)
     else:
-        return connection['rgi.Output'](input_body, input_body.content_length)
+        return session['rgi.Output'](input_body, input_body.content_length)
 
