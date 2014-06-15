@@ -39,7 +39,7 @@ import degu
 from degu import util
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
-from degu.client import Client
+from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import TYPE_ERROR
 from degu import base, server
 
@@ -1341,8 +1341,8 @@ class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
         pki = TempPKI(client_pki=True)
         httpd = TempSSLServer(pki, self.address, build_func, *build_args)
-        client = httpd.get_client()
-        return (httpd, client)
+        sslctx = build_client_sslctx(pki.get_client_config())
+        return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
@@ -1360,7 +1360,8 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with no client cert:
-        client = httpd.get_client({'ca_file': client_config['ca_file']})
+        sslctx = build_client_sslctx({'ca_file': client_config['ca_file']})
+        client = SSLClient(sslctx, httpd.address)
         with self.assertRaises(ssl.SSLError) as cm:
             client.connect()
         self.assertTrue(
@@ -1370,11 +1371,12 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with the wrong client cert (not signed by client CA):
-        client = httpd.get_client({
+        sslctx = build_client_sslctx({
             'ca_file': client_config['ca_file'],
             'cert_file': server_config['cert_file'],
             'key_file': server_config['key_file'],
         })
+        client = SSLClient(sslctx, httpd.address)
         with self.assertRaises(ssl.SSLError) as cm:
             client.connect()
         self.assertTrue(
@@ -1384,7 +1386,8 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with a properly configured SSLClient:
-        client = httpd.get_client()
+        sslctx = build_client_sslctx(client_config)
+        client = SSLClient(sslctx, httpd.address)
         conn = client.connect()
         response = conn.request('GET', '/')
         self.assertEqual(response.status, 200)
