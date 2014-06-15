@@ -39,34 +39,75 @@ RGI focuses on improvement in a number of areas:
 Big picture
 -----------
 
-`WSGI`_ applications convey their response status and response headers by
-calling ``start_response(status, headers)``, and then separately convey their
-response body via their return value.
+As `WSGI`_ is a refined and well understood specification, it's helpful to
+introduce RGI by comparing and contrasting it with WSGI.
 
-In contrast, RGI applications convey their entire response through a 4-tuple
-return value::
+WSGI applications are called with two arguments when handling a request:
 
-    (status, reason, headers, body)
+>>> def tiny_wsgi_app(environ, start_response):
+...     start_response('200 OK', [('Content-Length', '12')])
+...     return [b'hello, world']
+...
 
-Note that WSGI uses a single status string like ``'404 Not Found'``, whereas RGI
-uses a status integer like ``404`` plus a reason string like ``'Not Found'``.
+The WSGI *environ* is a ``dict`` containing information from three distinct
+domains:
 
-RGI applications are called with two arguments when handling requests, a
-*connection* and a *request*, both of which are ``dict`` instances.  For
-example:
+    1. Server-wide information that will be the same throughout the server
+       process lifetime (for example, the server IP and port)
 
->>> def hello_world_app(connection, request):
+    2. Per-connection information that will be the same throughout all HTTP
+       requests handled by a specific TCP connection (for example, the client IP
+       and port)
+
+    3. Per-request information used only for the single HTTP request being
+       handled (for example, the HTTP request method and request headers)
+
+For each request, the WSGI application will be called with a unique *environ*
+instance used only for that request, which is built by copying the server-wide
+information, adding in the per-connection information, and finally adding in the
+per-request information.
+
+WSGI applications convey their response status and response headers by calling
+``start_response()``, and then separately convey their response body via their
+return value.
+
+In contrast, RGI applications don't use anything like ``start_response()``, and
+instead convey their entire response via a 4-tuple return value.
+
+RGI applications are likewise called with two arguments when handling a request:
+
+>>> def tiny_rgi_app(session, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-In combination, these two arguments provide the equivalent of the WSGI *environ*
-argument, the difference being that the *connection* provides strictly
-per-connection information, and the *request* provides strictly per-request
+The RGI *session* is a ``dict`` containing the server-wide and per-connection
+information, and the RGI *request* is a ``dict`` containing only the per-request
 information.
+
+Importantly, a *session* instance is created for each new connection, and then
+RGI applications are called with this exact same *session* instance for each
+request made throughout the lifetime of the connection.
+
+As such, RGI applications can use the *session* to store per-connection
+resources that will persist from one request to the next.  For example, an RGI
+reverse-proxy application could use this to lazily create its upstream HTTP
+client connection, and then reuse it on subsequent requests.
+
+However, as expected, RGI applications are called with a unique *request*
+instance for each request.
+
+If an RGI application
+
+>>> class TinyRGIApp:
+...     def __call__(session, request):
+...         return (200, 'OK', {'content-length': 12}, b'hello, world')
+...
+
 
 For example, this WSGI *environ*::
 
     environ = {
+        'wsgi.version': (1, 0),
         'wsgi.url_scheme': 'http',
         'SERVER_PROTOCOL': 'HTTP/1.1',
         'SERVER_NAME': '192.168.1.2',
@@ -83,9 +124,10 @@ For example, this WSGI *environ*::
         'wsgi.input': <file-like request body>,
     }
 
-Would translate into this RGI *connection* and *request*::
+Would translate into this RGI *environ* and *request*::
 
-    connection = {
+    environ = {
+        'rgi.version': (0, 1),
         'scheme': 'http',
         'protocol': 'HTTP/1.1',
         'server': ('192.168.1.2', 2345)
@@ -150,6 +192,21 @@ per-connection state and per-request state offers unique possibilities provided
 by few (if any) current HTTP server application APIs.
 
 
+Before getting into any differences, it's important to understand where RGI
+aims to be *exactly* the same as WSGI:
+
+    * Scope - all semantics expressible in WSGI are directly expressible in RGI,
+      just done a bit differently; there is a simple one-to-one mapping between
+      anything you can do with WSGI and the equivalent way of doing it with RGI
+
+    * Abstraction level - if you were hoping for a high-level web framework API,
+      prepare to be disappointed, because RGI is just as low-level as WSGI;
+      although RGI aims to make it more *joyous* to work at this low-level, RGI
+      is in complete agreement with WSGI when it comes to what the API
+      abstraction level should be
+
+
+
 
 Application callables
 ---------------------
@@ -167,10 +224,8 @@ example middleware application:
 >>> class Middleware:
 ...     def __init__(self, app):
 ...         self.app = app
-...         if callable(getattr(app, 'on_connect', None)):
-...             self._on_connect = app.on_connect
-...         else:
-...             self._on_connect = None
+...         self._on_connect = getattr(app, 'on_connect', None)
+...         assert self._on_connect is None or callable(self._on_connect)
 ... 
 ...     def __call__(self, connection, request):
 ...         return self.app(connection, request)
