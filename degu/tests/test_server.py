@@ -39,7 +39,7 @@ import degu
 from degu import util
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
-from degu.client import Client
+from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import TYPE_ERROR
 from degu import base, server
 
@@ -1082,7 +1082,7 @@ class TestLiveServer(TestCase):
 
     def build_with_app(self, build_func, *build_args):
         httpd = TempServer(self.address, build_func, *build_args)
-        client = httpd.get_client()
+        client = Client(httpd.address)
         return (httpd, client)
 
     def test_timeout(self):
@@ -1322,9 +1322,8 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         tmp = TempDir()
         filename = tmp.join('my.socket')
         httpd = TempServer(filename, build_func, *build_args)
-        httpd._tmp = tmp
-        client = httpd.get_client()
-        return (httpd, client)
+        httpd.tmp = tmp
+        return (httpd, Client(httpd.address))
 
 
 def ssl_app(connection, request):
@@ -1340,16 +1339,19 @@ def ssl_app(connection, request):
 
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, self.address, build_func, *build_args)
-        client = httpd.get_client()
-        return (httpd, client)
+        pki = TempPKI()
+        httpd = TempSSLServer(
+            pki.get_server_config(), self.address, build_func, *build_args
+        )
+        httpd.pki = pki
+        sslctx = build_client_sslctx(pki.get_client_config())
+        return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, None, ssl_app)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
+        httpd = TempSSLServer(server_config, self.address, None, ssl_app)
 
         # Test from a non-SSL client:
         client = Client(httpd.address)
@@ -1361,7 +1363,8 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with no client cert:
-        client = httpd.get_client({'ca_file': client_config['ca_file']})
+        sslctx = build_client_sslctx({'ca_file': client_config['ca_file']})
+        client = SSLClient(sslctx, httpd.address)
         with self.assertRaises(ssl.SSLError) as cm:
             client.connect()
         self.assertTrue(
@@ -1371,11 +1374,12 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with the wrong client cert (not signed by client CA):
-        client = httpd.get_client({
+        sslctx = build_client_sslctx({
             'ca_file': client_config['ca_file'],
             'cert_file': server_config['cert_file'],
             'key_file': server_config['key_file'],
         })
+        client = SSLClient(sslctx, httpd.address)
         with self.assertRaises(ssl.SSLError) as cm:
             client.connect()
         self.assertTrue(
@@ -1385,7 +1389,8 @@ class TestLiveSSLServer(TestLiveServer):
         self.assertIsNone(conn.response_body)
 
         # Test with a properly configured SSLClient:
-        client = httpd.get_client()
+        sslctx = build_client_sslctx(client_config)
+        client = SSLClient(sslctx, httpd.address)
         conn = client.connect()
         response = conn.request('GET', '/')
         self.assertEqual(response.status, 200)
