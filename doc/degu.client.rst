@@ -36,14 +36,14 @@ this, which will return a :class:`Response` namedtuple:
 >>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-Multiple requests can be made using the same connection:
+As per HTTP/1.1, multiple requests can be made using the same connection:
 
 >>> conn.request('PUT', '/foo/bar')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-In some circumstances you might want to explicitly close a connection using
-:meth:`Connection.close()`, although this will likewise be done automatically
-when the connection instance is garbage collected:
+If you're truly done using it, it's a good idea to explicitly close a connection
+by calling :meth:`Connection.close()`, although this will likewise be done
+automatically when the connection instance is garbage collected:
 
 >>> conn.close()
 
