@@ -81,8 +81,9 @@ RGI applications are likewise called with two arguments when handling a request:
 ...
 
 The RGI *session* is a ``dict`` containing the server-wide and per-connection
-information, and the RGI *request* is a ``dict`` containing only the per-request
-information.
+information, whereas the RGI *request* is a ``dict`` containing only the
+per-request information.  Together, the RGI *session* and *request* provide the
+same information as the WSGI *environ*.
 
 Importantly, a *session* instance is created for each new connection, and then
 RGI applications are called with this exact same *session* instance for each
@@ -96,13 +97,35 @@ client connection, and then reuse it on subsequent requests.
 However, as expected, RGI applications are called with a unique *request*
 instance for each request.
 
-If an RGI application
+In addition to the traditional request handler, RGI also allows applications to
+specify a connection handler that will be called after a new connection is
+received, before any requests are processed.  The connection handler can store
+application-specific information in the *session*, which will then be available
+to the request handler for each request handled during the lifetime of the
+connection.
+
+In particular, the connection handler is aimed at allowing RGI applications to
+do application-specific extended per-connection authentication when using SSL
+with client certificates.
+
+RGI applications specify the connection handler via a callable
+``app.on_connect()`` attribute, for example:
 
 >>> class TinyRGIApp:
-...     def __call__(session, request):
-...         return (200, 'OK', {'content-length': 12}, b'hello, world')
+...     def __call__(self, session, request):
+...         if '__hello' not in session:
+...             session['__hello'] = b'hello, world'
+...         body = session['__hello']
+...         return (200, 'OK', {'content-length': len(body)}, body)
 ...
+...     def on_connect(self, sock, session):
+...         session['_user'] = '<special per-connection authentication result>'
+...         return True
+... 
 
+Even though the RGI *session* and *request* arguments are quite different than
+the WSGI *environ* argument, there is a simple, one-to-one mapping between
+WSGI and RGI in this respect.
 
 For example, this WSGI *environ*::
 
@@ -124,9 +147,9 @@ For example, this WSGI *environ*::
         'wsgi.input': <file-like request body>,
     }
 
-Would translate into this RGI *environ* and *request*::
+Would translate into this RGI *session* and *request*::
 
-    environ = {
+    session = {
         'rgi.version': (0, 1),
         'scheme': 'http',
         'protocol': 'HTTP/1.1',
@@ -147,7 +170,10 @@ Would translate into this RGI *environ* and *request*::
         'body': <file-like request body>,
     }
 
-To clarify things with a specific application example, this simple WSGI
+As RGI doesn't aim for CGI comparability, it uses shorter, lower-case keys (for
+example, ``'method'`` instead of ``'REQUEST_METHOD'``).
+
+To further compare and contrast, this more realistically complex WSGI
 application:
 
 >>> def wsgi_app(environ, start_response):
@@ -167,7 +193,7 @@ application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(connection, request):
+>>> def rgi_app(session, request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -180,33 +206,6 @@ Would translate into this RGI application:
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 ... 
 
-Note that WSGI response headers are a ``list`` of ``(key, value)`` pairs,
-whereas RGI response headers are a ``dict`` with case-folded (lowercase) keys.
-
-Also note that when an RGI application includes a ``'content-length'`` response
-header, its value must be a non-negative ``int``, cannot be an ``str``.
-
-Many RGI applications will likely ignore the information in the *connection*
-argument when handling requests.  However, when needed, the separation between
-per-connection state and per-request state offers unique possibilities provided
-by few (if any) current HTTP server application APIs.
-
-
-Before getting into any differences, it's important to understand where RGI
-aims to be *exactly* the same as WSGI:
-
-    * Scope - all semantics expressible in WSGI are directly expressible in RGI,
-      just done a bit differently; there is a simple one-to-one mapping between
-      anything you can do with WSGI and the equivalent way of doing it with RGI
-
-    * Abstraction level - if you were hoping for a high-level web framework API,
-      prepare to be disappointed, because RGI is just as low-level as WSGI;
-      although RGI aims to make it more *joyous* to work at this low-level, RGI
-      is in complete agreement with WSGI when it comes to what the API
-      abstraction level should be
-
-
-
 
 Application callables
 ---------------------
@@ -214,9 +213,9 @@ Application callables
 RGI applications must provide a callable object to handle requests (equivalent
 to the WSGI *application* callable).
 
-However, if this application object itself has a callable ``on_connect``
-attribute, this is called whenever a new connection is received, before any
-requests are handled for that connection.
+However, if an RGI application itself has an ``on_connect`` attribute, it must
+be a callable or ``None``, and when it's a callable, it is called whenever a new
+connection is received, before any requests are handled for that connection.
 
 The general connection and request handling API is best illustrated through an
 example middleware application:
@@ -227,13 +226,13 @@ example middleware application:
 ...         self._on_connect = getattr(app, 'on_connect', None)
 ...         assert self._on_connect is None or callable(self._on_connect)
 ... 
-...     def __call__(self, connection, request):
-...         return self.app(connection, request)
+...     def __call__(self, session, request):
+...         return self.app(session, request)
 ... 
-...     def on_connect(self, sock, connection):
+...     def on_connect(self, sock, session):
 ...         if self._on_connect is None:
 ...             return True
-...         return self._on_connect(sock, connection)
+...         return self._on_connect(sock, session)
 ... 
 
 When an application has an ``on_connect()`` callable attribute, it must
