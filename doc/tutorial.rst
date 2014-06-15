@@ -141,8 +141,11 @@ that accepts connections on any IPv6 address (but only from clients with a
 client certificate signed by the correct client certificate authority):
 
 >>> from degu.misc import TempPKI, TempSSLServer
->>> pki = TempPKI(client_pki=True)
->>> proxy_server = TempSSLServer(pki, ('::', 0, 0, 0), build_proxy_app, server.address)
+>>> pki = TempPKI()
+>>> proxy_server = TempSSLServer(
+...     pki.get_server_config(), ('::', 0, 0, 0), build_proxy_app, server.address
+... )
+... 
 
 That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
@@ -153,9 +156,9 @@ our ``proxy_server``:
 
 >>> from degu.client import SSLClient, build_client_sslctx
 >>> sslctx = build_client_sslctx(pki.get_client_config())
->>> client = SSLClient(sslctx, proxy_server.address)
->>> conn = client.connect()
->>> conn.request('GET', '/')
+>>> proxy_client = SSLClient(sslctx, proxy_server.address)
+>>> proxy_conn = proxy_client.connect()
+>>> proxy_conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 This example is based on real-world Degu usage.  This is more or less how

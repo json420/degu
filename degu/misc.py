@@ -141,9 +141,7 @@ class TempServer(_TempProcess):
 
 
 class TempSSLServer(_TempProcess):
-    def __init__(self, pki, address, build_func, *build_args):
-        self.pki = pki
-        sslconfig = pki.get_server_config()
+    def __init__(self, sslconfig, address, build_func, *build_args):
         (self.process, self.address) = start_sslserver(
             sslconfig, address, build_func, *build_args
         )

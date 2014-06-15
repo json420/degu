@@ -1322,7 +1322,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         tmp = TempDir()
         filename = tmp.join('my.socket')
         httpd = TempServer(filename, build_func, *build_args)
-        httpd._tmp = tmp
+        httpd.tmp = tmp
         return (httpd, Client(httpd.address))
 
 
@@ -1339,16 +1339,19 @@ def ssl_app(connection, request):
 
 class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, build_func, *build_args):
-        pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, self.address, build_func, *build_args)
+        pki = TempPKI()
+        httpd = TempSSLServer(
+            pki.get_server_config(), self.address, build_func, *build_args
+        )
+        httpd.pki = pki
         sslctx = build_client_sslctx(pki.get_client_config())
         return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        httpd = TempSSLServer(pki, degu.IPv6_LOOPBACK, None, ssl_app)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
+        httpd = TempSSLServer(server_config, self.address, None, ssl_app)
 
         # Test from a non-SSL client:
         client = Client(httpd.address)
