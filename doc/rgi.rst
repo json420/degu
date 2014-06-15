@@ -71,10 +71,13 @@ WSGI applications convey their response status and response headers by calling
 ``start_response()``, and then separately convey their response body via their
 return value.
 
-In contrast, RGI applications don't use anything like ``start_response()``, and
-instead convey their entire response via a 4-tuple return value.
+Although an elegant solution considering the broad backward compatibility
+requirements of WSGI, ``start_response()`` is probably the most problematic
+aspect of the design as it adds considerable complexity to the response flow
+control.
 
-RGI applications are likewise called with two arguments when handling a request:
+In contrast, RGI applications convey their entire response via a 4-tuple return
+value.  RGI applications are called with two arguments when handling a request:
 
 >>> def tiny_rgi_app(session, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
