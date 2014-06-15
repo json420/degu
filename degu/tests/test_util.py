@@ -231,17 +231,17 @@ class TestFunctions(TestCase):
             'rgi.Output': base.Output,
             'rgi.ChunkedOutput': base.ChunkedOutput,
         }
-        connection = deepcopy(orig)
+        session = deepcopy(orig)
 
         # input_body is None:
-        self.assertIsNone(util.output_from_input(connection, None))
-        self.assertEqual(connection, orig)
+        self.assertIsNone(util.output_from_input(session, None))
+        self.assertEqual(session, orig)
 
         # input_body is an Input instance:
         data = random_data()
         rfile = BytesIO(data)
         input_body = base.Input(rfile, len(data))
-        output_body = util.output_from_input(connection, input_body)
+        output_body = util.output_from_input(session, input_body)
         self.assertIsInstance(output_body, base.Output)
         self.assertIs(output_body.source, input_body)
         self.assertEqual(output_body.content_length, len(data))
@@ -252,7 +252,7 @@ class TestFunctions(TestCase):
         self.assertIs(input_body.closed, True)
         self.assertIs(output_body.closed, True)
         self.assertEqual(rfile.tell(), len(data))
-        self.assertEqual(connection, orig)
+        self.assertEqual(session, orig)
 
         # input_body is a ChunkedInput instance:
         chunks = random_chunks()
@@ -263,7 +263,7 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), total)
         rfile.seek(0)
         input_body = base.ChunkedInput(rfile)
-        output_body = util.output_from_input(connection, input_body)
+        output_body = util.output_from_input(session, input_body)
         self.assertIsInstance(output_body, base.ChunkedOutput)
         self.assertIs(output_body.source, input_body)
         self.assertEqual(rfile.tell(), 0)
@@ -273,5 +273,5 @@ class TestFunctions(TestCase):
         self.assertIs(input_body.closed, True)
         self.assertIs(output_body.closed, True)
         self.assertEqual(rfile.tell(), total)
-        self.assertEqual(connection, orig)
+        self.assertEqual(session, orig)
 

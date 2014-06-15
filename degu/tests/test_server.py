@@ -47,7 +47,7 @@ from degu import base, server
 random = SystemRandom()
 
 
-def standard_harness_app(connection, request):
+def standard_harness_app(session, request):
     if len(request['path']) == 3 and request['path'][0] == 'status':
         code = int(request['path'][1])
         reason = request['path'][2]

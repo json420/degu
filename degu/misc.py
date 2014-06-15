@@ -43,10 +43,10 @@ def get_value(value):
     return value
 
 
-def echo_app(connection, request):
-    obj = {'connection': {}, 'request': {}}
-    for (key, value) in connection.items():
-        obj['connection'][key] = get_value(value)
+def echo_app(session, request):
+    obj = {'session': {}, 'request': {}}
+    for (key, value) in session.items():
+        obj['session'][key] = get_value(value)
     for (key, value) in request.items():
         obj['request'][key] = get_value(value)
     if request['body'] is not None:
