@@ -330,11 +330,11 @@ class Handler:
     A `Handler` instance is created per TCP connection.
     """
 
-    def __init__(self, app, sock, connection):
+    def __init__(self, app, sock, session):
         self.closed = False
         self.app = app
         self.sock = sock
-        self.connection = connection
+        self.session = session
         (self.rfile, self.wfile) = makefiles(sock)
 
     def close(self):
@@ -346,14 +346,14 @@ class Handler:
     def handle(self):
         while self.closed is False:
             self.handle_one()
-            self.connection['requests'] += 1
+            self.session['requests'] += 1
 
     def handle_one(self):
         request = self.build_request()
         if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
             return self.write_status_only(405, 'Method Not Allowed')
         request_body = request['body']
-        response = self.app(self.connection, request)
+        response = self.app(self.session, request)
         if request_body and not request_body.closed:
             raise UnconsumedRequestError(request_body)
         validate_response(request, response)
@@ -505,7 +505,7 @@ class Handler:
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closing connection to %r after %d %r',
-                self.connection['client'], status, reason
+                self.session['client'], status, reason
             )
 
     def write_status_only(self, status, reason):
