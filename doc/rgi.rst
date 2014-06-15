@@ -72,9 +72,8 @@ WSGI applications convey their response status and response headers by calling
 return value.
 
 Although an elegant solution considering the broad backward compatibility
-requirements of WSGI, ``start_response()`` is probably the most problematic
-aspect of the design as it adds considerable complexity to the response flow
-control.
+requirements of WSGI, ``start_response()`` is the most problematic aspect of the
+design as it adds considerable complexity to the response flow control.
 
 In contrast, RGI applications convey their entire response via a 4-tuple return
 value.  RGI applications are called with two arguments when handling a request:
@@ -102,7 +101,7 @@ instance for each request.
 
 In addition to the traditional request handler, RGI also allows applications to
 specify a connection handler that will be called after a new connection is
-received, before any requests are processed.  The connection handler can store
+received, but before any requests are handled.  The connection handler can store
 application-specific information in the *session*, which will then be available
 to the request handler for each request handled during the lifetime of the
 connection.
@@ -208,6 +207,7 @@ Would translate into this RGI application:
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 ... 
+
 
 
 Application callables
