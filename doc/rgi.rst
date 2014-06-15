@@ -172,8 +172,10 @@ Would translate into this RGI *session* and *request*::
         'body': <file-like request body>,
     }
 
-As RGI doesn't aim for CGI comparability, it uses shorter, lower-case keys (for
-example, ``'method'`` instead of ``'REQUEST_METHOD'``).
+As RGI doesn't aim for CGI compatibility, it uses shorter, lower-case keys (for
+example, ``'method'`` instead of ``'REQUEST_METHOD'``).  Likewise, while
+all CGI variable values are strings in the WSGI *environ*, RGI coverts some of
+these values to more useful Python values in a few cases.
 
 To further compare and contrast, this more realistically complex WSGI
 application:
