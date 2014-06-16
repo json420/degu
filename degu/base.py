@@ -70,12 +70,6 @@ class BodyClosedError(Exception):
         super().__init__('body already fully read: {!r}'.format(body))
 
 
-class BodyReadStartedError(Exception):
-    def __init__(self, body):
-        self.body = body
-        super().__init__('body read already started: {!r}'.format(body))
-
-
 def read_preamble(rfile):
     """
     Read the HTTP request or response preamble, do low-level parsing.
@@ -337,7 +331,6 @@ class Body:
             raise ValueError('length must be >= 0, got: {!r}'.format(length))
         self.chunked = False
         self.closed = False
-        self.started = False
         self.rfile = rfile
         self.length = length
         self.remaining = length
@@ -349,8 +342,6 @@ class Body:
         if self.closed:
             raise BodyClosedError(self)
         if self.remaining <= 0:
-            assert self.remaining == 0
-            self.started = True
             self.closed = True
             return b''
         if size is not None:
@@ -360,7 +351,6 @@ class Body:
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
-        self.started = True
         size = (self.remaining if size is None else min(self.remaining, size))
         data = self.rfile.read(size)
         if len(data) != size:
@@ -370,8 +360,6 @@ class Body:
         return data
 
     def __iter__(self):
-        if self.started:
-            raise BodyReadStartedError(self)
         if self.closed:
             raise BodyClosedError(self)
         while not self.closed:
@@ -383,7 +371,6 @@ class ChunkedBody:
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
         self.chunked = True
-        self.started = False
         self.closed = False
         self.rfile = rfile
 
@@ -399,15 +386,12 @@ class ChunkedBody:
     def readchunk(self):
         if self.closed:
             raise BodyClosedError(self)
-        self.started = True
         data = read_chunk(self.rfile)
         if not data:
             self.closed = True
         return data
 
     def __iter__(self):
-        if self.started:
-            raise BodyReadStartedError(self)
         if self.closed:
             raise BodyClosedError(self)
         while not self.closed:
