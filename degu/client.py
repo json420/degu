@@ -33,18 +33,12 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
+    Body,
+    ChunkedBody,
     makefiles,
     read_preamble,
     parse_headers,
-    write_chunk,
     write_body,
-    Body,
-    ChunkedBody,
-    Input,
-    ChunkedInput,
-    Output,
-    ChunkedOutput,
-    FileOutput,
 )
 
 
@@ -230,6 +224,7 @@ def write_request(wfile, method, uri, headers, body):
             '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
         )
     total += wfile.write(b'\r\n')
+    total += write_body(body)
     return total
 
 
@@ -257,7 +252,7 @@ class Connection:
         self.sock = sock
         self.base_headers = base_headers
         (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Input or ChunkedInput
+        self.response_body = None  # Previous Body or ChunkedBody
 
     def __del__(self):
         self.close()
@@ -288,21 +283,10 @@ class Connection:
                     content_length = headers['content-length']
                 else:
                     content_length = os.stat(body.fileno()).st_size
-                body = FileOutput(body, content_length)
+                body = Body(body, content_length)
             validate_request(method, uri, headers, body)
             headers.update(self.base_headers)
             write_request(self.wfile, method, uri, headers, body)
-            if isinstance(body, (bytes, bytearray)):
-                self.wfile.write(body)
-            elif isinstance(body, (Output, FileOutput)):
-                for buf in body:
-                    self.wfile.write(buf)
-            elif isinstance(body, ChunkedOutput):
-                for chunk in body:
-                    write_chunk(self.wfile, chunk)
-            else:
-                assert body is None
-            self.wfile.flush()
             response = read_response(self.rfile, method)
             self.response_body = response.body
             return response
