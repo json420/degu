@@ -34,6 +34,8 @@ from .base import (
     read_preamble,
     parse_headers,
     write_chunk,
+    Body,
+    ChunkedBody,
     Input,
     ChunkedInput,
     Output,
@@ -321,6 +323,56 @@ def iter_response_lines(status, reason, headers):
         for key in sorted(headers):
             yield '{}: {}\r\n'.format(key, headers[key])
     yield '\r\n'
+
+
+def read_request(rfile):
+    pass
+
+
+def validate_request(request):
+    pass
+
+
+def write_response(wfile, response):
+    (status, reason, headers, body) = response
+    total = wfile.write(
+        'HTTP/1.1 {} {}\r\n'.format(status, reason).encode('latin_1')
+    )
+    if headers:
+        for key in sorted(headers):
+            total += wfile.write(
+                '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+            )
+    total += wfile.write(b'\r\n')
+    if isinstance(body, (bytes, bytearray)):
+        total += wfile.write(body)
+    elif isinstance(body, Body):
+        for data in body:
+            total += wfile.write(data)
+    elif isinstance(body, ChunkedBody):
+        for chunk in body:
+            total += write_chunk(wfile, chunk)
+    elif body is not None:
+        raise TypeError(
+            'invalid response body type: {!r}: {!r}'.format(type(body), body)
+        )
+    wfile.flush()
+    return total
+
+
+def handle_requests(app, sock, session):
+    (wfile, rfile) = makefiles(sock)
+    while True:
+        request = read_request(rfile)
+        validate_request(request)
+        response = app(session, request)
+        validate_response(request, response)
+        write_response(wfile, response)
+        session['requests'] += 1
+        status = response[0]
+        if status >= 400 and status not in {404, 409, 412}:
+            break
+    wfile.close()
 
 
 class Handler:

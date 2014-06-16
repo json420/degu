@@ -70,6 +70,12 @@ class BodyClosedError(Exception):
         super().__init__('cannot iterate, {!r} is closed'.format(body))
 
 
+class BodyReadStartedError(Exception):
+    def __init__(self, body):
+        self.body = body
+        super().__init__('body read already started: {!r}'.format(body))
+
+
 def read_preamble(rfile):
     """
     Read the HTTP request or response preamble, do low-level parsing.
@@ -317,6 +323,90 @@ class FileOutput:
         assert remaining == 0
         self.closed = True
         self.fp.close()
+
+
+class Body:
+    def __init__(self, rfile, content_length):
+        if not callable(rfile.read):
+            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
+        if not isinstance(content_length, int):
+            raise TypeError('content_length must be an int')
+        if content_length < 0:
+            raise ValueError('content_length must be >= 0')
+        self.chunked = False
+        self.started = False
+        self.closed = False
+        self.rfile = rfile
+        self.content_length = content_length
+        self.remaining = content_length
+
+    def __repr__(self):
+        return '{}(<rfile>, {!r})'.format(
+            self.__class__.__name__, self.content_length
+        )
+
+    def read(self, size=None):
+        if self.closed:
+            raise BodyClosedError(self)
+        if size is not None:
+            if not isinstance(size, int):
+                raise TypeError('size must be an int')
+            if size < 0:
+                raise ValueError('size must be >= 0')
+        self.started = True
+        size = (self.remaining if size is None else min(self.remaining, size))
+        buf = self.rfile.read(size)
+        if len(buf) != size:
+            raise UnderFlowError(len(buf), size)
+        self.remaining -= size
+        if not buf:
+            self.closed = True
+            assert self.remaining == 0
+        return buf
+
+    def __iter__(self):
+        if self.started:
+            raise BodyReadStartedError(self)
+        if self.closed:
+            raise BodyClosedError(self)
+        while not self.closed:
+            yield self.read(FILE_BUFFER_BYTES)
+
+
+class ChunkedBody:
+    def __init__(self, rfile):
+        if not callable(rfile.read):
+            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
+        self.chunked = True
+        self.started = False
+        self.closed = False
+        self.rfile = rfile
+
+    def __repr__(self):
+        return '{}(<rfile>)'.format(self.__class__.__name__)
+
+    def read(self):
+        buf = bytearray()
+        for data in self:
+            buf.extend(data)
+        return buf
+
+    def readchunk(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.started = True
+        data = read_chunk(self.rfile)
+        if not data:
+            self.closed = True
+        return data
+
+    def __iter__(self):
+        if self.started:
+            raise BodyReadStartedError(self)
+        if self.closed:
+            raise BodyClosedError(self)
+        while not self.closed:
+            yield self.readchunk()
 
 
 class Input:
