@@ -208,48 +208,6 @@ def makefiles(sock):
     )
 
 
-class Output:
-    """
-    Written to the wfile.
-
-    Content-Length must be known in advance.  On the server side it is used as
-    as a response body, and on the client side it is used as a request body.
-
-    >>> body = Output([b'stuff', b'junk'], 9)
-    >>> list(body)
-    [b'stuff', b'junk']
-
-    """
-
-    __slots__ = ('closed', 'source', 'content_length')
-
-    def __init__(self, source, content_length):
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
-        self.source = source
-        self.content_length = content_length
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        received = 0
-        for buf in self.source:
-            if not isinstance(buf, (bytes, bytearray)):
-                self.closed = True
-                raise TypeError('buf must be bytes or bytearray')
-            received += len(buf)
-            if received > self.content_length:
-                self.closed = True
-                raise OverFlowError(received, self.content_length)
-            yield buf
-        self.closed = True
-        if received != self.content_length:
-            raise UnderFlowError(received, self.content_length)
-
-
 class Body:
     def __init__(self, rfile, content_length):
         if not callable(rfile.read):
