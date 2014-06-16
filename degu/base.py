@@ -250,41 +250,6 @@ class Output:
             raise UnderFlowError(received, self.content_length)
 
 
-class ChunkedOutput:
-    """
-    Written to the wfile using chunked encoding.
-
-    For example:
-
-    >>> body = ChunkedOutput([b'stuff', b'junk', b''])
-    >>> list(body)
-    [b'stuff', b'junk', b'']
-
-    """
-
-    __slots__ = ('closed', 'source',)
-
-    def __init__(self, source):
-        self.closed = False
-        self.source = source
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        for chunk in self.source:
-            if not isinstance(chunk, (bytes, bytearray)):
-                self.closed = True
-                raise TypeError('chunk must be bytes or bytearray')
-            if self.closed:
-                raise ChunkError('received non-empty chunk after empty chunk')
-            if chunk == b'':
-                self.closed = True
-            yield chunk
-        if not self.closed:
-            self.closed = True
-            raise ChunkError('final chunk was not empty')
-
-
 class Body:
     def __init__(self, rfile, content_length):
         if not callable(rfile.read):
