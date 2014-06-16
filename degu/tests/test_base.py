@@ -1120,6 +1120,14 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [b''])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(rfile.read(), data)
         
 
 

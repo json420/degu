@@ -319,6 +319,24 @@ class FileOutput:
         self.fp.close()
 
 
+def write_body(wfile, body):
+    total = 0
+    if isinstance(body, (bytes, bytearray)):
+        total += wfile.write(body)
+    elif isinstance(body, Body):
+        for data in body:
+            total += wfile.write(data)
+    elif isinstance(body, ChunkedBody):
+        for (data, extension) in body:
+            write_chunk(wfile, data, extension)
+    elif body is not None:
+        raise TypeError(
+            'invalid body type: {!r}: {!r}'.format(type(body), body)
+        )
+    wfile.flush()
+    return total
+
+
 class Body:
     def __init__(self, rfile, length):
         if not callable(rfile.read):
