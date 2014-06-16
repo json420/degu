@@ -581,30 +581,6 @@ class TestFunctions(TestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
 
-    def test_write_preamble(self):
-        # Empty headers:
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_preamble(wfile, 'hello', {}), 9)
-        self.assertEqual(wfile.tell(), 9)
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), b'hello\r\n\r\n')
-
-        # One header:
-        headers = {'foo': 17}  # Make sure to test with an int header value
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_preamble(wfile, 'hello', headers), 18)
-        self.assertEqual(wfile.tell(), 18)
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), b'hello\r\nfoo: 17\r\n\r\n')
-
-        # Two headers:
-        headers = {'foo': 17, 'bar': 'baz'}
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_preamble(wfile, 'hello', headers), 28)
-        self.assertEqual(wfile.tell(), 28)
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), b'hello\r\nbar: baz\r\nfoo: 17\r\n\r\n')
-
     def test_write_body(self):
         # body is bytes:
         body = random_data()

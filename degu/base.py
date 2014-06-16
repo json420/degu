@@ -186,17 +186,6 @@ def parse_headers(header_lines):
     return headers
 
 
-def write_preamble(wfile, first_line, headers):
-    total = wfile.write(first_line.encode('latin_1'))
-    total += wfile.write(b'\r\n')
-    for key in sorted(headers):
-        total += wfile.write(
-            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
-        )
-    total += wfile.write(b'\r\n')
-    return total
-
-
 def write_body(wfile, body):
     total = 0
     if isinstance(body, (bytes, bytearray)):
