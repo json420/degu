@@ -218,6 +218,18 @@ def parse_status(line):
     return (status, reason)
 
 
+def write_request(wfile, method, uri, headers, body):
+    total = wfile.write(
+        '{} {} HTTP/1.1\r\n'.format(method, uri).encode('latin_1')
+    )
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    return total
+
+
 def read_response(rfile, method):
     (status_line, header_lines) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
@@ -276,8 +288,7 @@ class Connection:
                 body = FileOutput(body, content_length)
             validate_request(method, uri, headers, body)
             headers.update(self.base_headers)
-            preamble = ''.join(iter_request_lines(method, uri, headers))
-            self.wfile.write(preamble.encode('latin_1'))
+            write_request(self.wfile, method, uri, headers, body)
             if isinstance(body, (bytes, bytearray)):
                 self.wfile.write(body)
             elif isinstance(body, (Output, FileOutput)):
