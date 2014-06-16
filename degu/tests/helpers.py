@@ -48,12 +48,12 @@ def random_data():
 
 def random_chunks():
     """
-    Return between 0 and 5 random chunks (inclusive).
+    Return between 0 and 10 random chunks (inclusive).
 
     There will always be 1 additional, final chunk, an empty ``b''``, as per the
     HTTP/1.1 specification.
     """
-    count = random.randint(0, 5)
+    count = random.randint(0, 10)
     chunks = [random_data() for i in range(count)]
     chunks.append(b'')
     return chunks

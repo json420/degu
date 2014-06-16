@@ -28,7 +28,7 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import TempDir, DummySocket
+from .helpers import TempDir, DummySocket, random_chunks
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base
@@ -1111,6 +1111,30 @@ class TestBody(TestCase):
         self.assertEqual(str(cm.exception),
             'body already fully read: {!r}'.format(body)
         )
+
+        # Test with random chunks:
+        for i in range(25):
+            chunks = random_chunks()
+            assert chunks[-1] == b''
+            data = b''.join(chunks)
+            trailer = os.urandom(17)
+            rfile = io.BytesIO(data + trailer)
+            body = base.Body(rfile, len(data))
+            for chunk in chunks:
+                self.assertEqual(body.read(len(chunk)), chunk)
+            self.assertIs(body.chunked, False)
+            self.assertIs(body.closed, True)
+            self.assertIs(body.started, True)
+            self.assertEqual(rfile.tell(), len(data))
+            self.assertEqual(body.length, len(data))
+            self.assertEqual(body.remaining, 0)
+            with self.assertRaises(base.BodyClosedError) as cm:
+                body.read(17)
+            self.assertIs(cm.exception.body, body)
+            self.assertEqual(str(cm.exception),
+                'body already fully read: {!r}'.format(body)
+            )
+            self.assertEqual(rfile.read(), trailer)
 
 
 class TestInput(TestCase):
