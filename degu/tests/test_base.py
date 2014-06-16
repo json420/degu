@@ -147,7 +147,16 @@ class TestBodyClosedError(TestCase):
         e = base.BodyClosedError(body)
         self.assertIsInstance(e, Exception)
         self.assertIs(e.body, body)
-        self.assertEqual(str(e), 'cannot iterate, {!r} is closed'.format(body))
+        self.assertEqual(str(e), 'body already fully read: {!r}'.format(body))
+
+
+class TestBodyReadStartedError(TestCase):
+    def test_init(self):
+        body = random_id()
+        e = base.BodyReadStartedError(body)
+        self.assertIsInstance(e, Exception)
+        self.assertIs(e.body, body)
+        self.assertEqual(str(e), 'body read already started: {!r}'.format(body))
 
 
 class TestFunctions(TestCase):
@@ -609,7 +618,7 @@ class TestOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # More bytes yielded from source than expected:
@@ -638,7 +647,7 @@ class TestOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # Should work fine with an empty source:
@@ -688,7 +697,7 @@ class TestChunkedOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # BodyClosedError should be raised by setting the closed attribute:
@@ -698,7 +707,7 @@ class TestChunkedOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # Non-empty chunk after empty chunk:
@@ -800,7 +809,7 @@ class TestFileOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # But should also be raised by merely setting body.closed to True:
@@ -811,7 +820,7 @@ class TestFileOutput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
         # From seek(200) to the end of file:
@@ -848,6 +857,227 @@ class TestFileOutput(TestCase):
         self.assertEqual(results, [data[:-1]])
         self.assertIs(body.closed, True)
         self.assertIs(body.fp.closed, True)
+
+
+class TestBody(TestCase):
+    def test_init(self):
+        # No rfile.read attribute:
+        with self.assertRaises(AttributeError) as cm:
+            base.Body('hello', None)
+        self.assertEqual(str(cm.exception),
+            "'str' object has no attribute 'read'"
+        )
+
+        # rfile.read isn't callable:
+        class Nope:
+            read = 'hello'
+
+        with self.assertRaises(TypeError) as cm:
+            base.Body(Nope, None)
+        self.assertEqual(str(cm.exception),
+            'rfile.read is not callable: {!r}'.format(Nope)
+        )
+        nope = Nope()
+        with self.assertRaises(TypeError) as cm:
+            base.Body(nope, None)
+        self.assertEqual(str(cm.exception),
+            'rfile.read is not callable: {!r}'.format(nope)
+        )
+
+        # Create a good rfile:
+        data = os.urandom(69)
+        rfile = io.BytesIO(data)
+
+        # Good rfile with bad length type:
+        with self.assertRaises(TypeError) as cm:
+            base.Body(rfile, 17.0)
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('length', int, float, 17.0)
+        )
+        self.assertEqual(rfile.tell(), 0)
+        with self.assertRaises(TypeError) as cm:
+            base.Body(rfile, '17')
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('length', int, str, '17')
+        )
+        self.assertEqual(rfile.tell(), 0)
+
+        # Good rfile with bad length value:
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, -1)
+        self.assertEqual(str(cm.exception), 'length must be >= 0, got: -1')
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, -17)
+        self.assertEqual(str(cm.exception), 'length must be >= 0, got: -17')
+        self.assertEqual(rfile.tell(), 0)
+
+        # All good:
+        body = base.Body(rfile, len(data))
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.started, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(body.length, 69)
+        self.assertEqual(body.remaining, 69)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(rfile.read(), data)
+        self.assertEqual(repr(body), 'Body(<rfile>, 69)')
+
+        # Make sure there is no automagical checking of length against rfile:
+        rfile.seek(1)
+        body = base.Body(rfile, 17)
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.started, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(body.length, 17)
+        self.assertEqual(body.remaining, 17)
+        self.assertEqual(rfile.tell(), 1)
+        self.assertEqual(rfile.read(), data[1:])
+        self.assertEqual(repr(body), 'Body(<rfile>, 17)')
+
+    def test_read(self):
+        data = os.urandom(1776)
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, len(data))
+
+        # body.closed is True:
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.read()
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, True)
+        self.assertIs(body.started, False)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1776)
+
+        # Bad size type:
+        body.closed = False
+        with self.assertRaises(TypeError) as cm:
+            body.read(18.0)
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('size', int, float, 18.0)
+        )
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, False)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1776)
+        with self.assertRaises(TypeError) as cm:
+            body.read('18')
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('size', int, str, '18')
+        )
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, False)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1776)
+
+        # Bad size value:
+        with self.assertRaises(ValueError) as cm:
+            body.read(-1)
+        self.assertEqual(str(cm.exception), 'size must be >= 0; got -1')
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, False)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1776)
+        with self.assertRaises(ValueError) as cm:
+            body.read(-18)
+        self.assertEqual(str(cm.exception), 'size must be >= 0; got -18')
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, False)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1776)
+
+        # Now read it:
+        self.assertEqual(body.read(), data)
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, True)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 1776)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 0)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.read()
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+        # Read it again, this time in parts:
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 1776)
+        self.assertEqual(body.read(17), data[0:17])
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 17)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1759)
+
+        self.assertEqual(body.read(18), data[17:35])
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 35)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 1741)
+
+        self.assertEqual(body.read(1741), data[35:])
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, True)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 1776)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 0)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.read(17)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+        # Underflow error when trying to read all:
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 1800)
+        with self.assertRaises(base.UnderFlowError) as cm:
+            body.read()
+        self.assertEqual(cm.exception.received, 1776)
+        self.assertEqual(cm.exception.expected, 1800)
+        self.assertEqual(str(cm.exception),
+            'received 1776 bytes, expected 1800'
+        )
+
+        # Underflow error when read in parts:
+        data = os.urandom(35)
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 37)
+        self.assertEqual(body.read(18), data[:18])
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(body.length, 37)
+        self.assertEqual(body.remaining, 19)
+        with self.assertRaises(base.UnderFlowError) as cm:
+            body.read(19)
+        self.assertEqual(cm.exception.received, 17)
+        self.assertEqual(cm.exception.expected, 19)
+        self.assertEqual(str(cm.exception),
+            'received 17 bytes, expected 19'
+        )
 
 
 class TestInput(TestCase):
@@ -929,7 +1159,7 @@ class TestInput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
 
 
@@ -1061,7 +1291,7 @@ class TestChunkedInput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
@@ -1075,7 +1305,7 @@ class TestChunkedInput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
@@ -1096,7 +1326,7 @@ class TestChunkedInput(TestCase):
             list(body)
         self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'cannot iterate, {!r} is closed'.format(body)
+            'body already fully read: {!r}'.format(body)
         )
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)

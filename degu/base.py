@@ -67,7 +67,7 @@ class BodyClosedError(Exception):
     """
     def __init__(self, body):
         self.body = body
-        super().__init__('cannot iterate, {!r} is closed'.format(body))
+        super().__init__('body already fully read: {!r}'.format(body))
 
 
 class BodyReadStartedError(Exception):
@@ -326,43 +326,49 @@ class FileOutput:
 
 
 class Body:
-    def __init__(self, rfile, content_length):
+    def __init__(self, rfile, length):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
+        if not isinstance(length, int):
+            raise TypeError(
+                TYPE_ERROR.format('length', int, type(length), length) 
+            )
+        if length < 0:
+            raise ValueError('length must be >= 0, got: {!r}'.format(length))
         self.chunked = False
-        self.started = False
         self.closed = False
+        self.started = False
         self.rfile = rfile
-        self.content_length = content_length
-        self.remaining = content_length
+        self.length = length
+        self.remaining = length
 
     def __repr__(self):
-        return '{}(<rfile>, {!r})'.format(
-            self.__class__.__name__, self.content_length
-        )
+        return '{}(<rfile>, {!r})'.format(self.__class__.__name__, self.length)
 
     def read(self, size=None):
         if self.closed:
             raise BodyClosedError(self)
+        if self.remaining <= 0:
+            self.closed = True
+            return b''
         if size is not None:
             if not isinstance(size, int):
-                raise TypeError('size must be an int')
+                raise TypeError(
+                    TYPE_ERROR.format('size', int, type(size), size) 
+                )
             if size < 0:
-                raise ValueError('size must be >= 0')
+                raise ValueError('size must be >= 0; got {!r}'.format(size))
         self.started = True
         size = (self.remaining if size is None else min(self.remaining, size))
-        buf = self.rfile.read(size)
-        if len(buf) != size:
-            raise UnderFlowError(len(buf), size)
+        data = self.rfile.read(size)
+        if len(data) != size:
+            raise UnderFlowError(len(data), size)
+        assert self.remaining - size >= 0
         self.remaining -= size
-        if not buf:
+        if self.remaining <= 0:
             self.closed = True
             assert self.remaining == 0
-        return buf
+        return data
 
     def __iter__(self):
         if self.started:

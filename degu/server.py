@@ -326,7 +326,7 @@ def iter_response_lines(status, reason, headers):
 
 
 def read_request(rfile):
-    pass
+    (request_line, header_lines) = read_preamble(rfile)
 
 
 def validate_request(request):
