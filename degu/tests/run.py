@@ -67,7 +67,7 @@ def pynames_iter(pkdir=packagedir, pkname=None):
 
 def run_tests():
     pynames = tuple(pynames_iter())
-    pynames = ['degu.client', 'degu.tests.test_client', 'degu.tests.test_base']
+    #pynames = ['degu.client', 'degu.tests.test_client', 'degu.tests.test_base']
 
     # Add unit-tests:
     loader = TestLoader()

@@ -224,7 +224,7 @@ def write_request(wfile, method, uri, headers, body):
             '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
         )
     total += wfile.write(b'\r\n')
-    total += write_body(body)
+    total += write_body(wfile, body)
     return total
 
 
