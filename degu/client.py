@@ -36,7 +36,7 @@ from .base import (
     makefiles,
     read_preamble,
     parse_headers,
-    write_chunk,
+    write_body,
     Input,
     ChunkedInput,
     Output,
@@ -278,17 +278,7 @@ class Connection:
             headers.update(self.base_headers)
             preamble = ''.join(iter_request_lines(method, uri, headers))
             self.wfile.write(preamble.encode('latin_1'))
-            if isinstance(body, (bytes, bytearray)):
-                self.wfile.write(body)
-            elif isinstance(body, (Output, FileOutput)):
-                for buf in body:
-                    self.wfile.write(buf)
-            elif isinstance(body, ChunkedOutput):
-                for chunk in body:
-                    write_chunk(self.wfile, chunk)
-            else:
-                assert body is None
-            self.wfile.flush()
+            write_body(body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
             return response

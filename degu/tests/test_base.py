@@ -338,7 +338,7 @@ class TestFunctions(TestCase):
         termed = data + b'\r\n'
         self.assertEqual(len(termed), 7779)
         size = b'1e61\r\n'
-        size_plus = b'1e61; extra stuff here\r\n'
+        size_plus = b'1e61;foo=bar\r\n'
 
         # No CRLF terminated chunk size line:
         rfile = tmp.prepare(termed)
@@ -431,13 +431,13 @@ class TestFunctions(TestCase):
 
         # Test when it's all good:
         rfile = tmp.prepare(size + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(base.read_chunk(rfile), (data, None))
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
         # Test when size line has extra information:
         rfile = tmp.prepare(size_plus + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(base.read_chunk(rfile), (data, 'foo=bar'))
         self.assertEqual(rfile.tell(), 7803)
         self.assertFalse(rfile.closed)
 
@@ -1290,11 +1290,11 @@ class TestChunkedInput(TestCase):
         fp.close()
         fp = open(filename, 'rb')
         body = base.ChunkedInput(fp)
-        self.assertEqual(body.readchunk(), b'')
+        self.assertEqual(body.readchunk(), (b'', None))
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
         self.assertEqual(fp.tell(), 5)
-        self.assertEqual(body.readchunk(), b'')
+        self.assertEqual(body.readchunk(), (b'', None))
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
         self.assertEqual(fp.tell(), 5)
@@ -1307,16 +1307,16 @@ class TestChunkedInput(TestCase):
         fp.close()
         fp = open(filename, 'rb')
         body = base.ChunkedInput(fp)
-        self.assertEqual(body.readchunk(), chunk1)
-        self.assertEqual(body.readchunk(), chunk2)
-        self.assertEqual(body.readchunk(), chunk3)
+        self.assertEqual(body.readchunk(), (chunk1, None))
+        self.assertEqual(body.readchunk(), (chunk2, None))
+        self.assertEqual(body.readchunk(), (chunk3, None))
         self.assertIs(body.closed, False)
         self.assertIs(fp.closed, False)
-        self.assertEqual(body.readchunk(), b'')
+        self.assertEqual(body.readchunk(), (b'', None))
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
         final = fp.tell()
-        self.assertEqual(body.readchunk(), b'')
+        self.assertEqual(body.readchunk(), (b'', None))
         self.assertIs(body.closed, True)
         self.assertIs(fp.closed, False)
         self.assertEqual(fp.tell(), final)
