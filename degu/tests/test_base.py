@@ -1004,6 +1004,13 @@ class TestBody(TestCase):
         # Now read it:
         self.assertEqual(body.read(), data)
         self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 1776)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body.read(), b'')
+        self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertIs(body.started, True)
         self.assertEqual(rfile.tell(), 1776)
@@ -1037,11 +1044,20 @@ class TestBody(TestCase):
 
         self.assertEqual(body.read(1741), data[35:])
         self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 1776)
+        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.remaining, 0)
+
+        self.assertEqual(body.read(1776), b'')
+        self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertIs(body.started, True)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.length, 1776)
         self.assertEqual(body.remaining, 0)
+
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read(17)
         self.assertIs(cm.exception.body, body)
@@ -1077,6 +1093,23 @@ class TestBody(TestCase):
         self.assertEqual(cm.exception.expected, 19)
         self.assertEqual(str(cm.exception),
             'received 17 bytes, expected 19'
+        )
+
+        # Test with empty body:
+        rfile = io.BytesIO(os.urandom(21))
+        body = base.Body(rfile, 0)
+        self.assertEqual(body.read(17), b'')
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.closed, True)
+        self.assertIs(body.started, True)
+        self.assertEqual(rfile.tell(), 0)
+        self.assertEqual(body.length, 0)
+        self.assertEqual(body.remaining, 0)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.read(17)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
         )
 
 

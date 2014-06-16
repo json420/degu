@@ -349,6 +349,8 @@ class Body:
         if self.closed:
             raise BodyClosedError(self)
         if self.remaining <= 0:
+            assert self.remaining == 0
+            self.started = True
             self.closed = True
             return b''
         if size is not None:
@@ -365,9 +367,6 @@ class Body:
             raise UnderFlowError(len(data), size)
         assert self.remaining - size >= 0
         self.remaining -= size
-        if self.remaining <= 0:
-            self.closed = True
-            assert self.remaining == 0
         return data
 
     def __iter__(self):
