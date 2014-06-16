@@ -407,16 +407,14 @@ class ChunkedBody:
     def __repr__(self):
         return '{}(<rfile>)'.format(self.__class__.__name__)
 
-    def read(self):
-        buf = bytearray()
-        for data in self:
-            buf.extend(data)
-        return buf
-
     def readchunk(self):
         if self.closed:
             raise BodyClosedError(self)
-        data = read_chunk(self.rfile)
+        try:
+            data = read_chunk(self.rfile)
+        except:
+            self.rfile.close()
+            raise
         if not data:
             self.closed = True
         return data

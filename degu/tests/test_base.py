@@ -1245,6 +1245,137 @@ class TestBody(TestCase):
         self.assertIs(rfile.closed, True)
 
 
+class TestChunkedBody(TestCase):
+    def test_init(self):
+        # No rfile.read attribute:
+        with self.assertRaises(AttributeError) as cm:
+            base.ChunkedBody('hello')
+        self.assertEqual(str(cm.exception),
+            "'str' object has no attribute 'read'"
+        )
+
+        # rfile.read isn't callable:
+        class Nope:
+            read = 'hello'
+
+        with self.assertRaises(TypeError) as cm:
+            base.ChunkedBody(Nope)
+        self.assertEqual(str(cm.exception),
+            'rfile.read is not callable: {!r}'.format(Nope)
+        )
+        nope = Nope()
+        with self.assertRaises(TypeError) as cm:
+            base.ChunkedBody(nope)
+        self.assertEqual(str(cm.exception),
+            'rfile.read is not callable: {!r}'.format(nope)
+        )
+
+        # All good:
+        rfile = io.BytesIO()
+        body = base.ChunkedBody(rfile)
+        self.assertIs(body.chunked, True)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.rfile, rfile)
+        self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
+
+    def test_readchunk(self):
+        chunks = random_chunks()
+        self.assertEqual(chunks[-1], b'')
+        rfile = io.BytesIO()
+        total = sum(base.write_chunk(rfile, data) for data in chunks)
+        self.assertEqual(rfile.tell(), total)
+        extra = os.urandom(3469)
+        rfile.write(extra)
+        rfile.seek(0)
+
+        # Test when closed:
+        body = base.ChunkedBody(rfile)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.readchunk()
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), 0)
+        self.assertIs(rfile.closed, False)
+
+        # Test when all good:
+        body = base.ChunkedBody(rfile)
+        for data in chunks:
+            self.assertEqual(body.readchunk(), data)
+        self.assertIs(body.closed, True)
+        self.assertIs(rfile.closed, False)
+        self.assertEqual(rfile.tell(), total)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            body.readchunk()
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.read(), extra)
+
+        # Test when read_chunk() raises an exception, which should close the
+        # rfile, but not close the body:
+        rfile = io.BytesIO(b'17.6\r\n' + extra)
+        body = base.ChunkedBody(rfile)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 16: b'17.6'"
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
+
+    def test_iter(self):
+        chunks = random_chunks()
+        self.assertEqual(chunks[-1], b'')
+        rfile = io.BytesIO()
+        total = sum(base.write_chunk(rfile, data) for data in chunks)
+        self.assertEqual(rfile.tell(), total)
+        extra = os.urandom(3469)
+        rfile.write(extra)
+        rfile.seek(0)
+
+        # Test when closed:
+        body = base.ChunkedBody(rfile)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), 0)
+        self.assertIs(rfile.closed, False)
+
+        # Test when all good:
+        body = base.ChunkedBody(rfile)
+        self.assertEqual(list(body), chunks)
+        self.assertIs(body.closed, True)
+        self.assertIs(rfile.closed, False)
+        self.assertEqual(rfile.tell(), total)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.read(), extra)
+
+        # Test when read_chunk() raises an exception, which should close the
+        # rfile, but not close the body:
+        rfile = io.BytesIO(b'17.6\r\n' + extra)
+        body = base.ChunkedBody(rfile)
+        with self.assertRaises(ValueError) as cm:
+            list(body)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 16: b'17.6'"
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
+
+
 class TestInput(TestCase):
     def test_init(self):
         tmp = TempDir()
