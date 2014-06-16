@@ -97,10 +97,9 @@ RGI application API have been carefully designed to complement each other.
 Think of them almost like inverse functions.
 
 For example, here's an RGI application that implements a `reverse-proxy`_, which
-will use the :func:`degu.util.relative_uri()` and
-:func:`degu.util.output_from_input()` functions:
+will use the :func:`degu.util.relative_uri()` helper function:
 
->>> from degu.util import relative_uri, output_from_input
+>>> from degu.util import relative_uri
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -109,17 +108,11 @@ will use the :func:`degu.util.relative_uri()` and
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
-...         response = conn.request(
+...         return conn.request(
 ...             request['method'],
 ...             relative_uri(request),
 ...             request['headers'],
-...             output_from_input(session, request['body'])
-...         )
-...         return (
-...             response.status,
-...             response.reason,
-...             response.headers,
-...             output_from_input(session, response.body)
+...             request['body']
 ...         )
 ...
 
