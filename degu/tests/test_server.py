@@ -442,23 +442,23 @@ class TestFunctions(TestCase):
             self.assertEqual(str(cm.exception),
                 "headers['content-length'] != len(body): 6 != 5"
             )
-        # isinstance(body, (Output, FileOutput)):
-        tmp = TempDir()
-        fp = tmp.prepare(b'hello')
-        for body in [base.Output(b'hello', 5), base.FileOutput(fp, 5)]:
-            headers = {}
-            self.assertIsNone(
-                server.validate_response(request, (200, 'OK', headers, body))
-            )
-            self.assertEqual(headers, {'content-length': 5})
-            headers = {'content-length': 6}
-            with self.assertRaises(ValueError) as cm:
-                server.validate_response(request, (200, 'OK', headers, body))
-            self.assertEqual(str(cm.exception),
-                "headers['content-length'] != body.content_length: 6 != 5"
-            )
-        # isinstance(body, ChunkedOutput):
-        body = base.ChunkedOutput([b'hello', b'naughty', b'nurse'])
+
+        # isinstance(body, Body):
+        body = base.Body(io.BytesIO(), 5)
+        headers = {}
+        self.assertIsNone(
+            server.validate_response(request, (200, 'OK', headers, body))
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        headers = {'content-length': 6}
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response(request, (200, 'OK', headers, body))
+        self.assertEqual(str(cm.exception),
+            "headers['content-length'] != body.content_length: 6 != 5"
+        )
+
+        # isinstance(body, ChunkedBody):
+        body = base.ChunkedBody(io.BytesIO())
         headers = {}
         self.assertIsNone(
             server.validate_response(request, (200, 'OK', headers, body))
@@ -601,15 +601,12 @@ class TestHandler(TestCase):
                 'content-length': 17,
             },
         })
-        self.assertIsInstance(body, base.Input)
+        self.assertIsInstance(body, base.Body)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.remaining, 17)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.read(), data)
-        self.assertIs(body.closed, True)
-        self.assertIs(body.rfile.closed, False)
-        self.assertEqual(body.read(), b'')
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
 
@@ -643,15 +640,12 @@ class TestHandler(TestCase):
                 'content-type': 'application/json',
             },
         })
-        self.assertIsInstance(body, base.ChunkedInput)
+        self.assertIsInstance(body, base.ChunkedBody)
         self.assertIs(body.rfile, fp)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.readchunk(), chunk1)
         self.assertEqual(body.readchunk(), chunk2)
-        self.assertEqual(body.readchunk(), b'')
-        self.assertIs(body.closed, True)
-        self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.readchunk(), b'')
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
@@ -818,9 +812,8 @@ class TestServer(TestCase):
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Output': base.Output,
-            'rgi.ChunkedOutput': base.ChunkedOutput,
-            'rgi.FileOutput': base.FileOutput,
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 
@@ -988,9 +981,8 @@ class TestSSLServer(TestCase):
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Output': base.Output,
-            'rgi.ChunkedOutput': base.ChunkedOutput,
-            'rgi.FileOutput': base.FileOutput,
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 
@@ -1012,7 +1004,7 @@ def chunked_request_app(session, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
-    assert isinstance(request['body'], base.ChunkedInput)
+    assert isinstance(request['body'], base.ChunkedBody)
     assert request['headers']['transfer-encoding'] == 'chunked'
     result = []
     for chunk in request['body']:
@@ -1028,11 +1020,12 @@ def chunked_response_app(session, request):
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = session['rgi.ChunkedOutput'](CHUNKS)
+        rfile = io.BytesIO(ENCODED_CHUNKS)
     elif request['path'] == ['bar']:
-        body = session['rgi.ChunkedOutput']([b''])
+        rfile = io.BytesIO(b'0\r\n\r\n')
     else:
         return (404, 'Not Found', {}, None)
+    body = session['rgi.ChunkedBody'](rfile)
     return (200, 'OK', headers, body)
 
 
@@ -1046,9 +1039,9 @@ def response_app(session, request):
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = session['rgi.Output']([DATA1, DATA2], len(DATA))
+        body = session['rgi.Body'](io.BytesIO(DATA), len(DATA))
     elif request['path'] == ['bar']:
-        body = session['rgi.Output']([b'', b''], 0)
+        body = session['rgi.Body'](io.BytesIO(), 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}

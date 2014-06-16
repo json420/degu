@@ -30,17 +30,12 @@ from os import path
 
 from .base import (
     TYPE_ERROR,
+    Body,
+    ChunkedBody,
     makefiles,
     read_preamble,
     parse_headers,
-    write_chunk,
-    Body,
-    ChunkedBody,
-    Input,
-    ChunkedInput,
-    Output,
-    ChunkedOutput,
-    FileOutput,
+    write_body,
 )
 
 
@@ -299,13 +294,13 @@ def validate_response(request, response):
             raise ValueError(
                 "headers['content-length'] != len(body): {} != {}".format(headers['content-length'], len(body))
             )
-    elif isinstance(body, (Output, FileOutput)):
+    elif isinstance(body, Body):
         headers.setdefault('content-length', body.content_length)
         if headers['content-length'] != body.content_length:
             raise ValueError(
                 "headers['content-length'] != body.content_length: {} != {}".format(headers['content-length'], body.content_length)
             )
-    elif isinstance(body, ChunkedOutput):
+    elif isinstance(body, ChunkedBody):
         headers.setdefault('transfer-encoding', 'chunked') 
     elif body is not None:
         raise TypeError(
@@ -333,30 +328,16 @@ def validate_request(request):
     pass
 
 
-def write_response(wfile, response):
-    (status, reason, headers, body) = response
+def write_response(wfile, status, reason, headers, body):
     total = wfile.write(
         'HTTP/1.1 {} {}\r\n'.format(status, reason).encode('latin_1')
     )
-    if headers:
-        for key in sorted(headers):
-            total += wfile.write(
-                '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
-            )
-    total += wfile.write(b'\r\n')
-    if isinstance(body, (bytes, bytearray)):
-        total += wfile.write(body)
-    elif isinstance(body, Body):
-        for data in body:
-            total += wfile.write(data)
-    elif isinstance(body, ChunkedBody):
-        for chunk in body:
-            total += write_chunk(wfile, chunk)
-    elif body is not None:
-        raise TypeError(
-            'invalid response body type: {!r}: {!r}'.format(type(body), body)
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
         )
-    wfile.flush()
+    total += wfile.write(b'\r\n')
+    total += write_body(wfile, body)
     return total
 
 
@@ -424,9 +405,9 @@ class Handler:
             if headers['content-length'] == 0:
                 del headers['content-length']
         if 'content-length' in headers:
-            body = Input(self.rfile, headers['content-length'])
+            body = Body(self.rfile, headers['content-length'])
         elif 'transfer-encoding' in headers:
-            body = ChunkedInput(self.rfile)
+            body = ChunkedBody(self.rfile)
         else:
             body = None
         if body is not None and method not in {'POST', 'PUT'}:
@@ -541,19 +522,7 @@ class Handler:
         with any concerns.
         """
         (status, reason, headers, body) = response
-        preamble = ''.join(iter_response_lines(status, reason, headers))
-        self.wfile.write(preamble.encode('latin_1'))
-        if isinstance(body, (bytes, bytearray)):
-            self.wfile.write(body)
-        elif isinstance(body, (Output, FileOutput)):
-            for buf in body:
-                self.wfile.write(buf)
-        elif isinstance(body, ChunkedOutput):
-            for chunk in body:
-                write_chunk(self.wfile, chunk)
-        elif body is not None:
-            raise TypeError('Bad response body type')
-        self.wfile.flush()
+        write_response(self.wfile, status, reason, headers, body)
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closing connection to %r after %d %r',
@@ -623,9 +592,8 @@ class Server:
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
-            'rgi.Output': Output,
-            'rgi.ChunkedOutput': ChunkedOutput,
-            'rgi.FileOutput': FileOutput,
+            'rgi.Body': Body,
+            'rgi.ChunkedBody': ChunkedBody,
             'requests': 0,  # Number of fully handled requests
         }
 
