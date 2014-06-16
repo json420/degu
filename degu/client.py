@@ -37,6 +37,9 @@ from .base import (
     read_preamble,
     parse_headers,
     write_chunk,
+    write_body,
+    Body,
+    ChunkedBody,
     Input,
     ChunkedInput,
     Output,
@@ -235,9 +238,9 @@ def read_response(rfile, method):
     (status, reason) = parse_status(status_line)
     headers = (parse_headers(header_lines) if header_lines else {})
     if 'content-length' in headers and method != 'HEAD':
-        body = Input(rfile, headers['content-length'])
+        body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = ChunkedInput(rfile)
+        body = ChunkedBody(rfile)
     else:
         body = None
     return Response(status, reason, headers, body)

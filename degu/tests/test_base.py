@@ -1076,14 +1076,8 @@ class TestBody(TestCase):
         self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
 
-        # Now read it:
+        # Now read it all at once:
         self.assertEqual(body.read(), data)
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
-        self.assertEqual(rfile.tell(), 1776)
-        self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 0)
-        self.assertEqual(body.read(), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)

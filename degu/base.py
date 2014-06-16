@@ -373,9 +373,9 @@ class Body:
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
-        size = (self.remaining if size is None else min(self.remaining, size))
-        data = self.rfile.read(size)
-        if len(data) != size:
+        read = (self.remaining if size is None else min(self.remaining, size))
+        data = self.rfile.read(read)
+        if len(data) != read:
             # Security note: if application-level code is being overly general
             # with their exception handling, they might continue to use a
             # connection even after an UnderFlowError, which could create a
@@ -384,9 +384,12 @@ class Body:
             # to True (which means "fully consumed") because the body was not in
             # fact fully read. 
             self.rfile.close()
-            raise UnderFlowError(len(data), size)
-        self.remaining -= size
+            raise UnderFlowError(len(data), read)
+        self.remaining -= read
         assert self.remaining >= 0
+        if size is None:
+            # Entire body was request at once, so close:
+            self.closed = True
         return data
 
     def __iter__(self):

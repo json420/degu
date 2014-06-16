@@ -416,7 +416,7 @@ class TestFunctions(TestCase):
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {}, None))
 
-        # Content-Length, body should be base.Input:
+        # Content-Length, body should be base.Body:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             'Content-Length: 17\r\n',
@@ -429,7 +429,7 @@ class TestFunctions(TestCase):
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'content-length': 17})
-        self.assertIsInstance(r.body, base.Input)
+        self.assertIsInstance(r.body, base.Body)
         self.assertIs(r.body.rfile, rfile)
         self.assertIs(r.body.closed, False)
         self.assertEqual(r.body.remaining, 17)
@@ -445,7 +445,7 @@ class TestFunctions(TestCase):
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
 
-        # Transfer-Encoding, body should be base.ChunkedInput:
+        # Transfer-Encoding, body should be base.ChunkedBody:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             'Transfer-Encoding: chunked\r\n',
@@ -466,7 +466,7 @@ class TestFunctions(TestCase):
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(r.body, base.ChunkedInput)
+        self.assertIsInstance(r.body, base.ChunkedBody)
         self.assertIs(r.body.rfile, rfile)
         self.assertEqual(rfile.tell(), len(lines))
         self.assertIs(r.body.closed, False)
