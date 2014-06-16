@@ -102,17 +102,6 @@ def read_preamble(rfile):
     return (first_line, header_lines)
 
 
-def write_preamble(wfile, first_line, headers):
-    total = wfile.write(first_line.encode('latin_1'))
-    total += wfile.write(b'\r\n')
-    for key in sorted(headers):
-        total += wfile.write(
-            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
-        )
-    total += wfile.write(b'\r\n')
-    return total
-
-
 def read_chunk(rfile):
     """
     Read a chunk from a chunk-encoded request or response body.
@@ -195,6 +184,35 @@ def parse_headers(header_lines):
                 'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
             )
     return headers
+
+
+def write_preamble(wfile, first_line, headers):
+    total = wfile.write(first_line.encode('latin_1'))
+    total += wfile.write(b'\r\n')
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    return total
+
+
+def write_body(wfile, body):
+    total = 0
+    if isinstance(body, (bytes, bytearray)):
+        total += wfile.write(body)
+    elif isinstance(body, Body):
+        for data in body:
+            total += wfile.write(data)
+    elif isinstance(body, ChunkedBody):
+        for (data, extension) in body:
+            write_chunk(wfile, data, extension)
+    elif body is not None:
+        raise TypeError(
+            'invalid body type: {!r}: {!r}'.format(type(body), body)
+        )
+    wfile.flush()
+    return total
 
 
 def makefiles(sock):
@@ -317,24 +335,6 @@ class FileOutput:
         assert remaining == 0
         self.closed = True
         self.fp.close()
-
-
-def write_body(wfile, body):
-    total = 0
-    if isinstance(body, (bytes, bytearray)):
-        total += wfile.write(body)
-    elif isinstance(body, Body):
-        for data in body:
-            total += wfile.write(data)
-    elif isinstance(body, ChunkedBody):
-        for (data, extension) in body:
-            write_chunk(wfile, data, extension)
-    elif body is not None:
-        raise TypeError(
-            'invalid body type: {!r}: {!r}'.format(type(body), body)
-        )
-    wfile.flush()
-    return total
 
 
 class Body:
