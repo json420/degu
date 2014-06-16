@@ -205,8 +205,8 @@ def write_body(wfile, body):
         for data in body:
             total += wfile.write(data)
     elif isinstance(body, ChunkedBody):
-        for (data, extension) in body:
-            write_chunk(wfile, data, extension)
+        for data in body:
+            total += write_chunk(wfile, data)
     elif body is not None:
         raise TypeError(
             'invalid body type: {!r}: {!r}'.format(type(body), body)

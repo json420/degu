@@ -28,7 +28,7 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import TempDir, DummySocket, random_chunks
+from .helpers import TempDir, DummySocket, random_data, random_chunks
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base
@@ -580,6 +580,61 @@ class TestFunctions(TestCase):
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
+
+    def test_write_body(self):
+        # body is bytes:
+        body = random_data()
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, body), len(body))
+        self.assertEqual(wfile.tell(), len(body))
+        wfile.seek(0)
+        self.assertEqual(wfile.read(), body)
+
+        # body is bytearray:
+        body = bytearray(body)
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, body), len(body))
+        self.assertEqual(wfile.tell(), len(body))
+        wfile.seek(0)
+        self.assertEqual(wfile.read(), body)
+
+        # body is base.Body:
+        data = random_data()
+        extra = random_data()
+        rfile = io.BytesIO(data + extra)
+        body = base.Body(rfile, len(data))
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, body), len(data))
+        self.assertEqual(rfile.tell(), len(data))
+        self.assertEqual(wfile.tell(), len(data))
+        wfile.seek(0)
+        self.assertEqual(wfile.read(), data)
+
+        # body is base.ChunkedBody:
+        chunks = random_chunks()
+        rfile = io.BytesIO()
+        total = sum(base.write_chunk(rfile, data) for data in chunks)
+        rfile.write(extra)
+        rfile.seek(0)
+        body = base.ChunkedBody(rfile)
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, body), total)
+        self.assertEqual(rfile.tell(), total)
+        self.assertEqual(wfile.tell(), total)
+        wfile.seek(0)
+        gotchunks = []
+        while True:
+            data = base.read_chunk(wfile)
+            gotchunks.append(data)
+            if not data:
+                break
+        self.assertEqual(gotchunks, chunks)
+
+        # body is None:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, None), 0)
+        self.assertEqual(wfile.tell(), 0)
+        self.assertEqual(wfile.read(), b'')
 
 
 class TestOutput(TestCase):
