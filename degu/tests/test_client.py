@@ -25,6 +25,7 @@ Unit tests for the `degu.server` module`
 
 from unittest import TestCase
 import os
+import io
 import socket
 import ssl
 from urllib.parse import urlparse
@@ -282,13 +283,10 @@ class TestFunctions(TestCase):
             self.assertEqual(H, {})
 
         # Test with all the non-chunked body types:
-        tmp = TempDir()
-        fp = tmp.prepare(b'')  # Contents of rfile wont matter
         bodies = (
             os.urandom(17),
             bytearray(os.urandom(17)),
-            base.Output([], 17),
-            base.FileOutput(fp, 17),
+            base.Body(io.BytesIO(), 17)
         )
         for M in ('PUT', 'POST'):
             for B in bodies:
@@ -297,7 +295,7 @@ class TestFunctions(TestCase):
                 self.assertEqual(H, {'content-length': 17})
 
         # Finally test with base.ChunkedOutput:
-        B = base.ChunkedOutput([b''])
+        B = base.ChunkedBody(io.BytesIO())
         for M in ('PUT', 'POST'):
             H = {}
             self.assertIsNone(client.validate_request(M, '/foo', H, B))

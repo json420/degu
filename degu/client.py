@@ -173,9 +173,9 @@ def validate_request(method, uri, headers, body):
             raise ValueError('non-casefolded header name: {!r}'.format(key))
     if isinstance(body, (bytes, bytearray)): 
         headers['content-length'] = len(body)
-    elif isinstance(body, (Output, FileOutput)):
+    elif isinstance(body, Body):
         headers['content-length'] = body.content_length
-    elif isinstance(body, ChunkedOutput):
+    elif isinstance(body, ChunkedBody):
         headers['transfer-encoding'] = 'chunked'
     elif body is not None:
         raise TypeError('bad request body type: {!r}'.format(type(body)))
