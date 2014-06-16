@@ -34,7 +34,6 @@ from .base import (
     read_preamble,
     parse_headers,
     write_chunk,
-    write_body,
     Body,
     ChunkedBody,
     Input,
@@ -365,6 +364,7 @@ def handle_requests(app, sock, session):
     (wfile, rfile) = makefiles(sock)
     while True:
         request = read_request(rfile)
+        validate_request(request)
         response = app(session, request)
         validate_response(request, response)
         write_response(wfile, response)
@@ -543,7 +543,17 @@ class Handler:
         (status, reason, headers, body) = response
         preamble = ''.join(iter_response_lines(status, reason, headers))
         self.wfile.write(preamble.encode('latin_1'))
-        write_body(body)
+        if isinstance(body, (bytes, bytearray)):
+            self.wfile.write(body)
+        elif isinstance(body, (Output, FileOutput)):
+            for buf in body:
+                self.wfile.write(buf)
+        elif isinstance(body, ChunkedOutput):
+            for chunk in body:
+                write_chunk(self.wfile, chunk)
+        elif body is not None:
+            raise TypeError('Bad response body type')
+        self.wfile.flush()
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closing connection to %r after %d %r',

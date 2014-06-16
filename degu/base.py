@@ -126,30 +126,28 @@ def read_chunk(rfile):
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
+
+    Note this function currently ignores any chunk-extension that may be
+    present. 
     """
     line = rfile.readline(MAX_LINE_BYTES)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
-    parts = line[:-2].split(b';', 1)
-    size = int(parts[0], 16)
-    if len(parts) == 2:
-        extension = parts[1].decode('latin_1').split('=', 1)
-    else:
-        extension = None
+    size = int(line[:-2].split(b';')[0], 16)
     if size < 0:
         raise ValueError('negative chunk size: {}'.format(size))
-    data = rfile.read(size)
-    if len(data) != size:
-        raise UnderFlowError(len(data), size)
+    chunk = rfile.read(size)
+    if len(chunk) != size:
+        raise UnderFlowError(len(chunk), size)
     crlf = rfile.read(2)
     if crlf != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(crlf))
-    return (data, extension)
+    return chunk
 
 
-def write_chunk(wfile, data, extension=None):
+def write_chunk(wfile, chunk):
     """
-    Write *data* to a chunk-encoded request or response body.
+    Write a chunk to a chunk-encoded request or response body.
 
     See "Chunked Transfer Coding":
 
@@ -157,32 +155,12 @@ def write_chunk(wfile, data, extension=None):
 
     Note this function currently doesn't support chunk-extensions.
     """
-    if extension:
-        (key, value) = extension
-        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-    else:
-        size_line = '{:x}\r\n'.format(len(data))
-    total = wfile.write(size_line.encode('latin_1'))
-    total += wfile.write(data)
+    size_line = '{:x}\r\n'.format(len(chunk))
+    total = wfile.write(size_line.encode())
+    total += wfile.write(chunk)
     total += wfile.write(b'\r\n')
-    return total
-
-
-def write_body(wfile, body):
-    total = 0
-    if isinstance(body, (bytes, bytearray)):
-        total += wfile.write(body)
-    elif isinstance(body, Body):
-        for data in body:
-            total += wfile.write(data)
-    elif isinstance(body, ChunkedBody):
-        for (data, extension) in body:
-            total += write_chunk(wfile, chunk, extension)
-    elif body is not None:
-        raise TypeError(
-            'invalid response body type: {!r}: {!r}'.format(type(body), body)
-        )
-    wfile.flush()
+    # Flush buffer as it could be some time before the next chunk is available:
+    # wfile.flush()
     return total
 
 
@@ -387,8 +365,8 @@ class Body:
         data = self.rfile.read(size)
         if len(data) != size:
             raise UnderFlowError(len(data), size)
+        assert self.remaining - size >= 0
         self.remaining -= size
-        assert self.remaining >= 0
         return data
 
     def __iter__(self):
@@ -414,7 +392,7 @@ class ChunkedBody:
 
     def read(self):
         buf = bytearray()
-        for (data, extension) in self:
+        for data in self:
             buf.extend(data)
         return buf
 
@@ -422,10 +400,10 @@ class ChunkedBody:
         if self.closed:
             raise BodyClosedError(self)
         self.started = True
-        (data, extension) = read_chunk(self.rfile)
+        data = read_chunk(self.rfile)
         if not data:
             self.closed = True
-        return (data, extension)
+        return data
 
     def __iter__(self):
         if self.started:
