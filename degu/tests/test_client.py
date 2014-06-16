@@ -301,46 +301,6 @@ class TestFunctions(TestCase):
             self.assertIsNone(client.validate_request(M, '/foo', H, B))
             self.assertEqual(H, {'transfer-encoding': 'chunked'})
 
-    def test_iter_request_lines(self):
-        # Test when headers is an empty dict:
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', {})),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                '\r\n',
-            ]
-        )    
-
-        # Should also work when headers is None:
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', None)),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                '\r\n',
-            ]
-        )
-
-        # Test when headers is non-empty:
-        headers = {
-            'accept': 'application/json',
-            'user-agent': 'foo',
-            'content-length': 1776,
-            'content-type': 'application/json',
-            'authorization': 'blah blah',
-        }
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', headers)),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                'accept: application/json\r\n',
-                'authorization: blah blah\r\n',
-                'content-length: 1776\r\n',
-                'content-type: application/json\r\n',
-                'user-agent: foo\r\n',
-                '\r\n',
-            ]
-        )
-
     def test_parse_status(self):
         # Not enough spaces:
         with self.assertRaises(ValueError) as cm:
