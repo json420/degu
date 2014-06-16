@@ -23,9 +23,6 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
-import io
-
-
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
@@ -286,44 +283,6 @@ class ChunkedOutput:
         if not self.closed:
             self.closed = True
             raise ChunkError('final chunk was not empty')
-
-
-class FileOutput:
-    """
-    Written to the wfile by reading from an io.BufferedReader.
-    """
-
-    __slots__ = ('closed', 'fp', 'content_length')
-
-    def __init__(self, fp, content_length):
-        if not isinstance(fp, io.BufferedReader):
-            raise TypeError('fp must be an io.BufferedReader')
-        if fp.closed:
-            raise ValueError('fp is already closed')
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
-        self.fp = fp
-        self.content_length = content_length
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        remaining = self.content_length
-        while remaining:
-            size = min(remaining, FILE_BUFFER_BYTES)
-            buf = self.fp.read(size)
-            if len(buf) < size:
-                self.closed = True
-                self.fp.close()
-                raise UnderFlowError(len(buf), size)
-            remaining -= size
-            yield buf
-        assert remaining == 0
-        self.closed = True
-        self.fp.close()
 
 
 class Body:
