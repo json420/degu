@@ -338,23 +338,27 @@ class FileOutput:
 
 
 class Body:
-    def __init__(self, rfile, length):
+    def __init__(self, rfile, content_length):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
-        if not isinstance(length, int):
-            raise TypeError(
-                TYPE_ERROR.format('length', int, type(length), length) 
+        if not isinstance(content_length, int):
+            raise TypeError(TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
             )
-        if length < 0:
-            raise ValueError('length must be >= 0, got: {!r}'.format(length))
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
         self.chunked = False
         self.closed = False
         self.rfile = rfile
-        self.length = length
-        self.remaining = length
+        self.content_length = content_length
+        self.remaining = content_length
 
     def __repr__(self):
-        return '{}(<rfile>, {!r})'.format(self.__class__.__name__, self.length)
+        return '{}(<rfile>, {!r})'.format(
+            self.__class__.__name__, self.content_length
+        )
 
     def read(self, size=None):
         if self.closed:

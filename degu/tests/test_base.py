@@ -879,27 +879,31 @@ class TestBody(TestCase):
         data = os.urandom(69)
         rfile = io.BytesIO(data)
 
-        # Good rfile with bad length type:
+        # Good rfile with bad content_length type:
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('length', int, float, 17.0)
+            base.TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         self.assertEqual(rfile.tell(), 0)
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, '17')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('length', int, str, '17')
+            base.TYPE_ERROR.format('content_length', int, str, '17')
         )
         self.assertEqual(rfile.tell(), 0)
 
-        # Good rfile with bad length value:
+        # Good rfile with bad content_length value:
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, -1)
-        self.assertEqual(str(cm.exception), 'length must be >= 0, got: -1')
+        self.assertEqual(str(cm.exception),
+            'content_length must be >= 0, got: -1'
+        )
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, -17)
-        self.assertEqual(str(cm.exception), 'length must be >= 0, got: -17')
+        self.assertEqual(str(cm.exception),
+            'content_length must be >= 0, got: -17'
+        )
         self.assertEqual(rfile.tell(), 0)
 
         # All good:
@@ -907,19 +911,19 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
-        self.assertEqual(body.length, 69)
+        self.assertEqual(body.content_length, 69)
         self.assertEqual(body.remaining, 69)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(), data)
         self.assertEqual(repr(body), 'Body(<rfile>, 69)')
 
-        # Make sure there is no automagical checking of length against rfile:
+        # Make sure there is no automagical checking of content_length against rfile:
         rfile.seek(1)
         body = base.Body(rfile, 17)
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile, rfile)
-        self.assertEqual(body.length, 17)
+        self.assertEqual(body.content_length, 17)
         self.assertEqual(body.remaining, 17)
         self.assertEqual(rfile.tell(), 1)
         self.assertEqual(rfile.read(), data[1:])
@@ -941,7 +945,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
 
         # Bad size type:
@@ -954,7 +958,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
         with self.assertRaises(TypeError) as cm:
             body.read('18')
@@ -964,7 +968,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
 
         # Bad size value:
@@ -974,7 +978,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
         with self.assertRaises(ValueError) as cm:
             body.read(-18)
@@ -982,7 +986,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1776)
 
         # Now read it:
@@ -990,13 +994,13 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 1776)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 0)
         self.assertEqual(body.read(), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 0)
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read()
@@ -1012,28 +1016,28 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 17)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1759)
 
         self.assertEqual(body.read(18), data[17:35])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 35)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 1741)
 
         self.assertEqual(body.read(1741), data[35:])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 1776)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 0)
 
         self.assertEqual(body.read(1776), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
-        self.assertEqual(body.length, 1776)
+        self.assertEqual(body.content_length, 1776)
         self.assertEqual(body.remaining, 0)
 
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1064,7 +1068,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 18)
-        self.assertEqual(body.length, 37)
+        self.assertEqual(body.content_length, 37)
         self.assertEqual(body.remaining, 19)
         with self.assertRaises(base.UnderFlowError) as cm:
             body.read(19)
@@ -1083,7 +1087,7 @@ class TestBody(TestCase):
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.length, 0)
+        self.assertEqual(body.content_length, 0)
         self.assertEqual(body.remaining, 0)
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read(17)
@@ -1105,7 +1109,7 @@ class TestBody(TestCase):
             self.assertIs(body.chunked, False)
             self.assertIs(body.closed, True)
             self.assertEqual(rfile.tell(), len(data))
-            self.assertEqual(body.length, len(data))
+            self.assertEqual(body.content_length, len(data))
             self.assertEqual(body.remaining, 0)
             with self.assertRaises(base.BodyClosedError) as cm:
                 body.read(17)
