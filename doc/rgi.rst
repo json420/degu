@@ -376,10 +376,9 @@ of the case used in the client request.  If the request headers include a
 The ``request['headers']`` sub-dictionary was designed to be directly usable by
 a reverse-proxy application when making its HTTP client request.  For example,
 we can implement a simple reverse-proxy with the help of the the
-:func:`degu.util.relative_uri()` and :func:`degu.util.output_from_input()`
-functions:
+:func:`degu.util.relative_uri()` functions:
 
->>> from degu.util import relative_uri, output_from_input
+>>> from degu.util import relative_uri
 >>> class ReverseProxyApp:
 ...     def __init__(self, client):
 ...         self.client = client
@@ -388,17 +387,11 @@ functions:
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
-...         response = conn.request(
+...         return conn.request(
 ...             request['method'],
 ...             relative_uri(request),
 ...             request['headers'],
-...             output_from_input(session, request['body'])
-...         )
-...         return (
-...             response.status,
-...             response.reason,
-...             response.headers,
-...             output_from_input(session, response.body)
+...             request['body']
 ...         )
 ...
 
