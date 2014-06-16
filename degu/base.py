@@ -372,9 +372,17 @@ class Body:
         size = (self.remaining if size is None else min(self.remaining, size))
         data = self.rfile.read(size)
         if len(data) != size:
+            # Security note: if application-level code is being overly general
+            # with their exception handling, they might continue to use a
+            # connection even after an UnderFlowError, which could create a
+            # request/response stream state inconsistency.  So in this
+            # circumstance, we close the rfile, but we do *not* set Body.closed
+            # to True (which means "fully consumed") because the body was not in
+            # fact fully read. 
+            self.rfile.close()
             raise UnderFlowError(len(data), size)
-        assert self.remaining - size >= 0
         self.remaining -= size
+        assert self.remaining >= 0
         return data
 
     def __iter__(self):

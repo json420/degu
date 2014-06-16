@@ -1053,6 +1053,8 @@ class TestBody(TestCase):
         self.assertEqual(str(cm.exception),
             'received 1776 bytes, expected 1800'
         )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
 
         # Underflow error when read in parts:
         data = os.urandom(35)
@@ -1071,6 +1073,8 @@ class TestBody(TestCase):
         self.assertEqual(str(cm.exception),
             'received 17 bytes, expected 19'
         )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
 
         # Test with empty body:
         rfile = io.BytesIO(os.urandom(21))
@@ -1113,9 +1117,9 @@ class TestBody(TestCase):
 
     def test_iter(self):
         data = os.urandom(1776)
-        rfile = io.BytesIO(data)
 
         # content_length=0
+        rfile = io.BytesIO(data)
         body = base.Body(rfile, 0)
         self.assertEqual(list(body), [b''])
         self.assertEqual(body.remaining, 0)
@@ -1128,7 +1132,113 @@ class TestBody(TestCase):
         )
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(), data)
-        
+
+        # content_length=69
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 69)
+        self.assertEqual(list(body), [data[:69], b''])
+        self.assertEqual(body.remaining, 0)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), 69)
+        self.assertEqual(rfile.read(), data[69:])
+
+        # content_length=1776
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 1776)
+        self.assertEqual(list(body), [data, b''])
+        self.assertEqual(body.remaining, 0)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), 1776)
+        self.assertEqual(rfile.read(), b'')
+
+        # content_length=1777
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, 1777)
+        with self.assertRaises(base.UnderFlowError) as cm:
+            list(body)
+        self.assertEqual(cm.exception.received, 1776)
+        self.assertEqual(cm.exception.expected, 1777)
+        self.assertEqual(str(cm.exception),
+            'received 1776 bytes, expected 1777'
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
+
+        # Make sure data is read in FILE_BUFFER_BYTES chunks:
+        data1 = os.urandom(base.FILE_BUFFER_BYTES)
+        data2 = os.urandom(base.FILE_BUFFER_BYTES)
+        length = base.FILE_BUFFER_BYTES * 2
+        rfile = io.BytesIO(data1 + data2)
+        body = base.Body(rfile, length)
+        self.assertEqual(list(body), [data1, data2, b''])
+        self.assertEqual(body.remaining, 0)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), length)
+        self.assertEqual(rfile.read(), b'')
+
+        # Again, with smaller final chunk:
+        length = base.FILE_BUFFER_BYTES * 2 + len(data)
+        rfile = io.BytesIO(data1 + data2 + data)
+        body = base.Body(rfile, length)
+        self.assertEqual(list(body), [data1, data2, data, b''])
+        self.assertEqual(body.remaining, 0)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), length)
+        self.assertEqual(rfile.read(), b'')
+
+        # Again, with length 1 byte less than available:
+        length = base.FILE_BUFFER_BYTES * 2 + len(data) - 1
+        rfile = io.BytesIO(data1 + data2 + data)
+        body = base.Body(rfile, length)
+        self.assertEqual(list(body), [data1, data2, data[:-1], b''])
+        self.assertEqual(body.remaining, 0)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+        self.assertEqual(rfile.tell(), length)
+        self.assertEqual(rfile.read(), data[-1:])
+
+        # Again, with length 1 byte *more* than available:
+        length = base.FILE_BUFFER_BYTES * 2 + len(data) + 1
+        rfile = io.BytesIO(data1 + data2 + data)
+        body = base.Body(rfile, length)
+        with self.assertRaises(base.UnderFlowError) as cm:
+            list(body)
+        self.assertEqual(cm.exception.received, 1776)
+        self.assertEqual(cm.exception.expected, 1777)
+        self.assertEqual(str(cm.exception),
+            'received 1776 bytes, expected 1777'
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(rfile.closed, True)
 
 
 class TestInput(TestCase):
