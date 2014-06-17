@@ -63,6 +63,16 @@ class BodyClosedError(Exception):
         super().__init__('body already fully read: {!r}'.format(body))
 
 
+def makefiles(sock):
+    """
+    Create (rfile, wfile) from a socket connection.
+    """
+    return (
+        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
+        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
+    )
+
+
 def read_preamble(rfile):
     """
     Read the HTTP request or response preamble, do low-level parsing.
@@ -195,13 +205,6 @@ def write_body(wfile, body):
         )
     wfile.flush()
     return total
-
-
-def makefiles(sock):
-    return (
-        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
-        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
-    )
 
 
 class Body:

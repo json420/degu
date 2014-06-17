@@ -143,6 +143,14 @@ class TestBodyClosedError(TestCase):
 
 
 class TestFunctions(TestCase):
+    def test_makefiles(self):
+        sock = DummySocket()
+        self.assertEqual(base.makefiles(sock), (sock._rfile, sock._wfile))
+        self.assertEqual(sock._calls, [
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+        ])
+
     def test_read_preamble(self):
         # No data at all, likely connection closed by other end:
         rfile = io.BytesIO(b'')
@@ -564,14 +572,6 @@ class TestFunctions(TestCase):
             '{}: {}'.format(key, value) for (key, value) in headers.items()
         )
         self.assertEqual(base.parse_headers(lines), headers)
-
-    def test_makefiles(self):
-        sock = DummySocket()
-        self.assertEqual(base.makefiles(sock), (sock._rfile, sock._wfile))
-        self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
-        ])
 
     def test_write_body(self):
         # body is bytes:
