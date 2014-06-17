@@ -13,10 +13,11 @@ Changes:
     * Document some of the internal API functions in :mod:`degu.base` (note that
       none of these are API stable yet)
 
-    * Replace previously seperate input and output abstractions with the
+    * Replace previously separate input and output abstractions with the
       :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` classes, which
       can uniformly represent an HTTP request or response, whether sending or
-      receiving
+      receiving; note that in theory this isn't a breaking API change, but it
+      could be depending how much you were reaching into undocumented internals
 
     * As a result of the above, an incoming HTTP body can now be directly used
       as an outgoing HTTP body; this even further simplifies what it takes to
