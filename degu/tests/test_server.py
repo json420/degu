@@ -253,6 +253,22 @@ class TestFunctions(TestCase):
             'too many values to unpack (expected 3)'
         )
 
+        # Bad method:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('OPTIONS /foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'get'")
+
+        # Bad protocol:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar?stuff=junk HTTP/2.0')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/2.0'")
+
         # Multiple "?" present in URI:
         with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
@@ -302,11 +318,6 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar//?stuff=junk HTTP/1.1')
         self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
 
         # Test all valid methods:
         for M in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD'):
@@ -628,11 +639,110 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), 37)
         self.assertEqual(rfile.read(), b'body')
 
+        # Duplicate headers:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'duplicates in header_lines:\n  Foo: bar\n  foo: baz'
+        )
+        self.assertEqual(rfile.tell(), 38)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length can't be parsed as a base-10 integer:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: 16.9\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 10: '16.9'"
+        )
+        self.assertEqual(rfile.tell(), 40)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length is negative:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: -17\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'negative content-length: -17'
+        )
+        self.assertEqual(rfile.tell(), 39)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad Transfer-Encoding:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad transfer-encoding: 'CHUNKED'"
+        )
+        self.assertEqual(rfile.tell(), 46)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length with Transfer-Encoding:
+        rfile = io.BytesIO(
+            b'GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 17\r\n\r\nbody'
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'cannot have both content-length and transfer-encoding headers'
+        )
+        self.assertEqual(rfile.tell(), 66)
+        self.assertEqual(rfile.read(), b'body')
+
+        # No headers, no body, no query:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\n\r\nextra')
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'GET',
+                'script': [],
+                'path': [],
+                'query': '',
+                'headers': {},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'extra')
+
+        # No headers, no body, but add a query:
+        rfile = io.BytesIO(b'HEAD /foo?nonpair HTTP/1.1\r\n\r\nextra')
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'HEAD',
+                'script': [],
+                'path': ['foo'],
+                'query': 'nonpair',
+                'headers': {},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'extra')
+
+        # Add a header, still no body:
+        rfile = io.BytesIO(
+            b'DELETE /foo/Bar/?keY=vAl HTTP/1.1\r\nME: YOU\r\n\r\nextra'
+        )
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'DELETE',
+                'script': [],
+                'path': ['foo', 'Bar', ''],
+                'query': 'keY=vAl',
+                'headers': {'me': 'YOU'},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 46)
+        self.assertEqual(rfile.read(), b'extra')
+
     def test_read_request_fuzz(self):
         """
         Random fuzz test for read_request().
 
-        Excepted result: given an rfile containing 8192 random bytes,
+        Expected result: given an rfile containing 8192 random bytes,
         read_request() should raise a ValueError every time, and should never
         read more than the first 4096 bytes.
         """

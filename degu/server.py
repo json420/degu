@@ -225,9 +225,12 @@ def parse_request(line):
     >>> parse_request('GET / HTTP/1.1')
     ('GET', [], '')
 
-    Also see `reconstruct_uri()`.
     """
     (method, uri, protocol) = line.split()
+    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+        raise ValueError('bad HTTP method: {!r}'.format(method))
+    if protocol != 'HTTP/1.1':
+        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     uri_parts = uri.split('?')
     if len(uri_parts) == 2:
         (path_str, query) = uri_parts
@@ -238,8 +241,6 @@ def parse_request(line):
     if path_str[:1] != '/' or '//' in path_str:
         raise ValueError('bad request path: {!r}'.format(path_str))
     path_list = ([] if path_str == '/' else path_str[1:].split('/'))
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     return (method, path_list, query)
 
 
@@ -316,26 +317,10 @@ def read_request(rfile):
     # Read the entire request preamble:
     (request_line, header_lines) = read_preamble(rfile)
 
-    # Parse request line:
-    (method, uri, protocol) = request_line.split()
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ValueError('bad HTTP method: {!r}'.format(method))
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
+    # Parse the request line:
+    (method, path_list, query) = parse_request(request_line)
 
-    # Parse URI into request['path'], request['query']:
-    uri_parts = uri.split('?')
-    if len(uri_parts) == 2:
-        (path_str, query) = uri_parts
-    elif len(uri_parts) == 1:
-        (path_str, query) = (uri_parts[0], '')
-    else:
-        raise ValueError('bad request uri: {!r}'.format(uri))
-    if path_str[:1] != '/' or '//' in path_str:
-        raise ValueError('bad request path: {!r}'.format(path_str))
-    path_list = ([] if path_str == '/' else path_str[1:].split('/'))
-
-    # Parse headers:
+    # Parse the header lines:
     headers = parse_headers(header_lines)
 
     # Hack for compatibility with the CouchDB replicator, which annoyingly
