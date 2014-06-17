@@ -26,6 +26,10 @@ Changes:
     * Largely rewrite the :doc:`rgi` specification to reflect the new
       connection-level semantics
 
+    * Add ``./setup.py test --skip-slow`` option to skip the time-consuming (but
+      important) live socket timeout tests... very handy for day-to-day
+      development
+
 
 Internal API changes:
 

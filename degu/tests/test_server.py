@@ -1421,15 +1421,15 @@ class TestLiveServer(TestCase):
 
         You can run all the unit tests minus the timeout tests like this::
 
-            $ ./setup.py test --skip-timeout
+            $ ./setup.py test --skip-slow
 
         You can also accomplish the same with an environment variable::
 
-            $ DEGU_TEST_SKIP_TIMEOUT=true ./setup.py test
+            $ DEGU_TEST_SKIP_SLOW=true ./setup.py test
 
         """
-        if os.environ.get('DEGU_TEST_SKIP_TIMEOUT') == 'true':
-            self.skipTest('skipping as DEGU_TEST_SKIP_TIMEOUT is set')
+        if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
+            self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
         (httpd, client) = self.build_with_app(None, timeout_app)
         conn = client.connect()
 
