@@ -434,9 +434,7 @@ class Handler:
             self.session['requests'] += 1
 
     def handle_one(self):
-        request = self.build_request()
-        if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-            return self.write_status_only(405, 'Method Not Allowed')
+        request = read_request(self.rfile)
         request_body = request['body']
         response = self.app(self.session, request)
         if request_body and not request_body.closed:
@@ -555,16 +553,6 @@ class Handler:
             log.warning('closing connection to %r after %d %r',
                 self.session['client'], status, reason
             )
-
-    def write_status_only(self, status, reason):
-        assert isinstance(status, int)
-        assert 100 <= status <= 599
-        assert isinstance(reason, str)
-        assert reason  # reason should be non-empty
-        preamble = ''.join(iter_response_lines(status, reason, None))
-        self.wfile.write(preamble.encode('latin_1'))
-        self.wfile.flush()
-        self.close()
 
 
 class Server:
