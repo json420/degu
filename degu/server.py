@@ -30,15 +30,12 @@ from os import path
 
 from .base import (
     TYPE_ERROR,
+    Body,
+    ChunkedBody,
     makefiles,
     read_preamble,
     parse_headers,
-    write_chunk,
-    Input,
-    ChunkedInput,
-    Output,
-    ChunkedOutput,
-    FileOutput,
+    write_body,
 )
 
 
@@ -228,9 +225,12 @@ def parse_request(line):
     >>> parse_request('GET / HTTP/1.1')
     ('GET', [], '')
 
-    Also see `reconstruct_uri()`.
     """
     (method, uri, protocol) = line.split()
+    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+        raise ValueError('bad HTTP method: {!r}'.format(method))
+    if protocol != 'HTTP/1.1':
+        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     uri_parts = uri.split('?')
     if len(uri_parts) == 2:
         (path_str, query) = uri_parts
@@ -241,8 +241,6 @@ def parse_request(line):
     if path_str[:1] != '/' or '//' in path_str:
         raise ValueError('bad request path: {!r}'.format(path_str))
     path_list = ([] if path_str == '/' else path_str[1:].split('/'))
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     return (method, path_list, query)
 
 
@@ -297,13 +295,13 @@ def validate_response(request, response):
             raise ValueError(
                 "headers['content-length'] != len(body): {} != {}".format(headers['content-length'], len(body))
             )
-    elif isinstance(body, (Output, FileOutput)):
+    elif isinstance(body, Body):
         headers.setdefault('content-length', body.content_length)
         if headers['content-length'] != body.content_length:
             raise ValueError(
                 "headers['content-length'] != body.content_length: {} != {}".format(headers['content-length'], body.content_length)
             )
-    elif isinstance(body, ChunkedOutput):
+    elif isinstance(body, ChunkedBody):
         headers.setdefault('transfer-encoding', 'chunked') 
     elif body is not None:
         raise TypeError(
@@ -315,12 +313,76 @@ def validate_response(request, response):
         )
 
 
-def iter_response_lines(status, reason, headers):
-    yield 'HTTP/1.1 {} {}\r\n'.format(status, reason)
-    if headers:
-        for key in sorted(headers):
-            yield '{}: {}\r\n'.format(key, headers[key])
-    yield '\r\n'
+def read_request(rfile):
+    # Read the entire request preamble:
+    (request_line, header_lines) = read_preamble(rfile)
+
+    # Parse the request line:
+    (method, path_list, query) = parse_request(request_line)
+
+    # Parse the header lines:
+    headers = parse_headers(header_lines)
+
+    # Hack for compatibility with the CouchDB replicator, which annoyingly
+    # sends a {'content-length': 0} header with all GET and HEAD requests:
+    if method in {'GET', 'HEAD'} and 'content-length' in headers:
+        if headers['content-length'] == 0:
+            del headers['content-length']
+
+    # Build request body:
+    if 'content-length' in headers:
+        body = Body(rfile, headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = ChunkedBody(rfile)
+    else:
+        body = None
+    if body is not None and method not in {'POST', 'PUT'}:
+        raise ValueError(
+            'Request body with wrong method: {!r}'.format(method)
+        )
+
+    # Return the RGI request argument:
+    return {
+        'method': method,
+        #'uri': uri,
+        'script': [],
+        'path': path_list,
+        'query': query,
+        'headers': headers,
+        'body': body,
+    }
+
+
+def validate_request(request):
+    pass
+
+
+def write_response(wfile, status, reason, headers, body):
+    total = wfile.write(
+        'HTTP/1.1 {} {}\r\n'.format(status, reason).encode('latin_1')
+    )
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    total += write_body(wfile, body)
+    return total
+
+
+def handle_requests(app, sock, session):
+    (wfile, rfile) = makefiles(sock)
+    while True:
+        request = read_request(rfile)
+        validate_request(request)
+        response = app(session, request)
+        validate_response(request, response)
+        write_response(wfile, response)
+        session['requests'] += 1
+        status = response[0]
+        if status >= 400 and status not in {404, 409, 412}:
+            break
+    wfile.close()
 
 
 class Handler:
@@ -349,9 +411,7 @@ class Handler:
             self.session['requests'] += 1
 
     def handle_one(self):
-        request = self.build_request()
-        if request['method'] not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-            return self.write_status_only(405, 'Method Not Allowed')
+        request = read_request(self.rfile)
         request_body = request['body']
         response = self.app(self.session, request)
         if request_body and not request_body.closed:
@@ -363,32 +423,7 @@ class Handler:
         """
         Builds the *request* ``dict`` unique to a single HTTP request.
         """
-        (request_line, header_lines) = read_preamble(self.rfile)
-        (method, path_list, query) = parse_request(request_line)
-        headers = (parse_headers(header_lines) if header_lines else {})
-        # Hack for compatibility with the CouchDB replicator, which annoyingly
-        # sends a {'content-length': 0} header with all GET and HEAD requests:
-        if method in {'GET', 'HEAD'} and 'content-length' in headers:
-            if headers['content-length'] == 0:
-                del headers['content-length']
-        if 'content-length' in headers:
-            body = Input(self.rfile, headers['content-length'])
-        elif 'transfer-encoding' in headers:
-            body = ChunkedInput(self.rfile)
-        else:
-            body = None
-        if body is not None and method not in {'POST', 'PUT'}:
-            raise ValueError(
-                'Request body with wrong method: {!r}'.format(method)
-            )
-        return {
-            'method': method,
-            'script': [],
-            'path': path_list,
-            'query': query,
-            'headers': headers,
-            'body': body,
-        }
+        return read_request(self.rfile)
 
     def write_response(self, response):
         """
@@ -489,34 +524,12 @@ class Handler:
         with any concerns.
         """
         (status, reason, headers, body) = response
-        preamble = ''.join(iter_response_lines(status, reason, headers))
-        self.wfile.write(preamble.encode('latin_1'))
-        if isinstance(body, (bytes, bytearray)):
-            self.wfile.write(body)
-        elif isinstance(body, (Output, FileOutput)):
-            for buf in body:
-                self.wfile.write(buf)
-        elif isinstance(body, ChunkedOutput):
-            for chunk in body:
-                write_chunk(self.wfile, chunk)
-        elif body is not None:
-            raise TypeError('Bad response body type')
-        self.wfile.flush()
+        write_response(self.wfile, status, reason, headers, body)
         if status >= 400 and status not in {404, 409, 412}:
             self.close()
             log.warning('closing connection to %r after %d %r',
                 self.session['client'], status, reason
             )
-
-    def write_status_only(self, status, reason):
-        assert isinstance(status, int)
-        assert 100 <= status <= 599
-        assert isinstance(reason, str)
-        assert reason  # reason should be non-empty
-        preamble = ''.join(iter_response_lines(status, reason, None))
-        self.wfile.write(preamble.encode('latin_1'))
-        self.wfile.flush()
-        self.close()
 
 
 class Server:
@@ -571,9 +584,8 @@ class Server:
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
-            'rgi.Output': Output,
-            'rgi.ChunkedOutput': ChunkedOutput,
-            'rgi.FileOutput': FileOutput,
+            'rgi.Body': Body,
+            'rgi.ChunkedBody': ChunkedBody,
             'requests': 0,  # Number of fully handled requests
         }
 

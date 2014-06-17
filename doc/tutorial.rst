@@ -97,10 +97,9 @@ RGI application API have been carefully designed to complement each other.
 Think of them almost like inverse functions.
 
 For example, here's an RGI application that implements a `reverse-proxy`_, which
-will use the :func:`degu.util.relative_uri()` and
-:func:`degu.util.output_from_input()` functions:
+will use the :func:`degu.util.relative_uri()` helper function:
 
->>> from degu.util import relative_uri, output_from_input
+>>> from degu.util import relative_uri
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -109,21 +108,27 @@ will use the :func:`degu.util.relative_uri()` and
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
-...         response = conn.request(
+...         return conn.request(
 ...             request['method'],
 ...             relative_uri(request),
 ...             request['headers'],
-...             output_from_input(session, request['body'])
-...         )
-...         return (
-...             response.status,
-...             response.reason,
-...             response.headers,
-...             output_from_input(session, response.body)
+...             request['body']
 ...         )
 ...
 
-This case is slightly more complicated as the RGI callable will be a
+The important thing to note above is that Degu server applications can
+*directly* use the incoming HTTP request body object in their forwarded HTTP
+client request, and can likewise return the *entire* HTTP response object from
+the upstream server.  (This in new in Degu 0.6, whereas previous versions
+required you to wrap the HTTP body in both directions using the defunct
+``make_output_from_input()`` function).
+
+For this reason, the 4-tuple response object is something you'll really want to
+commit to memory, as it is used both server-side and client-side::
+
+    (status, reason, headers, body)
+
+Anyway, this case is slightly more complicated as the RGI callable will be a
 ``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
 problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
 structures to a new process.  This approach also avoids importing unnecessary

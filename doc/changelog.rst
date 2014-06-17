@@ -13,11 +13,22 @@ Changes:
     * Document some of the internal API functions in :mod:`degu.base` (note that
       none of these are API stable yet)
 
-    * Document the :class:`degu.base.Input` and :class:`degu.base.ChunkedInput`
-      classes, plus add a new ``chunked`` instance attribute to both
+    * Replace previously separate input and output abstractions with the
+      :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` classes, which
+      can uniformly represent an HTTP request or response, whether sending or
+      receiving; note that in theory this isn't a breaking API change, but it
+      could be depending how much you were reaching into undocumented internals
+
+    * As a result of the above, an incoming HTTP body can now be directly used
+      as an outgoing HTTP body; this even further simplifies what it takes to
+      implement an RGI reverse-proxy application
 
     * Largely rewrite the :doc:`rgi` specification to reflect the new
       connection-level semantics
+
+    * Add ``./setup.py test --skip-slow`` option to skip the time-consuming (but
+      important) live socket timeout tests... very handy for day-to-day
+      development
 
 
 Internal API changes:

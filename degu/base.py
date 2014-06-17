@@ -23,9 +23,6 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
-import io
-
-
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
@@ -57,17 +54,23 @@ class OverFlowError(Exception):
         )
 
 
-class ChunkError(Exception):
-    pass
-
-
 class BodyClosedError(Exception):
     """
     Raised when trying to iterate through a closed request or response body.
     """
     def __init__(self, body):
         self.body = body
-        super().__init__('cannot iterate, {!r} is closed'.format(body))
+        super().__init__('body already fully read: {!r}'.format(body))
+
+
+def makefiles(sock):
+    """
+    Create (rfile, wfile) from a socket connection.
+    """
+    return (
+        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
+        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
+    )
 
 
 def read_preamble(rfile):
@@ -100,17 +103,6 @@ def read_preamble(rfile):
     if rfile.read(2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
     return (first_line, header_lines)
-
-
-def write_preamble(wfile, first_line, headers):
-    total = wfile.write(first_line.encode('latin_1'))
-    total += wfile.write(b'\r\n')
-    for key in sorted(headers):
-        total += wfile.write(
-            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
-        )
-    total += wfile.write(b'\r\n')
-    return total
 
 
 def read_chunk(rfile):
@@ -197,214 +189,123 @@ def parse_headers(header_lines):
     return headers
 
 
-def makefiles(sock):
-    return (
-        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
-        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
-    )
+def write_body(wfile, body):
+    total = 0
+    if isinstance(body, (bytes, bytearray)):
+        total += wfile.write(body)
+    elif isinstance(body, Body):
+        for data in body:
+            total += wfile.write(data)
+    elif isinstance(body, ChunkedBody):
+        for data in body:
+            total += write_chunk(wfile, data)
+    elif body is not None:
+        raise TypeError(
+            'invalid body type: {!r}: {!r}'.format(type(body), body)
+        )
+    wfile.flush()
+    return total
 
 
-class Output:
-    """
-    Written to the wfile.
-
-    Content-Length must be known in advance.  On the server side it is used as
-    as a response body, and on the client side it is used as a request body.
-
-    >>> body = Output([b'stuff', b'junk'], 9)
-    >>> list(body)
-    [b'stuff', b'junk']
-
-    """
-
-    __slots__ = ('closed', 'source', 'content_length')
-
-    def __init__(self, source, content_length):
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
-        self.source = source
-        self.content_length = content_length
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        received = 0
-        for buf in self.source:
-            if not isinstance(buf, (bytes, bytearray)):
-                self.closed = True
-                raise TypeError('buf must be bytes or bytearray')
-            received += len(buf)
-            if received > self.content_length:
-                self.closed = True
-                raise OverFlowError(received, self.content_length)
-            yield buf
-        self.closed = True
-        if received != self.content_length:
-            raise UnderFlowError(received, self.content_length)
-
-
-class ChunkedOutput:
-    """
-    Written to the wfile using chunked encoding.
-
-    For example:
-
-    >>> body = ChunkedOutput([b'stuff', b'junk', b''])
-    >>> list(body)
-    [b'stuff', b'junk', b'']
-
-    """
-
-    __slots__ = ('closed', 'source',)
-
-    def __init__(self, source):
-        self.closed = False
-        self.source = source
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        for chunk in self.source:
-            if not isinstance(chunk, (bytes, bytearray)):
-                self.closed = True
-                raise TypeError('chunk must be bytes or bytearray')
-            if self.closed:
-                raise ChunkError('received non-empty chunk after empty chunk')
-            if chunk == b'':
-                self.closed = True
-            yield chunk
-        if not self.closed:
-            self.closed = True
-            raise ChunkError('final chunk was not empty')
-
-
-class FileOutput:
-    """
-    Written to the wfile by reading from an io.BufferedReader.
-    """
-
-    __slots__ = ('closed', 'fp', 'content_length')
-
-    def __init__(self, fp, content_length):
-        if not isinstance(fp, io.BufferedReader):
-            raise TypeError('fp must be an io.BufferedReader')
-        if fp.closed:
-            raise ValueError('fp is already closed')
-        if not isinstance(content_length, int):
-            raise TypeError('content_length must be an int')
-        if content_length < 0:
-            raise ValueError('content_length must be >= 0')
-        self.closed = False
-        self.fp = fp
-        self.content_length = content_length
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        remaining = self.content_length
-        while remaining:
-            size = min(remaining, FILE_BUFFER_BYTES)
-            buf = self.fp.read(size)
-            if len(buf) < size:
-                self.closed = True
-                self.fp.close()
-                raise UnderFlowError(len(buf), size)
-            remaining -= size
-            yield buf
-        assert remaining == 0
-        self.closed = True
-        self.fp.close()
-
-
-class Input:
-    """
-    Read from the rfile.
-
-    Content-Length must be known in advance.
-    """
-
+class Body:
     def __init__(self, rfile, content_length):
+        if not callable(rfile.read):
+            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
+        if not isinstance(content_length, int):
+            raise TypeError(TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
+            )
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
+        self.chunked = False
+        self.closed = False
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
-        self.closed = False
-        self.chunked = False
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.rfile, self.content_length
+        return '{}(<rfile>, {!r})'.format(
+            self.__class__.__name__, self.content_length
         )
 
     def read(self, size=None):
+        if self.closed:
+            raise BodyClosedError(self)
+        if self.remaining <= 0:
+            self.closed = True
+            return b''
         if size is not None:
             if not isinstance(size, int):
-                raise TypeError('size must be an int')
+                raise TypeError(
+                    TYPE_ERROR.format('size', int, type(size), size) 
+                )
             if size < 0:
-                raise ValueError('size must be >= 0')
-        if self.closed:
-            return b''
-        size = (self.remaining if size is None else min(self.remaining, size))
-        buf = self.rfile.read(size)
-        if len(buf) != size:
+                raise ValueError('size must be >= 0; got {!r}'.format(size))
+        read = (self.remaining if size is None else min(self.remaining, size))
+        data = self.rfile.read(read)
+        if len(data) != read:
+            # Security note: if application-level code is being overly general
+            # with their exception handling, they might continue to use a
+            # connection even after an UnderFlowError, which could create a
+            # request/response stream state inconsistency.  So in this
+            # circumstance, we close the rfile, but we do *not* set Body.closed
+            # to True (which means "fully consumed") because the body was not in
+            # fact fully read. 
+            self.rfile.close()
+            raise UnderFlowError(len(data), read)
+        self.remaining -= read
+        assert self.remaining >= 0
+        if size is None:
+            # Entire body was request at once, so close:
             self.closed = True
-            raise UnderFlowError(len(buf), size)
-        self.remaining -= size
-        if self.remaining == 0:
-            self.closed = True
-        return buf
+        return data
 
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
-        while True:
-            buf = self.read(FILE_BUFFER_BYTES)
-            if not buf:
-                self.closed = True
-                break
-            yield buf
-        assert self.closed is True
+        while not self.closed:
+            yield self.read(FILE_BUFFER_BYTES)
 
 
-class ChunkedInput:
-    """
-    Read from an HTTP chunk-encoded *rfile*.
-    """
+class ChunkedBody:
     def __init__(self, rfile):
-        self.rfile = rfile
-        self.closed = False
+        if not callable(rfile.read):
+            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
         self.chunked = True
+        self.closed = False
+        self.rfile = rfile
 
-    def read(self):
-        if self.closed:
-            return b''
-        buf = bytearray()
-        while True:
-            chunk = self.readchunk()
-            if not chunk:
-                break
-            buf.extend(chunk)
-        assert self.closed is True
-        return buf
+    def __repr__(self):
+        return '{}(<rfile>)'.format(self.__class__.__name__)
 
     def readchunk(self):
         if self.closed:
-            return b''
-        chunk = read_chunk(self.rfile)
-        if not chunk:
+            raise BodyClosedError(self)
+        try:
+            data = read_chunk(self.rfile)
+        except:
+            self.rfile.close()
+            raise
+        if not data:
             self.closed = True
-        return chunk
+        return data
+
+    def read(self):
+        # FIXME: consider removing this, or at least adding some sane memory
+        # usage limit.  For now, kept for transition compatibility with
+        # Microfiber:
+        if self.closed:
+            raise BodyClosedError(self)
+        buf = bytearray()
+        while not self.closed:
+            buf.extend(self.readchunk())
+        return buf
 
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
-        while True:
-            chunk = self.readchunk()
-            yield chunk
-            if not chunk:
-                self.closed = True
-                break
-        assert self.closed is True
+        while not self.closed:
+            yield self.readchunk()
 

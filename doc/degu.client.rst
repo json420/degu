@@ -397,12 +397,11 @@ Helper functions
         must be lowercase as produced by ``str.casefold()``.
 
         The *body*, if provided, must be a ``bytes``, ``bytearray``, or
-        ``io.BufferedReader`` instance, or an instance of one of the three
-        :mod:`degu.base` output wrapper classes:
+        ``io.BufferedReader`` instance, or an instance of one of the two
+        :mod:`degu.base` HTTP body abstraction classes:
 
-            * :class:`degu.base.Output`
-            * :class:`degu.base.ChunkedOutput`
-            * :class:`degu.base.FileOutput`
+            * :class:`degu.base.Body`
+            * :class:`degu.base.ChunkedBody`
 
         The return value is a :class:`Response` namedtuple.
 
@@ -452,8 +451,8 @@ Helper functions
         The HTTP response body from the server.
 
         If no response body was returned, this will be ``None``.  Otherwise,
-        this will be either a :class:`degu.base.Input` or
-        :class:`degu.base.ChunkedInput` instance.
+        this will be either a :class:`degu.base.Body` or
+        :class:`degu.base.ChunkedBody` instance.
 
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html

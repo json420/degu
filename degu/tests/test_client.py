@@ -25,6 +25,7 @@ Unit tests for the `degu.server` module`
 
 from unittest import TestCase
 import os
+import io
 import socket
 import ssl
 from urllib.parse import urlparse
@@ -282,13 +283,10 @@ class TestFunctions(TestCase):
             self.assertEqual(H, {})
 
         # Test with all the non-chunked body types:
-        tmp = TempDir()
-        fp = tmp.prepare(b'')  # Contents of rfile wont matter
         bodies = (
             os.urandom(17),
             bytearray(os.urandom(17)),
-            base.Output([], 17),
-            base.FileOutput(fp, 17),
+            base.Body(io.BytesIO(), 17)
         )
         for M in ('PUT', 'POST'):
             for B in bodies:
@@ -297,51 +295,11 @@ class TestFunctions(TestCase):
                 self.assertEqual(H, {'content-length': 17})
 
         # Finally test with base.ChunkedOutput:
-        B = base.ChunkedOutput([b''])
+        B = base.ChunkedBody(io.BytesIO())
         for M in ('PUT', 'POST'):
             H = {}
             self.assertIsNone(client.validate_request(M, '/foo', H, B))
             self.assertEqual(H, {'transfer-encoding': 'chunked'})
-
-    def test_iter_request_lines(self):
-        # Test when headers is an empty dict:
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', {})),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                '\r\n',
-            ]
-        )    
-
-        # Should also work when headers is None:
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', None)),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                '\r\n',
-            ]
-        )
-
-        # Test when headers is non-empty:
-        headers = {
-            'accept': 'application/json',
-            'user-agent': 'foo',
-            'content-length': 1776,
-            'content-type': 'application/json',
-            'authorization': 'blah blah',
-        }
-        self.assertEqual(
-            list(client.iter_request_lines('GET', '/dmedia-1', headers)),
-            [
-                'GET /dmedia-1 HTTP/1.1\r\n',
-                'accept: application/json\r\n',
-                'authorization: blah blah\r\n',
-                'content-length: 1776\r\n',
-                'content-type: application/json\r\n',
-                'user-agent: foo\r\n',
-                '\r\n',
-            ]
-        )
 
     def test_parse_status(self):
         # Not enough spaces:
@@ -403,33 +361,116 @@ class TestFunctions(TestCase):
                 (i, 'Foo Bar Baz')
             )
 
-    def test_read_response(self):
-        tmp = TempDir()
+    def test_write_request(self):
+        # Empty headers, no body:
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', {}, None),
+            18
+        )
+        self.assertEqual(wfile.tell(), 18)
+        self.assertEqual(wfile.getvalue(), b'GET / HTTP/1.1\r\n\r\n')
 
+        # One header:
+        headers = {'foo': 17}  # Make sure to test with int header value
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, None),
+            27
+        )
+        self.assertEqual(wfile.tell(), 27)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        headers = {'foo': 17, 'bar': 'baz'}
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, None),
+            37
+        )
+        self.assertEqual(wfile.tell(), 37)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, b'hello'),
+            42
+        )
+        self.assertEqual(wfile.tell(), 42)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is bytearray:
+        body = bytearray(b'hello')
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(wfile.tell(), 42)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is base.Body:
+        rfile = io.BytesIO(b'hello')
+        body = base.Body(rfile, 5)
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(wfile.tell(), 42)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = base.ChunkedBody(rfile)
+        wfile = io.BytesIO()
+        self.assertEqual(
+            client.write_request(wfile, 'GET', '/', headers, body),
+            52
+        )
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(wfile.tell(), 52)
+        self.assertEqual(wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+    def test_read_response(self):
         # No headers, no body:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             '\r\n',
         ]).encode('latin_1')
-        rfile = tmp.prepare(lines)
+        rfile = io.BytesIO(lines)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {}, None))
 
-        # Content-Length, body should be base.Input:
+        # Content-Length, body should be base.Body:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             'Content-Length: 17\r\n',
             '\r\n',
         ]).encode('latin_1')
         data = os.urandom(17)
-        rfile = tmp.prepare(lines + data)
+        rfile = io.BytesIO(lines + data)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'content-length': 17})
-        self.assertIsInstance(r.body, base.Input)
+        self.assertIsInstance(r.body, base.Body)
         self.assertIs(r.body.rfile, rfile)
         self.assertIs(r.body.closed, False)
         self.assertEqual(r.body.remaining, 17)
@@ -440,12 +481,12 @@ class TestFunctions(TestCase):
         self.assertEqual(r.body.remaining, 0)
 
         # Like above, except this time for a HEAD request:
-        rfile = tmp.prepare(lines + data)
+        rfile = io.BytesIO(lines + data)
         r = client.read_response(rfile, 'HEAD')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
 
-        # Transfer-Encoding, body should be base.ChunkedInput:
+        # Transfer-Encoding, body should be base.ChunkedBody:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             'Transfer-Encoding: chunked\r\n',
@@ -454,25 +495,24 @@ class TestFunctions(TestCase):
         chunk1 = os.urandom(21)
         chunk2 = os.urandom(17)
         chunk3 = os.urandom(19)
-        (filename, fp) = tmp.create('foo')
-        fp.write(lines)
-        total = 0
+        rfile = io.BytesIO()
+        total = rfile.write(lines)
         for chunk in [chunk1, chunk2, chunk3, b'']:
-            total += base.write_chunk(fp, chunk)
-        fp.close()
-        rfile = open(filename, 'rb')
+            total += base.write_chunk(rfile, chunk)
+        self.assertEqual(rfile.tell(), total)
+        rfile.seek(0)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(r.body, base.ChunkedInput)
+        self.assertIsInstance(r.body, base.ChunkedBody)
         self.assertIs(r.body.rfile, rfile)
         self.assertEqual(rfile.tell(), len(lines))
         self.assertIs(r.body.closed, False)
         self.assertEqual(list(r.body), [chunk1, chunk2, chunk3, b''])
         self.assertIs(r.body.closed, True)
-        self.assertEqual(rfile.tell(), len(lines) + total)
+        self.assertEqual(rfile.tell(), total)
 
     def test_create_client(self):
         # IPv6, with port:

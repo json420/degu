@@ -26,6 +26,7 @@ Unit tests for the `degu.server` module`
 from unittest import TestCase
 import os
 from os import path
+import io
 import stat
 import time
 from random import SystemRandom
@@ -252,6 +253,22 @@ class TestFunctions(TestCase):
             'too many values to unpack (expected 3)'
         )
 
+        # Bad method:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('OPTIONS /foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'get'")
+
+        # Bad protocol:
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
+        with self.assertRaises(ValueError) as cm:
+            server.parse_request('GET /foo/bar?stuff=junk HTTP/2.0')
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/2.0'")
+
         # Multiple "?" present in URI:
         with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
@@ -301,11 +318,6 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             server.parse_request('GET /foo/bar//?stuff=junk HTTP/1.1')
         self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
 
         # Test all valid methods:
         for M in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD'):
@@ -441,23 +453,23 @@ class TestFunctions(TestCase):
             self.assertEqual(str(cm.exception),
                 "headers['content-length'] != len(body): 6 != 5"
             )
-        # isinstance(body, (Output, FileOutput)):
-        tmp = TempDir()
-        fp = tmp.prepare(b'hello')
-        for body in [base.Output(b'hello', 5), base.FileOutput(fp, 5)]:
-            headers = {}
-            self.assertIsNone(
-                server.validate_response(request, (200, 'OK', headers, body))
-            )
-            self.assertEqual(headers, {'content-length': 5})
-            headers = {'content-length': 6}
-            with self.assertRaises(ValueError) as cm:
-                server.validate_response(request, (200, 'OK', headers, body))
-            self.assertEqual(str(cm.exception),
-                "headers['content-length'] != body.content_length: 6 != 5"
-            )
-        # isinstance(body, ChunkedOutput):
-        body = base.ChunkedOutput([b'hello', b'naughty', b'nurse'])
+
+        # isinstance(body, Body):
+        body = base.Body(io.BytesIO(), 5)
+        headers = {}
+        self.assertIsNone(
+            server.validate_response(request, (200, 'OK', headers, body))
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        headers = {'content-length': 6}
+        with self.assertRaises(ValueError) as cm:
+            server.validate_response(request, (200, 'OK', headers, body))
+        self.assertEqual(str(cm.exception),
+            "headers['content-length'] != body.content_length: 6 != 5"
+        )
+
+        # isinstance(body, ChunkedBody):
+        body = base.ChunkedBody(io.BytesIO())
         headers = {}
         self.assertIsNone(
             server.validate_response(request, (200, 'OK', headers, body))
@@ -485,32 +497,345 @@ class TestFunctions(TestCase):
         )
         self.assertEqual(headers, {})
 
-    def test_iter_response_lines(self):
-        self.assertEqual(
-            list(server.iter_response_lines(200, 'OK', {})),
-            ['HTTP/1.1 200 OK\r\n', '\r\n']
+    def test_read_request(self):
+        longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
+
+        # No data:
+        rfile = io.BytesIO()
+        with self.assertRaises(base.EmptyPreambleError):
+            server.read_request(rfile)
+
+       # CRLF terminated request line is empty: 
+        rfile = io.BytesIO(b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'first preamble line is empty')
+        self.assertEqual(rfile.tell(), 2)
+        self.assertEqual(rfile.read(), b'')
+
+        # Line too long:
+        rfile = io.BytesIO(longline)
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'D\\r'")
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
+        self.assertEqual(rfile.read(), b'\n')
+
+        # LF but no proceeding CR:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\n\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'1\\n'")
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'\r\n')
+
+        # Missing CRLF preamble terminator:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile.tell(), 19)
+        self.assertEqual(rfile.read(), b'')
+
+        # 1st header line too long:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n' + longline)
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b'D\\r'")
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES + 19)
+        self.assertEqual(rfile.read(), b'\n')
+
+        # 1st header line has LF but no proceeding CR:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\n\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b'z\\n'")
+        self.assertEqual(rfile.tell(), 28)
+        self.assertEqual(rfile.read(), b'\r\n')
+
+        # Again, missing CRLF preamble terminator, but with a header also:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile.tell(), 29)
+        self.assertEqual(rfile.read(), b'')
+
+        # Request line has too few items to split:
+        rfile = io.BytesIO(b'GET /fooHTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
+        self.assertEqual(rfile.tell(), 20)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Request line has too many items to split:
+        rfile = io.BytesIO(b'GET /f\roo HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 3)'
         )
-        self.assertEqual(
-            list(server.iter_response_lines(420, 'Enhance Your Calm', None)),
-            ['HTTP/1.1 420 Enhance Your Calm\r\n', '\r\n']
+        self.assertEqual(rfile.tell(), 22)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad method:
+        rfile = io.BytesIO(b'OPTIONS /foo HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
+        self.assertEqual(rfile.tell(), 25)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad protocol:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.0\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
+        self.assertEqual(rfile.tell(), 21)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Too many ? in uri:
+        rfile = io.BytesIO(b'GET /foo?bar=baz?stuff=junk HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad request uri: '/foo?bar=baz?stuff=junk'"
         )
-        headers = {
-            'server': 'Dmedia/14.04',
-            'content-type': 'application/json',
-            'content-length': 17,
-            'date': 'if you buy',
-        }
+        self.assertEqual(rfile.tell(), 40)
+        self.assertEqual(rfile.read(), b'body')
+
+        # uri path doesn't start with /:
+        rfile = io.BytesIO(b'GET foo/bar?baz HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
+        self.assertEqual(rfile.tell(), 28)
+        self.assertEqual(rfile.read(), b'body')
+
+        # uri path contains a double //:
+        rfile = io.BytesIO(b'GET /foo//bar?baz HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'body')
+
+        # 1st header line has too few items to split:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'body')
+
+        # 1st header line has too many items to split:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz: jazz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 2)'
+        )
+        self.assertEqual(rfile.tell(), 37)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Duplicate headers:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'duplicates in header_lines:\n  Foo: bar\n  foo: baz'
+        )
+        self.assertEqual(rfile.tell(), 38)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length can't be parsed as a base-10 integer:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: 16.9\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "invalid literal for int() with base 10: '16.9'"
+        )
+        self.assertEqual(rfile.tell(), 40)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length is negative:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: -17\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'negative content-length: -17'
+        )
+        self.assertEqual(rfile.tell(), 39)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad Transfer-Encoding:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad transfer-encoding: 'CHUNKED'"
+        )
+        self.assertEqual(rfile.tell(), 46)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Content-Length with Transfer-Encoding:
+        rfile = io.BytesIO(
+            b'GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 17\r\n\r\nbody'
+        )
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'cannot have both content-length and transfer-encoding headers'
+        )
+        self.assertEqual(rfile.tell(), 66)
+        self.assertEqual(rfile.read(), b'body')
+
+        # No headers, no body, no query:
+        rfile = io.BytesIO(b'GET / HTTP/1.1\r\n\r\nextra')
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'GET',
+                'script': [],
+                'path': [],
+                'query': '',
+                'headers': {},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'extra')
+
+        # No headers, no body, but add a query:
+        rfile = io.BytesIO(b'HEAD /foo?nonpair HTTP/1.1\r\n\r\nextra')
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'HEAD',
+                'script': [],
+                'path': ['foo'],
+                'query': 'nonpair',
+                'headers': {},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'extra')
+
+        # Add a header, still no body:
+        rfile = io.BytesIO(
+            b'DELETE /foo/Bar/?keY=vAl HTTP/1.1\r\nME: YOU\r\n\r\nextra'
+        )
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'DELETE',
+                'script': [],
+                'path': ['foo', 'Bar', ''],
+                'query': 'keY=vAl',
+                'headers': {'me': 'YOU'},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 46)
+        self.assertEqual(rfile.read(), b'extra')
+
+    def test_read_request_fuzz(self):
+        """
+        Random fuzz test for read_request().
+
+        Expected result: given an rfile containing 8192 random bytes,
+        read_request() should raise a ValueError every time, and should never
+        read more than the first 4096 bytes.
+        """
+        for i in range(1000):
+            data = os.urandom(base.MAX_LINE_BYTES * 2)
+            rfile = io.BytesIO(data)
+            with self.assertRaises(ValueError):
+                server.read_request(rfile)
+            self.assertLessEqual(rfile.tell(), base.MAX_LINE_BYTES)
+
+    def test_write_response(self):
+        # Empty headers, no body:
+        wfile = io.BytesIO()
         self.assertEqual(
-            list(server.iter_response_lines(404, 'Not Found', headers)),
-            [
-                'HTTP/1.1 404 Not Found\r\n',
-                # Note the headers are in sorted order
-                'content-length: 17\r\n',
-                'content-type: application/json\r\n',\
-                'date: if you buy\r\n',
-                'server: Dmedia/14.04\r\n',
-                '\r\n',
-            ]
+            server.write_response(wfile, 200, 'OK', {}, None),
+            19
+        )
+        self.assertEqual(wfile.tell(), 19)
+        self.assertEqual(wfile.getvalue(), b'HTTP/1.1 200 OK\r\n\r\n')
+
+        # One header:
+        headers = {'foo': 17}  # Make sure to test with int header value
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, None),
+            28
+        )
+        self.assertEqual(wfile.tell(), 28)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        headers = {'foo': 17, 'bar': 'baz'}
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, None),
+            38
+        )
+        self.assertEqual(wfile.tell(), 38)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, b'hello'),
+            43
+        )
+        self.assertEqual(wfile.tell(), 43)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is bytearray:
+        body = bytearray(b'hello')
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, body),
+            43
+        )
+        self.assertEqual(wfile.tell(), 43)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is base.Body:
+        rfile = io.BytesIO(b'hello')
+        body = base.Body(rfile, 5)
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, body),
+            43
+        )
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(wfile.tell(), 43)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = base.ChunkedBody(rfile)
+        wfile = io.BytesIO()
+        self.assertEqual(
+            server.write_response(wfile, 200, 'OK', headers, body),
+            53
+        )
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(wfile.tell(), 53)
+        self.assertEqual(wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
 
 
@@ -600,15 +925,12 @@ class TestHandler(TestCase):
                 'content-length': 17,
             },
         })
-        self.assertIsInstance(body, base.Input)
+        self.assertIsInstance(body, base.Body)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.remaining, 17)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.read(), data)
-        self.assertIs(body.closed, True)
-        self.assertIs(body.rfile.closed, False)
-        self.assertEqual(body.read(), b'')
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
 
@@ -642,15 +964,12 @@ class TestHandler(TestCase):
                 'content-type': 'application/json',
             },
         })
-        self.assertIsInstance(body, base.ChunkedInput)
+        self.assertIsInstance(body, base.ChunkedBody)
         self.assertIs(body.rfile, fp)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.readchunk(), chunk1)
         self.assertEqual(body.readchunk(), chunk2)
-        self.assertEqual(body.readchunk(), b'')
-        self.assertIs(body.closed, True)
-        self.assertIs(body.rfile.closed, False)
         self.assertEqual(body.readchunk(), b'')
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
@@ -817,9 +1136,8 @@ class TestServer(TestCase):
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Output': base.Output,
-            'rgi.ChunkedOutput': base.ChunkedOutput,
-            'rgi.FileOutput': base.FileOutput,
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 
@@ -987,9 +1305,8 @@ class TestSSLServer(TestCase):
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Output': base.Output,
-            'rgi.ChunkedOutput': base.ChunkedOutput,
-            'rgi.FileOutput': base.FileOutput,
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 
@@ -1000,13 +1317,18 @@ for i in range(7):
     CHUNKS.append(os.urandom(size))
 CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
+wfile = io.BytesIO()
+for data in CHUNKS:
+    base.write_chunk(wfile, data)
+ENCODED_CHUNKS = wfile.getvalue()
+del wfile
 
 
 def chunked_request_app(session, request):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
-    assert isinstance(request['body'], base.ChunkedInput)
+    assert isinstance(request['body'], base.ChunkedBody)
     assert request['headers']['transfer-encoding'] == 'chunked'
     result = []
     for chunk in request['body']:
@@ -1022,11 +1344,12 @@ def chunked_response_app(session, request):
     assert request['body'] is None
     headers = {'transfer-encoding': 'chunked'}
     if request['path'] == ['foo']:
-        body = session['rgi.ChunkedOutput'](CHUNKS)
+        rfile = io.BytesIO(ENCODED_CHUNKS)
     elif request['path'] == ['bar']:
-        body = session['rgi.ChunkedOutput']([b''])
+        rfile = io.BytesIO(b'0\r\n\r\n')
     else:
         return (404, 'Not Found', {}, None)
+    body = session['rgi.ChunkedBody'](rfile)
     return (200, 'OK', headers, body)
 
 
@@ -1040,9 +1363,9 @@ def response_app(session, request):
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = session['rgi.Output']([DATA1, DATA2], len(DATA))
+        body = session['rgi.Body'](io.BytesIO(DATA), len(DATA))
     elif request['path'] == ['bar']:
-        body = session['rgi.Output']([b'', b''], 0)
+        body = session['rgi.Body'](io.BytesIO(), 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
@@ -1098,15 +1421,15 @@ class TestLiveServer(TestCase):
 
         You can run all the unit tests minus the timeout tests like this::
 
-            $ ./setup.py test --skip-timeout
+            $ ./setup.py test --skip-slow
 
         You can also accomplish the same with an environment variable::
 
-            $ DEGU_TEST_SKIP_TIMEOUT=true ./setup.py test
+            $ DEGU_TEST_SKIP_SLOW=true ./setup.py test
 
         """
-        if os.environ.get('DEGU_TEST_SKIP_TIMEOUT') == 'true':
-            self.skipTest('skipping as DEGU_TEST_SKIP_TIMEOUT is set')
+        if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
+            self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
         (httpd, client) = self.build_with_app(None, timeout_app)
         conn = client.connect()
 
@@ -1133,41 +1456,30 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(None, chunked_request_app)
         conn = client.connect()
 
-        body = base.ChunkedOutput(CHUNKS)
+        body = base.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 352, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.Input)
+        self.assertIsInstance(response.body, base.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
 
-        body = base.ChunkedOutput([b''])
+        body = base.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 44, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.Input)
+        self.assertIsInstance(response.body, base.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(b'').hexdigest()]
         )
 
-        body = base.ChunkedOutput(CHUNKS)
-        response = conn.request('POST', '/', {}, body)
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.reason, 'OK')
-        self.assertEqual(response.headers,
-            {'content-length': 352, 'content-type': 'application/json'}
-        )
-        self.assertIsInstance(response.body, base.Input)
-        self.assertEqual(json.loads(response.body.read().decode('utf-8')),
-            [sha1(chunk).hexdigest() for chunk in CHUNKS]
-        )
         httpd.terminate()
 
     def test_chunked_response(self):
@@ -1178,14 +1490,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertIsInstance(response.body, base.ChunkedBody)
         self.assertEqual(tuple(response.body), CHUNKS)
 
         response = conn.request('GET', '/bar')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertIsInstance(response.body, base.ChunkedBody)
         self.assertEqual(list(response.body), [b''])
 
         response = conn.request('GET', '/baz')
@@ -1198,7 +1510,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedInput)
+        self.assertIsInstance(response.body, base.ChunkedBody)
         self.assertEqual(tuple(response.body), CHUNKS)
         httpd.terminate()
 
@@ -1210,14 +1522,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.Input)
+        self.assertIsInstance(response.body, base.Body)
         self.assertEqual(response.body.read(), DATA)
 
         response = conn.request('GET', '/bar')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': 0})
-        self.assertIsInstance(response.body, base.Input)
+        self.assertIsInstance(response.body, base.Body)
         self.assertEqual(response.body.read(), b'')
 
         response = conn.request('GET', '/baz')
@@ -1230,7 +1542,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.Input)
+        self.assertIsInstance(response.body, base.Body)
         self.assertEqual(response.body.read(), DATA)
         httpd.terminate()
 
@@ -1245,7 +1557,7 @@ class TestLiveServer(TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
                 self.assertEqual(response.headers, {'content-length': 16})
-                self.assertIsInstance(response.body, base.Input)
+                self.assertIsInstance(response.body, base.Body)
                 self.assertEqual(response.body.read(), marker)
             conn.close()
         httpd.terminate()

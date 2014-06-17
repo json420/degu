@@ -33,15 +33,12 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
+    Body,
+    ChunkedBody,
     makefiles,
     read_preamble,
     parse_headers,
-    write_chunk,
-    Input,
-    ChunkedInput,
-    Output,
-    ChunkedOutput,
-    FileOutput,
+    write_body,
 )
 
 
@@ -170,9 +167,9 @@ def validate_request(method, uri, headers, body):
             raise ValueError('non-casefolded header name: {!r}'.format(key))
     if isinstance(body, (bytes, bytearray)): 
         headers['content-length'] = len(body)
-    elif isinstance(body, (Output, FileOutput)):
+    elif isinstance(body, Body):
         headers['content-length'] = body.content_length
-    elif isinstance(body, ChunkedOutput):
+    elif isinstance(body, ChunkedBody):
         headers['transfer-encoding'] = 'chunked'
     elif body is not None:
         raise TypeError('bad request body type: {!r}'.format(type(body)))
@@ -186,14 +183,6 @@ def validate_request(method, uri, headers, body):
                 )
     elif method not in {'PUT', 'POST'}:
         raise ValueError('cannot include body in a {} request'.format(method))
-
-
-def iter_request_lines(method, uri, headers):
-    yield '{} {} HTTP/1.1\r\n'.format(method, uri)
-    if headers:
-        for key in sorted(headers):
-            yield '{}: {}\r\n'.format(key, headers[key])
-    yield '\r\n'
 
 
 def parse_status(line):
@@ -218,14 +207,27 @@ def parse_status(line):
     return (status, reason)
 
 
+def write_request(wfile, method, uri, headers, body):
+    total = wfile.write(
+        '{} {} HTTP/1.1\r\n'.format(method, uri).encode('latin_1')
+    )
+    for key in sorted(headers):
+        total += wfile.write(
+            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
+        )
+    total += wfile.write(b'\r\n')
+    total += write_body(wfile, body)
+    return total
+
+
 def read_response(rfile, method):
     (status_line, header_lines) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
     headers = (parse_headers(header_lines) if header_lines else {})
     if 'content-length' in headers and method != 'HEAD':
-        body = Input(rfile, headers['content-length'])
+        body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = ChunkedInput(rfile)
+        body = ChunkedBody(rfile)
     else:
         body = None
     return Response(status, reason, headers, body)
@@ -242,7 +244,7 @@ class Connection:
         self.sock = sock
         self.base_headers = base_headers
         (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Input or ChunkedInput
+        self.response_body = None  # Previous Body or ChunkedBody
 
     def __del__(self):
         self.close()
@@ -273,22 +275,10 @@ class Connection:
                     content_length = headers['content-length']
                 else:
                     content_length = os.stat(body.fileno()).st_size
-                body = FileOutput(body, content_length)
+                body = Body(body, content_length)
             validate_request(method, uri, headers, body)
             headers.update(self.base_headers)
-            preamble = ''.join(iter_request_lines(method, uri, headers))
-            self.wfile.write(preamble.encode('latin_1'))
-            if isinstance(body, (bytes, bytearray)):
-                self.wfile.write(body)
-            elif isinstance(body, (Output, FileOutput)):
-                for buf in body:
-                    self.wfile.write(buf)
-            elif isinstance(body, ChunkedOutput):
-                for chunk in body:
-                    write_chunk(self.wfile, chunk)
-            else:
-                assert body is None
-            self.wfile.flush()
+            write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
             return response
