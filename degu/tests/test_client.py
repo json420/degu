@@ -447,14 +447,12 @@ class TestFunctions(TestCase):
         )
 
     def test_read_response(self):
-        tmp = TempDir()
-
         # No headers, no body:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             '\r\n',
         ]).encode('latin_1')
-        rfile = tmp.prepare(lines)
+        rfile = io.BytesIO(lines)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {}, None))
@@ -466,7 +464,7 @@ class TestFunctions(TestCase):
             '\r\n',
         ]).encode('latin_1')
         data = os.urandom(17)
-        rfile = tmp.prepare(lines + data)
+        rfile = io.BytesIO(lines + data)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
@@ -483,7 +481,7 @@ class TestFunctions(TestCase):
         self.assertEqual(r.body.remaining, 0)
 
         # Like above, except this time for a HEAD request:
-        rfile = tmp.prepare(lines + data)
+        rfile = io.BytesIO(lines + data)
         r = client.read_response(rfile, 'HEAD')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
@@ -497,13 +495,12 @@ class TestFunctions(TestCase):
         chunk1 = os.urandom(21)
         chunk2 = os.urandom(17)
         chunk3 = os.urandom(19)
-        (filename, fp) = tmp.create('foo')
-        fp.write(lines)
-        total = 0
+        rfile = io.BytesIO()
+        total = rfile.write(lines)
         for chunk in [chunk1, chunk2, chunk3, b'']:
-            total += base.write_chunk(fp, chunk)
-        fp.close()
-        rfile = open(filename, 'rb')
+            total += base.write_chunk(rfile, chunk)
+        self.assertEqual(rfile.tell(), total)
+        rfile.seek(0)
         r = client.read_response(rfile, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
@@ -515,7 +512,7 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.closed, False)
         self.assertEqual(list(r.body), [chunk1, chunk2, chunk3, b''])
         self.assertIs(r.body.closed, True)
-        self.assertEqual(rfile.tell(), len(lines) + total)
+        self.assertEqual(rfile.tell(), total)
 
     def test_create_client(self):
         # IPv6, with port:
