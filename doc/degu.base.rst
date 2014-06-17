@@ -158,18 +158,45 @@ Parsing functions
 
 
 
-Input wrappers
---------------
+:class:`Body` class
+-------------------
 
-In the server context, these input abstractions represent the HTTP request body
-sent by the client.
-
-In the client context, they represent the HTTP response body sent by the server.
-
-
-.. class:: Input(rfile, content_length)
+.. class:: Body(rfile, content_length)
 
     Represents a normal (non-chunk-encoded) HTTP request or response body.
+
+    This class provides HTTP Content-Length based framing atop an arbitrary
+    buffered binary stream (basically, anything that has a ``read()`` method
+    that returns ``bytes``, and also has a ``close()`` method).
+
+    :meth:`Body.read()` is designed to enforce TCP request/response stream-state
+    consistency:
+
+        * It wont allow reading of data from the underlying *rfile* beyond the
+          specified *content_length*
+
+        * If less data than the claimed *content_length* can be read from
+          *rfile*, it will close the underlying *rfile* and raise an exception
+
+    The *rfile* can be a normal file created with ``open(filename, 'rb')``, or
+    a file-object returned by `socket.socket.makefile()`_, or any other similar
+    object implementing the needed API.
+
+    .. attribute:: chunked
+
+        Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.
+
+        This attribute exists so that RGI applications can test whether an HTTP
+        body is chunk-encoded without having to check whether the body is an
+        instance of a particular class.
+
+        This allows the same HTTP body abstraction API to be easily used with
+        any RGI compliant server implementation, not just the Degu reference
+        server.
+
+    .. attribute:: closed
+
+        Initially ``False``, will be ``True`` after entire body has been read.
 
     .. attribute:: rfile
     
@@ -183,36 +210,18 @@ In the client context, they represent the HTTP response body sent by the server.
 
         Remaining bytes available for reading in the HTTP body.
 
-        This attribute is initially set to :attr:`Input.content_length`.  Once
+        This attribute is initially set to :attr:`Body.content_length`.  Once
         the entire HTTP body has been read, this attribute will be ``0``.
-
-    .. attribute:: closed
-
-        Initially ``False``, will be ``True`` after entire body has been read.
-
-    .. attribute:: chunked
-
-        Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.
-
-        This attribute exists so that RGI applications can test whether an HTTP
-        body is chunk-encoded without having to check whether the body is an
-        instance of a particular class.
-
-        This allows the same input abstraction API to be easily used with any
-        RGI compliant server implementation, not just the Degu reference server.
 
     .. method:: read(size=None)
 
         Read part (or all) of the HTTP body.
 
-        If no *size* argument is provided, the entire HTTP body will be returned
-        as a single ``bytes`` instance.
+        If no *size* argument is provided, the entire remaining HTTP body will
+        be returned as a single ``bytes`` instance.
 
         If the *size* argument is provided, up to that many bytes will be read
         and returned from the HTTP body.
-
-        If the entire HTTP body has already been read, this method will return
-        an empty ``b''``.
 
     .. method:: __iter__()
 
@@ -223,20 +232,35 @@ In the client context, they represent the HTTP response body sent by the server.
 
         The final item yielded will always be an empty ``b''``.
 
-        Note that you can only iterate through an :class:`Input` instance once.
+        Note that you can only iterate through an :class:`Body` instance once.
 
 
-.. class:: ChunkedInput(rfile)
+:class:`ChunkedBody` class
+--------------------------
+
+
+.. class:: ChunkedBody(rfile)
 
     Represents a chunk-encoded HTTP request or response body.
 
-    .. attribute:: rfile
-    
-        The *rfile* passed to the constructor
+    This class provides HTTP chunked Transfer-Encoding based framing atop an
+    arbitrary buffered binary stream (basically, anything that has ``read()``
+    and ``readline()`` methods that return ``bytes``, and also has a ``close()``
+    method).
 
-    .. attribute:: closed
+    :meth:`ChunkedBody.readchunk()` is designed to enforce TCP request/response
+    stream-state consistency:
 
-        Initially ``False``, will be ``True`` after entire body has been read.
+        * It wont read data from *rfile* past the end of the final (empty) HTTP
+          chunk-encoded chunk
+
+        * If an improperly encoded chunk is found, or *rfile* can't produce as
+          much data for a chunk as specified by the chunk size line, the
+          underlying *rfile* will be closed and an exception will be raised
+
+    The *rfile* can be a normal file created with ``open(filename, 'rb')``, or
+    a file-object returned by `socket.socket.makefile()`_, or any other similar
+    object implementing the needed API.
 
     .. attribute:: chunked
 
@@ -246,18 +270,17 @@ In the client context, they represent the HTTP response body sent by the server.
         body is chunk-encoded without having to check whether the body is an
         instance of a particular class.
 
-        This allows the same input abstraction API to be easily used with any
-        RGI compliant server implementation, not just the Degu reference server.
+        This allows the same HTTP body abstraction API to be easily used with
+        any RGI compliant server implementation, not just the Degu reference
+        server.
 
-    .. method:: read()
+    .. attribute:: closed
 
-        Read the entire HTTP body.
+        Initially ``False``, will be ``True`` after entire body has been read.
 
-        This method will return the concatenated chunks from a chunk-encoded
-        HTTP body as a single ``bytes`` instance.
-
-        If the entire HTTP body has already been read, this method will return
-        an empty ``b''``.
+    .. attribute:: rfile
+    
+        The *rfile* passed to the constructor
 
     .. method:: readchunk()
 
@@ -267,6 +290,16 @@ In the client context, they represent the HTTP response body sent by the server.
         this method will return an empty ``b''``.
 
         Note that the final chunk will likewise be an empty ``b''``.
+        
+    .. method:: read()
+
+        Read the entire HTTP body.
+
+        This method will return the concatenated chunks from a chunk-encoded
+        HTTP body as a single ``bytes`` instance.
+
+        If the entire HTTP body has already been read, this method will return
+        an empty ``b''``.
 
     .. method:: __iter__()
 
@@ -278,37 +311,10 @@ In the client context, they represent the HTTP response body sent by the server.
 
         The final item yielded will always be an empty ``b''``.
 
-        Note that you can only iterate through a :class:`ChunkedInput` instance
+        Note that you can only iterate through a :class:`ChunkedBody` instance
         once.
-
-
-
-Output wrappers
----------------
-
-In the server context, these output abstractions represent the HTTP response
-body that the server is sending to the client.
-
-In the client context, they represent the HTTP request body that the client is
-sending to the server.
-
-
-.. class:: Output(source, content_length)
-
-    Wraps output of known content-length to be written to the rfile.
-
-
-
-.. class:: ChunkedOutput(source)
-
-    Wraps output to be written to the rfile using chunked encoding.
-
-
-.. class:: FileOutput(fp, content_length)
-
-    Wraps output to be written to the rfile, read from an open file *fp*.
-
 
 
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
 .. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine
+.. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
