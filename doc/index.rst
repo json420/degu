@@ -8,9 +8,7 @@ local network.
 .. warning::
 
     The Degu API is **not yet stable!**  Even the API documented here is still
-    subject to change, although hopefully only subtle changes.  However, please
-    expect gratuitous and frequent breakage if you venture into any of the
-    currently *undocumented* API :)
+    subject to change, although hopefully only subtle changes.
 
 Degu includes:
 
