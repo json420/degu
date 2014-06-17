@@ -293,6 +293,17 @@ class ChunkedBody:
             self.closed = True
         return data
 
+    def read(self):
+        # FIXME: consider removing this, or at least adding some sane memory
+        # usage limit.  For now, kept for transition compatibility with
+        # Microfiber:
+        if self.closed:
+            raise BodyClosedError(self)
+        buf = bytearray()
+        while not self.closed:
+            buf.extend(self.readchunk())
+        return buf
+
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
