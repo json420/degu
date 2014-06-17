@@ -133,14 +133,6 @@ class TestOverFlowError(TestCase):
         self.assertEqual(str(e), 'received 20 bytes, expected 18')
 
 
-class TestChunkError(TestCase):
-    def test_init(self):
-        msg = random_id()
-        e = base.ChunkError(msg)
-        self.assertIsInstance(e, Exception)
-        self.assertEqual(str(e), msg) 
-
-
 class TestBodyClosedError(TestCase):
     def test_init(self):
         body = random_id()

@@ -54,10 +54,6 @@ class OverFlowError(Exception):
         )
 
 
-class ChunkError(Exception):
-    pass
-
-
 class BodyClosedError(Exception):
     """
     Raised when trying to iterate through a closed request or response body.
