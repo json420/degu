@@ -321,7 +321,59 @@ def iter_response_lines(status, reason, headers):
 
 
 def read_request(rfile):
+    # Read the entire request preamble:
     (request_line, header_lines) = read_preamble(rfile)
+
+    # Parse request line:
+    (method, uri, protocol) = request_line.split()
+    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+        raise ValueError('bad HTTP method: {!r}'.format(method))
+    if protocol != 'HTTP/1.1':
+        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
+
+    # Parse URI into request['path'], request['query']:
+    uri_parts = uri.split('?')
+    if len(uri_parts) == 2:
+        (path_str, query) = uri_parts
+    elif len(uri_parts) == 1:
+        (path_str, query) = (uri_parts[0], '')
+    else:
+        raise ValueError('bad request uri: {!r}'.format(uri))
+    if path_str[:1] != '/' or '//' in path_str:
+        raise ValueError('bad request path: {!r}'.format(path_str))
+    path_list = ([] if path_str == '/' else path_str[1:].split('/'))
+
+    # Parse headers:
+    headers = parse_headers(header_lines)
+
+    # Hack for compatibility with the CouchDB replicator, which annoyingly
+    # sends a {'content-length': 0} header with all GET and HEAD requests:
+    if method in {'GET', 'HEAD'} and 'content-length' in headers:
+        if headers['content-length'] == 0:
+            del headers['content-length']
+
+    # Build request body:
+    if 'content-length' in headers:
+        body = Body(rfile, headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = ChunkedBody(rfile)
+    else:
+        body = None
+    if body is not None and method not in {'POST', 'PUT'}:
+        raise ValueError(
+            'Request body with wrong method: {!r}'.format(method)
+        )
+
+    # Return the RGI request argument:
+    return {
+        'method': method,
+        #'uri': uri,
+        'script': [],
+        'path': path_list,
+        'query': query,
+        'headers': headers,
+        'body': body,
+    }
 
 
 def validate_request(request):
@@ -396,32 +448,7 @@ class Handler:
         """
         Builds the *request* ``dict`` unique to a single HTTP request.
         """
-        (request_line, header_lines) = read_preamble(self.rfile)
-        (method, path_list, query) = parse_request(request_line)
-        headers = (parse_headers(header_lines) if header_lines else {})
-        # Hack for compatibility with the CouchDB replicator, which annoyingly
-        # sends a {'content-length': 0} header with all GET and HEAD requests:
-        if method in {'GET', 'HEAD'} and 'content-length' in headers:
-            if headers['content-length'] == 0:
-                del headers['content-length']
-        if 'content-length' in headers:
-            body = Body(self.rfile, headers['content-length'])
-        elif 'transfer-encoding' in headers:
-            body = ChunkedBody(self.rfile)
-        else:
-            body = None
-        if body is not None and method not in {'POST', 'PUT'}:
-            raise ValueError(
-                'Request body with wrong method: {!r}'.format(method)
-            )
-        return {
-            'method': method,
-            'script': [],
-            'path': path_list,
-            'query': query,
-            'headers': headers,
-            'body': body,
-        }
+        return read_request(self.rfile)
 
     def write_response(self, response):
         """

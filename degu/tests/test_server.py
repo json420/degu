@@ -514,6 +514,163 @@ class TestFunctions(TestCase):
             ]
         )
 
+    def test_read_request(self):
+        longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
+
+        # No data:
+        rfile = io.BytesIO()
+        with self.assertRaises(base.EmptyPreambleError):
+            server.read_request(rfile)
+
+       # CRLF terminated request line is empty: 
+        rfile = io.BytesIO(b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'first preamble line is empty')
+        self.assertEqual(rfile.tell(), 2)
+        self.assertEqual(rfile.read(), b'')
+
+        # Line too long:
+        rfile = io.BytesIO(longline)
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'D\\r'")
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
+        self.assertEqual(rfile.read(), b'\n')
+
+        # LF but no proceeding CR:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\n\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'1\\n'")
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'\r\n')
+
+        # Missing CRLF preamble terminator:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile.tell(), 19)
+        self.assertEqual(rfile.read(), b'')
+
+        # 1st header line too long:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n' + longline)
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b'D\\r'")
+        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES + 19)
+        self.assertEqual(rfile.read(), b'\n')
+
+        # 1st header line has LF but no proceeding CR:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\n\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b'z\\n'")
+        self.assertEqual(rfile.tell(), 28)
+        self.assertEqual(rfile.read(), b'\r\n')
+
+        # Again, missing CRLF preamble terminator, but with a header also:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\r\n')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile.tell(), 29)
+        self.assertEqual(rfile.read(), b'')
+
+        # Request line has too few items to split:
+        rfile = io.BytesIO(b'GET /fooHTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
+        self.assertEqual(rfile.tell(), 20)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Request line has too many items to split:
+        rfile = io.BytesIO(b'GET /f\roo HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 3)'
+        )
+        self.assertEqual(rfile.tell(), 22)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad method:
+        rfile = io.BytesIO(b'OPTIONS /foo HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
+        self.assertEqual(rfile.tell(), 25)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Bad protocol:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.0\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
+        self.assertEqual(rfile.tell(), 21)
+        self.assertEqual(rfile.read(), b'body')
+
+        # Too many ? in uri:
+        rfile = io.BytesIO(b'GET /foo?bar=baz?stuff=junk HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad request uri: '/foo?bar=baz?stuff=junk'"
+        )
+        self.assertEqual(rfile.tell(), 40)
+        self.assertEqual(rfile.read(), b'body')
+
+        # uri path doesn't start with /:
+        rfile = io.BytesIO(b'GET foo/bar?baz HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
+        self.assertEqual(rfile.tell(), 28)
+        self.assertEqual(rfile.read(), b'body')
+
+        # uri path contains a double //:
+        rfile = io.BytesIO(b'GET /foo//bar?baz HTTP/1.1\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'body')
+
+        # 1st header line has too few items to split:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
+        self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'body')
+
+        # 1st header line has too many items to split:
+        rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz: jazz\r\n\r\nbody')
+        with self.assertRaises(ValueError) as cm:
+            server.read_request(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 2)'
+        )
+        self.assertEqual(rfile.tell(), 37)
+        self.assertEqual(rfile.read(), b'body')
+
+    def test_read_request_fuzz(self):
+        """
+        Random fuzz test for read_request().
+
+        Excepted result: given an rfile containing 8192 random bytes,
+        read_request() should raise a ValueError every time, and should never
+        read more than the first 4096 bytes.
+        """
+        for i in range(1000):
+            data = os.urandom(base.MAX_LINE_BYTES * 2)
+            rfile = io.BytesIO(data)
+            with self.assertRaises(ValueError):
+                server.read_request(rfile)
+            self.assertLessEqual(rfile.tell(), base.MAX_LINE_BYTES)
+
     def test_write_response(self):
         # Empty headers, no body:
         wfile = io.BytesIO()
