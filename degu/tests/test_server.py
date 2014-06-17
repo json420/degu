@@ -486,34 +486,6 @@ class TestFunctions(TestCase):
         )
         self.assertEqual(headers, {})
 
-    def test_iter_response_lines(self):
-        self.assertEqual(
-            list(server.iter_response_lines(200, 'OK', {})),
-            ['HTTP/1.1 200 OK\r\n', '\r\n']
-        )
-        self.assertEqual(
-            list(server.iter_response_lines(420, 'Enhance Your Calm', None)),
-            ['HTTP/1.1 420 Enhance Your Calm\r\n', '\r\n']
-        )
-        headers = {
-            'server': 'Dmedia/14.04',
-            'content-type': 'application/json',
-            'content-length': 17,
-            'date': 'if you buy',
-        }
-        self.assertEqual(
-            list(server.iter_response_lines(404, 'Not Found', headers)),
-            [
-                'HTTP/1.1 404 Not Found\r\n',
-                # Note the headers are in sorted order
-                'content-length: 17\r\n',
-                'content-type: application/json\r\n',\
-                'date: if you buy\r\n',
-                'server: Dmedia/14.04\r\n',
-                '\r\n',
-            ]
-        )
-
     def test_read_request(self):
         longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
 
