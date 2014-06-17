@@ -116,7 +116,19 @@ will use the :func:`degu.util.relative_uri()` helper function:
 ...         )
 ...
 
-This case is slightly more complicated as the RGI callable will be a
+The important thing to note above is that Degu server applications can
+*directly* use the incoming HTTP request body object in their forwarded HTTP
+client request, and can likewise return the *entire* HTTP response object from
+the upstream server.  (This in new in Degu 0.6, whereas previous versions
+required you to wrap the HTTP body in both directions using the defunct
+``make_output_from_input()`` function).
+
+For this reason, the 4-tuple response object is something you'll really want to
+commit to memory, as it is used both server-side and client-side::
+
+    (status, reason, headers, body)
+
+Anyway, this case is slightly more complicated as the RGI callable will be a
 ``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
 problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
 structures to a new process.  This approach also avoids importing unnecessary

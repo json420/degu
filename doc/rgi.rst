@@ -125,6 +125,9 @@ RGI applications specify the connection handler via a callable
 ...         return True
 ... 
 
+(Note that storing ``b'hello, world'`` in ``session['__body']`` is just a silly
+example to illustrate the API, not something you'd want to do in real-life.) 
+
 Even though the RGI *session* and *request* arguments are quite different than
 the WSGI *environ* argument, there is a simple, one-to-one mapping between
 WSGI and RGI in this respect.
@@ -173,9 +176,15 @@ Would translate into this RGI *session* and *request*::
     }
 
 As RGI doesn't aim for CGI compatibility, it uses shorter, lower-case keys (for
-example, ``'method'`` instead of ``'REQUEST_METHOD'``).  Likewise, while
+example, ``'method'`` instead of ``'REQUEST_METHOD'``).  Likewise, whereas
 all CGI variable values are strings in the WSGI *environ*, RGI coverts some of
-these values to more useful Python values in a few cases.
+these string values to other more useful Python types when it makes sense.
+
+Note that the RGI ``request['headers']`` sub-dictionary contains the full
+request headers with the original (although lowercased) header names, instead of
+the mangled (and uppercased) names in the WSGI *environ*: for example,
+``'accept'`` in RGI vs. ``'HTTP_ACCEPT'`` in WSGI.
+
 
 To further compare and contrast, this more realistically complex WSGI
 application:
