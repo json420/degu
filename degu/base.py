@@ -131,22 +131,24 @@ def read_chunk(rfile):
     return chunk
 
 
-def write_chunk(wfile, chunk):
+def write_chunk(wfile, data, extension=None):
     """
-    Write a chunk to a chunk-encoded request or response body.
+    Write a *data* to a chunk-encoded request or response body.
 
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
-
-    Note this function currently doesn't support chunk-extensions.
     """
-    size_line = '{:x}\r\n'.format(len(chunk))
-    total = wfile.write(size_line.encode())
-    total += wfile.write(chunk)
+    if extension:
+        (key, value) = extension
+        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
+    else:
+        size_line = '{:x}\r\n'.format(len(data))
+    total = wfile.write(size_line.encode('latin_1'))
+    total += wfile.write(data)
     total += wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
-    # wfile.flush()
+    wfile.flush()
     return total
 
 

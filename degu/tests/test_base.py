@@ -433,37 +433,56 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
     def test_write_chunk(self):
-        tmp = TempDir()
+        # Empty data:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b''), 5)
+        self.assertEqual(wfile.getvalue(), b'0\r\n\r\n')
 
-        (filename, fp) = tmp.create('zero')
-        self.assertEqual(base.write_chunk(fp, b''), 5)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(), b'0\r\n\r\n')
+        # Empty data plus extension:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'', ('foo', 'bar')), 13)
+        self.assertEqual(wfile.getvalue(), b'0;foo=bar\r\n\r\n')
 
-        (filename, fp) = tmp.create('one')
-        self.assertEqual(base.write_chunk(fp, b'hello'), 10)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(), b'5\r\nhello\r\n')
+        # Small data:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'hello'), 10)
+        self.assertEqual(wfile.getvalue(), b'5\r\nhello\r\n')
 
+        # Small data plus extension:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'hello', ('foo', 'bar')), 18)
+        self.assertEqual(wfile.getvalue(), b'5;foo=bar\r\nhello\r\n')
+
+        # Larger data:
         data = b'D' * 7777
-        (filename, fp) = tmp.create('two')
-        self.assertEqual(base.write_chunk(fp, data), 7785)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(),
-            b'1e61\r\n' + data + b'\r\n'
-        )
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, data), 7785)
+        self.assertEqual(wfile.getvalue(), b'1e61\r\n' + data + b'\r\n')
+
+        # Larger data plus extension:
+        data = b'D' * 7777
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, data, ('foo', 'bar')), 7793)
+        self.assertEqual(wfile.getvalue(), b'1e61;foo=bar\r\n' + data + b'\r\n')
 
         # Test random value round-trip with read_chunk():
         for size in range(1776):
-            filename = tmp.join(random_id())
-            fp = open(filename, 'xb')
+            # No extension:
             data = os.urandom(size)
             total = size + len('{:x}'.format(size)) + 4
+            fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data), total)
-            fp.close()
-            fp = open(filename, 'rb')
+            fp.seek(0)
             self.assertEqual(base.read_chunk(fp), data)
-            fp.close()
+
+            # With extension:
+            key = random_id()
+            value = random_id()
+            total = size + len('{:x};{}={}'.format(size, key, value)) + 4
+            fp = io.BytesIO()
+            self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
+            fp.seek(0)
+            self.assertEqual(base.read_chunk(fp), data)
 
     def test_parse_headers(self):
         # Too few values:

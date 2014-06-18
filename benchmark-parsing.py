@@ -5,7 +5,7 @@ import timeit
 setup = """
 from degu.client import parse_status, write_request
 from degu.server import parse_request, write_response
-from degu.base import parse_headers
+from degu.base import parse_headers, write_chunk
 
 line = (b'L' *  50) + b'\\r\\n'
 assert line.endswith(b'\\r\\n')
@@ -22,6 +22,8 @@ header_lines = (
 )
 
 headers = parse_headers(header_lines)
+
+data = b'D' * 1776
 
 
 class wfile:
@@ -76,6 +78,8 @@ run('parse_headers(header_lines)')
 print('\nHigh-level formatters:')
 run("write_response(wfile, 404, 'Not Found', headers, None)")
 run("write_request(wfile, 'GET', '/foo/bar?stuff=junk', headers, None)")
+run("write_chunk(wfile, data)")
+run("write_chunk(wfile, data, ('foo', 'bar'))")
 
 print('-' * 80)
 
