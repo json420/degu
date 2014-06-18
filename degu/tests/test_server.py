@@ -968,9 +968,9 @@ class TestHandler(TestCase):
         self.assertIs(body.rfile, fp)
         self.assertIs(body.closed, False)
         self.assertIs(body.rfile.closed, False)
-        self.assertEqual(body.readchunk(), chunk1)
-        self.assertEqual(body.readchunk(), chunk2)
-        self.assertEqual(body.readchunk(), b'')
+        self.assertEqual(body.readchunk(), (chunk1, None))
+        self.assertEqual(body.readchunk(), (chunk2, None))
+        self.assertEqual(body.readchunk(), (b'', None))
         self.assertIs(body.closed, True)
         self.assertIs(body.rfile.closed, False)
 
@@ -1331,8 +1331,8 @@ def chunked_request_app(session, request):
     assert isinstance(request['body'], base.ChunkedBody)
     assert request['headers']['transfer-encoding'] == 'chunked'
     result = []
-    for chunk in request['body']:
-        result.append(sha1(chunk).hexdigest())
+    for (data, extension) in request['body']:
+        result.append(sha1(data).hexdigest())
     body = json.dumps(result).encode('utf-8')
     headers = {'content-length': len(body), 'content-type': 'application/json'}
     return (200, 'OK', headers, body)
@@ -1491,14 +1491,16 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedBody)
-        self.assertEqual(tuple(response.body), CHUNKS)
+        self.assertEqual(tuple(response.body),
+            tuple((data, None) for data in CHUNKS)
+        )
 
         response = conn.request('GET', '/bar')
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedBody)
-        self.assertEqual(list(response.body), [b''])
+        self.assertEqual(list(response.body), [(b'', None)])
 
         response = conn.request('GET', '/baz')
         self.assertEqual(response.status, 404)
@@ -1511,7 +1513,9 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedBody)
-        self.assertEqual(tuple(response.body), CHUNKS)
+        self.assertEqual(tuple(response.body),
+            tuple((data, None) for data in CHUNKS)
+        )
         httpd.terminate()
 
     def test_response(self):

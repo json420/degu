@@ -28,7 +28,7 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import TempDir, DummySocket, random_data, random_chunks
+from .helpers import DummySocket, random_data, random_chunks
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base
@@ -370,6 +370,16 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), 2)
         self.assertFalse(rfile.closed)
 
+        # Too many b';' is size line:
+        rfile = io.BytesIO(b'foo;bar;baz\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad chunk size line: b'foo;bar;baz\\r\\n'"
+        )
+        self.assertEqual(rfile.tell(), 13)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
         # Size isn't a hexidecimal integer:
         rfile = io.BytesIO(b'17.6\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
@@ -402,6 +412,26 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), 16)
         self.assertFalse(rfile.closed)
 
+        # Too few b'=' in chunk extension:
+        rfile = io.BytesIO(b'1e61;foo\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need more than 1 value to unpack'
+        )
+        self.assertEqual(rfile.tell(), 10)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
+        # Too many b'=' in chunk extension:
+        rfile = io.BytesIO(b'1e61;foo=bar=baz\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 2)'
+        )
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
         # Not enough data:
         rfile = io.BytesIO(size + small_data + b'\r\n')
         with self.assertRaises(base.UnderFlowError) as cm:
@@ -420,13 +450,13 @@ class TestFunctions(TestCase):
 
         # Test when it's all good:
         rfile = io.BytesIO(size + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(base.read_chunk(rfile), (data, None))
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
         # Test when size line has extra information:
         rfile = io.BytesIO(size_plus + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
+        self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
         self.assertEqual(rfile.tell(), 7793)
         self.assertFalse(rfile.closed)
 
@@ -471,7 +501,7 @@ class TestFunctions(TestCase):
             fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), data)
+            self.assertEqual(base.read_chunk(fp), (data, None))
 
             # With extension:
             key = random_id()
@@ -480,7 +510,7 @@ class TestFunctions(TestCase):
             fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), data)
+            self.assertEqual(base.read_chunk(fp), (data, (key, value)))
 
     def test_parse_headers(self):
         # Too few values:
@@ -633,7 +663,7 @@ class TestFunctions(TestCase):
         wfile.seek(0)
         gotchunks = []
         while True:
-            data = base.read_chunk(wfile)
+            (data, extension) = base.read_chunk(wfile)
             gotchunks.append(data)
             if not data:
                 break
@@ -1101,7 +1131,7 @@ class TestChunkedBody(TestCase):
         # Test when all good:
         body = base.ChunkedBody(rfile)
         for data in chunks:
-            self.assertEqual(body.readchunk(), data)
+            self.assertEqual(body.readchunk(), (data, None))
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
@@ -1149,7 +1179,7 @@ class TestChunkedBody(TestCase):
 
         # Test when all good:
         body = base.ChunkedBody(rfile)
-        self.assertEqual(list(body), chunks)
+        self.assertEqual(list(body), [(data, None) for data in chunks])
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)

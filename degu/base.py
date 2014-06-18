@@ -112,16 +112,13 @@ def read_chunk(rfile):
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
-
-    Note this function currently ignores any chunk-extension that may be
-    present. 
     """
     line = rfile.readline(MAX_LINE_BYTES)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
     parts = line[:-2].split(b';')
     if len(parts) > 2:
-        raise ValueError('bad chunk size size: {!r}'.format(line))
+        raise ValueError('bad chunk size line: {!r}'.format(line))
     size = int(parts[0], 16)
     if size < 0:
         raise ValueError('negative chunk size: {}'.format(size))
@@ -130,13 +127,13 @@ def read_chunk(rfile):
         extension = (key, value)
     else:
         extension = None
-    chunk = rfile.read(size)
-    if len(chunk) != size:
-        raise UnderFlowError(len(chunk), size)
+    data = rfile.read(size)
+    if len(data) != size:
+        raise UnderFlowError(len(data), size)
     crlf = rfile.read(2)
     if crlf != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(crlf))
-    return chunk
+    return (data, extension)
 
 
 def write_chunk(wfile, data, extension=None):
@@ -207,8 +204,8 @@ def write_body(wfile, body):
         for data in body:
             total += wfile.write(data)
     elif isinstance(body, ChunkedBody):
-        for data in body:
-            total += write_chunk(wfile, data)
+        for (data, extension) in body:
+            total += write_chunk(wfile, data, extension)
     elif body is not None:
         raise TypeError(
             'invalid body type: {!r}: {!r}'.format(type(body), body)
@@ -294,13 +291,13 @@ class ChunkedBody:
         if self.closed:
             raise BodyClosedError(self)
         try:
-            data = read_chunk(self.rfile)
+            (data, extension) = read_chunk(self.rfile)
         except:
             self.rfile.close()
             raise
         if not data:
             self.closed = True
-        return data
+        return (data, extension)
 
     def read(self):
         # FIXME: consider removing this, or at least adding some sane memory
@@ -310,7 +307,7 @@ class ChunkedBody:
             raise BodyClosedError(self)
         buf = bytearray()
         while not self.closed:
-            buf.extend(self.readchunk())
+            buf.extend(self.readchunk()[0])
         return buf
 
     def __iter__(self):

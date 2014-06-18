@@ -66,15 +66,18 @@ Parsing functions
     >>> from degu.base import read_chunk
     >>> rfile = io.BytesIO(b'5\r\nhello\r\n')
     >>> read_chunk(rfile)
-    b'hello'
+    (b'hello', None)
+
+    Or when there is a chunk extension:
+
+    >>> rfile = io.BytesIO(b'5;foo=bar\r\nhello\r\n')
+    >>> read_chunk(rfile)
+    (b'hello', ('foo', 'bar'))
 
     For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
 
-    Note this function currently ignores any chunk-extension that may be
-    present.
 
-
-.. function:: write_chunk(wfile, chunk)
+.. function:: write_chunk(wfile, chunk, extension=None)
 
     Write a chunk to a chunk-encoded request or response body.
 
@@ -91,9 +94,15 @@ Parsing functions
     >>> wfile.getvalue()
     b'5\r\nhello\r\n'
 
-    For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
+    Or when there is a chunk extension:
 
-    Note this function currently doesn't support chunk-extensions.
+    >>> wfile = io.BytesIO()
+    >>> write_chunk(wfile, b'hello', ('foo', 'bar'))
+    18
+    >>> wfile.getvalue()
+    b'5;foo=bar\r\nhello\r\n'
+
+    For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
 
 
 .. function:: parse_headers(header_lines)

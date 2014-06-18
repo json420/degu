@@ -510,7 +510,14 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.rfile, rfile)
         self.assertEqual(rfile.tell(), len(lines))
         self.assertIs(r.body.closed, False)
-        self.assertEqual(list(r.body), [chunk1, chunk2, chunk3, b''])
+        self.assertEqual(list(r.body),
+            [
+                (chunk1, None),
+                (chunk2, None),
+                (chunk3, None),
+                (b'', None),
+            ]
+        )
         self.assertIs(r.body.closed, True)
         self.assertEqual(rfile.tell(), total)
 
