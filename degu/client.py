@@ -208,16 +208,16 @@ def parse_status(line):
 
 
 def write_request(wfile, method, uri, headers, body):
-    total = wfile.write(
-        '{} {} HTTP/1.1\r\n'.format(method, uri).encode('latin_1')
+    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
+    lines.extend(
+        sorted('{}: {}\r\n'.format(*kv) for kv in headers.items())
     )
-    for key in sorted(headers):
-        total += wfile.write(
-            '{}: {}\r\n'.format(key, headers[key]).encode('latin_1')
-        )
-    total += wfile.write(b'\r\n')
-    total += write_body(wfile, body)
-    return total
+    lines.append('\r\n')
+    total = wfile.write(''.join(lines).encode('latin_1'))
+    if body is None:
+        wfile.flush()
+        return total
+    return total + write_body(wfile, body)
 
 
 def read_response(rfile, method):
