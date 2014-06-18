@@ -119,9 +119,17 @@ def read_chunk(rfile):
     line = rfile.readline(MAX_LINE_BYTES)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
-    size = int(line[:-2].split(b';')[0], 16)
+    parts = line[:-2].split(b';')
+    if len(parts) > 2:
+        raise ValueError('bad chunk size size: {!r}'.format(line))
+    size = int(parts[0], 16)
     if size < 0:
         raise ValueError('negative chunk size: {}'.format(size))
+    if len(parts) == 2:
+        (key, value) = parts[1].decode('latin_1').split('=')
+        extension = (key, value)
+    else:
+        extension = None
     chunk = rfile.read(size)
     if len(chunk) != size:
         raise UnderFlowError(len(chunk), size)

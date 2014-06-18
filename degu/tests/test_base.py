@@ -329,7 +329,7 @@ class TestFunctions(TestCase):
         termed = data + b'\r\n'
         self.assertEqual(len(termed), 7779)
         size = b'1e61\r\n'
-        size_plus = b'1e61; extra stuff here\r\n'
+        size_plus = b'1e61;foo=bar\r\n'
 
         # No CRLF terminated chunk size line:
         rfile = tmp.prepare(termed)
@@ -381,13 +381,13 @@ class TestFunctions(TestCase):
         )
         self.assertEqual(rfile.tell(), 6)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'17.6; 1e61\r\n' + termed)
+        rfile = tmp.prepare(b'17.6;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 16: b'17.6'"
         )
-        self.assertEqual(rfile.tell(), 12)
+        self.assertEqual(rfile.tell(), 15)
         self.assertFalse(rfile.closed)
 
         # Size is negative:
@@ -397,11 +397,11 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
         self.assertEqual(rfile.tell(), 7)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'-1e61; 1e61\r\n' + termed)
+        rfile = tmp.prepare(b'-1e61;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
-        self.assertEqual(rfile.tell(), 13)
+        self.assertEqual(rfile.tell(), 16)
         self.assertFalse(rfile.closed)
 
         # Not enough data:
@@ -429,7 +429,7 @@ class TestFunctions(TestCase):
         # Test when size line has extra information:
         rfile = tmp.prepare(size_plus + termed)
         self.assertEqual(base.read_chunk(rfile), data)
-        self.assertEqual(rfile.tell(), 7803)
+        self.assertEqual(rfile.tell(), 7793)
         self.assertFalse(rfile.closed)
 
     def test_write_chunk(self):
