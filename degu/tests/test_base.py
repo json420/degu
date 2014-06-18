@@ -323,7 +323,6 @@ class TestFunctions(TestCase):
             self.assertEqual(rfile.read(), body)
 
     def test_read_chunk(self):
-        tmp = TempDir()
         data = (b'D' * 7777)  # Longer than MAX_LINE_BYTES
         small_data = (b'd' * 6666)  # Still longer than MAX_LINE_BYTES
         termed = data + b'\r\n'
@@ -332,18 +331,17 @@ class TestFunctions(TestCase):
         size_plus = b'1e61;foo=bar\r\n'
 
         # No CRLF terminated chunk size line:
-        rfile = tmp.prepare(termed)
+        rfile = io.BytesIO(termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
             "bad chunk size termination: b'DD'"
         )
-
         self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:
-        rfile = tmp.prepare(b'1e61\n' + termed)
+        rfile = io.BytesIO(b'1e61\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -353,7 +351,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Totally empty:
-        rfile = tmp.prepare(b'')
+        rfile = io.BytesIO(b'')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -363,7 +361,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Size line is property terminated, but empty value:
-        rfile = tmp.prepare(b'\r\n' + termed)
+        rfile = io.BytesIO(b'\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -373,7 +371,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Size isn't a hexidecimal integer:
-        rfile = tmp.prepare(b'17.6\r\n' + termed)
+        rfile = io.BytesIO(b'17.6\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -381,7 +379,7 @@ class TestFunctions(TestCase):
         )
         self.assertEqual(rfile.tell(), 6)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'17.6;1e61=bar\r\n' + termed)
+        rfile = io.BytesIO(b'17.6;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -391,13 +389,13 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Size is negative:
-        rfile = tmp.prepare(b'-1e61\r\n' + termed)
+        rfile = io.BytesIO(b'-1e61\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
         self.assertEqual(rfile.tell(), 7)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'-1e61;1e61=bar\r\n' + termed)
+        rfile = io.BytesIO(b'-1e61;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
@@ -405,7 +403,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Not enough data:
-        rfile = tmp.prepare(size + small_data + b'\r\n')
+        rfile = io.BytesIO(size + small_data + b'\r\n')
         with self.assertRaises(base.UnderFlowError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7777')
@@ -413,7 +411,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Data isn't properly terminated:
-        rfile = tmp.prepare(size + data + b'TT\r\n')
+        rfile = io.BytesIO(size + data + b'TT\r\n')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), "bad chunk data termination: b'TT'")
@@ -421,13 +419,13 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Test when it's all good:
-        rfile = tmp.prepare(size + termed)
+        rfile = io.BytesIO(size + termed)
         self.assertEqual(base.read_chunk(rfile), data)
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
         # Test when size line has extra information:
-        rfile = tmp.prepare(size_plus + termed)
+        rfile = io.BytesIO(size_plus + termed)
         self.assertEqual(base.read_chunk(rfile), data)
         self.assertEqual(rfile.tell(), 7793)
         self.assertFalse(rfile.closed)
