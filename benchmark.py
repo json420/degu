@@ -9,6 +9,7 @@ import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempServer
 from degu.tests.helpers import TempDir
+from degu.client import Client
 
 
 parser = argparse.ArgumentParser()
@@ -44,7 +45,7 @@ if args.unix:
 else:
     address = degu.IPv6_LOOPBACK
 server = TempServer(address, None, ping_pong_app)
-client = server.get_client()
+client = Client(server.address)
 
 
 marker = random_id(60)

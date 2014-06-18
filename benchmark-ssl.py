@@ -36,11 +36,13 @@ but perhaps not enough to justify the switch (something to consider though)::
 import time
 import logging
 import os
+import io
 import math
 
 from degu import IPv6_LOOPBACK
-from degu.base import Output
+from degu.base import Body
 from degu.misc import TempPKI, TempSSLServer
+from degu.client import build_client_sslctx, SSLClient
 
 
 logging.basicConfig(
@@ -86,12 +88,12 @@ MiB = 1048576
 chunk_size = 8 * MiB
 chunk_count = 64  # 512 MiB
 chunk = os.urandom(chunk_size)
-chunks = tuple(chunk for i in range(chunk_count))
-content_length = chunk_size * chunk_count
+chunks = b''.join(chunk for i in range(chunk_count))
+content_length = len(chunks)
 
 
 def file_app(connection, request):
-    body = Output(chunks, content_length)
+    body = Body(io.BytesIO(chunks), content_length)
     headers = {
         'content-length': content_length,
         'content-type': 'video/quicktime',
@@ -100,8 +102,9 @@ def file_app(connection, request):
 
 
 pki = TempPKI()
-server = TempSSLServer(pki, IPv6_LOOPBACK, None, file_app)
-client = server.get_client()
+server = TempSSLServer(pki.get_server_config(), IPv6_LOOPBACK, None, file_app)
+sslctx = build_client_sslctx(pki.get_client_config())
+client = SSLClient(sslctx, server.address)
 
 
 count = 5
