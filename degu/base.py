@@ -25,6 +25,7 @@ Common HTTP parser and IO abstractions used by server and client.
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
+MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
@@ -120,8 +121,10 @@ def read_chunk(rfile):
     if len(parts) > 2:
         raise ValueError('bad chunk size line: {!r}'.format(line))
     size = int(parts[0], 16)
-    if size < 0:
-        raise ValueError('negative chunk size: {}'.format(size))
+    if not (0 <= size <= MAX_CHUNK_BYTES):
+        raise ValueError(
+            'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_BYTES, size)
+        )
     if len(parts) == 2:
         (key, value) = parts[1].decode('latin_1').split('=')
         extension = (key, value)
@@ -144,6 +147,10 @@ def write_chunk(wfile, data, extension=None):
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
+    if len(data) > MAX_CHUNK_BYTES:
+        raise ValueError(
+            'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
+        )
     if extension:
         (key, value) = extension
         size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
