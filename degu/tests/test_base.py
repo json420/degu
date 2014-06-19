@@ -28,7 +28,7 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import TempDir, DummySocket, random_data, random_chunks
+from .helpers import DummySocket, random_data, random_chunks
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base
@@ -91,6 +91,13 @@ class TestConstants(TestCase):
         self.assertIsInstance(base.MAX_HEADER_COUNT, int)
         self.assertGreaterEqual(base.MAX_HEADER_COUNT, 5)
         self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
+
+    def test_MAX_CHUNK_BYTES(self):
+        self.assertIsInstance(base.MAX_CHUNK_BYTES, int)
+        MiB = 1024 * 1024
+        self.assertEqual(base.MAX_CHUNK_BYTES % MiB, 0)
+        self.assertGreaterEqual(base.MAX_CHUNK_BYTES, MiB)
+        self.assertLessEqual(base.MAX_CHUNK_BYTES, MiB * 32)
 
     def test_STREAM_BUFFER_BYTES(self):
         self.assertIsInstance(base.STREAM_BUFFER_BYTES, int)
@@ -323,27 +330,25 @@ class TestFunctions(TestCase):
             self.assertEqual(rfile.read(), body)
 
     def test_read_chunk(self):
-        tmp = TempDir()
         data = (b'D' * 7777)  # Longer than MAX_LINE_BYTES
         small_data = (b'd' * 6666)  # Still longer than MAX_LINE_BYTES
         termed = data + b'\r\n'
         self.assertEqual(len(termed), 7779)
         size = b'1e61\r\n'
-        size_plus = b'1e61; extra stuff here\r\n'
+        size_plus = b'1e61;foo=bar\r\n'
 
         # No CRLF terminated chunk size line:
-        rfile = tmp.prepare(termed)
+        rfile = io.BytesIO(termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
             "bad chunk size termination: b'DD'"
         )
-
         self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
         self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:
-        rfile = tmp.prepare(b'1e61\n' + termed)
+        rfile = io.BytesIO(b'1e61\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -353,7 +358,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Totally empty:
-        rfile = tmp.prepare(b'')
+        rfile = io.BytesIO(b'')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -363,7 +368,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Size line is property terminated, but empty value:
-        rfile = tmp.prepare(b'\r\n' + termed)
+        rfile = io.BytesIO(b'\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -372,8 +377,18 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), 2)
         self.assertFalse(rfile.closed)
 
+        # Too many b';' is size line:
+        rfile = io.BytesIO(b'foo;bar;baz\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad chunk size line: b'foo;bar;baz\\r\\n'"
+        )
+        self.assertEqual(rfile.tell(), 13)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
         # Size isn't a hexidecimal integer:
-        rfile = tmp.prepare(b'17.6\r\n' + termed)
+        rfile = io.BytesIO(b'17.6\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
@@ -381,31 +396,77 @@ class TestFunctions(TestCase):
         )
         self.assertEqual(rfile.tell(), 6)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'17.6; 1e61\r\n' + termed)
+        rfile = io.BytesIO(b'17.6;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 16: b'17.6'"
         )
-        self.assertEqual(rfile.tell(), 12)
+        self.assertEqual(rfile.tell(), 15)
         self.assertFalse(rfile.closed)
 
         # Size is negative:
-        rfile = tmp.prepare(b'-1e61\r\n' + termed)
+        rfile = io.BytesIO(b'-1\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
-        self.assertEqual(rfile.tell(), 7)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= chunk_size <= {}; got -1'.format(base.MAX_CHUNK_BYTES)
+        )
+        self.assertEqual(rfile.tell(), 4)
         self.assertFalse(rfile.closed)
-        rfile = tmp.prepare(b'-1e61; 1e61\r\n' + termed)
+        rfile = io.BytesIO(b'-1e61;1e61=bar\r\n' + termed)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), 'negative chunk size: -7777')
-        self.assertEqual(rfile.tell(), 13)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= chunk_size <= {}; got -7777'.format(base.MAX_CHUNK_BYTES)
+        )
+        self.assertEqual(rfile.tell(), 16)
         self.assertFalse(rfile.closed)
 
+        # Size > MAX_CHUNK_BYTES:
+        line = '{:x}\r\n'.format(base.MAX_CHUNK_BYTES + 1)
+        rfile = io.BytesIO(line.encode('latin_1') + data)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= chunk_size <= 16777216; got 16777217'
+        )
+        self.assertEqual(rfile.tell(), len(line))
+        self.assertFalse(rfile.closed)
+
+        # Size > MAX_CHUNK_BYTES, with extension:
+        line = '{:x};foo=bar\r\n'.format(base.MAX_CHUNK_BYTES + 1)
+        rfile = io.BytesIO(line.encode('latin_1') + data)
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= chunk_size <= 16777216; got 16777217'
+        )
+        self.assertEqual(rfile.tell(), len(line))
+        self.assertFalse(rfile.closed)
+
+        # Too few b'=' in chunk extension:
+        rfile = io.BytesIO(b'1e61;foo\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need more than 1 value to unpack'
+        )
+        self.assertEqual(rfile.tell(), 10)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
+        # Too many b'=' in chunk extension:
+        rfile = io.BytesIO(b'1e61;foo=bar=baz\r\ndata\r\n')
+        with self.assertRaises(ValueError) as cm:
+            base.read_chunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many values to unpack (expected 2)'
+        )
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'data\r\n')
+
         # Not enough data:
-        rfile = tmp.prepare(size + small_data + b'\r\n')
+        rfile = io.BytesIO(size + small_data + b'\r\n')
         with self.assertRaises(base.UnderFlowError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7777')
@@ -413,7 +474,7 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Data isn't properly terminated:
-        rfile = tmp.prepare(size + data + b'TT\r\n')
+        rfile = io.BytesIO(size + data + b'TT\r\n')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception), "bad chunk data termination: b'TT'")
@@ -421,49 +482,127 @@ class TestFunctions(TestCase):
         self.assertFalse(rfile.closed)
 
         # Test when it's all good:
-        rfile = tmp.prepare(size + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
+        rfile = io.BytesIO(size + termed)
+        self.assertEqual(base.read_chunk(rfile), (data, None))
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
         # Test when size line has extra information:
-        rfile = tmp.prepare(size_plus + termed)
-        self.assertEqual(base.read_chunk(rfile), data)
-        self.assertEqual(rfile.tell(), 7803)
+        rfile = io.BytesIO(size_plus + termed)
+        self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
+        self.assertEqual(rfile.tell(), 7793)
         self.assertFalse(rfile.closed)
 
+        # Test max chunk size:
+        data = os.urandom(base.MAX_CHUNK_BYTES)
+        line = '{:x}\r\n'.format(len(data))
+        rfile = io.BytesIO()
+        rfile.write(line.encode('latin_1'))
+        rfile.write(data)
+        rfile.write(b'\r\n')
+        rfile.seek(0)
+        self.assertEqual(base.read_chunk(rfile), (data, None))
+        self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
+
+        # Again, with extension:
+        data = os.urandom(base.MAX_CHUNK_BYTES)
+        line = '{:x};foo=bar\r\n'.format(len(data))
+        rfile = io.BytesIO()
+        rfile.write(line.encode('latin_1'))
+        rfile.write(data)
+        rfile.write(b'\r\n')
+        rfile.seek(0)
+        self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
+        self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
+
     def test_write_chunk(self):
-        tmp = TempDir()
-
-        (filename, fp) = tmp.create('zero')
-        self.assertEqual(base.write_chunk(fp, b''), 5)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(), b'0\r\n\r\n')
-
-        (filename, fp) = tmp.create('one')
-        self.assertEqual(base.write_chunk(fp, b'hello'), 10)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(), b'5\r\nhello\r\n')
-
-        data = b'D' * 7777
-        (filename, fp) = tmp.create('two')
-        self.assertEqual(base.write_chunk(fp, data), 7785)
-        fp.close()
-        self.assertEqual(open(filename, 'rb').read(),
-            b'1e61\r\n' + data + b'\r\n'
+        # len(data) > MAX_CHUNK_BYTES:
+        data = b'D' * (base.MAX_CHUNK_BYTES + 1)
+        wfile = io.BytesIO()
+        with self.assertRaises(ValueError) as cm:
+            base.write_chunk(wfile, data, None)
+        self.assertEqual(str(cm.exception),
+            'need len(data) <= 16777216; got 16777217'
         )
+        self.assertEqual(wfile.getvalue(), b'')
+
+        # len(data) > MAX_CHUNK_BYTES, with extension:
+        wfile = io.BytesIO()
+        with self.assertRaises(ValueError) as cm:
+            base.write_chunk(wfile, data, ('foo', 'bar'))
+        self.assertEqual(str(cm.exception),
+            'need len(data) <= 16777216; got 16777217'
+        )
+        self.assertEqual(wfile.getvalue(), b'')
+
+        # Empty data:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b''), 5)
+        self.assertEqual(wfile.getvalue(), b'0\r\n\r\n')
+
+        # Empty data plus extension:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'', ('foo', 'bar')), 13)
+        self.assertEqual(wfile.getvalue(), b'0;foo=bar\r\n\r\n')
+
+        # Small data:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'hello'), 10)
+        self.assertEqual(wfile.getvalue(), b'5\r\nhello\r\n')
+
+        # Small data plus extension:
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, b'hello', ('foo', 'bar')), 18)
+        self.assertEqual(wfile.getvalue(), b'5;foo=bar\r\nhello\r\n')
+
+        # Larger data:
+        data = b'D' * 7777
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, data), 7785)
+        self.assertEqual(wfile.getvalue(), b'1e61\r\n' + data + b'\r\n')
+
+        # Larger data plus extension:
+        data = b'D' * 7777
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_chunk(wfile, data, ('foo', 'bar')), 7793)
+        self.assertEqual(wfile.getvalue(), b'1e61;foo=bar\r\n' + data + b'\r\n')
 
         # Test random value round-trip with read_chunk():
         for size in range(1776):
-            filename = tmp.join(random_id())
-            fp = open(filename, 'xb')
+            # No extension:
             data = os.urandom(size)
             total = size + len('{:x}'.format(size)) + 4
+            fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data), total)
-            fp.close()
-            fp = open(filename, 'rb')
-            self.assertEqual(base.read_chunk(fp), data)
-            fp.close()
+            fp.seek(0)
+            self.assertEqual(base.read_chunk(fp), (data, None))
+
+            # With extension:
+            key = random_id()
+            value = random_id()
+            total = size + len('{:x};{}={}'.format(size, key, value)) + 4
+            fp = io.BytesIO()
+            self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
+            fp.seek(0)
+            self.assertEqual(base.read_chunk(fp), (data, (key, value)))
+
+        # Make sure we can round-trip MAX_CHUNK_BYTES:
+        size = base.MAX_CHUNK_BYTES
+        data = os.urandom(size)
+        total = size + len('{:x}'.format(size)) + 4
+        fp = io.BytesIO()
+        self.assertEqual(base.write_chunk(fp, data), total)
+        fp.seek(0)
+        self.assertEqual(base.read_chunk(fp), (data, None))
+
+        # With extension:
+        key = random_id()
+        value = random_id()
+        total = size + len('{:x};{}={}'.format(size, key, value)) + 4
+        fp = io.BytesIO()
+        self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
+        fp.seek(0)
+        self.assertEqual(base.read_chunk(fp), (data, (key, value)))
 
     def test_parse_headers(self):
         # Too few values:
@@ -616,7 +755,7 @@ class TestFunctions(TestCase):
         wfile.seek(0)
         gotchunks = []
         while True:
-            data = base.read_chunk(wfile)
+            (data, extension) = base.read_chunk(wfile)
             gotchunks.append(data)
             if not data:
                 break
@@ -1084,7 +1223,7 @@ class TestChunkedBody(TestCase):
         # Test when all good:
         body = base.ChunkedBody(rfile)
         for data in chunks:
-            self.assertEqual(body.readchunk(), data)
+            self.assertEqual(body.readchunk(), (data, None))
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
@@ -1132,7 +1271,7 @@ class TestChunkedBody(TestCase):
 
         # Test when all good:
         body = base.ChunkedBody(rfile)
-        self.assertEqual(list(body), chunks)
+        self.assertEqual(list(body), [(data, None) for data in chunks])
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)

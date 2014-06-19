@@ -25,6 +25,7 @@ Common HTTP parser and IO abstractions used by server and client.
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
+MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
@@ -52,6 +53,10 @@ class OverFlowError(Exception):
         super().__init__(
             'received {:d} bytes, expected {:d}'.format(received, expected)
         )
+
+
+class ChunkError(Exception):
+    pass
 
 
 class BodyClosedError(Exception):
@@ -112,41 +117,54 @@ def read_chunk(rfile):
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
-
-    Note this function currently ignores any chunk-extension that may be
-    present. 
     """
     line = rfile.readline(MAX_LINE_BYTES)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
-    size = int(line[:-2].split(b';')[0], 16)
-    if size < 0:
-        raise ValueError('negative chunk size: {}'.format(size))
-    chunk = rfile.read(size)
-    if len(chunk) != size:
-        raise UnderFlowError(len(chunk), size)
+    parts = line[:-2].split(b';')
+    if len(parts) > 2:
+        raise ValueError('bad chunk size line: {!r}'.format(line))
+    size = int(parts[0], 16)
+    if not (0 <= size <= MAX_CHUNK_BYTES):
+        raise ValueError(
+            'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_BYTES, size)
+        )
+    if len(parts) == 2:
+        (key, value) = parts[1].decode('latin_1').split('=')
+        extension = (key, value)
+    else:
+        extension = None
+    data = rfile.read(size)
+    if len(data) != size:
+        raise UnderFlowError(len(data), size)
     crlf = rfile.read(2)
     if crlf != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(crlf))
-    return chunk
+    return (data, extension)
 
 
-def write_chunk(wfile, chunk):
+def write_chunk(wfile, data, extension=None):
     """
-    Write a chunk to a chunk-encoded request or response body.
+    Write a *data* to a chunk-encoded request or response body.
 
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
-
-    Note this function currently doesn't support chunk-extensions.
     """
-    size_line = '{:x}\r\n'.format(len(chunk))
-    total = wfile.write(size_line.encode())
-    total += wfile.write(chunk)
+    if len(data) > MAX_CHUNK_BYTES:
+        raise ValueError(
+            'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
+        )
+    if extension:
+        (key, value) = extension
+        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
+    else:
+        size_line = '{:x}\r\n'.format(len(data))
+    total = wfile.write(size_line.encode('latin_1'))
+    total += wfile.write(data)
     total += wfile.write(b'\r\n')
     # Flush buffer as it could be some time before the next chunk is available:
-    # wfile.flush()
+    wfile.flush()
     return total
 
 
@@ -197,8 +215,8 @@ def write_body(wfile, body):
         for data in body:
             total += wfile.write(data)
     elif isinstance(body, ChunkedBody):
-        for data in body:
-            total += write_chunk(wfile, data)
+        for (data, extension) in body:
+            total += write_chunk(wfile, data, extension)
     elif body is not None:
         raise TypeError(
             'invalid body type: {!r}: {!r}'.format(type(body), body)
@@ -284,13 +302,13 @@ class ChunkedBody:
         if self.closed:
             raise BodyClosedError(self)
         try:
-            data = read_chunk(self.rfile)
+            (data, extension) = read_chunk(self.rfile)
         except:
             self.rfile.close()
             raise
         if not data:
             self.closed = True
-        return data
+        return (data, extension)
 
     def read(self):
         # FIXME: consider removing this, or at least adding some sane memory
@@ -300,7 +318,7 @@ class ChunkedBody:
             raise BodyClosedError(self)
         buf = bytearray()
         while not self.closed:
-            buf.extend(self.readchunk())
+            buf.extend(self.readchunk()[0])
         return buf
 
     def __iter__(self):
@@ -308,4 +326,44 @@ class ChunkedBody:
             raise BodyClosedError(self)
         while not self.closed:
             yield self.readchunk()
+
+
+class BodyWrapper:
+    def __init__(self, source, content_length):
+        self.source = source
+        self.content_length = content_length
+        self.closed = False
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.closed = True
+        total = 0
+        for data in self.source:
+            total += len(data)
+            if total > self.content_length:
+                raise OverFlowError(total, self.content_length)
+            yield data
+        if total != self.content_length:
+            raise UnderFlowError(total, self.content_length)
+
+
+class ChunkedBodyWrappy:
+    def __init__(self, source):
+        self.source = source
+        self.closed = False
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.closed = True
+        empty = False
+        for (data, extension) in self.source:
+            if empty:
+                raise ChunkError('empty non empty chunk data after empty')
+            yield (data, extension)
+            if not data:
+                empty = True
+        if not empty:
+            raise ChunkError('final chunk data was not empty')
 

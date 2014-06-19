@@ -3,9 +3,13 @@
 import timeit
 
 setup = """
+gc.enable()
+
+import io
+
 from degu.client import parse_status, write_request
-from degu.server import parse_request, write_response
-from degu.base import parse_headers
+from degu.server import parse_request, read_request, write_response
+from degu.base import parse_headers, write_chunk
 
 line = (b'L' *  50) + b'\\r\\n'
 assert line.endswith(b'\\r\\n')
@@ -22,6 +26,11 @@ header_lines = (
 )
 
 headers = parse_headers(header_lines)
+
+request_wfile = io.BytesIO()
+write_request(request_wfile, 'POST', '/foo/bar?stuff=junk', headers, b'hello')
+
+data = b'D' * 1776
 
 
 class wfile:
@@ -42,7 +51,7 @@ def run_iter(statement, n):
         yield t.timeit(n)
 
 
-def run(statement, K=250):
+def run(statement, K=100):
     n = K * 1000
     # Choose fastest of 5 runs:
     elapsed = min(run_iter(statement, n))
@@ -69,6 +78,7 @@ run("'{}: {}\\r\\n'.format('content-length', 1234567)")
 run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 
 print('\nHigh-level parsers:')
+run('request_wfile.seek(0); read_request(request_wfile)')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")
 run('parse_headers(header_lines)')
@@ -76,6 +86,8 @@ run('parse_headers(header_lines)')
 print('\nHigh-level formatters:')
 run("write_response(wfile, 404, 'Not Found', headers, None)")
 run("write_request(wfile, 'GET', '/foo/bar?stuff=junk', headers, None)")
+run("write_chunk(wfile, data)")
+run("write_chunk(wfile, data, ('foo', 'bar'))")
 
 print('-' * 80)
 
