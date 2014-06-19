@@ -55,6 +55,10 @@ class OverFlowError(Exception):
         )
 
 
+class ChunkError(Exception):
+    pass
+
+
 class BodyClosedError(Exception):
     """
     Raised when trying to iterate through a closed request or response body.
@@ -322,4 +326,44 @@ class ChunkedBody:
             raise BodyClosedError(self)
         while not self.closed:
             yield self.readchunk()
+
+
+class BodyWrapper:
+    def __init__(self, source, content_length):
+        self.source = source
+        self.content_length = content_length
+        self.closed = False
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.closed = True
+        total = 0
+        for data in self.source:
+            total += len(data)
+            if total > self.content_length:
+                raise OverFlowError(total, self.content_length)
+            yield data
+        if total != self.content_length:
+            raise UnderFlowError(total, self.content_length)
+
+
+class ChunkedBodyWrappy:
+    def __init__(self, source):
+        self.source = source
+        self.closed = False
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.closed = True
+        empty = False
+        for (data, extension) in self.source:
+            if empty:
+                raise ChunkError('empty non empty chunk data after empty')
+            yield (data, extension)
+            if not data:
+                empty = True
+        if not empty:
+            raise ChunkError('final chunk data was not empty')
 
