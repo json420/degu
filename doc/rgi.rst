@@ -433,6 +433,141 @@ non-negative ``int``.
 
 
 
+Request body
+------------
+
+RGI aims to directly expose the semantics of HTTP `chunked transfer encoding`_
+to server applications, both on the incoming request body and on the outgoing
+response body.
+
+Although WSGI applications can use the presence of a ``'transfer-encoding'``
+header to determine whether the request body is chunk-encoded, the
+``environ['wsgi.input']`` API doesn't provide read through the body one chunk at a time,
+both the chunk data and its optional chunk extension.
+
+RGI proposes to represent a single chunk with a ``(data, extension)`` tuple.
+
+When no extension is present, the *extension* will be ``None``::
+
+    (b'chunk', None)
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5\r\nchunk\r\n'
+
+Or when an *extension* is present, it will be a ``(key, value)`` tuple::
+
+    (b'chunk data', ('foo', 'bar'))
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5;foo=bar\r\nchunk\r\n'
+
+When there is no incoming request body, the RGI ``request['body']`` will be
+``None``.
+
+When there is a request body, ``request['body'].chunked`` will be ``True`` when
+the body is chunk-encoded, and will otherwise be ``False``.  The ``chunked``
+attribute allows applications to easily determine whether the body is
+chunk-encoded, even in lower level code that may not have access to the request
+headers.
+
+When the request body is normally encoded (in other words, when there is a
+``'content-length'`` header), ``request['body']`` will be a conventional Python
+file-like object with a ``read()`` method and also a ``content_length``
+attribute.
+
+For example, a simple implementation would look something like this:
+
+>>> class RGIBody:
+...     chunked = False
+... 
+...     def __init__(self, rfile, content_length):
+...         self.rfile = rfile
+...         self.content_length = content_length
+...         self.remaining = content_length
+... 
+...     def read(self, size=None):
+...         size = (self.remaining if size is None else min(size, remaining))
+...         data = self.rfile.read(size)
+...         self.remaining -= len(data)
+...         return data
+... 
+
+When the request body is chunk-encoded (in other words, when there is a
+``'transfer-encoding'`` header), ``request['body']`` will have a
+``readchunk()`` method.
+
+For example, a simple implementation would look something like this, assuming
+use of a function similar to :func:`degu.base.read_chunk()`:
+
+>>> class RGIChukedBody:
+...     chunked = True
+... 
+...     def __init__(self, rfile):
+...         self.rfile = rfile
+...         self.closed = False
+... 
+...     def readchunk(self):
+...         if self.closed:
+...             return (b'', None)
+...         (data, extension) = read_chunk(self.rfile)
+...         if not data:
+...             self.close = True
+...         return (data, extension)
+...         
+
+
+
+Response body
+-------------  
+
+Similar to the request body, RGI aims to allow applications to have full
+control over chunk encoding, including use of chunk extensions.
+
+RGI applications can return a ``'content-length'`` or a ``'transfer-encoding'``
+header, but never both.
+
+When there is no response body, RGI applications should return ``None`` for
+the response body.
+
+When responding to a ``'HEAD'`` request, RGI application should always return
+``None`` for the response body, and can include a ``'content-length'`` or
+``'transfer-encoding'`` header as appropriate.  For example::
+
+    (200, 'OK', {'content-length': 10}, None)
+
+When the response body is ``None`` and the request method was not ``'HEAD'``,
+neither a ``'content-length'`` nor a ``'transfer-encoding'`` response header can
+be included.
+
+When the response includes a ``'content-length'`` header, and if the response
+body has a callable ``read(size)`` method, it will be called repeatedly till the
+content length has been satisfied, using a buffer *size* determined by the
+server.
+
+When there is no ``read()`` method, RGI servers will iterate through the
+response body, ensuring that the claimed content length is delivered, no more
+and no less.  For example, an RGI application could return this response::
+
+    (200, 'OK', {'content-length': 10}, [b'hello', b'world'])
+
+On the other hand, when the response includes a ``'transfer-encoding'`` header,
+and if the response body has a callable ``readchunk()`` method, it must return
+a ``(data, extension)`` tuple.  The RGI server will call ``readchunk()``
+repeatedly till *data* is an empty b''.
+
+When there is no ``readchunk()`` method, RGI servers will iterate through the
+response body, which must yield a series of ``(data, extension)`` tuples, the
+last of which (and only the last of which) must have an empty *data* ``b''``.
+For example, an RGI application could return this response::
+
+    (200, 'OK', {'transfer-encoding': 'chunked'}, [(b'hello', None), (b'world', None), (b'', None)])
+
+
+
+
+
 Examples
 --------
 
@@ -534,3 +669,4 @@ underlying Python3 `socket API`_.
 .. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
+.. _`chunked transfer encoding`: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
