@@ -34,7 +34,9 @@ from urllib.parse import urlparse, ParseResult
 from .base import (
     TYPE_ERROR,
     Body,
+    BodyWrapper,
     ChunkedBody,
+    ChunkedBodyWrapper,
     makefiles,
     read_preamble,
     parse_headers,
@@ -167,9 +169,9 @@ def validate_request(method, uri, headers, body):
             raise ValueError('non-casefolded header name: {!r}'.format(key))
     if isinstance(body, (bytes, bytearray)): 
         headers['content-length'] = len(body)
-    elif isinstance(body, Body):
+    elif isinstance(body, (Body, BodyWrapper)):
         headers['content-length'] = body.content_length
-    elif isinstance(body, ChunkedBody):
+    elif isinstance(body, (ChunkedBody, ChunkedBodyWrapper)):
         headers['transfer-encoding'] = 'chunked'
     elif body is not None:
         raise TypeError('bad request body type: {!r}'.format(type(body)))
