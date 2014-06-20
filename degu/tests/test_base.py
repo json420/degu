@@ -1426,10 +1426,102 @@ class TestBodyWrapper(TestCase):
             'body already fully read: {!r}'.format(body)
         )
 
-        # Test with random bytes of varying sizes:
+        # Test with random data of varying sizes:
         source = [os.urandom(i) for i in range(50)]
         random.shuffle(source)
         body = base.BodyWrapper(tuple(source), sum(range(50)))
+        self.assertEqual(list(body), source)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+
+class TestChunkedBodyWrapper(TestCase):
+    def test_init(self):
+        source = []
+        body = base.ChunkedBodyWrapper(source)
+        self.assertIs(body.source, source)
+        self.assertIs(body.closed, False)
+
+    def test_iter(self):
+        source = (
+            (b'hello', None),
+            (b'naughty', None),
+            (b'nurse', None),
+            (b'', None),
+        )
+
+        # Test when closed:
+        body = base.ChunkedBodyWrapper(source)
+        body.closed = True
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+        # Should close after one iteration:
+        body = base.ChunkedBodyWrapper(source)
+        self.assertEqual(list(body), list(source))
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+        # Should raise ChunkError on an empty source:
+        body = base.ChunkedBodyWrapper([])
+        result = []
+        with self.assertRaises(base.ChunkError) as cm:
+            for item in body:
+                result.append(item)
+        self.assertEqual(result, [])
+        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
+
+        # Should raise ChunkError if final chunk isn't empty:
+        source = (
+            (b'hello', None),
+            (b'naughty', None),
+            (b'nurse', None),
+        )
+        body = base.ChunkedBodyWrapper(source)
+        result = []
+        with self.assertRaises(base.ChunkError) as cm:
+            for item in body:
+                result.append(item)
+        self.assertEqual(result, list(source))
+        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
+
+        # Should raise ChunkError if empty chunk is followed by non-empty:
+        source = (
+            (b'hello', None),
+            (b'naughty', None),
+            (b'', None),
+            (b'nurse', None),
+            (b'', None),
+        )
+        body = base.ChunkedBodyWrapper(source)
+        result = []
+        with self.assertRaises(base.ChunkError) as cm:
+            for item in body:
+                result.append(item)
+        self.assertEqual(result,
+            [(b'hello', None), (b'naughty', None), (b'', None)]
+        )
+        self.assertEqual(str(cm.exception), 'non-empty chunk data after empty')
+
+        # Test with random data of varying sizes:
+        source = [(os.urandom(i), None) for i in range(1, 51)]
+        random.shuffle(source)
+        source.append((b'', None))
+        body = base.ChunkedBodyWrapper(tuple(source))
         self.assertEqual(list(body), source)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:

@@ -369,7 +369,7 @@ class ChunkedBodyWrapper:
         empty = False
         for (data, extension) in self.source:
             if empty:
-                raise ChunkError('empty non empty chunk data after empty')
+                raise ChunkError('non-empty chunk data after empty')
             yield (data, extension)
             if not data:
                 empty = True
