@@ -1133,11 +1133,14 @@ class TestServer(TestCase):
         address = (random_id(), random_id())
         inst = ServerSubclass(address)
         self.assertEqual(inst.build_base_session(), {
+            'rgi.version': (0, 1),
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
+            'rgi.BodyWrapper': base.BodyWrapper,
+            'rgi.ChunkedBodyWrapper': base.ChunkedBodyWrapper,
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Body': base.Body,
-            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 
@@ -1302,11 +1305,14 @@ class TestSSLServer(TestCase):
         address = (random_id(), random_id())
         inst = SSLServerSubclass(address)
         self.assertEqual(inst.build_base_session(), {
+            'rgi.version': (0, 1),
+            'rgi.Body': base.Body,
+            'rgi.ChunkedBody': base.ChunkedBody,
+            'rgi.BodyWrapper': base.BodyWrapper,
+            'rgi.ChunkedBodyWrapper': base.ChunkedBodyWrapper,
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
-            'rgi.Body': base.Body,
-            'rgi.ChunkedBody': base.ChunkedBody,
             'requests': 0,
         })
 

@@ -741,6 +741,15 @@ class TestFunctions(TestCase):
         wfile.seek(0)
         self.assertEqual(wfile.read(), data)
 
+        # body is base.BodyWrapper:
+        source = tuple(random_data() for i in range(4))
+        content_length = sum(len(data) for data in source)
+        body = base.BodyWrapper(source, content_length)
+        wfile = io.BytesIO()
+        self.assertEqual(base.write_body(wfile, body), content_length)
+        self.assertEqual(wfile.tell(), content_length)
+        self.assertEqual(wfile.getvalue(), b''.join(source))
+
         # body is base.ChunkedBody:
         chunks = random_chunks()
         rfile = io.BytesIO()
@@ -760,6 +769,24 @@ class TestFunctions(TestCase):
             if not data:
                 break
         self.assertEqual(gotchunks, chunks)
+
+        # body is base.ChunkedBodyWrapper:
+        source = [
+            (random_data(), (random_id(), random_id())) for i in range(5)
+        ]
+        source.append((b'', (random_id(), random_id())))
+        body = base.ChunkedBodyWrapper(tuple(source))
+        wfile = io.BytesIO()
+        total = base.write_body(wfile, body)
+        self.assertEqual(wfile.tell(), total)
+        wfile.seek(0)
+        gotchunks = []
+        while True:
+            (data, extension) = base.read_chunk(wfile)
+            gotchunks.append((data, extension))
+            if not data:
+                break
+        self.assertEqual(gotchunks, source)
 
         # body is None:
         wfile = io.BytesIO()
