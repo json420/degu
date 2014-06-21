@@ -279,6 +279,24 @@ Parsing functions
     a file-object returned by `socket.socket.makefile()`_, or any other similar
     object implementing the needed API.
 
+    If you iterate through a :class:`ChunkedBody` instance, it will yield a
+    ``(data, extension)`` tuple for each chunk in the chunk-encoded stream.  For
+    example:
+
+    >>> from io import BytesIO
+    >>> from degu.base import ChunkedBody
+    >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
+    >>> body = ChunkedBody(rfile)
+    >>> list(body)
+    [(b'hello', None), (b'world', ('foo', 'bar')), (b'', None)]
+
+    Note that you can only iterate through a :class:`ChunkedBody` once:
+
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.BodyClosedError: body already fully read: ChunkedBody(<rfile>)
+
     .. attribute:: chunked
 
         Always ``True``, indicating a chunk-encoded HTTP body.
@@ -322,11 +340,10 @@ Parsing functions
 
         Iterate through chunks in the chunk-encoded HTTP body.
 
-        This method will yield the HTTP body as a series of ``bytes`` instances
-        of whatever size the corresponding data chunks are in the chunk-encoded
-        HTTP body.
+        This method will yield the HTTP body as a series of
+        ``(data, extension)`` tuples for each chunk in the body.
 
-        The final item yielded will always be an empty ``b''``.
+        The final item yielded will always be an empty ``b''`` *data*.
 
         Note that you can only iterate through a :class:`ChunkedBody` instance
         once.
