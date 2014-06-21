@@ -245,10 +245,10 @@ Parsing functions
 
 
 
-:class:`BodyWrapper` class
+:class:`BodyIter` class
 --------------------------
 
-.. class:: BodyWrapper(source, content_length)
+.. class:: BodyIter(source, content_length)
 
 
 
@@ -332,10 +332,10 @@ Parsing functions
         once.
 
 
-:class:`ChunkedBodyWrapper` class
+:class:`ChunkedBodyIter` class
 ---------------------------------
 
-.. class:: ChunkedBodyWrapper(source)
+.. class:: ChunkedBodyIter(source)
 
 
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
