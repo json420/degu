@@ -699,7 +699,7 @@ For example:
 ...     yield (b', world', ('key2', 'value2'))
 ...     yield (b'', ('key3', 'value3'))
 ... 
->>> deg rgi_chunked_generator_app(session, request):
+>>> def rgi_chunked_generator_app(session, request):
 ...     body = session['rgi.ChunkedBodyWrapper'](generate_chunked_body())
 ...     return (200, 'OK', {'transfer-encoding': 'chunked', body)
 ... 
