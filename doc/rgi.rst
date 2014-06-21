@@ -436,86 +436,73 @@ non-negative ``int``.
 Request body
 ------------
 
-RGI aims to directly expose the semantics of HTTP `chunked transfer encoding`_
-to server applications, both on the incoming request body and on the outgoing
-response body.
+RGI is unambiguous about the nature of the incoming HTTP request body,
+specifically about three conditions:
 
-Although WSGI applications can use the presence of a ``'transfer-encoding'``
-header to determine whether the request body is chunk-encoded, the
-``environ['wsgi.input']`` API doesn't provide read through the body one chunk at a time,
-both the chunk data and its optional chunk extension.
+    1. When there is no request body
 
-RGI proposes to represent a single chunk with a ``(data, extension)`` tuple.
+    2. When the request body has a content-length
 
-When no extension is present, the *extension* will be ``None``::
+    3. When the request body is chunk-encoded
 
-    (b'chunk', None)
+When there is no request body, ``request['body']`` will be ``None``.
+
+Otherwise applications can test the ``request['body'].chunked`` attribute, which
+will be ``True`` when the request body is chunk-encoded, and will be ``False``
+when the request body has a content-length.
+
+The ``chunked`` attribute allows applications to easily determine whether the
+body is chunk-encoded, even in lower level code that may not have access to the
+request headers.
+
+For example, an RGI application that handles POST requests might look something
+like this:
+
+>>> def rgi_post_app(session, request):
+...     if request['method'] != 'POST':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request['body'] is None:
+...         return (400, 'Bad Request', {}, None)
+...     if request['body'].chunked:
+...         for (data, extension) in request['body']:
+...             pass  # Do something useful
+...     else:
+...         for data in request['body']:
+...             pass  # Do something useful
+...     return (200, 'OK', {}, None)
+
+RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
+applications, including use of the optional per-chunk *extension*.
+
+RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
+extension is present for that chunk, the *extension* will be ``None``::
+
+    (b'hello', None)
 
 Which would be encoded like this in the HTTP request or response stream::
 
-    b'5\r\nchunk\r\n'
+    b'5\r\nhello\r\n'
 
-Or when an *extension* is present, it will be a ``(key, value)`` tuple::
+Or when an extension is present, *extension* will be a ``(key, value)`` tuple::
 
-    (b'chunk data', ('foo', 'bar'))
+    (b'hello', ('foo', 'bar'))
 
 Which would be encoded like this in the HTTP request or response stream::
 
-    b'5;foo=bar\r\nchunk\r\n'
+    b'5;foo=bar\r\nhello\r\n'
 
-When there is no incoming request body, the RGI ``request['body']`` will be
-``None``.
+When the request body has a content-length, ``request['body']`` will be an
+instance of the ``session['rgi.Body']`` class.
 
-When there is a request body, ``request['body'].chunked`` will be ``True`` when
-the body is chunk-encoded, and will otherwise be ``False``.  The ``chunked``
-attribute allows applications to easily determine whether the body is
-chunk-encoded, even in lower level code that may not have access to the request
-headers.
+When the request body is chunk-encoded, ``request['body']`` will be an instance
+of the ``session['rgi.ChunkedBody']`` class.
 
-When the request body is normally encoded (in other words, when there is a
-``'content-length'`` header), ``request['body']`` will be a conventional Python
-file-like object with a ``read()`` method and also a ``content_length``
-attribute.
+Details of the standard API for these RGI request body wrappers is still being
+finalized, so for now, please see the reference implementations in Degu:
 
-For example, a simple implementation would look something like this:
+    * :class:`degu.base.Body`
 
->>> class RGIBody:
-...     chunked = False
-... 
-...     def __init__(self, rfile, content_length):
-...         self.rfile = rfile
-...         self.content_length = content_length
-...         self.remaining = content_length
-... 
-...     def read(self, size=None):
-...         size = (self.remaining if size is None else min(size, remaining))
-...         data = self.rfile.read(size)
-...         self.remaining -= len(data)
-...         return data
-... 
-
-When the request body is chunk-encoded (in other words, when there is a
-``'transfer-encoding'`` header), ``request['body']`` will have a
-``readchunk()`` method.
-
-For example, a simple implementation would look something like this, assuming
-use of a function similar to :func:`degu.base.read_chunk()`:
-
->>> class RGIChukedBody:
-...     chunked = True
-... 
-...     def __init__(self, rfile):
-...         self.rfile = rfile
-...         self.closed = False
-... 
-...     def readchunk(self):
-...         if self.closed:
-...             return (b'', None)
-...         (data, extension) = read_chunk(self.rfile)
-...         if not data:
-...             self.close = True
-...         return (data, extension)
-...         
+    * :class:`degu.base.ChunkedBody`
 
 
 
