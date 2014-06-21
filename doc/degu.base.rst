@@ -172,7 +172,7 @@ Parsing functions
 
 .. class:: Body(rfile, content_length)
 
-    Represents a normal (non-chunk-encoded) HTTP request or response body.
+    Represents an HTTP request or response body with a content-length.
 
     This class provides HTTP Content-Length based framing atop an arbitrary
     buffered binary stream (basically, anything that has a ``read()`` method
@@ -242,6 +242,14 @@ Parsing functions
         The final item yielded will always be an empty ``b''``.
 
         Note that you can only iterate through an :class:`Body` instance once.
+
+
+
+:class:`BodyWrapper` class
+--------------------------
+
+.. class:: BodyWrapper(source, content_length)
+
 
 
 :class:`ChunkedBody` class
@@ -322,6 +330,12 @@ Parsing functions
 
         Note that you can only iterate through a :class:`ChunkedBody` instance
         once.
+
+
+:class:`ChunkedBodyWrapper` class
+---------------------------------
+
+.. class:: ChunkedBodyWrapper(source)
 
 
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1

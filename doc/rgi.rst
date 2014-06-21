@@ -28,11 +28,11 @@ RGI focuses on improvement in a number of areas:
        use them (for example, a reverse-proxy generally needs to use the full
        request headers in its own HTTP client request)
 
-    5. WSGI is somewhat ambiguous about Transfer-Encoding vs Content-Length,
-       especially in the request body, but also in the response body; RGI aims
-       to eliminate this ambiguity, and to do so in a way that allows
-       reverse-proxy applications to preserve these request and response body
-       transfer semantics exactly across their forwarded request and response
+    5. RGI aims to fully expose `chunked transfer encoding`_ semantics,
+       including the optional per-chunk extension, and to do so in a way that
+       allows reverse-proxy applications to preserve these request and response
+       body transfer semantics exactly across their forwarded request and
+       response
 
 
 
@@ -472,7 +472,7 @@ like this:
 ...     return (200, 'OK', {}, None)
 
 RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
-applications, including use of the optional per-chunk *extension*.
+applications, including use of the optional per-chunk extension.
 
 RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
 extension is present for that chunk, the *extension* will be ``None``::
@@ -497,7 +497,7 @@ instance of the ``session['rgi.Body']`` class.
 When the request body is chunk-encoded, ``request['body']`` will be an instance
 of the ``session['rgi.ChunkedBody']`` class.
 
-Details of the standard API for these RGI request body wrappers is still being
+Details of the standard API for these RGI request body objects is still being
 finalized, so for now, please see the reference implementations in Degu:
 
     * :class:`degu.base.Body`
@@ -509,57 +509,212 @@ finalized, so for now, please see the reference implementations in Degu:
 Response body
 -------------  
 
-Similar to the request body, RGI aims to allow applications to have full
-control over chunk encoding, including use of chunk extensions.
+Similar to the request body, RGI allows applications to unambiguously
+communicate the nature of their outgoing response body, specifically about three
+conditions:
 
-RGI applications can return a ``'content-length'`` or a ``'transfer-encoding'``
-header, but never both.
+    1. When there is no response body
 
-When there is no response body, RGI applications should return ``None`` for
-the response body.
+    2. When the response body has a content-length
 
-When responding to a ``'HEAD'`` request, RGI application should always return
-``None`` for the response body, and can include a ``'content-length'`` or
-``'transfer-encoding'`` header as appropriate.  For example::
+    3. When the response body is chunk-encoded
 
-    (200, 'OK', {'content-length': 10}, None)
+Very much in the spirit of the WSGI ``environ['wsgi.file_wrapper']``, there are
+four specialized wrapper classes exposed in the RGI *session* argument:
 
-When the response body is ``None`` and the request method was not ``'HEAD'``,
-neither a ``'content-length'`` nor a ``'transfer-encoding'`` response header can
-be included.
+    =====================================  =====================================
+    Exposed via                            Reference implementation
+    =====================================  =====================================
+    ``session['rgi.Body']``                :class:`degu.base.Body`
+    ``session['rgi.BodyWrapper']``         :class:`degu.base.BodyWrapper`
+    ``session['rgi.ChunkedBody']``         :class:`degu.base.ChunkedBody`
+    ``session['rgi.ChunkedBodyWrapper']``  :class:`degu.base.ChunkedBodyWrapper`
+    =====================================  =====================================
 
-When the response includes a ``'content-length'`` header, and if the response
-body has a callable ``read(size)`` method, it will be called repeatedly till the
-content length has been satisfied, using a buffer *size* determined by the
-server.
+Although four distinct wrapper classes might seem excessive, granularity here
+eliminates ambiguity and needless magic elsewhere.
 
-When there is no ``read()`` method, RGI servers will iterate through the
-response body, ensuring that the claimed content length is delivered, no more
-and no less.  For example, an RGI application could return this response::
+When reading this section, keep in mind the 4-tuple response returned by RGI
+applications::
 
-    (200, 'OK', {'content-length': 10}, [b'hello', b'world'])
+    (status, reason, headers, body)
 
-On the other hand, when the response includes a ``'transfer-encoding'`` header,
-and if the response body has a callable ``readchunk()`` method, it must return
-a ``(data, extension)`` tuple.  The RGI server will call ``readchunk()``
-repeatedly till *data* is an empty b''.
+Because of this single, comprehensive response return value, RGI has a much
+simpler response flow control compared to WSGI.
 
-When there is no ``readchunk()`` method, RGI servers will iterate through the
-response body, which must yield a series of ``(data, extension)`` tuples, the
-last of which (and only the last of which) must have an empty *data* ``b''``.
-For example, an RGI application could return this response::
-
-    (200, 'OK', {'transfer-encoding': 'chunked'}, [(b'hello', None), (b'world', None), (b'', None)])
+Yet the ``session['rgi.BodyWrapper']`` and ``session['rgi.ChunkedBodyWrapper']``
+classes allow RGI to maintain an important and elegant WSGI feature: the ability
+of the response body to be an arbitrary iterable that yields the response body
+one piece at a time, as generated on-the-fly by the application.
 
 
+**1. No response body:**
+
+To indicate no response body, RGI applications should return ``None`` for the
+*body* in their response 4-tuple.
+
+When responding to a HEAD request, RGI applications should included a
+``'content-length'`` or a ``{'transfer-encoding': 'chunked'}`` response header
+(but not both).
+
+For all other request methods, when there is no response body, RGI applications
+should include neither a ``'content-length'`` nor a ``'transfer-encoding'``
+response header.
+
+The response body of ``None`` addresses a subtle ambiguity in WSGI: the ability
+to express *no* response body vs merely an *empty* response body (which implies
+that the server should set a ``{'content-length': 0}`` response header if not
+already present).
+
+
+**2. Response body with content-length:**
+
+There are four types that can be used to indicate a response body with a
+content-length:
+
+    1. A native Python3 ``bytes`` instance
+
+    2. A native Python3 ``bytearray`` instance
+
+    3. A ``session['Body']`` instance (:class:`degu.base.Body`)
+
+    4. A ``session['BodyWrapper']`` instance (:class:`degu.base.BodyWrapper`)
+
+When the response body is understood as having a content-length, RGI
+applications can never include a ``'transfer-encoding'`` in their response
+headers.  Likewise, if applications include a ``'content-length'`` in their
+response headers, it must match the specific (or claimed) length of their
+response body.  Otherwise the ``'content-length'`` header will be set by the
+RGI server based on the specific (or claimed) length of the returned response
+body.
+
+``bytes`` and ``bytearray`` instances give RGI applications a simple, performant
+way of returning a response body that is relatively small and easily built all
+at once.  Arguably, most responses from typical server applications fit this
+niche.
+
+Not to mention that ``bytes`` in particular are simply the most illustrative,
+which helps RGI be an inviting specification.  For example, this sort of thing
+is rather priceless:
+
+>>> rgi_hello_world_app(session, request):
+...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+... 
+
+The ``session['rgi.Body']`` class (:class:`degu.base.Body`) is used to provide
+HTTP content-length based framing atop an arbitrary file-like object with a
+``read()`` method that accepts a *size* argument and returns ``bytes``.
+
+For example, you would use a ``session['rgi.Body']`` instance to return a
+response body read from a regular file:
+
+>>> rgi_file_app(session, request):
+...     fp = open('/ultimate/answer', 'rb')
+...     body = session['rgi.Body'](fp, 42)
+...     return (200, 'OK', {'content-length': 42}, body)
+... 
+
+(Note that for clarity, the above RGI application redundantly specifies the
+response ``'content-length'``.)
+
+You can likewise use ``session['rgi.Body']`` to frame an *rfile* returned by
+`socket.socket.makefile()`_, which is especially useful for RGI reverse-proxy
+applications.
+
+On the other hand, the ``session['rgi.BodyWrapper']`` class
+(:class:`degu.base.BodyWrapper`) is used to wrap an arbitrary iterable that
+yields the response body one piece at a time as generated by the application,
+yet sill with an explicit agreement as to the ultimate content-length.
+
+For example:
+
+>>> def generate_body():
+...     yield b'hello'
+...     yield b', world'
+... 
+>>> deg rgi_generator_app(session, request):
+...     body = session['rgi.BodyWrapper'](generate_body(), 12)
+...     return (200, 'OK', {'content-length': 12}, body)
+... 
+
+(Note that for clarity, the above RGI application redundantly specifies the
+response ``'content-length'``.)
+
+
+**3. Chunk-encoded response body:**
+
+There are two types that can be used to indicate a chunked-encoded response
+body:
+
+    1. A ``session['ChunkedBody']`` instance (:class:`degu.base.ChunkedBody`)
+
+    2. A ``session['ChunkedBodyWrapper']`` instance
+       (:class:`degu.base.ChunkedBodyWrapper`)
+
+When the response body is understood as being chunk-encoded, RGI applications
+can never include a ``'content-length'`` in their response headers.  Likewise,
+if applications include a ``'transfer-encoding'`` in their response headers,
+its value must be ``'chunked'``.  Otherwise a
+``{'transfer-encoding': 'chunked'}`` header will be set by the RGI server.
+
+The ``session['rgi.ChunkedBody']`` class (:class:`degu.base.ChunkedBody`) is
+used to provide HTTP chunked-encoding based framing atop an arbitrary file-like
+object with ``readline()`` and ``read()`` methods that accept a *size* argument
+and return ``bytes``.
+
+This is especially useful for RGI reverse-proxy applications that want to frame
+a chunk-encoded HTTP client response from an *rfile* returned by
+`socket.socket.makefile()`_.
+
+But you can likewise use ``session['rgi.ChunkedBody']`` to frame a regular file
+that happens to be chunk-encoded, for example:
+
+>>> rgi_chunked_file_app(session, request):
+...     fp = open('/chunky/delight', 'rb')
+...     body = session['rgi.ChunkedBody'](fp)
+...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
+...
+
+(Note that for clarity, the above RGI application redundantly specifies the
+response ``'transfer-encoding'``.) 
+
+It's important to understand that ``session['rgi.ChunkedBody']`` expects the
+content read from the *rfile* to itself be properly HTTP chunk-encoded.  It will
+stop yielding ``(data, extension)`` items after the first chunk with an empty
+data ``b''`` is encountered.  The *rfile* must always contain at least one
+empty chunk.
+
+On the other hand, the ``session['rgi.ChunkedBodyWrapper']`` class
+(:class:`degu.base.ChunkedBodyWrapper`) is used to wrap an arbitrary iterable
+that yields the response body as a series of ``(data, extension)`` tuples for
+each chunk in the response.
+
+The *source* iterable must always produce at least one item, and the last (and
+only the last) item must have have empty ``b''`` *data*.
+
+For example:
+
+>>> def generate_chunked_body():
+...     yield (b'hello', ('key1', 'value1'))
+...     yield (b', world', ('key2', 'value2'))
+...     yield (b'', ('key3', 'value3'))
+... 
+>>> deg rgi_chunked_generator_app(session, request):
+...     body = session['rgi.ChunkedBodyWrapper'](generate_chunked_body())
+...     return (200, 'OK', {'transfer-encoding': 'chunked', body)
+... 
+
+(Note that for clarity, the above RGI application redundantly specifies the
+response ``'transfer-encoding'``.)
 
 
 
 Examples
 --------
 
-A few examples will help make this clearer, and should especially help make it
-clear why RGI is very middleware-friendly (and proxy-friendly) compared to WSGI.
+A few more examples will help make this all clearer, and should especially help
+make it clear why RGI is very middleware-friendly (and proxy-friendly) compared
+to WSGI.
 
 For example, consider this simple RGI application:
 
@@ -650,10 +805,10 @@ implementation, is that they directly expose (and use) the *address* from the
 underlying Python3 `socket API`_.
 
 
-
 .. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
 .. _`chunked transfer encoding`: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
+.. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
