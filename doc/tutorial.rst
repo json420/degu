@@ -172,42 +172,6 @@ were left out for brevity).
 
 
 
-Trade-offs
-----------
-
-Degu is focused on:
-
-    * **Security** - Degu is focused on security, even when at the expense of
-      compatibility; the more secure Degu can be, the more we can consider
-      exposing highly interesting platform features over HTTP
-
-    * **High-throughput at low-concurrency** - being able to handle 100k
-      concurrent connections doesn't necessarily mean you can keep a 10GbE local
-      network saturated with just a few concurrent connections; Degu is being
-      optimized for the latter, even when (possibly) at the expense of the
-      former
-
-    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
-      configure an `ssl.SSLContext`_; although this means being compatible with
-      fewer HTTP clients, Degu is built from the assumption that you have
-      control of both endpoints, and that the client is likely a
-      :class:`degu.client.SSLClient` 
-
-    * **Full IPv6 address semantics** - on both the server and client, you use
-      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
-      needed for `link-local addresses`_; on the other hand, the Degu server
-      doesn't support virtual hosts, SNI, or in general doing the right thing
-      when the "official" hostname is a DNS name... Degu servers are expected to
-      be reached be IP address alone (either an IPv6 or IPv4 address)
-
-.. note::
-
-    In contrast to the server, the Degu client does aim to support virtual hosts
-    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
-    `CouchDB`_ servers.
-
-
-
 Example: HTTP over AF_UNIX
 --------------------------
 
@@ -269,11 +233,47 @@ For more details, see the documentation for the :mod:`degu.server` and
 
 
 
+Trade-offs
+----------
+
+Degu is focused on:
+
+    * **Security** - Degu is focused on security, even when at the expense of
+      compatibility; the more secure Degu can be, the more we can consider
+      exposing highly interesting platform features over HTTP
+
+    * **High-throughput at low-concurrency** - being able to handle 100k
+      concurrent connections doesn't necessarily mean you can keep a 10GbE local
+      network saturated with just a few concurrent connections; Degu is being
+      optimized for the latter, even when (possibly) at the expense of the
+      former
+
+    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
+      configure an `ssl.SSLContext`_; although this means being compatible with
+      fewer HTTP clients, Degu is built from the assumption that you have
+      control of both endpoints, and that the client is likely a
+      :class:`degu.client.SSLClient` 
+
+    * **Full IPv6 address semantics** - on both the server and client, you use
+      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
+      needed for `link-local addresses`_; on the other hand, the Degu server
+      doesn't support virtual hosts, SNI, or in general doing the right thing
+      when the "official" hostname is a DNS name... Degu servers are expected to
+      be reached be IP address alone (either an IPv6 or IPv4 address)
+
+.. note::
+
+    In contrast to the server, the Degu client does aim to support virtual hosts
+    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
+    `CouchDB`_ servers.
+
+
+
 HTTP/1.1 subset
 ---------------
 
 For simplicity, performance, and especially security, the Degu server and client
-support only a subset of `HTTP/1.1`_ features.
+support only a rather idealized subset of `HTTP/1.1`_ features.
 
 Although the Degu server and client *generally* operate in an HTTP/1.1
 compliant fashion themselves, they do *not* support all valid HTTP/1.1 features
