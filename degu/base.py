@@ -211,10 +211,10 @@ def write_body(wfile, body):
     total = 0
     if isinstance(body, (bytes, bytearray)):
         total += wfile.write(body)
-    elif isinstance(body, Body):
+    elif isinstance(body, (Body, BodyWrapper)):
         for data in body:
             total += wfile.write(data)
-    elif isinstance(body, ChunkedBody):
+    elif isinstance(body, (ChunkedBody, ChunkedBodyWrapper)):
         for (data, extension) in body:
             total += write_chunk(wfile, data, extension)
     elif body is not None:
@@ -330,6 +330,14 @@ class ChunkedBody:
 
 class BodyWrapper:
     def __init__(self, source, content_length):
+        if not isinstance(content_length, int):
+            raise TypeError(TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
+            )
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
         self.source = source
         self.content_length = content_length
         self.closed = False
@@ -338,17 +346,18 @@ class BodyWrapper:
         if self.closed:
             raise BodyClosedError(self)
         self.closed = True
+        content_length = self.content_length
         total = 0
         for data in self.source:
             total += len(data)
-            if total > self.content_length:
-                raise OverFlowError(total, self.content_length)
+            if total > content_length:
+                raise OverFlowError(total, content_length)
             yield data
-        if total != self.content_length:
-            raise UnderFlowError(total, self.content_length)
+        if total != content_length:
+            raise UnderFlowError(total, content_length)
 
 
-class ChunkedBodyWrappy:
+class ChunkedBodyWrapper:
     def __init__(self, source):
         self.source = source
         self.closed = False
@@ -360,7 +369,7 @@ class ChunkedBodyWrappy:
         empty = False
         for (data, extension) in self.source:
             if empty:
-                raise ChunkError('empty non empty chunk data after empty')
+                raise ChunkError('non-empty chunk data after empty')
             yield (data, extension)
             if not data:
                 empty = True

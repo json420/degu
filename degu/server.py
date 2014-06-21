@@ -31,7 +31,9 @@ from os import path
 from .base import (
     TYPE_ERROR,
     Body,
+    BodyWrapper,
     ChunkedBody,
+    ChunkedBodyWrapper,
     makefiles,
     read_preamble,
     parse_headers,
@@ -295,13 +297,13 @@ def validate_response(request, response):
             raise ValueError(
                 "headers['content-length'] != len(body): {} != {}".format(headers['content-length'], len(body))
             )
-    elif isinstance(body, Body):
+    elif isinstance(body, (Body, BodyWrapper)):
         headers.setdefault('content-length', body.content_length)
         if headers['content-length'] != body.content_length:
             raise ValueError(
                 "headers['content-length'] != body.content_length: {} != {}".format(headers['content-length'], body.content_length)
             )
-    elif isinstance(body, ChunkedBody):
+    elif isinstance(body, (ChunkedBody, ChunkedBodyWrapper)):
         headers.setdefault('transfer-encoding', 'chunked') 
     elif body is not None:
         raise TypeError(
@@ -581,11 +583,14 @@ class Server:
         Each new *session* argument starts out as a copy of this.
         """
         return {
+            'rgi.version': (0, 1),
+            'rgi.Body': Body,
+            'rgi.BodyWrapper': BodyWrapper,
+            'rgi.ChunkedBody': ChunkedBody,
+            'rgi.ChunkedBodyWrapper': ChunkedBodyWrapper,
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
-            'rgi.Body': Body,
-            'rgi.ChunkedBody': ChunkedBody,
             'requests': 0,  # Number of fully handled requests
         }
 
