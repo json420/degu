@@ -433,6 +433,47 @@ non-negative ``int``.
 
 
 
+Chunked encoding
+----------------
+
+RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
+applications, including use of the optional per-chunk extension.
+
+This gives RGI applications full access to chunk-encoding semantics in the
+incoming request body, and also gives RGI applications full control over
+chunk-encoding semantics in their outgoing response body.
+
+RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
+extension is present for that chunk, the *extension* will be ``None``::
+
+    (b'hello', None)
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5\r\nhello\r\n'
+
+Or when an extension is present, *extension* will be a ``(key, value)`` tuple::
+
+    (b'hello', ('foo', 'bar'))
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5;foo=bar\r\nhello\r\n'
+
+RGI doesn't treat chunked-transfer encoding as merely an alternate way of
+transferring the same content, but instead as a wholly different mechanism with
+specific meaning that must be exposed and preserved.
+
+The exact data boundaries of each chunk is meaningful, and the optional chunk
+extension must be associated with only the data in that chunk.
+
+This is extremely useful for `CouchDB`_ style continuous structured data
+replication.  For example, each chunk *data* might be a fully self-contained
+JSON encoded object, and the chunk *extension* could be used for conveying
+global database state at the event corresponding to that chunk.
+
+
+
 Request body
 ------------
 
@@ -470,26 +511,6 @@ like this:
 ...         for data in request['body']:
 ...             pass  # Do something useful
 ...     return (200, 'OK', {}, None)
-
-RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
-applications, including use of the optional per-chunk extension.
-
-RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
-extension is present for that chunk, the *extension* will be ``None``::
-
-    (b'hello', None)
-
-Which would be encoded like this in the HTTP request or response stream::
-
-    b'5\r\nhello\r\n'
-
-Or when an extension is present, *extension* will be a ``(key, value)`` tuple::
-
-    (b'hello', ('foo', 'bar'))
-
-Which would be encoded like this in the HTTP request or response stream::
-
-    b'5;foo=bar\r\nhello\r\n'
 
 When the request body has a content-length, ``request['body']`` will be an
 instance of the ``session['rgi.Body']`` class.
@@ -810,4 +831,5 @@ underlying Python3 `socket API`_.
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
 .. _`chunked transfer encoding`: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
+.. _`CouchDB`: http://couchdb.apache.org/
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
