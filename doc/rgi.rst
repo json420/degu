@@ -597,7 +597,7 @@ Not to mention that ``bytes`` in particular are simply the most illustrative,
 which helps RGI be an inviting specification.  For example, this sort of thing
 is rather priceless:
 
->>> rgi_hello_world_app(session, request):
+>>> def rgi_hello_world_app(session, request):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
 
@@ -608,7 +608,7 @@ HTTP content-length based framing atop an arbitrary file-like object with a
 For example, you would use a ``session['rgi.Body']`` instance to return a
 response body read from a regular file:
 
->>> rgi_file_app(session, request):
+>>> def rgi_file_app(session, request):
 ...     fp = open('/ultimate/answer', 'rb')
 ...     body = session['rgi.Body'](fp, 42)
 ...     return (200, 'OK', {'content-length': 42}, body)
@@ -632,7 +632,7 @@ For example:
 ...     yield b'hello'
 ...     yield b', world'
 ... 
->>> deg rgi_generator_app(session, request):
+>>> def rgi_generator_app(session, request):
 ...     body = session['rgi.BodyWrapper'](generate_body(), 12)
 ...     return (200, 'OK', {'content-length': 12}, body)
 ... 
@@ -669,7 +669,7 @@ a chunk-encoded HTTP client response from an *rfile* returned by
 But you can likewise use ``session['rgi.ChunkedBody']`` to frame a regular file
 that happens to be chunk-encoded, for example:
 
->>> rgi_chunked_file_app(session, request):
+>>> def rgi_chunked_file_app(session, request):
 ...     fp = open('/chunky/delight', 'rb')
 ...     body = session['rgi.ChunkedBody'](fp)
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
@@ -701,7 +701,7 @@ For example:
 ... 
 >>> def rgi_chunked_generator_app(session, request):
 ...     body = session['rgi.ChunkedBodyWrapper'](generate_chunked_body())
-...     return (200, 'OK', {'transfer-encoding': 'chunked', body)
+...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
 ... 
 
 (Note that for clarity, the above RGI application redundantly specifies the
