@@ -211,10 +211,10 @@ def write_body(wfile, body):
     total = 0
     if isinstance(body, (bytes, bytearray)):
         total += wfile.write(body)
-    elif isinstance(body, (Body, BodyWrapper)):
+    elif isinstance(body, (Body, BodyIter)):
         for data in body:
             total += wfile.write(data)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyWrapper)):
+    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
         for (data, extension) in body:
             total += write_chunk(wfile, data, extension)
     elif body is not None:
@@ -328,7 +328,7 @@ class ChunkedBody:
             yield self.readchunk()
 
 
-class BodyWrapper:
+class BodyIter:
     def __init__(self, source, content_length):
         if not isinstance(content_length, int):
             raise TypeError(TYPE_ERROR.format(
@@ -357,7 +357,7 @@ class BodyWrapper:
             raise UnderFlowError(total, content_length)
 
 
-class ChunkedBodyWrapper:
+class ChunkedBodyIter:
     def __init__(self, source):
         self.source = source
         self.closed = False

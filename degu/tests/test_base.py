@@ -741,10 +741,10 @@ class TestFunctions(TestCase):
         wfile.seek(0)
         self.assertEqual(wfile.read(), data)
 
-        # body is base.BodyWrapper:
+        # body is base.BodyIter:
         source = tuple(random_data() for i in range(4))
         content_length = sum(len(data) for data in source)
-        body = base.BodyWrapper(source, content_length)
+        body = base.BodyIter(source, content_length)
         wfile = io.BytesIO()
         self.assertEqual(base.write_body(wfile, body), content_length)
         self.assertEqual(wfile.tell(), content_length)
@@ -770,12 +770,12 @@ class TestFunctions(TestCase):
                 break
         self.assertEqual(gotchunks, chunks)
 
-        # body is base.ChunkedBodyWrapper:
+        # body is base.ChunkedBodyIter:
         source = [
             (random_data(), (random_id(), random_id())) for i in range(5)
         ]
         source.append((b'', (random_id(), random_id())))
-        body = base.ChunkedBodyWrapper(tuple(source))
+        body = base.ChunkedBodyIter(tuple(source))
         wfile = io.BytesIO()
         total = base.write_body(wfile, body)
         self.assertEqual(wfile.tell(), total)
@@ -1323,35 +1323,35 @@ class TestChunkedBody(TestCase):
         self.assertIs(rfile.closed, True)
 
 
-class TestBodyWrapper(TestCase):
+class TestBodyIter(TestCase):
     def test_init(self):
         # Good source with bad content_length type:
         with self.assertRaises(TypeError) as cm:
-            base.BodyWrapper([], 17.0)
+            base.BodyIter([], 17.0)
         self.assertEqual(str(cm.exception),
             base.TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
-            base.BodyWrapper([], '17')
+            base.BodyIter([], '17')
         self.assertEqual(str(cm.exception),
             base.TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Good source with bad content_length value:
         with self.assertRaises(ValueError) as cm:
-            base.BodyWrapper([], -1)
+            base.BodyIter([], -1)
         self.assertEqual(str(cm.exception),
             'content_length must be >= 0, got: -1'
         )
         with self.assertRaises(ValueError) as cm:
-            base.BodyWrapper([], -17)
+            base.BodyIter([], -17)
         self.assertEqual(str(cm.exception),
             'content_length must be >= 0, got: -17'
         )
 
         # All good:
         source = []
-        body = base.BodyWrapper(source, 17)
+        body = base.BodyIter(source, 17)
         self.assertIs(body.source, source)
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.closed, False)
@@ -1360,7 +1360,7 @@ class TestBodyWrapper(TestCase):
         source = (b'hello', b'naughty', b'nurse')
 
         # Test when closed:
-        body = base.BodyWrapper(source, 17)
+        body = base.BodyIter(source, 17)
         body.closed = True
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1370,7 +1370,7 @@ class TestBodyWrapper(TestCase):
         )
 
         # Should close after one iteration:
-        body = base.BodyWrapper(source, 17)
+        body = base.BodyIter(source, 17)
         self.assertEqual(list(body), [b'hello', b'naughty', b'nurse'])
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1382,7 +1382,7 @@ class TestBodyWrapper(TestCase):
 
         # OverFlowError should be raised at first item that pushing total above
         # content_length:
-        body = base.BodyWrapper(source, 4)
+        body = base.BodyIter(source, 4)
         result = []
         with self.assertRaises(base.OverFlowError) as cm:
             for data in body:
@@ -1393,7 +1393,7 @@ class TestBodyWrapper(TestCase):
         self.assertEqual(str(cm.exception), 'received 5 bytes, expected 4')
         self.assertIs(body.closed, True)
 
-        body = base.BodyWrapper(source, 5)
+        body = base.BodyIter(source, 5)
         result = []
         with self.assertRaises(base.OverFlowError) as cm:
             for data in body:
@@ -1404,7 +1404,7 @@ class TestBodyWrapper(TestCase):
         self.assertEqual(str(cm.exception), 'received 12 bytes, expected 5')
         self.assertIs(body.closed, True)
 
-        body = base.BodyWrapper(source, 12)
+        body = base.BodyIter(source, 12)
         result = []
         with self.assertRaises(base.OverFlowError) as cm:
             for data in body:
@@ -1415,7 +1415,7 @@ class TestBodyWrapper(TestCase):
         self.assertEqual(str(cm.exception), 'received 17 bytes, expected 12')
         self.assertIs(body.closed, True)
 
-        body = base.BodyWrapper(source, 16)
+        body = base.BodyIter(source, 16)
         result = []
         with self.assertRaises(base.OverFlowError) as cm:
             for data in body:
@@ -1428,7 +1428,7 @@ class TestBodyWrapper(TestCase):
 
         # UnderFlowError should only be raised after all items have been
         # yielded:
-        body = base.BodyWrapper(source, 18)
+        body = base.BodyIter(source, 18)
         result = []
         with self.assertRaises(base.UnderFlowError) as cm:
             for data in body:
@@ -1441,7 +1441,7 @@ class TestBodyWrapper(TestCase):
 
         # Empty data items are fine:
         source = (b'', b'hello', b'', b'naughty', b'', b'nurse', b'')
-        body = base.BodyWrapper(source, 17)
+        body = base.BodyIter(source, 17)
         self.assertEqual(list(body),
             [b'', b'hello', b'', b'naughty', b'', b'nurse', b'']
         )
@@ -1456,7 +1456,7 @@ class TestBodyWrapper(TestCase):
         # Test with random data of varying sizes:
         source = [os.urandom(i) for i in range(50)]
         random.shuffle(source)
-        body = base.BodyWrapper(tuple(source), sum(range(50)))
+        body = base.BodyIter(tuple(source), sum(range(50)))
         self.assertEqual(list(body), source)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1467,10 +1467,10 @@ class TestBodyWrapper(TestCase):
         )
 
 
-class TestChunkedBodyWrapper(TestCase):
+class TestChunkedBodyIter(TestCase):
     def test_init(self):
         source = []
-        body = base.ChunkedBodyWrapper(source)
+        body = base.ChunkedBodyIter(source)
         self.assertIs(body.source, source)
         self.assertIs(body.closed, False)
 
@@ -1483,7 +1483,7 @@ class TestChunkedBodyWrapper(TestCase):
         )
 
         # Test when closed:
-        body = base.ChunkedBodyWrapper(source)
+        body = base.ChunkedBodyIter(source)
         body.closed = True
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1493,7 +1493,7 @@ class TestChunkedBodyWrapper(TestCase):
         )
 
         # Should close after one iteration:
-        body = base.ChunkedBodyWrapper(source)
+        body = base.ChunkedBodyIter(source)
         self.assertEqual(list(body), list(source))
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1504,7 +1504,7 @@ class TestChunkedBodyWrapper(TestCase):
         )
 
         # Should raise ChunkError on an empty source:
-        body = base.ChunkedBodyWrapper([])
+        body = base.ChunkedBodyIter([])
         result = []
         with self.assertRaises(base.ChunkError) as cm:
             for item in body:
@@ -1518,7 +1518,7 @@ class TestChunkedBodyWrapper(TestCase):
             (b'naughty', None),
             (b'nurse', None),
         )
-        body = base.ChunkedBodyWrapper(source)
+        body = base.ChunkedBodyIter(source)
         result = []
         with self.assertRaises(base.ChunkError) as cm:
             for item in body:
@@ -1534,7 +1534,7 @@ class TestChunkedBodyWrapper(TestCase):
             (b'nurse', None),
             (b'', None),
         )
-        body = base.ChunkedBodyWrapper(source)
+        body = base.ChunkedBodyIter(source)
         result = []
         with self.assertRaises(base.ChunkError) as cm:
             for item in body:
@@ -1548,7 +1548,7 @@ class TestChunkedBodyWrapper(TestCase):
         source = [(os.urandom(i), None) for i in range(1, 51)]
         random.shuffle(source)
         source.append((b'', None))
-        body = base.ChunkedBodyWrapper(tuple(source))
+        body = base.ChunkedBodyIter(tuple(source))
         self.assertEqual(list(body), source)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
