@@ -228,8 +228,137 @@ This is especially critical for `Novacut`_, which is built as a set of
 network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
-For more details, see the documentation for the :mod:`degu.server` and
-:mod:`degu.client` modules.
+
+
+Request & response bodies
+-------------------------
+
+As exciting as our first two examples were, you may have noticed that no request
+or response bodies were used.
+
+The reason is because this is a broad and complex topic in Degu, especially as
+Degu fully exposes HTTP chunked transfer-encoding semantics.
+
+However, for your essential survival guide, you only need to know three things:
+
+    1. Degu uses ``None`` to represent the absence of an HTTP body
+
+    2. When you receive an HTTP body, it will always have a ``read()`` method
+       you can use to retrieve its contents
+
+    3. When you send an HTTP body, you can always send a ``bytes`` instance
+
+Before we dive into the details, here's a quick example:
+
+>>> def hello_response_body(session, request):
+...     return (200, 'OK', {}, b'hello, world')
+...
+>>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
+>>> client = Client(server.address)
+>>> conn = client.connect()
+>>> response = conn.request('GET', '/')
+
+Notice that this time the response body is a :class:`degu.base.Body` instance,
+rather than ``None``:
+
+>>> response.body
+Body(<rfile>, 12)
+
+The ``body.chunked`` attribute will be ``True`` when the body uses chunked
+transfer-encoding, and will be ``False`` when the body has a content-length:
+
+>>> response.body.chunked
+False
+
+As this body is not chunk-encoded, it has a ``content_length`` attribute, which
+will match the content-length in the response headers:
+
+>>> response.body.content_length
+12
+>>> response.headers
+{'content-length': 12}
+
+Finally, we can use the ``body.read()`` method to read its content:
+
+>>> response.body.read()
+b'hello, world'
+>>> conn.close()
+>>> server.terminate()
+
+
+IO abstractions
+---------------
+
+On both the client and server ends, Degu uses the same set of shared IO
+abstractions to represent HTTP request and response bodies.
+
+As the IO direction of the request vs response is flipped depending on whether
+you're looking at things from a client vs server perspective, it's helpful to
+think in terms HTTP *input* bodies and HTTP *output* bodies.
+
+An **HTTP input body** can be:
+
+    * ``None`` --- meaning no HTTP input body
+
+    * A :class:`degu.base.Body` instance --- an HTTP input body with a
+      content-length
+
+    * A :class:`degu.base.ChunkedBody` instance --- an HTTP input body that uses
+      chunked transfer-encoding
+
+From the client perspective, our input is the HTTP response body received from
+the server.
+
+From the server perspective, our input is the HTTP request body received from
+the client.
+
+When the HTTP input body is not ``None``, the receiving endpoint is responsible
+for reading the entire input body, which must be completed before the next
+request/response sequence can start.
+
+An **HTTP output body** can be:
+
+    ==================================  ========  ================
+    Type                                Encoding  Source object
+    ==================================  ========  ================
+    ``None``                            *n/a*     *n/a*
+    ``bytes``                           Length    *n/a*
+    ``bytearray``                       Length    *n/a*
+    :class:`degu.base.Body`             Length    File-like object
+    :class:`degu.base.BodyIter`         Length    An iterable
+    :class:`degu.base.ChunkedBody`      Chunked   File-like object
+    :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
+    ==================================  ========  ================
+
+From the client perspective, our output is the HTTP request body sent to the
+server.
+
+From the server perspective, our output is the HTTP response body sent to the
+client.
+
+The sending endpoint doesn't directly write the output, but instead only
+*specifies* the output to be written, after which the client or server library
+internally handles the writing.
+
+RGI applications can be **server agnostic** in there implementation.
+
+These four IO abstraction classes are exposed in the RGI *session* argument
+(similar to the WSGI ``environ['wsgi.file_wrapper']``):
+
+    ==================================  =====================================
+    Exposed via                         Degu implementation
+    ==================================  =====================================
+    ``session['rgi.Body']``             :class:`degu.base.Body`
+    ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
+    ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
+    ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
+    ==================================  =====================================
+
+If server applications only use these wrapper classes via the *session* argument
+(rather than directly importing them from :mod:`degu.base`), they are kept
+abstracted from Degu as an implementation, and could potentially run on other
+HTTP servers implemented the :doc:`rgi`.
+
 
 
 

@@ -544,7 +544,7 @@ Very much in the spirit of the WSGI ``environ['wsgi.file_wrapper']``, there are
 four specialized wrapper classes exposed in the RGI *session* argument:
 
     ==================================  =====================================
-    Exposed via                            Reference implementation
+    Exposed via                         Reference implementation
     ==================================  =====================================
     ``session['rgi.Body']``             :class:`degu.base.Body`
     ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
