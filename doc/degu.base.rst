@@ -33,6 +33,43 @@ Exceptions
     reason to use this exception directly.
 
 
+.. exception:: UnderFlowError(received, expected)
+
+    Raised when less data is received than was expected.
+
+    .. attribute:: received
+
+        Number of bytes received
+
+    .. attribute:: expected
+
+        Number of bytes expected
+
+
+.. exception:: OverFlowError(received, expected)
+
+    Raised when less data is received than was expected.
+
+    .. attribute:: received
+
+        Number of bytes received
+
+    .. attribute:: expected
+
+        Number of bytes expected
+
+
+.. exception:: BodyClosedError(body)
+
+    Raised when an HTTP body was already fully consumed.
+
+    .. attribute:: body
+
+        The Degu IO wrapper passed to the constructor.
+
+        This will be a :class:`Body`, :class:`BodyIter`, :class:`ChunkedBody`,
+        or :class:`ChunkedBodyIter` instance.
+
 
 Parsing functions
 -----------------
@@ -250,6 +287,63 @@ Parsing functions
 
 .. class:: BodyIter(source, content_length)
 
+    Wraps an arbitrary iterable yielding a request or response body.
+
+    This class allows an HTTP body to be piecewise generated on-the-fly, but
+    still with an explicit agreement about what the final content-length will
+    be.
+
+    On the client side, this can be used to generate the client request body.
+
+    On the server side, this can be used to generate the server response body.
+
+    Items in *source* can be of any size, including empty, as long as the total
+    size matches the claimed *content_length*.  For example:
+
+    >>> from degu.base import BodyIter
+    >>> def generate_body():
+    ...     yield b'hello'
+    ...     yield b''
+    ...     yield b'world'
+    ...
+    >>> body = BodyIter(generate_body(), 10)
+    >>> list(body)
+    [b'hello', b'', b'world']
+
+    An :exc:`UnderFlowError` will be raised in the total produced by *source* is
+    less than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 11)
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.UnderFlowError: received 10 bytes, expected 11
+
+    An :exc:`OverFlowError` will be raised in the total produced by *source* is
+    greater than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 9)
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.OverFlowError: received 10 bytes, expected 9
+
+    Note that you can only iterate through a :class:`BodyIter` can only be
+    iterated through once.  If you try to iterate through it a further time,
+    a :exc:`BodyClosedError` will be raised.
+
+    .. attribute:: source
+
+        The *source* iterable passed to the constructor.
+
+    .. attribute:: content_length
+
+        The *content_length* passed to the constructor.
+
+    .. attribute:: closed
+
+        Initiall ``False``, will be ``True`` after body is fully consumed.
+
 
 
 :class:`ChunkedBody` class
@@ -325,7 +419,7 @@ Parsing functions
         this method will return an empty ``b''``.
 
         Note that the final chunk will likewise be an empty ``b''``.
-        
+
     .. method:: read()
 
         Read the entire HTTP body.
