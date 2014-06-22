@@ -292,19 +292,18 @@ IO abstractions
 On both the client and server ends, Degu uses the same set of shared IO
 abstractions to represent HTTP request and response bodies.
 
-As the IO direction of the request vs response is flipped depending on whether
-you're looking at things from a client vs server perspective, it's helpful to
-think in terms HTTP *input* bodies and HTTP *output* bodies.
+As the IO directions of the request and response are flipped depending on
+whether you're looking at things from a client vs server perspective, it's
+helpful to think in terms HTTP *input* bodies and HTTP *output* bodies.
 
-An **HTTP input body** can be:
+An **HTTP input body** will always be one of three types:
 
     * ``None`` --- meaning no HTTP input body
 
-    * A :class:`degu.base.Body` instance --- an HTTP input body with a
-      content-length
+    * :class:`degu.base.Body` --- an HTTP input body with a content-length
 
-    * A :class:`degu.base.ChunkedBody` instance --- an HTTP input body that uses
-      chunked transfer-encoding
+    * :class:`degu.base.ChunkedBody` --- an HTTP input body that uses chunked
+      transfer-encoding
 
 From the client perspective, our input is the HTTP response body received from
 the server.
@@ -313,10 +312,10 @@ From the server perspective, our input is the HTTP request body received from
 the client.
 
 When the HTTP input body is not ``None``, the receiving endpoint is responsible
-for reading the entire input body, which must be completed before the next
-request/response sequence can start.
+for reading the entire input body, which must be completed before the another
+request/response sequence can be initiated using that same connection.
 
-An **HTTP output body** can be:
+Your **HTTP output body** can be:
 
     ==================================  ========  ================
     Type                                Encoding  Source object
@@ -340,7 +339,7 @@ The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
 internally handles the writing.
 
-RGI applications can be **server agnostic** in there implementation.
+**Server agnostic** RGI applications are generally possible.
 
 These four IO abstraction classes are exposed in the RGI *session* argument
 (similar to the WSGI ``environ['wsgi.file_wrapper']``):
@@ -359,6 +358,189 @@ If server applications only use these wrapper classes via the *session* argument
 abstracted from Degu as an implementation, and could potentially run on other
 HTTP servers implemented the :doc:`rgi`.
 
+The place where this breaks down a bit is with something like our SSL
+reverse-proxy example.  Were you using the Degu client but not running on the
+Degu server, you couldn't *directly* use the incoming HTTP request body in your
+forwarded client request.  Likewise, you couldn't *directly* use the response
+body from the upstream HTTP server in your application response.
+
+In both directions, these HTTP input bodies would need to be wrapped in a
+``session['rgi.Body']`` or ``session['rgi.ChunkedBody']`` instance as
+appropriate (but no wrapping is needed when the HTTP body is ``None``).
+
+
+
+Example: chunked encoding
+-------------------------
+
+For our final example, we'll show how chunked transfer-encoding is fully exposed
+in Degu.
+
+For good measure, we'll toss in HTTP bodies with a content-length, just to
+compare and contrast.
+
+We'll also demonstrate how to use the :class:`degu.base.BodyIter` and
+:class:`degu.base.ChunkedBodyIter` classes to produce your HTTP output body,
+both for the server response body and the client request body.
+
+First, we'll define two Python generator functions to product the server
+response body, one for chunked transfer-encoding, and another for 
+content-length encoding:
+
+>>> def chunked_response_body(echo):
+...     yield (echo, None)
+...     yield (b' ', None)
+...     yield (b'are', None)
+...     yield (b' ', None)
+...     yield (b'belong', ('extra', 'special'))
+...     yield (b' ', None)
+...     yield (b'to', None)
+...     yield (b' ', None)
+...     yield (b'us', None)
+...     yield (b'', None)
+...
+>>> def response_body(echo):
+...     yield echo
+...     yield b' '
+...     yield b'are'
+...     yield b' '
+...     yield b'belong'
+...     yield b' '
+...     yield b'to'
+...     yield b' '
+...     yield b'us'
+... 
+>>> len(b''.join(response_body(b''))) == 17  # 17 used below
+True
+
+Second, we'll define an RGI application that will return a response body using
+chunked transfer encoding if we ``'POST /chunked'``, and will return a body with
+a content-length if we ``'POST /length'``:
+
+>>> def rgi_io_app(session, request):
+...     if request['path'] != ['chunked'] and request['path'] != ['length']:
+...         return (404, 'Not Found', {}, None)
+...     if request['method'] != 'POST':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request['body'] is None:
+...         return (400, 'Bad Request', {}, None)
+...     echo = request['body'].read()  # Body/ChunkedBody agnostic
+...     if request['path'] == ['chunked']:
+...         body = session['rgi.ChunkedBodyIter'](chunked_response_body(echo))
+...     else:
+...         body = session['rgi.BodyIter'](response_body(echo), len(echo) + 17)
+...     return (200, 'OK', {}, body)
+... 
+
+As usual, we'll start a throw-away server and create a client:
+
+>>> server = TempServer(('127.0.0.1', 0), None, rgi_io_app)
+>>> client = Client(server.address)
+
+For now we'll just use a simple ``bytes`` instance for the client request body.
+For example, if we ``'POST /chunked'``:
+
+>>> conn = client.connect()
+>>> response = conn.request('POST', '/chunked', {}, b'All your base')
+
+Notice that a :class:`degu.base.ChunkedBody` is returned:
+
+>>> response.body.chunked
+True
+>>> response.body
+ChunkedBody(<rfile>)
+>>> response.headers
+{'transfer-encoding': 'chunked'}
+
+We can easily iterate through the ``(data, extension)`` tuples for each chunk
+in the chunk encoded response like this:
+
+>>> for (data, extension) in response.body:
+...     print((data, extension))
+...
+(b'All your base', None)
+(b' ', None)
+(b'are', None)
+(b' ', None)
+(b'belong', ('extra', 'special'))
+(b' ', None)
+(b'to', None)
+(b' ', None)
+(b'us', None)
+(b'', None)
+
+:meth:`degu.base.ChunkedBody.read()` can be used to accumulate all the chunk
+data into a single ``bytearray``, at the expense of loosing the exact chunk data
+boundaries and any chunk extensions:
+
+>>> response = conn.request('POST', '/chunked', {}, b'All your base')
+>>> response.body.read()
+bytearray(b'All your base are belong to us')
+
+API-wise, ``body.read()`` can always be used without worrying about the
+transfer-encoding, but in real applications you should be very cautions about
+this do the possibility of unbounded memory usage with chunked
+transfer-encoding.
+
+But at least for illustration, note that :meth:`degu.base.ChunkedBody.read()`
+is basically equivalent to :meth:`degu.base.Body.read()`.
+
+For example, if we ``'POST /length'``:
+
+>>> response = conn.request('POST', '/length', {}, b'All your base')
+
+Notice that the response body is a :class:`degu.base.Body` instance:
+
+>>> response.body.chunked
+False
+>>> response.body
+Body(<rfile>, 30)
+>>> response.headers
+{'content-length': 30}
+
+And that we get the expected result from ``body.read()``:
+
+>>> response.body.read()
+b'All your base are belong to us'
+
+For one last bit of fancy, you can likewise use an arbitrary iterable to
+generate your HTTP client request body.  Let's define a Python generator to be
+used with chunked-transfer encoding:
+
+>>> def chunked_request_body():
+...     yield (b'All',        None)
+...     yield (b' ',          None)
+...     yield (b'your',       None)
+...     yield (b' ',          None)
+...     yield (b'*something', None)
+...     yield (b' ',          ('key', 'value'))
+...     yield (b'else*',      ('chunk', 'extensions'))
+...     yield (b'',           ('are', 'neat'))
+...
+
+To use this generator as our request body, we need to wrap it in a
+:class:`degu.base.ChunkedBodyIter`, like this:
+
+>>> from degu.base import ChunkedBodyIter
+>>> body = ChunkedBodyIter(chunked_request_body())
+
+And then if we ``'POST /chunked'``:
+
+>>> response = conn.request('POST', '/chunked', {}, body)
+>>> response.body.read()
+bytearray(b'All your *something else* are belong to us')
+
+Or if we ``'POST /length'``:
+
+>>> body = ChunkedBodyIter(chunked_request_body())
+>>> response = conn.request('POST', '/length', {}, body)
+>>> response.body.read()
+b'All your *something else* are belong to us'
+
+That's all the time for fancy we have now:
+
+>>> conn.close()
+>>> server.terminate()
 
 
 
