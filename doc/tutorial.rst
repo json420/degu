@@ -418,14 +418,14 @@ chunked transfer encoding if we ``POST /chunked``, and will return a body with
 a content-length if we ``POST /length``:
 
 >>> def rgi_io_app(session, request):
-...     if request['path'] != ['chunked'] and request['path'] != ['length']:
+...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
 ...         return (404, 'Not Found', {}, None)
 ...     if request['method'] != 'POST':
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request['body'] is None:
 ...         return (400, 'Bad Request', {}, None)
 ...     echo = request['body'].read()  # Body/ChunkedBody agnostic
-...     if request['path'] == ['chunked']:
+...     if request['path'][0] == 'chunked':
 ...         body = session['rgi.ChunkedBodyIter'](chunked_response_body(echo))
 ...     else:
 ...         body = session['rgi.BodyIter'](response_body(echo), len(echo) + 17)
@@ -468,6 +468,9 @@ in the chunk encoded response like this:
 (b' ', None)
 (b'us', None)
 (b'', None)
+
+(Note that :meth:`degu.base.ChunkedBody.readchunk()` can also be used to
+manually step through the chunks.)
 
 :meth:`degu.base.ChunkedBody.read()` can be used to accumulate all the chunk
 data into a single ``bytearray``, at the expense of loosing the exact chunk data
@@ -537,7 +540,7 @@ Or if we ``POST /length``:
 >>> response.body.read()
 b'All your *something else* are belong to us'
 
-That's all the time for fancy we have now:
+Well, that's all the time for fancy we have now:
 
 >>> conn.close()
 >>> server.terminate()
