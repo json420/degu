@@ -5,6 +5,12 @@ Changelog
 0.6 (unreleased)
 ----------------
 
+Although Degu 0.6 brings a large number of breaking API changes, the high-level
+server and client APIs are now (more or less) feature complete and can be (at
+least cautiously) treated as API-stable; however, significant breakage and churn
+should still be expected over the next few months in lower-level, internal, and
+currently undocumented APIs.
+
 Changes:
 
     * Consolidate previously scattered and undocumented RGI server application
@@ -47,12 +53,6 @@ Changes:
       important) live socket timeout tests... very handy for day-to-day
       development
 
-    * Although Degu 0.6 brings a large number of breaking API changes, the
-      high-level server and client APIs are now (more or less) feature complete
-      and can be (at least cautiously) treated as API-stable; however,
-      significant breakage and churn should still be expected over the next few
-      months in lower-level, internal, and currently undocumented APIs
-
 
 Internal API changes:
 
@@ -89,7 +89,7 @@ Breaking public API changes:
     * Replace previously separate input and output abstractions with new unified
       :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` classes for
       wrapping file-like objects, plus :class:`degu.base.BodyIter` and
-      :class:`degu.base.ChunkedBodyIter` classes for wrapper arbitrary iterable
+      :class:`degu.base.ChunkedBodyIter` classes for wrapping arbitrary iterable
       objects
 
     * As a result of the above two breaking changes, the names under which these

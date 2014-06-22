@@ -292,7 +292,7 @@ abstractions to represent HTTP request and response bodies.
 
 As the IO *directions* of the request and response are flipped depending on
 whether you're looking at things from a client vs server perspective, it's
-helpful to think in terms HTTP *input* bodies and HTTP *output* bodies.
+helpful to think in terms of HTTP *input* bodies and HTTP *output* bodies.
 
 An **HTTP input body** will always be one of three types:
 
@@ -313,7 +313,7 @@ When the HTTP input body is not ``None``, the receiving endpoint is responsible
 for reading the entire input body, which must be completed before the another
 request/response sequence can be initiated using that same connection.
 
-Your **HTTP output body** can be:
+An **HTTP output body** can be:
 
     ==================================  ========  ================
     Type                                Encoding  Source object
@@ -337,7 +337,7 @@ The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
 internally handles the writing.
 
-**Server agnostic** RGI applications are generally possible.
+**Server agnostic RGI applications** are generally possible.
 
 These four IO abstraction classes are exposed in the RGI *session* argument
 (similar to the WSGI ``environ['wsgi.file_wrapper']``):
@@ -371,18 +371,19 @@ appropriate (but no wrapping is needed when the HTTP body is ``None``).
 Example: chunked encoding
 -------------------------
 
-For our final example, we'll show how chunked transfer-encoding is fully exposed
-in Degu.
+For our final example, we'll show how chunked transfer-encoding semantics are
+fully exposed in Degu.
 
-For good measure, we'll toss in HTTP bodies with a content-length, just to
+For good measure, we'll also toss in HTTP bodies with a content-length, just to
 compare and contrast.
 
 We'll also demonstrate how to use the :class:`degu.base.BodyIter` and
-:class:`degu.base.ChunkedBodyIter` classes to produce your HTTP output body,
-both for the server response body and the client request body.
+:class:`degu.base.ChunkedBodyIter` wrappers to generate your HTTP output body
+piecewise and on-the-fly, both for the client-side request body and the
+server-side response body.
 
-First, we'll define two silly Python generator functions to product the server
-response body, one for chunked transfer-encoding, and another for 
+First, we'll define two silly Python generator functions that generate the
+server-side response body, one for chunked transfer-encoding and another for 
 content-length encoding:
 
 >>> def chunked_response_body(echo):
@@ -411,9 +412,9 @@ content-length encoding:
 >>> len(b''.join(response_body(b''))) == 17  # 17 used below
 True
 
-Second, we'll define an RGI application that will return a response body using
-chunked transfer encoding if we ``POST /chunked``, and will return a body with
-a content-length if we ``POST /length``:
+Second, we'll define an RGI server application that will return a response body using
+chunked transfer encoding if we ``POST /chunked``, and that will return a body
+with a content-length if we ``POST /length``:
 
 >>> def rgi_io_app(session, request):
 ...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
@@ -435,8 +436,8 @@ As usual, we'll start a throw-away server and create a client:
 >>> server = TempServer(('127.0.0.1', 0), None, rgi_io_app)
 >>> client = Client(server.address)
 
-For now we'll just use a simple ``bytes`` instance for the client request body.
-For example, if we ``POST /chunked``:
+For now we'll just use a simple ``bytes`` instance for the client-side request
+body.  For example, if we ``POST /chunked``:
 
 >>> conn = client.connect()
 >>> response = conn.request('POST', '/chunked', {}, b'All your base')
@@ -505,10 +506,10 @@ And that we get the expected result from ``body.read()``:
 b'All your base are belong to us'
 
 For one last bit of fancy, you can likewise use an arbitrary iterable to
-generate your HTTP client request body.
+generate your client-side request body.
 
-So let's define a third silly Python generator to be used for a chunk-encoded
-client request body:
+So let's define a third silly Python generator function to be the source for a
+client-side request body using chunked trasfer-encoding:
 
 >>> def chunked_request_body():
 ...     yield (b'All',        None)
@@ -540,7 +541,7 @@ Or if we ``POST /length``:
 >>> response.body.read()
 b'All your *something else* are belong to us'
 
-Well, that's all the time today we have for fancy!
+Well, that's all the time we have today for fancy!
 
 >>> conn.close()
 >>> server.terminate()
