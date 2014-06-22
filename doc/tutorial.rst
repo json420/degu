@@ -214,7 +214,7 @@ this:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-And then, as in our previous example, wa can create a
+And then, as in our previous example, we can create a
 :class:`degu.client.Connection` and make a request like this:
 
 >>> conn = client.connect()
