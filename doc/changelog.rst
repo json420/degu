@@ -2,8 +2,8 @@ Changelog
 =========
 
 
-0.6 (unreleased)
-----------------
+0.6 (June 2014)
+---------------
 
 Although Degu 0.6 brings a large number of breaking API changes, the high-level
 server and client APIs are now (more or less) feature complete and can be (at
