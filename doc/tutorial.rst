@@ -383,7 +383,7 @@ We'll also demonstrate how to use the :class:`degu.base.BodyIter` and
 :class:`degu.base.ChunkedBodyIter` classes to produce your HTTP output body,
 both for the server response body and the client request body.
 
-First, we'll define two Python generator functions to product the server
+First, we'll define two silly Python generator functions to product the server
 response body, one for chunked transfer-encoding, and another for 
 content-length encoding:
 
