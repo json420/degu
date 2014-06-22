@@ -94,7 +94,6 @@ Close the connection like this:
 Notice that the :class:`degu.client.Response` namedtuple returned above is the
 exact same tuple returned by our ``example_app``.  The Degu client API and the
 RGI application API have been carefully designed to complement each other.
-Think of them almost like inverse functions.
 
 For example, here's an RGI application that implements a `reverse-proxy`_, which
 will use the :func:`degu.util.relative_uri()` helper function:
@@ -119,16 +118,14 @@ will use the :func:`degu.util.relative_uri()` helper function:
 The important thing to note above is that Degu server applications can
 *directly* use the incoming HTTP request body object in their forwarded HTTP
 client request, and can likewise return the *entire* HTTP response object from
-the upstream server.  (This in new in Degu 0.6, whereas previous versions
-required you to wrap the HTTP body in both directions using the defunct
-``make_output_from_input()`` function).
+the upstream server.
 
 For this reason, the 4-tuple response object is something you'll really want to
 commit to memory, as it is used both server-side and client-side::
 
     (status, reason, headers, body)
 
-Anyway, this case is slightly more complicated as the RGI callable will be a
+This case is slightly more complicated as the RGI callable will be a
 ``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
 problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
 structures to a new process.  This approach also avoids importing unnecessary
@@ -286,6 +283,7 @@ b'hello, world'
 >>> server.terminate()
 
 
+
 IO abstractions
 ---------------
 
@@ -344,19 +342,19 @@ internally handles the writing.
 These four IO abstraction classes are exposed in the RGI *session* argument
 (similar to the WSGI ``environ['wsgi.file_wrapper']``):
 
-    ==================================  =====================================
+    ==================================  ==================================
     Exposed via                         Degu implementation
-    ==================================  =====================================
+    ==================================  ==================================
     ``session['rgi.Body']``             :class:`degu.base.Body`
     ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
     ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
     ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
-    ==================================  =====================================
+    ==================================  ==================================
 
 If server applications only use these wrapper classes via the *session* argument
 (rather than directly importing them from :mod:`degu.base`), they are kept
 abstracted from Degu as an implementation, and could potentially run on other
-HTTP servers implemented the :doc:`rgi`.
+HTTP servers that implement the :doc:`rgi`.
 
 The place where this breaks down a bit is with something like our SSL
 reverse-proxy example.  Were you using the Degu client but not running on the
@@ -388,16 +386,16 @@ response body, one for chunked transfer-encoding, and another for
 content-length encoding:
 
 >>> def chunked_response_body(echo):
-...     yield (echo, None)
-...     yield (b' ', None)
-...     yield (b'are', None)
-...     yield (b' ', None)
-...     yield (b'belong', ('extra', 'special'))
-...     yield (b' ', None)
-...     yield (b'to', None)
-...     yield (b' ', None)
-...     yield (b'us', None)
-...     yield (b'', None)
+...     yield (echo,      None)
+...     yield (b' ',      None)
+...     yield (b'are',    None)
+...     yield (b' ',      ('key', 'value'))
+...     yield (b'belong', None)
+...     yield (b' ',      ('chunk', 'extensions'))
+...     yield (b'to',     None)
+...     yield (b' ',      ('are', 'neat'))
+...     yield (b'us',     None)
+...     yield (b'',       None)
 ...
 >>> def response_body(echo):
 ...     yield echo
@@ -453,7 +451,7 @@ ChunkedBody(<rfile>)
 {'transfer-encoding': 'chunked'}
 
 We can easily iterate through the ``(data, extension)`` tuples for each chunk
-in the chunk encoded response like this:
+in the response body like this:
 
 >>> for (data, extension) in response.body:
 ...     print((data, extension))
@@ -461,11 +459,11 @@ in the chunk encoded response like this:
 (b'All your base', None)
 (b' ', None)
 (b'are', None)
-(b' ', None)
-(b'belong', ('extra', 'special'))
-(b' ', None)
+(b' ', ('key', 'value'))
+(b'belong', None)
+(b' ', ('chunk', 'extensions'))
 (b'to', None)
-(b' ', None)
+(b' ', ('are', 'neat'))
 (b'us', None)
 (b'', None)
 
@@ -507,8 +505,10 @@ And that we get the expected result from ``body.read()``:
 b'All your base are belong to us'
 
 For one last bit of fancy, you can likewise use an arbitrary iterable to
-generate your HTTP client request body.  Let's define a Python generator to be
-used with chunked-transfer encoding:
+generate your HTTP client request body.
+
+So let's define a third silly Python generator to be used for a chunk-encoded
+client request body:
 
 >>> def chunked_request_body():
 ...     yield (b'All',        None)
@@ -540,7 +540,7 @@ Or if we ``POST /length``:
 >>> response.body.read()
 b'All your *something else* are belong to us'
 
-Well, that's all the time for fancy we have now:
+Well, that's all the time today we have for fancy!
 
 >>> conn.close()
 >>> server.terminate()

@@ -11,24 +11,47 @@ Changes:
       helper functions into the new :mod:`degu.util` module
 
     * Document some of the internal API functions in :mod:`degu.base` (note that
-      none of these are API stable yet)
+      none of these are API stable yet), plus document the new public IO
+      abstraction classes:
 
-    * Replace previously separate input and output abstractions with the
-      :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` classes, which
-      can uniformly represent an HTTP request or response, whether sending or
-      receiving; note that in theory this isn't a breaking API change, but it
-      could be depending how much you were reaching into undocumented internals
+        * :class:`degu.base.Body`
 
-    * As a result of the above, an incoming HTTP body can now be directly used
-      as an outgoing HTTP body; this even further simplifies what it takes to
-      implement an RGI reverse-proxy application
+        * :class:`degu.base.BodyIter`
+
+        * :class:`degu.base.ChunkedBody`
+
+        * :class:`degu.base.ChunkedBodyIter`
+
+    * As a result of the reworked IO abstraction classes (breaking change
+      below), an incoming HTTP body can now be directly used as an outgoing HTTP
+      body with no intermediate wrapper; this even further simplifies what it
+      takes to implement an RGI reverse-proxy application
+
+    * Degu and RGI now fully expose chunked transfer-encoding semantics,
+      including the optional per-chunk extension; on both the input and output
+      side of things, a chunk is now represented by a 2-tuple::
+
+        (data, extension)
 
     * Largely rewrite the :doc:`rgi` specification to reflect the new
       connection-level semantics
 
+    * Big update to the :doc:`tutorial` to cover request and response bodies,
+      the IO abstraction classes, and chunked-encoding
+
+    * Degu is now approximately 35% faster when it comes to writing an HTTP
+      request or response preamble with 6 (or so) headers; the more headers, the
+      bigger the performance improvement
+
     * Add ``./setup.py test --skip-slow`` option to skip the time-consuming (but
       important) live socket timeout tests... very handy for day-to-day
       development
+
+    * Although Degu 0.6 brings a large number of breaking API changes, the
+      high-level server and client APIs are now (more or less) feature complete
+      and can be (at least cautiously) treated as API-stable; however,
+      significant breakage and churn should still be expected over the next few
+      months in lower-level, internal, and currently undocumented APIs
 
 
 Internal API changes:
@@ -38,14 +61,14 @@ Internal API changes:
 
     * ``EmptyLineError`` has been renamed to :exc:`degu.base.EmptyPreambleError`
 
+    * :func:`degu.base.read_chunk()` and :func:`degu.base.write_chunk()` now
+      enforce a sane 16 MiB per-chunk data size limit
+
+    * :func:`degu.base.read_preamble()` now allows up to 15 request or response
+      headers (up from the previous 10 header limit)
+
 
 Breaking public API changes:
-
-    * RGI server applications now take two arguments when handling requests: a
-      *session* and a *request*, both ``dict`` instances; the per-connection
-      state that was previously present in the *request* argument has simply
-      been moved into the new *session* argument, and the *request* argument
-      has otherwise not changed
 
     * If an RGI application object itself has an ``on_connect`` attribute, it
       must be a callable accepting two arguments (a *sock* and a *session*);
@@ -53,12 +76,51 @@ Breaking public API changes:
       connection is recieved, before any requests have been handled for that
       connection; if ``app.on_connect()`` does not return ``True``, or if any
       unhandled exception occurs, the socket connection will be immediately
-      shutdown without further processing; note this is only a *breaking* API
-      change if your application object happened to have an ``on_connect``
+      shutdown without further processing; note that this is only a *breaking*
+      API change if your application object happened to have an ``on_connect``
       attribute already used for some other purpose
 
-For example, this is how you implemented a *hello, world* RGI application in
-Degu 0.5 and earlier:
+    * RGI server applications now take two arguments when handling requests: a
+      *session* and a *request*, both ``dict`` instances; the *request* argument
+      now only contains strictly per-request information, whereas the
+      server-wide and pre-connection information has been moved into the new
+      *session* argument
+
+    * Replace previously separate input and output abstractions with new unified
+      :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` classes for
+      wrapping file-like objects, plus :class:`degu.base.BodyIter` and
+      :class:`degu.base.ChunkedBodyIter` classes for wrapper arbitrary iterable
+      objects
+
+    * As a result of the above two breaking changes, the names under which these
+      wrappers classes are exposed to RGI applications have changed, plus
+      they're now in the new RGI *session* argument instead of the existing
+      *request* argument:
+
+        ==================================  ==================================
+        Exposed via                         Degu implementation
+        ==================================  ==================================
+        ``session['rgi.Body']``             :class:`degu.base.Body`
+        ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
+        ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
+        ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
+        ==================================  ==================================
+
+    * The previous ``make_input_from_output()`` function has been removed; there
+      is no need for this now that you can directly use any HTTP input body as
+      an HTTP output body (for, say, a reverse-proxy application)
+
+    * Iterating through a chunk-encoded HTTP input body now yields a
+      ``(data, extension)`` 2-tuple for each chunk; likewise,
+      ``body.readchunk()`` now returns a ``(data, extension)`` 2-tuple; however,
+      there has been no change in the behavior of ``body.read()`` on
+      chunk-encoded bodies
+
+    * Iterables used as the source for a chunk-encoded HTTP output body now must
+      yield a ``(data, extension)`` 2-tuple for each chunk
+
+In terms of the RGI request handling API, this is how you implemented a
+*hello, world* RGI application in Degu 0.5 and earlier:
 
 >>> def hello_world_app(request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
