@@ -256,11 +256,19 @@ class Connection:
         return self.sock is None
 
     def close(self):
+        # We sometimes get a TypeError when a connection is GC'ed just prior to
+        # a script exiting:
+        # Exception ignored in: <bound method Connection.__del__ of <degu.client.Connection object at 0x7f6e8ca10ef0>>
+        # Traceback (most recent call last):
+        # File "/usr/lib/python3/dist-packages/degu/client.py", line 252, in __del__
+        # File "/usr/lib/python3/dist-packages/degu/client.py", line 262, in close
+        # TypeError: an integer is required (got type NoneType)
+        #
         self.response_body = None  # Always deference previous response_body
         if self.sock is not None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
+            except (OSError, TypeError):
                 pass
             self.sock = None
 
