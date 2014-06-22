@@ -414,8 +414,8 @@ content-length encoding:
 True
 
 Second, we'll define an RGI application that will return a response body using
-chunked transfer encoding if we ``'POST /chunked'``, and will return a body with
-a content-length if we ``'POST /length'``:
+chunked transfer encoding if we ``POST /chunked``, and will return a body with
+a content-length if we ``POST /length``:
 
 >>> def rgi_io_app(session, request):
 ...     if request['path'] != ['chunked'] and request['path'] != ['length']:
@@ -438,7 +438,7 @@ As usual, we'll start a throw-away server and create a client:
 >>> client = Client(server.address)
 
 For now we'll just use a simple ``bytes`` instance for the client request body.
-For example, if we ``'POST /chunked'``:
+For example, if we ``POST /chunked``:
 
 >>> conn = client.connect()
 >>> response = conn.request('POST', '/chunked', {}, b'All your base')
@@ -485,7 +485,7 @@ transfer-encoding.
 But at least for illustration, note that :meth:`degu.base.ChunkedBody.read()`
 is basically equivalent to :meth:`degu.base.Body.read()`.
 
-For example, if we ``'POST /length'``:
+For example, if we ``POST /length``:
 
 >>> response = conn.request('POST', '/length', {}, b'All your base')
 
@@ -524,13 +524,13 @@ To use this generator as our request body, we need to wrap it in a
 >>> from degu.base import ChunkedBodyIter
 >>> body = ChunkedBodyIter(chunked_request_body())
 
-And then if we ``'POST /chunked'``:
+And then if we ``POST /chunked``:
 
 >>> response = conn.request('POST', '/chunked', {}, body)
 >>> response.body.read()
 bytearray(b'All your *something else* are belong to us')
 
-Or if we ``'POST /length'``:
+Or if we ``POST /length``:
 
 >>> body = ChunkedBodyIter(chunked_request_body())
 >>> response = conn.request('POST', '/length', {}, body)
