@@ -433,6 +433,47 @@ non-negative ``int``.
 
 
 
+Chunked encoding
+----------------
+
+RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
+applications, including use of the optional per-chunk extension.
+
+This gives RGI applications full access to chunk-encoding semantics in the
+incoming request body, and also gives RGI applications full control over
+chunk-encoding semantics in their outgoing response body.
+
+RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
+extension is present for that chunk, the *extension* will be ``None``::
+
+    (b'hello', None)
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5\r\nhello\r\n'
+
+Or when an extension is present, *extension* will be a ``(key, value)`` tuple::
+
+    (b'hello', ('foo', 'bar'))
+
+Which would be encoded like this in the HTTP request or response stream::
+
+    b'5;foo=bar\r\nhello\r\n'
+
+RGI doesn't treat chunked-transfer encoding as merely an alternate way of
+transferring the same content, but instead as a wholly different mechanism with
+specific meaning that must be exposed and preserved.
+
+The exact data boundaries of each chunk is meaningful, and the optional chunk
+extension must be associated with only the data in that chunk.
+
+This is extremely useful for `CouchDB`_ style continuous structured data
+replication.  For example, each chunk *data* might be a fully self-contained
+JSON encoded object, and the chunk *extension* could be used for conveying
+global database state at the event corresponding to that chunk.
+
+
+
 Request body
 ------------
 
@@ -471,26 +512,6 @@ like this:
 ...             pass  # Do something useful
 ...     return (200, 'OK', {}, None)
 
-RGI fully exposes the semantics of HTTP `chunked transfer encoding`_ to server
-applications, including use of the optional per-chunk extension.
-
-RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
-extension is present for that chunk, the *extension* will be ``None``::
-
-    (b'hello', None)
-
-Which would be encoded like this in the HTTP request or response stream::
-
-    b'5\r\nhello\r\n'
-
-Or when an extension is present, *extension* will be a ``(key, value)`` tuple::
-
-    (b'hello', ('foo', 'bar'))
-
-Which would be encoded like this in the HTTP request or response stream::
-
-    b'5;foo=bar\r\nhello\r\n'
-
 When the request body has a content-length, ``request['body']`` will be an
 instance of the ``session['rgi.Body']`` class.
 
@@ -522,14 +543,14 @@ conditions:
 Very much in the spirit of the WSGI ``environ['wsgi.file_wrapper']``, there are
 four specialized wrapper classes exposed in the RGI *session* argument:
 
-    =====================================  =====================================
-    Exposed via                            Reference implementation
-    =====================================  =====================================
-    ``session['rgi.Body']``                :class:`degu.base.Body`
-    ``session['rgi.BodyWrapper']``         :class:`degu.base.BodyWrapper`
-    ``session['rgi.ChunkedBody']``         :class:`degu.base.ChunkedBody`
-    ``session['rgi.ChunkedBodyWrapper']``  :class:`degu.base.ChunkedBodyWrapper`
-    =====================================  =====================================
+    ==================================  =====================================
+    Exposed via                         Reference implementation
+    ==================================  =====================================
+    ``session['rgi.Body']``             :class:`degu.base.Body`
+    ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
+    ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
+    ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
+    ==================================  =====================================
 
 Although four distinct wrapper classes might seem excessive, granularity here
 eliminates ambiguity and needless magic elsewhere.
@@ -542,7 +563,7 @@ applications::
 Because of this single, comprehensive response return value, RGI has a much
 simpler response flow control compared to WSGI.
 
-Yet the ``session['rgi.BodyWrapper']`` and ``session['rgi.ChunkedBodyWrapper']``
+Yet the ``session['rgi.BodyIter']`` and ``session['rgi.ChunkedBodyIter']``
 classes allow RGI to maintain an important and elegant WSGI feature: the ability
 of the response body to be an arbitrary iterable that yields the response body
 one piece at a time, as generated on-the-fly by the application.
@@ -578,7 +599,7 @@ content-length:
 
     3. A ``session['Body']`` instance (:class:`degu.base.Body`)
 
-    4. A ``session['BodyWrapper']`` instance (:class:`degu.base.BodyWrapper`)
+    4. A ``session['BodyIter']`` instance (:class:`degu.base.BodyIter`)
 
 When the response body is understood as having a content-length, RGI
 applications can never include a ``'transfer-encoding'`` in their response
@@ -593,9 +614,8 @@ way of returning a response body that is relatively small and easily built all
 at once.  Arguably, most responses from typical server applications fit this
 niche.
 
-Not to mention that ``bytes`` in particular are simply the most illustrative,
-which helps RGI be an inviting specification.  For example, this sort of thing
-is rather priceless:
+Not to mention that ``bytes`` in particular are the most illustrative, which
+helps RGI be an inviting specification.  For example:
 
 >>> def rgi_hello_world_app(session, request):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
@@ -621,8 +641,8 @@ You can likewise use ``session['rgi.Body']`` to frame an *rfile* returned by
 `socket.socket.makefile()`_, which is especially useful for RGI reverse-proxy
 applications.
 
-On the other hand, the ``session['rgi.BodyWrapper']`` class
-(:class:`degu.base.BodyWrapper`) is used to wrap an arbitrary iterable that
+On the other hand, the ``session['rgi.BodyIter']`` class
+(:class:`degu.base.BodyIter`) is used to wrap an arbitrary iterable that
 yields the response body one piece at a time as generated by the application,
 yet sill with an explicit agreement as to the ultimate content-length.
 
@@ -633,7 +653,7 @@ For example:
 ...     yield b', world'
 ... 
 >>> def rgi_generator_app(session, request):
-...     body = session['rgi.BodyWrapper'](generate_body(), 12)
+...     body = session['rgi.BodyIter'](generate_body(), 12)
 ...     return (200, 'OK', {'content-length': 12}, body)
 ... 
 
@@ -648,8 +668,8 @@ body:
 
     1. A ``session['ChunkedBody']`` instance (:class:`degu.base.ChunkedBody`)
 
-    2. A ``session['ChunkedBodyWrapper']`` instance
-       (:class:`degu.base.ChunkedBodyWrapper`)
+    2. A ``session['ChunkedBodyIter']`` instance
+       (:class:`degu.base.ChunkedBodyIter`)
 
 When the response body is understood as being chunk-encoded, RGI applications
 can never include a ``'content-length'`` in their response headers.  Likewise,
@@ -684,8 +704,8 @@ stop yielding ``(data, extension)`` items after the first chunk with an empty
 data ``b''`` is encountered.  The *rfile* must always contain at least one
 empty chunk.
 
-On the other hand, the ``session['rgi.ChunkedBodyWrapper']`` class
-(:class:`degu.base.ChunkedBodyWrapper`) is used to wrap an arbitrary iterable
+On the other hand, the ``session['rgi.ChunkedBodyIter']`` class
+(:class:`degu.base.ChunkedBodyIter`) is used to wrap an arbitrary iterable
 that yields the response body as a series of ``(data, extension)`` tuples for
 each chunk in the response.
 
@@ -700,7 +720,7 @@ For example:
 ...     yield (b'', ('key3', 'value3'))
 ... 
 >>> def rgi_chunked_generator_app(session, request):
-...     body = session['rgi.ChunkedBodyWrapper'](generate_chunked_body())
+...     body = session['rgi.ChunkedBodyIter'](generate_chunked_body())
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
 ... 
 
@@ -811,4 +831,5 @@ underlying Python3 `socket API`_.
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
 .. _`chunked transfer encoding`: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
+.. _`CouchDB`: http://couchdb.apache.org/
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile

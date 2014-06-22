@@ -33,6 +33,49 @@ Exceptions
     reason to use this exception directly.
 
 
+.. exception:: UnderFlowError(received, expected)
+
+    Raised when less data is received than was expected.
+
+    .. attribute:: received
+
+        Number of bytes received
+
+    .. attribute:: expected
+
+        Number of bytes expected
+
+
+.. exception:: OverFlowError(received, expected)
+
+    Raised when less data is received than was expected.
+
+    .. attribute:: received
+
+        Number of bytes received
+
+    .. attribute:: expected
+
+        Number of bytes expected
+
+
+.. exception:: BodyClosedError(body)
+
+    Raised when an HTTP body was already fully consumed.
+
+    .. attribute:: body
+
+        The Degu IO wrapper passed to the constructor.
+
+        This will be a :class:`Body`, :class:`BodyIter`, :class:`ChunkedBody`,
+        or :class:`ChunkedBodyIter` instance.
+
+
+.. exception:: ChunkError
+
+    Raise by :class:`ChunkedBodyIter` upon bad chunked-encoding semantics.
+
+
 
 Parsing functions
 -----------------
@@ -245,10 +288,67 @@ Parsing functions
 
 
 
-:class:`BodyWrapper` class
+:class:`BodyIter` class
 --------------------------
 
-.. class:: BodyWrapper(source, content_length)
+.. class:: BodyIter(source, content_length)
+
+    Wraps an arbitrary iterable yielding a request or response body.
+
+    This class allows an HTTP body to be piecewise generated on-the-fly, but
+    still with an explicit agreement about what the final content-length will
+    be.
+
+    On the client side, this can be used to generate the client request body.
+
+    On the server side, this can be used to generate the server response body.
+
+    Items in *source* can be of any size, including empty, as long as the total
+    size matches the claimed *content_length*.  For example:
+
+    >>> from degu.base import BodyIter
+    >>> def generate_body():
+    ...     yield b'hello'
+    ...     yield b''
+    ...     yield b'world'
+    ...
+    >>> body = BodyIter(generate_body(), 10)
+    >>> list(body)
+    [b'hello', b'', b'world']
+
+    An :exc:`UnderFlowError` will be raised in the total produced by *source* is
+    less than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 11)
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.UnderFlowError: received 10 bytes, expected 11
+
+    An :exc:`OverFlowError` will be raised in the total produced by *source* is
+    greater than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 9)
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.OverFlowError: received 10 bytes, expected 9
+
+    Note that you can only iterate through a :class:`BodyIter` once.  If you try
+    to iterate through it a further time, a :exc:`BodyClosedError` will be
+    raised.
+
+    .. attribute:: source
+
+        The *source* iterable passed to the constructor.
+
+    .. attribute:: content_length
+
+        The *content_length* passed to the constructor.
+
+    .. attribute:: closed
+
+        Initially ``False``, will be ``True`` after body is fully consumed.
 
 
 
@@ -279,6 +379,24 @@ Parsing functions
     a file-object returned by `socket.socket.makefile()`_, or any other similar
     object implementing the needed API.
 
+    If you iterate through a :class:`ChunkedBody` instance, it will yield a
+    ``(data, extension)`` tuple for each chunk in the chunk-encoded stream.  For
+    example:
+
+    >>> from io import BytesIO
+    >>> from degu.base import ChunkedBody
+    >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
+    >>> body = ChunkedBody(rfile)
+    >>> list(body)
+    [(b'hello', None), (b'world', ('foo', 'bar')), (b'', None)]
+
+    Note that you can only iterate through a :class:`ChunkedBody` once:
+
+    >>> list(body)
+    Traceback (most recent call last):
+      ...
+    degu.base.BodyClosedError: body already fully read: ChunkedBody(<rfile>)
+
     .. attribute:: chunked
 
         Always ``True``, indicating a chunk-encoded HTTP body.
@@ -307,7 +425,7 @@ Parsing functions
         this method will return an empty ``b''``.
 
         Note that the final chunk will likewise be an empty ``b''``.
-        
+
     .. method:: read()
 
         Read the entire HTTP body.
@@ -322,20 +440,86 @@ Parsing functions
 
         Iterate through chunks in the chunk-encoded HTTP body.
 
-        This method will yield the HTTP body as a series of ``bytes`` instances
-        of whatever size the corresponding data chunks are in the chunk-encoded
-        HTTP body.
+        This method will yield the HTTP body as a series of
+        ``(data, extension)`` tuples for each chunk in the body.
 
-        The final item yielded will always be an empty ``b''``.
+        The final item yielded will always be an empty ``b''`` *data*.
 
         Note that you can only iterate through a :class:`ChunkedBody` instance
         once.
 
 
-:class:`ChunkedBodyWrapper` class
+:class:`ChunkedBodyIter` class
 ---------------------------------
 
-.. class:: ChunkedBodyWrapper(source)
+.. class:: ChunkedBodyIter(source)
+
+    Wraps an arbitrary iterable yielding chunks of a request or response body.
+
+    This class allows a chunked-encoded HTTP body to be piecewise generated
+    on-the-fly.
+
+    On the client side, this can be used to generate the client request body.
+
+    On the server side, this can be used to generate the server response body.
+
+    *source* must yield a series of ``(data, extension)`` tuples, and must
+    always yield at least one item.
+
+    The final ``(data, extension)`` item, and only the final item, must have
+    an empty *data* value of ``b''``.
+
+    For example:
+
+    >>> from degu.base import ChunkedBodyIter
+    >>> def generate_chunked_body():
+    ...     yield (b'hello', None)
+    ...     yield (b'world', ('foo', 'bar'))
+    ...     yield (b'', None)
+    ...
+    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> list(body)
+    [(b'hello', None), (b'world', ('foo', 'bar')), (b'', None)]
+
+    A :exc:`ChunkError` will be raised if the *data* in the final chunk isn't
+    empty:
+
+    >>> def generate_chunked_body():
+    ...     yield (b'hello', None)
+    ...     yield (b'world', ('foo', 'bar'))
+    ...
+    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    degu.base.ChunkError: final chunk data was not empty
+
+    Likewise, a :exc:`ChunkError` will be raised if a chunk with empty *data*
+    is followed by a chunk with non-empty *data*:
+
+    >>> def generate_chunked_body():
+    ...     yield (b'hello', None)
+    ...     yield (b'', None)
+    ...     yield (b'world', None)
+    ...
+    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    degu.base.ChunkError: non-empty chunk data after empty
+
+    Note that you can only iterate through a :class:`ChunkedBodyIter` once.  If
+    you try to iterate through it a further time, a :exc:`BodyClosedError` will
+    be raised.
+
+    .. attribute:: source
+
+        The *source* iterable passed to the constructor.
+
+    .. attribute:: closed
+
+        Initially ``False``, will be ``True`` after body is fully consumed.
+
 
 
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1

@@ -31,9 +31,9 @@ from os import path
 from .base import (
     TYPE_ERROR,
     Body,
-    BodyWrapper,
+    BodyIter,
     ChunkedBody,
-    ChunkedBodyWrapper,
+    ChunkedBodyIter,
     makefiles,
     read_preamble,
     parse_headers,
@@ -297,13 +297,13 @@ def validate_response(request, response):
             raise ValueError(
                 "headers['content-length'] != len(body): {} != {}".format(headers['content-length'], len(body))
             )
-    elif isinstance(body, (Body, BodyWrapper)):
+    elif isinstance(body, (Body, BodyIter)):
         headers.setdefault('content-length', body.content_length)
         if headers['content-length'] != body.content_length:
             raise ValueError(
                 "headers['content-length'] != body.content_length: {} != {}".format(headers['content-length'], body.content_length)
             )
-    elif isinstance(body, (ChunkedBody, ChunkedBodyWrapper)):
+    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
         headers.setdefault('transfer-encoding', 'chunked') 
     elif body is not None:
         raise TypeError(
@@ -585,9 +585,9 @@ class Server:
         return {
             'rgi.version': (0, 1),
             'rgi.Body': Body,
-            'rgi.BodyWrapper': BodyWrapper,
+            'rgi.BodyIter': BodyIter,
             'rgi.ChunkedBody': ChunkedBody,
-            'rgi.ChunkedBodyWrapper': ChunkedBodyWrapper,
+            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,

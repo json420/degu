@@ -172,42 +172,6 @@ were left out for brevity).
 
 
 
-Trade-offs
-----------
-
-Degu is focused on:
-
-    * **Security** - Degu is focused on security, even when at the expense of
-      compatibility; the more secure Degu can be, the more we can consider
-      exposing highly interesting platform features over HTTP
-
-    * **High-throughput at low-concurrency** - being able to handle 100k
-      concurrent connections doesn't necessarily mean you can keep a 10GbE local
-      network saturated with just a few concurrent connections; Degu is being
-      optimized for the latter, even when (possibly) at the expense of the
-      former
-
-    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
-      configure an `ssl.SSLContext`_; although this means being compatible with
-      fewer HTTP clients, Degu is built from the assumption that you have
-      control of both endpoints, and that the client is likely a
-      :class:`degu.client.SSLClient` 
-
-    * **Full IPv6 address semantics** - on both the server and client, you use
-      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
-      needed for `link-local addresses`_; on the other hand, the Degu server
-      doesn't support virtual hosts, SNI, or in general doing the right thing
-      when the "official" hostname is a DNS name... Degu servers are expected to
-      be reached be IP address alone (either an IPv6 or IPv4 address)
-
-.. note::
-
-    In contrast to the server, the Degu client does aim to support virtual hosts
-    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
-    `CouchDB`_ servers.
-
-
-
 Example: HTTP over AF_UNIX
 --------------------------
 
@@ -264,8 +228,358 @@ This is especially critical for `Novacut`_, which is built as a set of
 network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
-For more details, see the documentation for the :mod:`degu.server` and
-:mod:`degu.client` modules.
+
+
+Request & response bodies
+-------------------------
+
+As exciting as our first two examples were, you may have noticed that no request
+or response bodies were used.
+
+The reason is because this is a broad and complex topic in Degu, especially as
+Degu fully exposes HTTP chunked transfer-encoding semantics.
+
+However, for your essential survival guide, you only need to know three things:
+
+    1. Degu uses ``None`` to represent the absence of an HTTP body
+
+    2. When you receive an HTTP body, it will always have a ``read()`` method
+       you can use to retrieve its contents
+
+    3. When you send an HTTP body, you can always send a ``bytes`` instance
+
+Before we dive into the details, here's a quick example:
+
+>>> def hello_response_body(session, request):
+...     return (200, 'OK', {}, b'hello, world')
+...
+>>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
+>>> client = Client(server.address)
+>>> conn = client.connect()
+>>> response = conn.request('GET', '/')
+
+Notice that this time the response body is a :class:`degu.base.Body` instance,
+rather than ``None``:
+
+>>> response.body
+Body(<rfile>, 12)
+
+The ``body.chunked`` attribute will be ``True`` when the body uses chunked
+transfer-encoding, and will be ``False`` when the body has a content-length:
+
+>>> response.body.chunked
+False
+
+As this body is not chunk-encoded, it has a ``content_length`` attribute, which
+will match the content-length in the response headers:
+
+>>> response.body.content_length
+12
+>>> response.headers
+{'content-length': 12}
+
+Finally, we can use the ``body.read()`` method to read its content:
+
+>>> response.body.read()
+b'hello, world'
+>>> conn.close()
+>>> server.terminate()
+
+
+IO abstractions
+---------------
+
+On both the client and server ends, Degu uses the same set of shared IO
+abstractions to represent HTTP request and response bodies.
+
+As the IO *directions* of the request and response are flipped depending on
+whether you're looking at things from a client vs server perspective, it's
+helpful to think in terms HTTP *input* bodies and HTTP *output* bodies.
+
+An **HTTP input body** will always be one of three types:
+
+    * ``None`` --- meaning no HTTP input body
+
+    * :class:`degu.base.Body` --- an HTTP input body with a content-length
+
+    * :class:`degu.base.ChunkedBody` --- an HTTP input body that uses chunked
+      transfer-encoding
+
+From the client perspective, our input is the HTTP response body received from
+the server.
+
+From the server perspective, our input is the HTTP request body received from
+the client.
+
+When the HTTP input body is not ``None``, the receiving endpoint is responsible
+for reading the entire input body, which must be completed before the another
+request/response sequence can be initiated using that same connection.
+
+Your **HTTP output body** can be:
+
+    ==================================  ========  ================
+    Type                                Encoding  Source object
+    ==================================  ========  ================
+    ``None``                            *n/a*     *n/a*
+    ``bytes``                           Length    *n/a*
+    ``bytearray``                       Length    *n/a*
+    :class:`degu.base.Body`             Length    File-like object
+    :class:`degu.base.BodyIter`         Length    An iterable
+    :class:`degu.base.ChunkedBody`      Chunked   File-like object
+    :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
+    ==================================  ========  ================
+
+From the client perspective, our output is the HTTP request body sent to the
+server.
+
+From the server perspective, our output is the HTTP response body sent to the
+client.
+
+The sending endpoint doesn't directly write the output, but instead only
+*specifies* the output to be written, after which the client or server library
+internally handles the writing.
+
+**Server agnostic** RGI applications are generally possible.
+
+These four IO abstraction classes are exposed in the RGI *session* argument
+(similar to the WSGI ``environ['wsgi.file_wrapper']``):
+
+    ==================================  =====================================
+    Exposed via                         Degu implementation
+    ==================================  =====================================
+    ``session['rgi.Body']``             :class:`degu.base.Body`
+    ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
+    ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
+    ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
+    ==================================  =====================================
+
+If server applications only use these wrapper classes via the *session* argument
+(rather than directly importing them from :mod:`degu.base`), they are kept
+abstracted from Degu as an implementation, and could potentially run on other
+HTTP servers implemented the :doc:`rgi`.
+
+The place where this breaks down a bit is with something like our SSL
+reverse-proxy example.  Were you using the Degu client but not running on the
+Degu server, you couldn't *directly* use the incoming HTTP request body in your
+forwarded client request.  Likewise, you couldn't *directly* use the response
+body from the upstream HTTP server in your application response.
+
+In both directions, these HTTP input bodies would need to be wrapped in a
+``session['rgi.Body']`` or ``session['rgi.ChunkedBody']`` instance as
+appropriate (but no wrapping is needed when the HTTP body is ``None``).
+
+
+
+Example: chunked encoding
+-------------------------
+
+For our final example, we'll show how chunked transfer-encoding is fully exposed
+in Degu.
+
+For good measure, we'll toss in HTTP bodies with a content-length, just to
+compare and contrast.
+
+We'll also demonstrate how to use the :class:`degu.base.BodyIter` and
+:class:`degu.base.ChunkedBodyIter` classes to produce your HTTP output body,
+both for the server response body and the client request body.
+
+First, we'll define two silly Python generator functions to product the server
+response body, one for chunked transfer-encoding, and another for 
+content-length encoding:
+
+>>> def chunked_response_body(echo):
+...     yield (echo, None)
+...     yield (b' ', None)
+...     yield (b'are', None)
+...     yield (b' ', None)
+...     yield (b'belong', ('extra', 'special'))
+...     yield (b' ', None)
+...     yield (b'to', None)
+...     yield (b' ', None)
+...     yield (b'us', None)
+...     yield (b'', None)
+...
+>>> def response_body(echo):
+...     yield echo
+...     yield b' '
+...     yield b'are'
+...     yield b' '
+...     yield b'belong'
+...     yield b' '
+...     yield b'to'
+...     yield b' '
+...     yield b'us'
+... 
+>>> len(b''.join(response_body(b''))) == 17  # 17 used below
+True
+
+Second, we'll define an RGI application that will return a response body using
+chunked transfer encoding if we ``POST /chunked``, and will return a body with
+a content-length if we ``POST /length``:
+
+>>> def rgi_io_app(session, request):
+...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
+...         return (404, 'Not Found', {}, None)
+...     if request['method'] != 'POST':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request['body'] is None:
+...         return (400, 'Bad Request', {}, None)
+...     echo = request['body'].read()  # Body/ChunkedBody agnostic
+...     if request['path'][0] == 'chunked':
+...         body = session['rgi.ChunkedBodyIter'](chunked_response_body(echo))
+...     else:
+...         body = session['rgi.BodyIter'](response_body(echo), len(echo) + 17)
+...     return (200, 'OK', {}, body)
+... 
+
+As usual, we'll start a throw-away server and create a client:
+
+>>> server = TempServer(('127.0.0.1', 0), None, rgi_io_app)
+>>> client = Client(server.address)
+
+For now we'll just use a simple ``bytes`` instance for the client request body.
+For example, if we ``POST /chunked``:
+
+>>> conn = client.connect()
+>>> response = conn.request('POST', '/chunked', {}, b'All your base')
+
+Notice that a :class:`degu.base.ChunkedBody` is returned:
+
+>>> response.body.chunked
+True
+>>> response.body
+ChunkedBody(<rfile>)
+>>> response.headers
+{'transfer-encoding': 'chunked'}
+
+We can easily iterate through the ``(data, extension)`` tuples for each chunk
+in the chunk encoded response like this:
+
+>>> for (data, extension) in response.body:
+...     print((data, extension))
+...
+(b'All your base', None)
+(b' ', None)
+(b'are', None)
+(b' ', None)
+(b'belong', ('extra', 'special'))
+(b' ', None)
+(b'to', None)
+(b' ', None)
+(b'us', None)
+(b'', None)
+
+(Note that :meth:`degu.base.ChunkedBody.readchunk()` can also be used to
+manually step through the chunks.)
+
+:meth:`degu.base.ChunkedBody.read()` can be used to accumulate all the chunk
+data into a single ``bytearray``, at the expense of loosing the exact chunk data
+boundaries and any chunk extensions:
+
+>>> response = conn.request('POST', '/chunked', {}, b'All your base')
+>>> response.body.read()
+bytearray(b'All your base are belong to us')
+
+API-wise, ``body.read()`` can always be used without worrying about the
+transfer-encoding, but in real applications you should be very cautions about
+this do the possibility of unbounded memory usage with chunked
+transfer-encoding.
+
+But at least for illustration, note that :meth:`degu.base.ChunkedBody.read()`
+is basically equivalent to :meth:`degu.base.Body.read()`.
+
+For example, if we ``POST /length``:
+
+>>> response = conn.request('POST', '/length', {}, b'All your base')
+
+Notice that the response body is a :class:`degu.base.Body` instance:
+
+>>> response.body.chunked
+False
+>>> response.body
+Body(<rfile>, 30)
+>>> response.headers
+{'content-length': 30}
+
+And that we get the expected result from ``body.read()``:
+
+>>> response.body.read()
+b'All your base are belong to us'
+
+For one last bit of fancy, you can likewise use an arbitrary iterable to
+generate your HTTP client request body.  Let's define a Python generator to be
+used with chunked-transfer encoding:
+
+>>> def chunked_request_body():
+...     yield (b'All',        None)
+...     yield (b' ',          None)
+...     yield (b'your',       None)
+...     yield (b' ',          None)
+...     yield (b'*something', None)
+...     yield (b' ',          ('key', 'value'))
+...     yield (b'else*',      ('chunk', 'extensions'))
+...     yield (b'',           ('are', 'neat'))
+...
+
+To use this generator as our request body, we need to wrap it in a
+:class:`degu.base.ChunkedBodyIter`, like this:
+
+>>> from degu.base import ChunkedBodyIter
+>>> body = ChunkedBodyIter(chunked_request_body())
+
+And then if we ``POST /chunked``:
+
+>>> response = conn.request('POST', '/chunked', {}, body)
+>>> response.body.read()
+bytearray(b'All your *something else* are belong to us')
+
+Or if we ``POST /length``:
+
+>>> body = ChunkedBodyIter(chunked_request_body())
+>>> response = conn.request('POST', '/length', {}, body)
+>>> response.body.read()
+b'All your *something else* are belong to us'
+
+Well, that's all the time for fancy we have now:
+
+>>> conn.close()
+>>> server.terminate()
+
+
+
+Trade-offs
+----------
+
+Degu is focused on:
+
+    * **Security** - Degu is focused on security, even when at the expense of
+      compatibility; the more secure Degu can be, the more we can consider
+      exposing highly interesting platform features over HTTP
+
+    * **High-throughput at low-concurrency** - being able to handle 100k
+      concurrent connections doesn't necessarily mean you can keep a 10GbE local
+      network saturated with just a few concurrent connections; Degu is being
+      optimized for the latter, even when (possibly) at the expense of the
+      former
+
+    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
+      configure an `ssl.SSLContext`_; although this means being compatible with
+      fewer HTTP clients, Degu is built from the assumption that you have
+      control of both endpoints, and that the client is likely a
+      :class:`degu.client.SSLClient` 
+
+    * **Full IPv6 address semantics** - on both the server and client, you use
+      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
+      needed for `link-local addresses`_; on the other hand, the Degu server
+      doesn't support virtual hosts, SNI, or in general doing the right thing
+      when the "official" hostname is a DNS name... Degu servers are expected to
+      be reached be IP address alone (either an IPv6 or IPv4 address)
+
+.. note::
+
+    In contrast to the server, the Degu client does aim to support virtual hosts
+    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
+    `CouchDB`_ servers.
 
 
 
@@ -273,7 +587,7 @@ HTTP/1.1 subset
 ---------------
 
 For simplicity, performance, and especially security, the Degu server and client
-support only a subset of `HTTP/1.1`_ features.
+support only a rather idealized subset of `HTTP/1.1`_ features.
 
 Although the Degu server and client *generally* operate in an HTTP/1.1
 compliant fashion themselves, they do *not* support all valid HTTP/1.1 features
