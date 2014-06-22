@@ -292,7 +292,7 @@ IO abstractions
 On both the client and server ends, Degu uses the same set of shared IO
 abstractions to represent HTTP request and response bodies.
 
-As the IO directions of the request and response are flipped depending on
+As the IO *directions* of the request and response are flipped depending on
 whether you're looking at things from a client vs server perspective, it's
 helpful to think in terms HTTP *input* bodies and HTTP *output* bodies.
 
