@@ -482,7 +482,7 @@ bytearray(b'All your base are belong to us')
 
 API-wise, ``body.read()`` can always be used without worrying about the
 transfer-encoding, but in real applications you should be very cautions about
-this do the possibility of unbounded memory usage with chunked
+this due to the possibility of unbounded memory usage with chunked
 transfer-encoding.
 
 But at least for illustration, note that :meth:`degu.base.ChunkedBody.read()`
