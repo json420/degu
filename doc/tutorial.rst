@@ -153,8 +153,8 @@ That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
 :class:`degu.misc.TempSSLServer` instance is garbage collected).
 
-Finally, we'll need a :class:`degu.client.SSLClient` so we can make requests to
-our ``proxy_server``:
+We'll need a :class:`degu.client.SSLClient` so we can make requests to our
+``proxy_server``:
 
 >>> from degu.client import SSLClient, build_client_sslctx
 >>> sslctx = build_client_sslctx(pki.get_client_config())
@@ -162,6 +162,12 @@ our ``proxy_server``:
 >>> proxy_conn = proxy_client.connect()
 >>> proxy_conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+Finally, we'll *shut it down*:
+
+>>> proxy_conn.close()
+>>> proxy_server.terminate()
+>>> server.terminate()
 
 This example is based on real-world Degu usage.  This is more or less how
 `Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_ (although many details
@@ -215,6 +221,13 @@ And then, as in our previous example, wa can create a
 >>> conn = client.connect()
 >>> conn.request('GET', '/')
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+Finally, we'll *shut it down*:
+
+>>> conn.close()
+>>> server.terminate()
+>>> import shutil
+>>> shutil.rmtree(tmpdir)
 
 The important point is that both the Degu server and client keep 3rd-party
 applications highly abstracted from what the underlying socket family will be
@@ -275,10 +288,13 @@ will match the content-length in the response headers:
 >>> response.headers
 {'content-length': 12}
 
-Finally, we can use the ``body.read()`` method to read its content:
+We can use the ``body.read()`` method to read its content:
 
 >>> response.body.read()
 b'hello, world'
+
+Finally, we'll *shut it down*:
+
 >>> conn.close()
 >>> server.terminate()
 
@@ -508,7 +524,7 @@ b'All your base are belong to us'
 For one last bit of fancy, you can likewise use an arbitrary iterable to
 generate your client-side request body.
 
-So let's define a third silly Python generator function to be the source for a
+So let's define a third silly Python generator function to generate the 
 client-side request body using chunked trasfer-encoding:
 
 >>> def chunked_request_body():
