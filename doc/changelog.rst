@@ -87,7 +87,7 @@ Breaking public API changes:
     * RGI server applications now take two arguments when handling requests: a
       *session* and a *request*, both ``dict`` instances; the *request* argument
       now only contains strictly per-request information, whereas the
-      server-wide and pre-connection information has been moved into the new
+      server-wide and per-connection information has been moved into the new
       *session* argument
 
     * Replace previously separate input and output abstractions with new unified

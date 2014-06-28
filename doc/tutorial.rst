@@ -170,8 +170,7 @@ Finally, we'll *shut it down*:
 >>> server.terminate()
 
 This example is based on real-world Degu usage.  This is more or less how
-`Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_ (although many details
-were left out for brevity).
+`Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_.
 
 
 
