@@ -320,7 +320,7 @@ Parsing functions
     less than *content_length*:
 
     >>> body = BodyIter(generate_body(), 11)
-    >>> list(body)
+    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     degu.base.UnderFlowError: received 10 bytes, expected 11
@@ -329,7 +329,7 @@ Parsing functions
     greater than *content_length*:
 
     >>> body = BodyIter(generate_body(), 9)
-    >>> list(body)
+    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     degu.base.OverFlowError: received 10 bytes, expected 9
@@ -392,7 +392,7 @@ Parsing functions
 
     Note that you can only iterate through a :class:`ChunkedBody` once:
 
-    >>> list(body)
+    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
     degu.base.BodyClosedError: body already fully read: ChunkedBody(<rfile>)
