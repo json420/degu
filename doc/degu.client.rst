@@ -383,27 +383,52 @@ Helper functions
 
         Make an HTTP request.
 
-        The *method* must be ``'GET'``, ``'PUT'``, ``'POST'``, ``'DELETE'``, or
-        ``'HEAD'``.
+        The return value is a :class:`Response` namedtuple.
+
+        The *method* must be ``'GET'``, ``'HEAD'``, ``'DELETE'``, ``'PUT'``, or
+        ``'POST'``.
 
         The *uri* must be an ``str`` starting with ``'/'``, optionally including
         a query string.  For example, these are all valid *uri* values::
 
             /
-            /foo/bar
+            /foo
             /foo/bar?stuff=junk
 
         The *headers*, if provided, must be a ``dict``.  All header names (keys)
         must be lowercase as produced by ``str.casefold()``.
 
-        The *body*, if provided, must be a ``bytes``, ``bytearray``, or
-        ``io.BufferedReader`` instance, or an instance of one of the two
-        :mod:`degu.base` HTTP body abstraction classes:
+        The *body*, if provided, can be:
 
-            * :class:`degu.base.Body`
-            * :class:`degu.base.ChunkedBody`
+            ==================================  ========  ================
+            Type                                Encoding  Source object
+            ==================================  ========  ================
+            ``None``                            *n/a*     *n/a*
+            ``bytes``                           Length    *n/a*
+            ``bytearray``                       Length    *n/a*
+            :class:`degu.base.Body`             Length    File-like object
+            :class:`degu.base.BodyIter`         Length    An iterable
+            :class:`degu.base.ChunkedBody`      Chunked   File-like object
+            :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
+            ==================================  ========  ================
 
-        The return value is a :class:`Response` namedtuple.
+        Note that the *body* must be ``None`` when the *method* is ``'GET'``,
+        ``'HEAD'``, or ``'DELETE'``.
+
+        If you want your request body to be directly uploaded from a regular
+        file, simple wrap it in a :class:`degu.base.Body`.  It will be uploaded
+        from the current seek position in the file up to the specified
+        *content_length*.  For example, this will upload 76 bytes from the data
+        slice ``[1700:1776]``:
+
+        >>> from degu.client import Client
+        >>> from degu.base import Body
+        >>> client = Client(('127.0.0.1', 56789))
+        >>> conn = client.connect()  #doctest: +SKIP
+        >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
+        >>> fp.seek(1700)  #doctest: +SKIP
+        >>> body = Body(fp, 76)  #doctest: +SKIP
+        >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
 
 
