@@ -416,7 +416,7 @@ Helper functions
         ``'HEAD'``, or ``'DELETE'``.
 
         If you want your request body to be directly uploaded from a regular
-        file, simple wrap it in a :class:`degu.base.Body`.  It will be uploaded
+        file, simply wrap it in a :class:`degu.base.Body`.  It will be uploaded
         from the current seek position in the file up to the specified
         *content_length*.  For example, this will upload 76 bytes from the data
         slice ``[1700:1776]``:
