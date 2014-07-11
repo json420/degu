@@ -201,22 +201,22 @@ Helper functions
     The *config* must be a ``dict`` instance, which can be empty, or can
     contain any of the following keys:
 
-        * ``'check_hostname'`` - whether to check that the server hostname
+        * ``'check_hostname'`` --- whether to check that the server hostname
           matches the hostname in its SSL certificate; this value must be
           ``True`` or ``False`` and is directly used to set the
           `ssl.SSLContext.check_hostname`_ attribute; if not provided, this
           defaults to ``True``
 
-        * ``'ca_file'`` and/or ``'ca_path'`` - an ``str`` providing the path of
-          the file or directory, respectively, containing the trusted CA
+        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
+          of the file or directory, respectively, containing the trusted CA
           certificates used to verify server certificates when making
           connections; if neither of these are provided, then the default
           system-wide CA certificates are used; also note that when neither of
           these of these are provided, ``'check_hostname'`` must be ``True``, as
           this is the only way to securely use the system-wide CA certificates
 
-        * ``'cert_file'`` and ``'key_file'`` - an ``str`` providing the path of
-          the client certificate file and the client private key file,
+        * ``'cert_file'`` and ``'key_file'`` --- an ``str`` providing the path
+          of the client certificate file and the client private key file,
           respectively; you can omit ``'key_file'`` if the private key is
           included in the client certificate file
 

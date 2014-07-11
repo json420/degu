@@ -139,9 +139,8 @@ Linux abstract socket name assigned by the kernel, something like::
 
 
 
-
-The :class:`Server` class
--------------------------
+:class:`Server` class
+---------------------
 
 .. class:: Server(address, app)
 
@@ -181,16 +180,75 @@ The :class:`Server` class
         The caller will block forever.
 
 
-The :class:`SSLServer` class
-----------------------------
+
+:class:`SSLServer` subclass
+---------------------------
 
 .. class:: SSLServer(sslctx, addresss, app)
+
 
 
 Functions
 ---------
 
-.. autofunction:: build_server_sslctx
+.. function:: build_server_sslctx(config)
+
+    Build an `ssl.SSLContext`_ appropriately configured for server-side use.
+
+    This function complements the client-side setup built with
+    :func:`degu.client.build_client_sslctx()`.
+
+    The *config* must be a ``dict`` instance, which must include at least two
+    keys:
+
+        * ``'cert_file'`` --- an ``str`` providing the path of the server
+          certificate file
+
+        * ``'key_file'`` --- an ``str`` providing the path of the server key
+          file
+
+    And can optionally include either of the keys:
+
+        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
+          of the file or directory, respectively, containing the trusted CA
+          certificates used to verify client certificates on incoming client
+          connections
+
+        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
+          ``'ca_path'`` are provided, this must be provided and must be
+          ``True``; this is to prevent accidentally allowing anonymous clients
+          by merely omitting the ``'ca_file'`` and ``'ca_path'``
+
+    For example, typical Degu P2P use will use a *config* something like this:
+
+    >>> from degu.server import build_server_sslctx
+    >>> config = {
+    ...     'cert_file': '/my/server.cert',
+    ...     'key_file': '/my/server.key',
+    ...     'ca_file': '/my/client.ca',
+    ... }
+    >>> sslctx = build_server_sslctx(config)  #doctest: +SKIP
+
+    Although you can directly build your own server-side `ssl.SSLContext`_, use
+    of this function eliminates many potential security gotchas that can occur
+    through misconfiguration.
+
+    Opinionated security decisions this function makes:
+
+        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
+
+        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
+          ``'allow_unauthenticated_clients'`` is provided in the *config* (and
+          is ``True``), in which case the *verify_mode* is set to
+          ``ssl.CERT_NONE``
+
+        * The *options* unconditionally include ``ssl.OP_NO_COMPRESSION``,
+          thereby preventing `CRIME-like attacks`_, and also allowing lower
+          CPU usage and higher throughput on non-compressible payloads like
+          media files
+
+        * The *cipher* is unconditionally set to
+          ``'ECDHE-RSA-AES256-GCM-SHA384'``
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
@@ -199,3 +257,7 @@ Functions
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
+.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
+.. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
+.. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
+
