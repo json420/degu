@@ -28,7 +28,7 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import DummySocket, random_data, random_chunks
+from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base
@@ -801,6 +801,14 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             "invalid body type: <class 'str'>: 'hello'"
         )
+
+
+class FuzzTestFunctions(FuzzTestCase):
+    def test_read_preamble(self):
+        self.fuzz(base.read_preamble)
+
+    def test_read_chunk(self):
+        self.fuzz(base.read_chunk)
 
 
 class TestBody(TestCase):

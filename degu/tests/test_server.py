@@ -824,8 +824,8 @@ class TestFunctions(TestCase):
         )
 
 
-class FuzzTestReadFunctions(FuzzTestCase):
-    def test_read_request_fuzz(self):
+class FuzzTestFunctions(FuzzTestCase):
+    def test_read_request(self):
         self.fuzz(server.read_request)
 
 
