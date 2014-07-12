@@ -149,6 +149,14 @@ class TestBodyClosedError(TestCase):
         self.assertEqual(str(e), 'body already fully read: {!r}'.format(body))
 
 
+class FuzzTestFunctions(FuzzTestCase):
+    def test_read_preamble(self):
+        self.fuzz(base.read_preamble)
+
+    def test_read_chunk(self):
+        self.fuzz(base.read_chunk)
+
+
 class TestFunctions(TestCase):
     def test_makefiles(self):
         sock = DummySocket()
@@ -801,14 +809,6 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             "invalid body type: <class 'str'>: 'hello'"
         )
-
-
-class FuzzTestFunctions(FuzzTestCase):
-    def test_read_preamble(self):
-        self.fuzz(base.read_preamble)
-
-    def test_read_chunk(self):
-        self.fuzz(base.read_chunk)
 
 
 class TestBody(TestCase):

@@ -141,7 +141,7 @@ class FuzzTestCase(TestCase):
 
         Expected result: given an rfile containing 8192 random bytes, func()
         should raise a ValueError every time, should read at least 1 byte, and
-        should never read more than the first 4096 bytes.
+        should never read more than 4096 bytes.
         """
         for i in range(1000):
             data = os.urandom(MAX_LINE_BYTES * 2)

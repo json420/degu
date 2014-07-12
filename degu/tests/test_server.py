@@ -55,6 +55,11 @@ def standard_harness_app(session, request):
         return (code, reason, {}, None)
 
 
+class FuzzTestFunctions(FuzzTestCase):
+    def test_read_request(self):
+        self.fuzz(server.read_request)
+
+
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
         # Bad config type:
@@ -822,11 +827,6 @@ class TestFunctions(TestCase):
         self.assertEqual(wfile.getvalue(),
             b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
-
-
-class FuzzTestFunctions(FuzzTestCase):
-    def test_read_request(self):
-        self.fuzz(server.read_request)
 
 
 class TestHandler(TestCase):
