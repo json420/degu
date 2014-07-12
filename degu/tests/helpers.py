@@ -140,13 +140,14 @@ class FuzzTestCase(TestCase):
         Perform random fuzz test on *func*.
 
         Expected result: given an rfile containing 8192 random bytes, func()
-        should raise a ValueError every time, and should never read more than
-        the first 4096 bytes.
+        should raise a ValueError every time, should read at least 1 byte, and
+        should never read more than the first 4096 bytes.
         """
         for i in range(1000):
             data = os.urandom(MAX_LINE_BYTES * 2)
             rfile = io.BytesIO(data)
             with self.assertRaises(ValueError):
                 func(rfile, *args)
+            self.assertGreaterEqual(rfile.tell(), 1)
             self.assertLessEqual(rfile.tell(), MAX_LINE_BYTES)
 
