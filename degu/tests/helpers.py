@@ -23,13 +23,16 @@
 Unit test helpers.
 """
 
+import io
 import os
 from os import path
 import tempfile
 import shutil
 from random import SystemRandom
+from unittest import TestCase
 
 from degu.sslhelpers import random_id
+from degu.base import MAX_LINE_BYTES
 
 
 random = SystemRandom()
@@ -125,4 +128,25 @@ class DummyFile:
 
     def close(self):
         self._calls.append('close')
+
+
+class FuzzTestCase(TestCase):
+    """
+    Base class for fuzz-testing read functions.
+    """
+
+    def fuzz(self, func, *args):
+        """
+        Perform random fuzz test on *func*.
+
+        Expected result: given an rfile containing 8192 random bytes, func()
+        should raise a ValueError every time, and should never read more than
+        the first 4096 bytes.
+        """
+        for i in range(1000):
+            data = os.urandom(MAX_LINE_BYTES * 2)
+            rfile = io.BytesIO(data)
+            with self.assertRaises(ValueError):
+                func(rfile, *args)
+            self.assertLessEqual(rfile.tell(), MAX_LINE_BYTES)
 

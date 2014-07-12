@@ -35,7 +35,7 @@ import ssl
 import json
 from hashlib import sha1
 
-from .helpers import TempDir, DummySocket, DummyFile
+from .helpers import TempDir, DummySocket, DummyFile, FuzzTestCase
 import degu
 from degu import util
 from degu.sslhelpers import random_id
@@ -738,21 +738,6 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.tell(), 46)
         self.assertEqual(rfile.read(), b'extra')
 
-    def test_read_request_fuzz(self):
-        """
-        Random fuzz test for read_request().
-
-        Expected result: given an rfile containing 8192 random bytes,
-        read_request() should raise a ValueError every time, and should never
-        read more than the first 4096 bytes.
-        """
-        for i in range(1000):
-            data = os.urandom(base.MAX_LINE_BYTES * 2)
-            rfile = io.BytesIO(data)
-            with self.assertRaises(ValueError):
-                server.read_request(rfile)
-            self.assertLessEqual(rfile.tell(), base.MAX_LINE_BYTES)
-
     def test_write_response(self):
         # Empty headers, no body:
         wfile = io.BytesIO()
@@ -837,6 +822,11 @@ class TestFunctions(TestCase):
         self.assertEqual(wfile.getvalue(),
             b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
+
+
+class FuzzTestReadFunctions(FuzzTestCase):
+    def test_read_request_fuzz(self):
+        self.fuzz(server.read_request)
 
 
 class TestHandler(TestCase):
