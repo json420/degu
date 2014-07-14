@@ -28,7 +28,7 @@ Authors:
 
 
 static inline PyObject *
-_degu_read_line(PyObject *rfile, uint8_t is_first_line)
+_degu_read_first_line(PyObject *rfile)
 {
     PyObject *line = NULL;
     Py_ssize_t size = 0;
@@ -53,10 +53,10 @@ _degu_read_line(PyObject *rfile, uint8_t is_first_line)
     // Check length and value of bytes returned by rfile.readline():
     size = PyBytes_GET_SIZE(line);
     data = PyBytes_AS_STRING(line);
-    if (is_first_line && size <= 0) {
+    if (size <= 0) {
         PyErr_Format(PyExc_ValueError, "EmptyPreambleError");
     }
-    else if (size < 2 || strncmp(data + (size - 2), "\r\n", 2) != 0) {
+    else if (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError, "Bad Line Termination");
     }
     else {
@@ -66,6 +66,79 @@ _degu_read_line(PyObject *rfile, uint8_t is_first_line)
     Py_DECREF(line);
     return text;
 }
+
+static inline PyObject *
+_degu_read_header_line(PyObject *rfile)
+{
+    PyObject *line = NULL;
+    Py_ssize_t size = 0;
+    const char *data = NULL;
+    PyObject *text = NULL;
+
+    // Call rfile.readline():
+    line = PyObject_CallMethod(rfile, "readline", "n", MAX_LINE_BYTES);
+    if (!line) {
+        return NULL;
+    }
+
+    // Check type returned by rfile.readline():
+    if (!PyBytes_CheckExact(line)) {
+        PyErr_Format(PyExc_TypeError,
+            "rfile.readline() must return a bytes instance"
+        );
+        Py_DECREF(line);
+        return NULL;
+    }
+
+    // Check length and value of bytes returned by rfile.readline():
+    size = PyBytes_GET_SIZE(line);
+    data = PyBytes_AS_STRING(line);
+    if (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0) {
+        PyErr_Format(PyExc_ValueError, "Bad Header Line Termination");
+    }
+    else {
+        text = PyUnicode_DecodeLatin1(data, size - 2, NULL);
+    }
+
+    Py_DECREF(line);
+    return text;
+}
+
+
+static inline PyObject *
+_degu_read_last_line(PyObject *rfile)
+{
+    PyObject *line = NULL;
+    Py_ssize_t size = 0;
+    const char *data = NULL;
+
+    // Call rfile.readline():
+    line = PyObject_CallMethod(rfile, "readline", "n", 2);
+    if (!line) {
+        return NULL;
+    }
+
+    // Check type returned by rfile.readline():
+    if (!PyBytes_CheckExact(line)) {
+        PyErr_Format(PyExc_TypeError,
+            "rfile.readline() must return a bytes instance"
+        );
+        Py_DECREF(line);
+        return NULL;
+    }
+
+    // Check length and value of bytes returned by rfile.readline():
+    size = PyBytes_GET_SIZE(line);
+    data = PyBytes_AS_STRING(line);
+    if (size < 2 || memcmp(data, "\r\n", 2) != 0) {
+        PyErr_Format(PyExc_ValueError, "Bad Preamble Termination");
+        Py_DECREF(line);
+        return NULL;
+    }
+    Py_DECREF(line);
+    Py_RETURN_NONE;
+}
+
 
 static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
@@ -85,7 +158,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     Py_INCREF(rfile);
 
     // Read the first line:
-    first_line = _degu_read_line(rfile, 1);
+    first_line = _degu_read_first_line(rfile);
     if (!first_line) {
         goto done;
     }
@@ -93,7 +166,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        line = _degu_read_line(rfile, 0);
+        line = _degu_read_header_line(rfile);
         if (!line) {
             goto done;
         }
@@ -104,8 +177,15 @@ degu_read_preamble(PyObject *self, PyObject *args)
         Py_DECREF(line);
         line = NULL;
     }
-    line = _degu_read_line(rfile, 0);
-    if (!line || PyUnicode_GET_LENGTH(line) <= 0) {
+
+    // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+    // we just need to check for the final CRLF preamble termination:
+    line = _degu_read_last_line(rfile);
+    if (!line) {
+        goto done;
+    }
+    if (PyUnicode_GET_LENGTH(line) <= 0) {
+        PyErr_Format(PyExc_ValueError, "Too many header lines");
         goto done;
     }
 
