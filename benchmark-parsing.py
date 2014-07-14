@@ -7,6 +7,7 @@ gc.enable()
 
 from io import BytesIO
 
+import _degu
 from degu.client import parse_status, write_request
 from degu.server import parse_request, read_request, write_response
 from degu.base import read_preamble, parse_headers, write_chunk
@@ -81,6 +82,7 @@ run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 
 print('\nHigh-level parsers:')
 run('read_preamble(BytesIO(request_preamble))')
+run('_degu.read_preamble(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")

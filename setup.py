@@ -32,7 +32,7 @@ if sys.version_info < (3, 4):
 import os
 from os import path
 import subprocess
-from distutils.core import setup
+from distutils.core import setup, Extension
 from distutils.cmd import Command
 
 import degu
@@ -119,6 +119,9 @@ setup(
     packages=[
         'degu',
         'degu.tests',
+    ],
+    ext_modules=[
+        Extension('_degu', sources=['_degu.c']),
     ],
     cmdclass={
         'test': Test,
