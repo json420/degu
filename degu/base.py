@@ -23,6 +23,11 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
+try:
+    from _degu import EmptyPreambleError, read_preamble
+except ImportError:
+    from .fallback import EmptyPreambleError, read_preamble
+
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
@@ -32,9 +37,7 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-
-class EmptyPreambleError(ConnectionError):
-    pass
+#EmptyPreambleError, read_preamble
 
 
 class UnderFlowError(Exception):
@@ -76,38 +79,6 @@ def makefiles(sock):
         sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
         sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
     )
-
-
-def read_preamble(rfile):
-    """
-    Read the HTTP request or response preamble, do low-level parsing.
-
-    The return value will be a ``(first_line, header_lines)`` tuple.
-
-    Over time, there is a good chance that parts of Degu will be replaced with
-    high-performance C extensions... and this function is a good candidate.
-    """
-    line = rfile.readline(MAX_LINE_BYTES)
-    if not line:
-        raise EmptyPreambleError()
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    first_line = line[:-2].decode('latin_1')
-    header_lines = []
-    for i in range(MAX_HEADER_COUNT):
-        line = rfile.readline(MAX_LINE_BYTES)
-        if line[-2:] != b'\r\n':
-            raise ValueError(
-                'bad header line termination: {!r}'.format(line[-2:])
-            )
-        if len(line) == 2:  # Stop on the first empty CRLF terminated line
-            return (first_line, header_lines)
-        header_lines.append(line[:-2].decode('latin_1'))
-    if rfile.read(2) != b'\r\n':
-        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
-    return (first_line, header_lines)
 
 
 def read_chunk(rfile):
