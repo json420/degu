@@ -50,9 +50,17 @@ Authors:
     } \
     line_data = PyBytes_AS_STRING(line);
 
-#define CHECK_LINE_TERMINATION() \
-    if (line_size < 2 || line_data == NULL || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
-        PyErr_SetString(PyExc_ValueError, "bad line termination"); \
+#define CRLF_START(size) \
+    ((size) < 2 ? 0 : (size) - 2)
+
+#define CHECK_LINE_TERMINATION(format) \
+    if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
+        crlf = PySequence_GetSlice(line, CRLF_START(line_size), line_size); \
+        if (crlf == NULL) { \
+            goto cleanup; \
+        } \
+        PyErr_Format(PyExc_ValueError, (format), crlf); \
+        Py_CLEAR(crlf); \
         goto cleanup; \
     }
 
@@ -67,6 +75,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *line = NULL;
     Py_ssize_t line_size = 0;
     const char *line_data = NULL;
+    PyObject *crlf = NULL;
     PyObject *first_line = NULL;
     PyObject *header_lines = NULL;
     uint8_t i;
@@ -86,7 +95,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
     }
-    CHECK_LINE_TERMINATION()
+    CHECK_LINE_TERMINATION("bad line termination: %R")
     if (line_size == 2) {
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto cleanup;
@@ -100,7 +109,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
         READ_LINE(MAX_LINE_BYTES)
-        CHECK_LINE_TERMINATION()
+        CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
@@ -115,9 +124,9 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
     READ_LINE(2)
-    if (line_size != 2 || line_data == NULL || memcmp(line_data, "\r\n", 2) != 0) {
+    if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
-            "too many headers (> %u)", MAX_LINE_BYTES
+            "too many headers (> %u)", MAX_HEADER_COUNT
         );
         goto cleanup;
     }

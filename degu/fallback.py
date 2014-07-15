@@ -42,7 +42,7 @@ def read_preamble(rfile):
     """
     line = rfile.readline(MAX_LINE_BYTES)
     if not line:
-        raise EmptyPreambleError()
+        raise EmptyPreambleError('HTTP preamble is empty')
     if line[-2:] != b'\r\n':
         raise ValueError('bad line termination: {!r}'.format(line[-2:]))
     if len(line) == 2:

@@ -28,6 +28,11 @@ try:
 except ImportError:
     from .fallback import EmptyPreambleError, read_preamble
 
+__all__ = ('EmptyPreambleError', 'read_preamble')
+
+assert issubclass(EmptyPreambleError, ConnectionError)
+assert callable(read_preamble)
+
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
@@ -36,8 +41,6 @@ FILE_BUFFER_BYTES = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
-#EmptyPreambleError, read_preamble
 
 
 class UnderFlowError(Exception):
