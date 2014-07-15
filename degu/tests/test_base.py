@@ -73,6 +73,10 @@ def casefold_headers(headers):
     )
 
 
+def random_line():
+    return '{}\r\n'.format(random_id()).encode()
+
+
 def random_lines(header_count=15):
     first_line = random_id()
     header_lines = [random_id() for i in range(header_count)]
@@ -178,11 +182,12 @@ class DummyFile:
     def __init__(self, lines):
         self._lines = lines
 
-    def read(self, size=None):
-        return self._lines.pop(0)
-
     def readline(self, size=None):
         return self._lines.pop(0)
+
+
+class UserBytes(bytes):
+    pass
 
 
 class TestFunctions(AlternatesTestCase):
@@ -193,6 +198,60 @@ class TestFunctions(AlternatesTestCase):
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
+
+    def check_bad_line_type(self, backend, lines, badtype):
+        self.assertIsInstance(lines, list)
+        self.assertGreaterEqual(len(lines), 1)
+        self.assertIsNot(badtype, bytes)
+        self.assertIn(badtype, {str, UserBytes})
+        for i in range(len(lines) - 1):
+            self.assertIs(type(lines[i]), bytes)
+        self.assertIs(type(lines[-1]), badtype)
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {!r}, should return {!r}'.format(
+                badtype, bytes
+            )
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
+    def check_bad_line_value(self, backend, lines, maxsize):
+        # Sanity checks on method args:
+        self.assertIsInstance(lines, list)
+        count = len(lines)
+        self.assertGreaterEqual(count, 1)
+        self.assertIsInstance(maxsize, int)
+        self.assertIn(maxsize, {2, base.MAX_LINE_BYTES})      
+        for i in range(count):
+            self.assertIs(type(lines[i]), bytes, i)
+        self.assertEqual(len(lines[-1]), maxsize + 1)
+
+        # Check reference counts before calling read_preamble():
+        for i in range(count):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
+        # Call read_preamble(), should raise a ValueError:
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {} bytes, expected at most {}'.format(
+                maxsize + 1, maxsize
+            )
+        )
+        self.assertEqual(rfile._lines, [])
+
+        # Finally, re-check reference counts:
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        for i in range(count):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
 
     def check_read_preamble(self, backend):
         self.assertIn(backend, (fallback, _degu))
@@ -211,72 +270,61 @@ class TestFunctions(AlternatesTestCase):
             'read_preamble() takes 1 positional argument but 2 were given'
         })
 
-        # rfile.readline() returns more than the requested size:
+        ################################################################
+        # Test when rfile.readline() does not return a `bytes` instance:
+
+        # Should raise a TypeError on the first line:
+        lines = [random_line().decode()]
+        self.check_bad_line_type(backend, lines, str)
+        lines = [UserBytes(random_line())]
+        self.check_bad_line_type(backend, lines, UserBytes)
+
+        # Should raise a TypeError on the first header line:
+        lines = [random_line(), random_line().decode()]
+        self.check_bad_line_type(backend, lines, str)
+        lines = [random_line(), UserBytes(random_line())]
+        self.check_bad_line_type(backend, lines, UserBytes)
+
+        # Should raise a TypeError on the final header line:
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT)]
+        lines.append(random_line().decode())
+        self.check_bad_line_type(backend, lines, str)
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT)]
+        lines.append(UserBytes(random_line()))
+        self.check_bad_line_type(backend, lines, UserBytes)
+
+        # Should raise a TypeError on the final CRLF preamble terminator:
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT + 1)]
+        lines.append(random_line().decode())
+        self.check_bad_line_type(backend, lines, str)
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT + 1)]
+        lines.append(UserBytes(random_line()))
+        self.check_bad_line_type(backend, lines, UserBytes)
+
+        ##############################################################
+        # Test when rfile.readline() returns more bytes than requestd:
         toobig = base.MAX_LINE_BYTES + 1
+
+        # Should raise a ValueError on the first line:
         lines = [os.urandom(toobig)]
-        rfile = DummyFile(lines.copy())
-        with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
-        self.assertEqual(str(cm.exception),
-            'rfile.readline() returned {} bytes, expected at most {}'.format(
-                toobig, base.MAX_LINE_BYTES
-            )
-        )
-        self.assertEqual(sys.getrefcount(rfile), 2)
-        self.assertEqual(rfile._lines, [])
-        for i in range(len(lines)):
-            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+        self.check_bad_line_value(backend, lines, base.MAX_LINE_BYTES)
 
-        lines = [
-            '{}\r\n'.format(random_id()).encode(),
-            os.urandom(toobig)
-        ]
-        rfile = DummyFile(lines.copy())
-        with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
-        self.assertEqual(str(cm.exception),
-            'rfile.readline() returned {} bytes, expected at most {}'.format(
-                toobig, base.MAX_LINE_BYTES
-            )
-        )
-        self.assertEqual(sys.getrefcount(rfile), 2)
-        self.assertEqual(rfile._lines, [])
-        for i in range(len(lines)):
-            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+        # Should raise a ValueError on the first header line:
+        lines = [random_line(), os.urandom(toobig)]
+        self.check_bad_line_value(backend, lines, base.MAX_LINE_BYTES)
 
-        lines = [
-            '{}\r\n'.format(random_id()).encode()
-            for i in range(base.MAX_HEADER_COUNT)
-        ]
+        # Should raise a ValueError on the final header line:
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT)]
         lines.append(os.urandom(toobig))
-        rfile = DummyFile(lines.copy())
-        with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
-        self.assertEqual(str(cm.exception),
-            'rfile.readline() returned {} bytes, expected at most {}'.format(
-                toobig, base.MAX_LINE_BYTES
-            )
-        )
-        self.assertEqual(sys.getrefcount(rfile), 2)
-        self.assertEqual(rfile._lines, [])
-        for i in range(len(lines)):
-            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+        self.check_bad_line_value(backend, lines, base.MAX_LINE_BYTES)
 
-        lines = [
-            '{}\r\n'.format(random_id()).encode()
-            for i in range(base.MAX_HEADER_COUNT + 1)
-        ]
+        # Should raise a ValueError on the final CRLF preamble terminator:
+        lines = [random_line() for i in range(base.MAX_HEADER_COUNT + 1)]
         lines.append(os.urandom(3))
-        rfile = DummyFile(lines.copy())
-        with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
-        self.assertEqual(str(cm.exception),
-            'rfile.readline() returned 3 bytes, expected at most 2'
-        )
-        self.assertEqual(sys.getrefcount(rfile), 2)
-        self.assertEqual(rfile._lines, [])
-        for i in range(len(lines)):
-            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+        self.check_bad_line_value(backend, lines, 2)
+
+        ###################################################
+        # Now tests lots of more subtle parsing variations:
 
         # No data at all, likely connection closed by other end:
         rfile = io.BytesIO(b'')

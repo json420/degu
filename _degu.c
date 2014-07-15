@@ -21,9 +21,8 @@ Authors:
     Jason Gerard DeRose <jderose@novacut.com>
 */
 
-// <class 'bytes'>
-
 #include <Python.h>
+
 
 #define MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
@@ -32,21 +31,22 @@ Authors:
     line_size = 0; \
     line_data = NULL; \
     Py_CLEAR(line); \
-    line = PyObject_CallMethod(rfile, "readline", "n", maxsize); \
+    line = PyObject_CallMethod(rfile, "readline", "n", (maxsize)); \
     if (line == NULL) { \
         goto cleanup; \
     } \
     if (!PyBytes_CheckExact(line)) { \
-        PyErr_SetString(PyExc_TypeError, \
-            "rfile.readline() must return a bytes instance" \
+        PyErr_Format(PyExc_TypeError, \
+            "rfile.readline() returned %R, should return <class 'bytes'>", \
+            line->ob_type \
         ); \
         goto cleanup; \
     } \
     line_size = PyBytes_GET_SIZE(line); \
-    if (line_size > maxsize) { \
+    if (line_size > (maxsize)) { \
         PyErr_Format(PyExc_ValueError, \
             "rfile.readline() returned %u bytes, expected at most %u", \
-            line_size, maxsize \
+            line_size, (maxsize) \
         ); \
         goto cleanup; \
     } \

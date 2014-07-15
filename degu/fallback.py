@@ -32,8 +32,43 @@ class EmptyPreambleError(ConnectionError):
 
 
 def _readline(rfile, maxsize):
-    assert isinstance(maxsize, int) and maxsize >= 2
+    """
+    Matches error checking semantics of READ_LINE() macro in _degu.c.
+
+    As the C implementation of read_preamble() is already over twice as fast
+    as the best optimized pure-Python implementation thus far concocted, it
+    makes sense to focus on making the pure-Python implementation a very correct
+    and easy to understand reference implementation, even when at the expense of
+    performance.
+
+    So although using this _readline() function means a rather hefty
+    performance hit for the pure-Python implementation, it helps define the
+    correct behavior of the dramatically higher-performance C implementation
+    (aka, the implementation you actually want to use).
+
+    But to document the performance impact, when the pure-Python
+    implementation of read_preamble() directly calls rfile.readline() with no
+    extra error checking::
+
+        122,166: fallback.read_preamble(BytesIO(request_preamble))
+
+    Compared to when the pure-Python implementation of read_preamble() uses this
+    _readline() helper function::
+
+         85,540: fallback.read_preamble(BytesIO(request_preamble))
+
+    Compared to the C implementation of read_preamble()::
+
+        286,283: _degu.read_preamble(BytesIO(request_preamble))
+    """
+    assert isinstance(maxsize, int) and maxsize in (MAX_LINE_BYTES, 2)
     line = rfile.readline(maxsize)
+    if type(line) is not bytes:
+        raise TypeError(
+            'rfile.readline() returned {!r}, should return {!r}'.format(
+                type(line), bytes
+            )
+        )
     if len(line) > maxsize:
         raise ValueError(
             'rfile.readline() returned {} bytes, expected at most {}'.format(
