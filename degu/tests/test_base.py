@@ -26,6 +26,7 @@ Unit tests for the `degu.base` module`
 from unittest import TestCase
 import os
 import io
+import sys
 from random import SystemRandom
 
 from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
@@ -40,6 +41,7 @@ try:
     import _degu
     C_EXT_AVAIL = True
 except ImportError:
+    _degu = None
     C_EXT_AVAIL = False
 
 
@@ -172,6 +174,17 @@ class FuzzTestFunctions(FuzzTestCase):
         self.fuzz(base.read_chunk)
 
 
+class DummyFile:
+    def __init__(self, lines):
+        self._lines = lines
+
+    def read(self, size=None):
+        return self._lines.pop(0)
+
+    def readline(self, size=None):
+        return self._lines.pop(0)
+
+
 class TestFunctions(AlternatesTestCase):
     def test_makefiles(self):
         sock = DummySocket()
@@ -182,6 +195,89 @@ class TestFunctions(AlternatesTestCase):
         ])
 
     def check_read_preamble(self, backend):
+        self.assertIn(backend, (fallback, _degu))
+
+        # Test number of arguments read_preamble() takes:
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble()
+        self.assertIn(str(cm.exception), {
+            'read_preamble() takes exactly 1 argument (0 given)',
+            "read_preamble() missing 1 required positional argument: 'rfile'"
+        })
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble('foo', 'bar')
+        self.assertIn(str(cm.exception), {
+            'read_preamble() takes exactly 1 argument (2 given)',
+            'read_preamble() takes 1 positional argument but 2 were given'
+        })
+
+        # rfile.readline() returns more than the requested size:
+        toobig = base.MAX_LINE_BYTES + 1
+        lines = [os.urandom(toobig)]
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {} bytes, expected at most {}'.format(
+                toobig, base.MAX_LINE_BYTES
+            )
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
+        lines = [
+            '{}\r\n'.format(random_id()).encode(),
+            os.urandom(toobig)
+        ]
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {} bytes, expected at most {}'.format(
+                toobig, base.MAX_LINE_BYTES
+            )
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
+        lines = [
+            '{}\r\n'.format(random_id()).encode()
+            for i in range(base.MAX_HEADER_COUNT)
+        ]
+        lines.append(os.urandom(toobig))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {} bytes, expected at most {}'.format(
+                toobig, base.MAX_LINE_BYTES
+            )
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
+        lines = [
+            '{}\r\n'.format(random_id()).encode()
+            for i in range(base.MAX_HEADER_COUNT + 1)
+        ]
+        lines.append(os.urandom(3))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned 3 bytes, expected at most 2'
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2, i)
+
         # No data at all, likely connection closed by other end:
         rfile = io.BytesIO(b'')
         with self.assertRaises(backend.EmptyPreambleError) as cm:

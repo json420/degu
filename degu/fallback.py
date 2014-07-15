@@ -31,6 +31,18 @@ class EmptyPreambleError(ConnectionError):
     pass
 
 
+def _readline(rfile, maxsize):
+    assert isinstance(maxsize, int) and maxsize >= 2
+    line = rfile.readline(maxsize)
+    if len(line) > maxsize:
+        raise ValueError(
+            'rfile.readline() returned {} bytes, expected at most {}'.format(
+                len(line), maxsize
+            )
+        )
+    return line
+
+
 def read_preamble(rfile):
     """
     Read the HTTP request or response preamble, do low-level parsing.
@@ -40,7 +52,7 @@ def read_preamble(rfile):
     Over time, there is a good chance that parts of Degu will be replaced with
     high-performance C extensions... and this function is a good candidate.
     """
-    line = rfile.readline(MAX_LINE_BYTES)
+    line = _readline(rfile, MAX_LINE_BYTES)
     if not line:
         raise EmptyPreambleError('HTTP preamble is empty')
     if line[-2:] != b'\r\n':
@@ -50,7 +62,7 @@ def read_preamble(rfile):
     first_line = line[:-2].decode('latin_1')
     header_lines = []
     for i in range(MAX_HEADER_COUNT):
-        line = rfile.readline(MAX_LINE_BYTES)
+        line = _readline(rfile, MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
             raise ValueError(
                 'bad header line termination: {!r}'.format(line[-2:])
@@ -58,7 +70,7 @@ def read_preamble(rfile):
         if len(line) == 2:  # Stop on the first empty CRLF terminated line
             return (first_line, header_lines)
         header_lines.append(line[:-2].decode('latin_1'))
-    if rfile.read(2) != b'\r\n':
+    if _readline(rfile, 2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
     return (first_line, header_lines)
 
