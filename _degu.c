@@ -27,21 +27,15 @@ Authors:
 #define MAX_HEADER_COUNT 15
 
 #define READ_LINE(maxsize) \
-    if (line != NULL) { \
-        Py_FatalError("line != NULL"); \
-    } \
-    if (line_size != 0) { \
-        Py_FatalError("line_size != 0"); \
-    } \
-    if (line_data != NULL) { \
-        Py_FatalError("line_data != NULL"); \
-    } \
+    line_size = 0; \
+    line_data = NULL; \
+    Py_CLEAR(line); \
     line = PyObject_CallMethod(rfile, "readline", "n", maxsize); \
     if (line == NULL) { \
         goto cleanup; \
     } \
     if (!PyBytes_CheckExact(line)) { \
-        PyErr_Format(PyExc_TypeError, \
+        PyErr_SetString(PyExc_TypeError, \
             "rfile.readline() must return a bytes instance" \
         ); \
         goto cleanup; \
@@ -49,7 +43,8 @@ Authors:
     line_size = PyBytes_GET_SIZE(line); \
     if (line_size > maxsize) { \
         PyErr_Format(PyExc_ValueError, \
-            "rfile.readline() returned %u bytes, expected at most %u", line_size, maxsize \
+            "rfile.readline() returned %u bytes, expected at most %u", \
+            line_size, maxsize \
         ); \
         goto cleanup; \
     } \
@@ -57,14 +52,9 @@ Authors:
 
 #define CHECK_LINE_TERMINATION() \
     if (line_size < 2 || line_data == NULL || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
-        PyErr_Format(PyExc_ValueError, "bad line termination"); \
+        PyErr_SetString(PyExc_ValueError, "bad line termination"); \
         goto cleanup; \
     }
-
-#define FREE_LINE() \
-    Py_CLEAR(line); \
-    line_size = 0; \
-    line_data = NULL;
 
 
 static PyObject *
@@ -78,7 +68,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *header_lines = NULL;
     uint8_t i;
     PyObject *text = NULL;
-    PyObject *tup = NULL;
+    PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
         return NULL;
@@ -90,17 +80,16 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // Read the first line:
     READ_LINE(MAX_LINE_BYTES)
     if (line_size <= 0) {
-        PyErr_Format(PyExc_ConnectionError, "HTTP preamble is empty");
+        PyErr_SetString(PyExc_ConnectionError, "HTTP preamble is empty");
         goto cleanup;
     }
     CHECK_LINE_TERMINATION()
     if (line_size == 2) {
-        PyErr_Format(PyExc_ValueError, "first preamble line is empty");
+        PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto cleanup;
     }
     first_line = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
-    FREE_LINE()
-    if (!first_line) {
+    if (first_line == NULL) {
         goto cleanup;
     }
 
@@ -112,35 +101,37 @@ degu_read_preamble(PyObject *self, PyObject *args)
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
-        if (text != NULL) {
-            Py_FatalError("text != NULL");
-        }
+        Py_CLEAR(text);
         text = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
-        FREE_LINE()
-        if (!text) {
+        if (text == NULL) {
             goto cleanup;
         }
         PyList_Append(header_lines, text);
-        Py_CLEAR(text);
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
     READ_LINE(2)
-    if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
-        PyErr_Format(PyExc_ValueError, "Too many header lines");
+    if (line_size != 2 || line_data == NULL || memcmp(line_data, "\r\n", 2) != 0) {
+        PyErr_Format(PyExc_ValueError,
+            "too many headers (> %u)", MAX_LINE_BYTES
+        );
         goto cleanup;
     }
 
 success:
-    tup = PyTuple_Pack(2, first_line, header_lines);
+    if (first_line == NULL || header_lines == NULL) {
+        Py_FatalError("very bad things");
+    }
+    ret = PyTuple_Pack(2, first_line, header_lines);
 
 cleanup:
     Py_CLEAR(rfile);
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(header_lines);
-    return tup;  
+    Py_CLEAR(text);
+    return ret;  
 }
 
 

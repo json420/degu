@@ -69,6 +69,13 @@ class TestOS(unittest.TestCase):
             'rfile.readline() must return a bytes instance'
         )
 
+        rfile = io.BytesIO('hello\r\n㺀: Value\r\n\r\n'.encode())
+        self.assertEqual(_degu.read_preamble(rfile),
+            ('hello', ['ãº\x80: Value'])
+        )
+
+        #'welcome': 'все
+
         rfile = io.BytesIO(b'')
         with self.assertRaises(ConnectionError) as cm:
             _degu.read_preamble(rfile)
