@@ -28,11 +28,16 @@ Authors:
 
 #define READ_LINE(maxsize) \
     if (line != NULL) { \
-        PyErr_SetString(PyExc_RuntimeError, "line != NULL"); \
-        goto cleanup; \
+        Py_FatalError("line != NULL"); \
+    } \
+    if (line_size != 0) { \
+        Py_FatalError("line_size != 0"); \
+    } \
+    if (line_data != NULL) { \
+        Py_FatalError("line_data != NULL"); \
     } \
     line = PyObject_CallMethod(rfile, "readline", "n", maxsize); \
-    if (!line) { \
+    if (line == NULL) { \
         goto cleanup; \
     } \
     if (!PyBytes_CheckExact(line)) { \
@@ -51,14 +56,13 @@ Authors:
     line_data = PyBytes_AS_STRING(line);
 
 #define CHECK_LINE_TERMINATION() \
-    if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
+    if (line_size < 2 || line_data == NULL || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
         PyErr_Format(PyExc_ValueError, "bad line termination"); \
         goto cleanup; \
     }
 
 #define FREE_LINE() \
-    Py_DECREF(line); \
-    line = NULL; \
+    Py_CLEAR(line); \
     line_size = 0; \
     line_data = NULL;
 
@@ -86,9 +90,14 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // Read the first line:
     READ_LINE(MAX_LINE_BYTES)
     if (line_size <= 0) {
-        PyErr_Format(PyExc_ValueError, "EmptyPreambleError");
+        PyErr_Format(PyExc_ConnectionError, "HTTP preamble is empty");
+        goto cleanup;
     }
     CHECK_LINE_TERMINATION()
+    if (line_size == 2) {
+        PyErr_Format(PyExc_ValueError, "first preamble line is empty");
+        goto cleanup;
+    }
     first_line = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
     FREE_LINE()
     if (!first_line) {
@@ -103,14 +112,16 @@ degu_read_preamble(PyObject *self, PyObject *args)
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
+        if (text != NULL) {
+            Py_FatalError("text != NULL");
+        }
         text = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
         FREE_LINE()
         if (!text) {
             goto cleanup;
         }
         PyList_Append(header_lines, text);
-        Py_DECREF(text);
-        text = NULL;
+        Py_CLEAR(text);
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
@@ -125,10 +136,10 @@ success:
     tup = PyTuple_Pack(2, first_line, header_lines);
 
 cleanup:
-    Py_DECREF(rfile);
-    Py_XDECREF(line);
-    Py_XDECREF(first_line);
-    Py_XDECREF(header_lines);
+    Py_CLEAR(rfile);
+    Py_CLEAR(line);
+    Py_CLEAR(first_line);
+    Py_CLEAR(header_lines);
     return tup;  
 }
 

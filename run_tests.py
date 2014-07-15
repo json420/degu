@@ -23,13 +23,18 @@
 
 import unittest
 import io
+import sys
 
 import _degu
 
 
-class BadFile:
-    def readline(self, size):
-        return b'D' * (size + 1)
+
+class DummyFile:
+    def __init__(self, lines):
+        self._lines = lines
+
+    def readline(self, size=None):
+        return self._lines.pop(0)
 
 
 class TestOS(unittest.TestCase):
@@ -45,12 +50,44 @@ class TestOS(unittest.TestCase):
             'read_preamble() takes exactly 1 argument (2 given)'
         )
 
-        rfile = BadFile()
+        lines = [b'D' * 4097]
+        rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
             _degu.read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(rfile._lines, [])
+        for i in range(len(lines)):
+            self.assertEqual(sys.getrefcount(lines[i]), 2)
+
+        rfile = DummyFile(['hello, world\r\n', b'\r\n'])
+        with self.assertRaises(TypeError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() must return a bytes instance'
+        )
+
+        rfile = io.BytesIO(b'')
+        with self.assertRaises(ConnectionError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
+
+        rfile = io.BytesIO(b'\r\n')
+        with self.assertRaises(ValueError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception), 'first preamble line is empty')
+
+        rfile = io.BytesIO(b'\n')
+        with self.assertRaises(ValueError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception), 'bad line termination')
+
+        rfile = io.BytesIO(b'hello\r\nworld')
+        with self.assertRaises(ValueError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception), 'bad line termination')
 
         rfile = io.BytesIO(b'hello\r\n\r\n')
         self.assertEqual(_degu.read_preamble(rfile), ('hello', []))
