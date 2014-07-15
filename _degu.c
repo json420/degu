@@ -26,6 +26,22 @@ Authors:
 #define MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
+#define BAD_TERMINATION(size, data) \
+    (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0)
+
+#define READ_LINE(rfile, line, size) \
+    line = PyObject_CallMethod(rfile, "readline", "n", size); \
+    if (!line) { \
+        return NULL; \
+    } \
+    if (!PyBytes_CheckExact(line)) { \
+        PyErr_Format(PyExc_TypeError, \
+            "rfile.readline() must return a bytes instance" \
+        ); \
+        Py_DECREF(line); \
+        return NULL; \
+    }
+
 
 static inline PyObject *
 _degu_read_first_line(PyObject *rfile)
@@ -35,20 +51,7 @@ _degu_read_first_line(PyObject *rfile)
     const char *data = NULL;
     PyObject *text = NULL;
 
-    // Call rfile.readline():
-    line = PyObject_CallMethod(rfile, "readline", "n", MAX_LINE_BYTES);
-    if (!line) {
-        return NULL;
-    }
-
-    // Check type returned by rfile.readline():
-    if (!PyBytes_CheckExact(line)) {
-        PyErr_Format(PyExc_TypeError,
-            "rfile.readline() must return a bytes instance"
-        );
-        Py_DECREF(line);
-        return NULL;
-    }
+    READ_LINE(rfile, line, MAX_LINE_BYTES)
 
     // Check length and value of bytes returned by rfile.readline():
     size = PyBytes_GET_SIZE(line);
@@ -56,7 +59,7 @@ _degu_read_first_line(PyObject *rfile)
     if (size <= 0) {
         PyErr_Format(PyExc_ValueError, "EmptyPreambleError");
     }
-    else if (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0) {
+    else if (BAD_TERMINATION(size, data)) {
         PyErr_Format(PyExc_ValueError, "Bad Line Termination");
     }
     else {
@@ -75,25 +78,12 @@ _degu_read_header_line(PyObject *rfile)
     const char *data = NULL;
     PyObject *text = NULL;
 
-    // Call rfile.readline():
-    line = PyObject_CallMethod(rfile, "readline", "n", MAX_LINE_BYTES);
-    if (!line) {
-        return NULL;
-    }
-
-    // Check type returned by rfile.readline():
-    if (!PyBytes_CheckExact(line)) {
-        PyErr_Format(PyExc_TypeError,
-            "rfile.readline() must return a bytes instance"
-        );
-        Py_DECREF(line);
-        return NULL;
-    }
+    READ_LINE(rfile, line, MAX_LINE_BYTES)
 
     // Check length and value of bytes returned by rfile.readline():
     size = PyBytes_GET_SIZE(line);
     data = PyBytes_AS_STRING(line);
-    if (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0) {
+    if (BAD_TERMINATION(size, data)) {
         PyErr_Format(PyExc_ValueError, "Bad Header Line Termination");
     }
     else {
