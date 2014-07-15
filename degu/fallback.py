@@ -31,38 +31,38 @@ class EmptyPreambleError(ConnectionError):
     pass
 
 
-def _readline(rfile, maxsize):
+def _readline(rfile_readline, maxsize):
     """
     Matches error checking semantics of READ_LINE() macro in _degu.c.
 
-    As the C implementation of read_preamble() is already over twice as fast
-    as the best optimized pure-Python implementation thus far concocted, it
-    makes sense to focus on making the pure-Python implementation a very correct
-    and easy to understand reference implementation, even when at the expense of
+    As the C implementation of read_preamble() is already over 4x as fast as the
+    best optimized pure-Python implementation thus far concocted, it makes sense
+    to focus on making the pure-Python implementation a very correct and easy to
+    understand reference implementation, even when at the expense of
     performance.
 
-    So although using this _readline() function means a rather hefty
-    performance hit for the pure-Python implementation, it helps define the
-    correct behavior of the dramatically higher-performance C implementation
-    (aka, the implementation you actually want to use).
+    So although using this _readline() function means a rather hefty performance
+    hit for the pure-Python implementation, it helps define the correct behavior
+    of the dramatically higher-performance C implementation (aka, the
+    implementation you actually want to use).
 
     But to document the performance impact, when the pure-Python
     implementation of read_preamble() directly calls rfile.readline() with no
     extra error checking::
 
-        122,166: fallback.read_preamble(BytesIO(request_preamble))
+        131,636: fallback.read_preamble(BytesIO(request_preamble))
 
     Compared to when the pure-Python implementation of read_preamble() uses this
     _readline() helper function::
 
-         85,540: fallback.read_preamble(BytesIO(request_preamble))
+         78,342: fallback.read_preamble(BytesIO(request_preamble))
 
     Compared to the C implementation of read_preamble()::
 
-        286,283: _degu.read_preamble(BytesIO(request_preamble))
+        536,342: _degu.read_preamble(BytesIO(request_preamble))
     """
     assert isinstance(maxsize, int) and maxsize in (MAX_LINE_BYTES, 2)
-    line = rfile.readline(maxsize)
+    line = rfile_readline(maxsize)
     if type(line) is not bytes:
         raise TypeError(
             'rfile.readline() returned {!r}, should return {!r}'.format(
@@ -87,7 +87,10 @@ def read_preamble(rfile):
     Over time, there is a good chance that parts of Degu will be replaced with
     high-performance C extensions... and this function is a good candidate.
     """
-    line = _readline(rfile, MAX_LINE_BYTES)
+    rfile_readline = rfile.readline
+    if not callable(rfile_readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _readline(rfile_readline, MAX_LINE_BYTES)
     if not line:
         raise EmptyPreambleError('HTTP preamble is empty')
     if line[-2:] != b'\r\n':
@@ -97,7 +100,7 @@ def read_preamble(rfile):
     first_line = line[:-2].decode('latin_1')
     header_lines = []
     for i in range(MAX_HEADER_COUNT):
-        line = _readline(rfile, MAX_LINE_BYTES)
+        line = _readline(rfile_readline, MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
             raise ValueError(
                 'bad header line termination: {!r}'.format(line[-2:])
@@ -105,7 +108,7 @@ def read_preamble(rfile):
         if len(line) == 2:  # Stop on the first empty CRLF terminated line
             return (first_line, header_lines)
         header_lines.append(line[:-2].decode('latin_1'))
-    if _readline(rfile, 2) != b'\r\n':
+    if _readline(rfile_readline, 2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
     return (first_line, header_lines)
 

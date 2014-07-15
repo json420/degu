@@ -27,11 +27,11 @@ Authors:
 #define _MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
-#define READ_LINE(maxsize) \
+#define READ_LINE(py_maxsize, c_maxsize) \
     line_size = 0; \
     line_data = NULL; \
     Py_CLEAR(line); \
-    line = PyObject_CallMethod(rfile, "readline", "n", (maxsize)); \
+    line = PyObject_CallFunctionObjArgs(rfile_readline, (py_maxsize), NULL); \
     if (line == NULL) { \
         goto cleanup; \
     } \
@@ -43,10 +43,10 @@ Authors:
         goto cleanup; \
     } \
     line_size = PyBytes_GET_SIZE(line); \
-    if (line_size > (maxsize)) { \
+    if (line_size > (c_maxsize)) { \
         PyErr_Format(PyExc_ValueError, \
             "rfile.readline() returned %u bytes, expected at most %u", \
-            line_size, (maxsize) \
+            line_size, (c_maxsize) \
         ); \
         goto cleanup; \
     } \
@@ -76,6 +76,7 @@ static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
 {
     PyObject *rfile = NULL;
+    PyObject *rfile_readline = NULL;  // rfile.readline() method
     PyObject *line = NULL;
     Py_ssize_t line_size = 0;
     const char *line_data = NULL;
@@ -90,11 +91,33 @@ degu_read_preamble(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    // Retain reference to rfile while calling rfile.readline():
-    Py_INCREF(rfile);
+    /*
+    For performance, we first get a reference to the rfile.readline() method and
+    then call it each time we need using PyObject_CallFunctionObjArgs().
+
+    This creates an additional reference to the rfile that we own, which means
+    that the rfile can't get GC'ed through any subtle weirdness when the
+    (potentially pure-Python) rfile.readline() callback is called.
+
+    The performance improvement is impressive, though.  At the time of this
+    change, we got around a 66% improvement by switching from
+    PyObject_CallMethod() to PyObject_CallFunctionObjArgs() with the retained
+    rfile_readline reference (from around 300k to 500k calls per second).
+
+    See the READ_LINE() macro for more details. 
+    */
+    rfile_readline = PyObject_GetAttrString(rfile, "readline");
+    if (rfile_readline == NULL) {
+        return NULL;
+    }
+    if (!PyCallable_Check(rfile_readline)) {
+        Py_CLEAR(rfile_readline);
+        PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
+        return NULL;
+    }
 
     // Read the first line:
-    READ_LINE(_MAX_LINE_BYTES)
+    READ_LINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
     if (line_size <= 0) {
         PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
@@ -112,7 +135,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        READ_LINE(_MAX_LINE_BYTES)
+        READ_LINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
         CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
@@ -127,7 +150,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
-    READ_LINE(2)
+    READ_LINE(TWO, 2)
     if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
@@ -142,7 +165,7 @@ success:
     ret = PyTuple_Pack(2, first_line, header_lines);
 
 cleanup:
-    Py_CLEAR(rfile);
+    Py_CLEAR(rfile_readline);
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(header_lines);
