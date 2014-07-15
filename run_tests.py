@@ -27,6 +27,11 @@ import io
 import _degu
 
 
+class BadFile:
+    def readline(self, size):
+        return b'D' * (size + 1)
+
+
 class TestOS(unittest.TestCase):
     def test_read_preamble(self):
         with self.assertRaises(TypeError) as cm:
@@ -38,6 +43,13 @@ class TestOS(unittest.TestCase):
             _degu.read_preamble('foo', 'bar')
         self.assertEqual(str(cm.exception), 
             'read_preamble() takes exactly 1 argument (2 given)'
+        )
+
+        rfile = BadFile()
+        with self.assertRaises(ValueError) as cm:
+            _degu.read_preamble(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
 
         rfile = io.BytesIO(b'hello\r\n\r\n')

@@ -26,108 +26,41 @@ Authors:
 #define MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
-#define BAD_TERMINATION(size, data) \
-    (size < 2 || memcmp(data + (size - 2), "\r\n", 2) != 0)
-
-#define READ_LINE(rfile, line, size) \
-    line = PyObject_CallMethod(rfile, "readline", "n", size); \
+#define READ_LINE(maxsize) \
+    if (line != NULL) { \
+        PyErr_SetString(PyExc_RuntimeError, "line != NULL"); \
+        goto cleanup; \
+    } \
+    line = PyObject_CallMethod(rfile, "readline", "n", maxsize); \
     if (!line) { \
-        return NULL; \
+        goto cleanup; \
     } \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
             "rfile.readline() must return a bytes instance" \
         ); \
-        Py_DECREF(line); \
-        return NULL; \
+        goto cleanup; \
+    } \
+    line_size = PyBytes_GET_SIZE(line); \
+    if (line_size > maxsize) { \
+        PyErr_Format(PyExc_ValueError, \
+            "rfile.readline() returned %u bytes, expected at most %u", line_size, maxsize \
+        ); \
+        goto cleanup; \
+    } \
+    line_data = PyBytes_AS_STRING(line);
+
+#define CHECK_LINE_TERMINATION() \
+    if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
+        PyErr_Format(PyExc_ValueError, "bad line termination"); \
+        goto cleanup; \
     }
 
-
-static inline PyObject *
-_degu_read_first_line(PyObject *rfile)
-{
-    PyObject *line = NULL;
-    Py_ssize_t size = 0;
-    const char *data = NULL;
-    PyObject *text = NULL;
-
-    READ_LINE(rfile, line, MAX_LINE_BYTES)
-
-    // Check length and value of bytes returned by rfile.readline():
-    size = PyBytes_GET_SIZE(line);
-    data = PyBytes_AS_STRING(line);
-    if (size <= 0) {
-        PyErr_Format(PyExc_ValueError, "EmptyPreambleError");
-    }
-    else if (BAD_TERMINATION(size, data)) {
-        PyErr_Format(PyExc_ValueError, "Bad Line Termination");
-    }
-    else {
-        text = PyUnicode_DecodeLatin1(data, size - 2, NULL);
-    }
-
-    Py_DECREF(line);
-    return text;
-}
-
-static inline PyObject *
-_degu_read_header_line(PyObject *rfile)
-{
-    PyObject *line = NULL;
-    Py_ssize_t size = 0;
-    const char *data = NULL;
-    PyObject *text = NULL;
-
-    READ_LINE(rfile, line, MAX_LINE_BYTES)
-
-    // Check length and value of bytes returned by rfile.readline():
-    size = PyBytes_GET_SIZE(line);
-    data = PyBytes_AS_STRING(line);
-    if (BAD_TERMINATION(size, data)) {
-        PyErr_Format(PyExc_ValueError, "Bad Header Line Termination");
-    }
-    else {
-        text = PyUnicode_DecodeLatin1(data, size - 2, NULL);
-    }
-
-    Py_DECREF(line);
-    return text;
-}
-
-
-static inline PyObject *
-_degu_read_last_line(PyObject *rfile)
-{
-    PyObject *line = NULL;
-    Py_ssize_t size = 0;
-    const char *data = NULL;
-
-    // Call rfile.readline():
-    line = PyObject_CallMethod(rfile, "readline", "n", 2);
-    if (!line) {
-        return NULL;
-    }
-
-    // Check type returned by rfile.readline():
-    if (!PyBytes_CheckExact(line)) {
-        PyErr_Format(PyExc_TypeError,
-            "rfile.readline() must return a bytes instance"
-        );
-        Py_DECREF(line);
-        return NULL;
-    }
-
-    // Check length and value of bytes returned by rfile.readline():
-    size = PyBytes_GET_SIZE(line);
-    data = PyBytes_AS_STRING(line);
-    if (size < 2 || memcmp(data, "\r\n", 2) != 0) {
-        PyErr_Format(PyExc_ValueError, "Bad Preamble Termination");
-        Py_DECREF(line);
-        return NULL;
-    }
-    Py_DECREF(line);
-    Py_RETURN_NONE;
-}
+#define FREE_LINE() \
+    Py_DECREF(line); \
+    line = NULL; \
+    line_size = 0; \
+    line_data = NULL;
 
 
 static PyObject *
@@ -135,9 +68,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
 {
     PyObject *rfile = NULL;
     PyObject *line = NULL;
+    Py_ssize_t line_size = 0;
+    const char *line_data = NULL;
     PyObject *first_line = NULL;
     PyObject *header_lines = NULL;
     uint8_t i;
+    PyObject *text = NULL;
     PyObject *tup = NULL;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
@@ -148,44 +84,50 @@ degu_read_preamble(PyObject *self, PyObject *args)
     Py_INCREF(rfile);
 
     // Read the first line:
-    first_line = _degu_read_first_line(rfile);
+    READ_LINE(MAX_LINE_BYTES)
+    if (line_size <= 0) {
+        PyErr_Format(PyExc_ValueError, "EmptyPreambleError");
+    }
+    CHECK_LINE_TERMINATION()
+    first_line = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
+    FREE_LINE()
     if (!first_line) {
-        goto done;
+        goto cleanup;
     }
 
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        line = _degu_read_header_line(rfile);
-        if (!line) {
-            goto done;
+        READ_LINE(MAX_LINE_BYTES)
+        CHECK_LINE_TERMINATION()
+        if (line_size == 2) {  // Stop on the first empty CRLF terminated line
+            goto success;
         }
-        if (PyUnicode_GET_LENGTH(line) <= 0) {
-            goto okay;
+        text = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
+        FREE_LINE()
+        if (!text) {
+            goto cleanup;
         }
-        PyList_Append(header_lines, line);
-        Py_DECREF(line);
-        line = NULL;
+        PyList_Append(header_lines, text);
+        Py_DECREF(text);
+        text = NULL;
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
-    line = _degu_read_last_line(rfile);
-    if (!line) {
-        goto done;
-    }
-    if (PyUnicode_GET_LENGTH(line) <= 0) {
+    READ_LINE(2)
+    if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError, "Too many header lines");
-        goto done;
+        goto cleanup;
     }
 
-okay:
+success:
     tup = PyTuple_Pack(2, first_line, header_lines);
 
-done:
+cleanup:
     Py_DECREF(rfile);
-    Py_XDECREF(first_line);
     Py_XDECREF(line);
+    Py_XDECREF(first_line);
     Py_XDECREF(header_lines);
     return tup;  
 }
