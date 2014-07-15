@@ -24,16 +24,23 @@ Common HTTP parser and IO abstractions used by server and client.
 """
 
 try:
-    from _degu import EmptyPreambleError, read_preamble
+    from _degu import (
+        MAX_LINE_BYTES,
+        EmptyPreambleError,
+        read_preamble,
+    )
 except ImportError:
-    from .fallback import EmptyPreambleError, read_preamble
+    from .fallback import (
+        MAX_LINE_BYTES,
+        EmptyPreambleError,
+        read_preamble,
+    )
 
-__all__ = ('EmptyPreambleError', 'read_preamble')
+__all__ = ('MAX_LINE_BYTES', 'EmptyPreambleError', 'read_preamble')
 
 assert issubclass(EmptyPreambleError, ConnectionError)
 assert callable(read_preamble)
 
-MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB

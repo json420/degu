@@ -24,7 +24,7 @@ Authors:
 #include <Python.h>
 
 
-#define MAX_LINE_BYTES 4096
+#define _MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
 #define READ_LINE(maxsize) \
@@ -68,6 +68,8 @@ Authors:
 
 
 static PyObject *EmptyPreambleError = NULL;
+static PyObject *MAX_LINE_BYTES = NULL;
+static PyObject *TWO = NULL;
 
 
 static PyObject *
@@ -92,7 +94,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     Py_INCREF(rfile);
 
     // Read the first line:
-    READ_LINE(MAX_LINE_BYTES)
+    READ_LINE(_MAX_LINE_BYTES)
     if (line_size <= 0) {
         PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
@@ -110,7 +112,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        READ_LINE(MAX_LINE_BYTES)
+        READ_LINE(_MAX_LINE_BYTES)
         CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
@@ -172,6 +174,8 @@ PyInit__degu(void)
     if (module == NULL) {
         return NULL;
     }
+
+    // _degu.EmptyPreambleError:
     if (EmptyPreambleError != NULL) {
         Py_FatalError("EmptyPreambleError != NULL");
     }
@@ -180,7 +184,32 @@ PyInit__degu(void)
         PyExc_ConnectionError,
         NULL
     );
+    if (EmptyPreambleError == NULL) {
+        return NULL;
+    }
     Py_INCREF(EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", EmptyPreambleError);
+
+    // _degu.MAX_LINE_BYTES:
+    if (MAX_LINE_BYTES != NULL) {
+        Py_FatalError("MAX_LINE_BYTES != NULL");
+    }
+    MAX_LINE_BYTES = PyLong_FromLong(_MAX_LINE_BYTES);
+    if (MAX_LINE_BYTES == NULL) {
+        return NULL;
+    }
+    Py_INCREF(MAX_LINE_BYTES);
+    PyModule_AddObject(module, "MAX_LINE_BYTES", MAX_LINE_BYTES);
+
+    // Python int ``2`` used with READ_LINE() macro:
+    if (TWO != NULL) {
+        Py_FatalError("TWO != NULL");
+    }
+    TWO = PyLong_FromLong(2);
+    if (TWO == NULL) {
+        return NULL;
+    }
+    Py_INCREF(TWO);
+
     return module;
 }
