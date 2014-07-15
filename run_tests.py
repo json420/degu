@@ -77,7 +77,7 @@ class TestOS(unittest.TestCase):
         #'welcome': 'все
 
         rfile = io.BytesIO(b'')
-        with self.assertRaises(ConnectionError) as cm:
+        with self.assertRaises(_degu.EmptyPreambleError) as cm:
             _degu.read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
 

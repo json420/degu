@@ -57,6 +57,9 @@ Authors:
     }
 
 
+static PyObject *EmptyPreambleError = NULL;
+
+
 static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
 {
@@ -74,13 +77,13 @@ degu_read_preamble(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    // Retain reference to rfile when calling rfile.readline():
+    // Retain reference to rfile while calling rfile.readline():
     Py_INCREF(rfile);
 
     // Read the first line:
     READ_LINE(MAX_LINE_BYTES)
     if (line_size <= 0) {
-        PyErr_SetString(PyExc_ConnectionError, "HTTP preamble is empty");
+        PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
     }
     CHECK_LINE_TERMINATION()
@@ -152,5 +155,21 @@ static struct PyModuleDef degu = {
 PyMODINIT_FUNC
 PyInit__degu(void)
 {
-    return PyModule_Create(&degu);
+    PyObject *module;
+
+    module = PyModule_Create(&degu);
+    if (module == NULL) {
+        return NULL;
+    }
+    if (EmptyPreambleError != NULL) {
+        Py_FatalError("EmptyPreambleError != NULL");
+    }
+    EmptyPreambleError = PyErr_NewException(
+        "_degu.EmptyPreambleError",
+        PyExc_ConnectionError,
+        NULL
+    );
+    Py_INCREF(EmptyPreambleError);
+    PyModule_AddObject(module, "EmptyPreambleError", EmptyPreambleError);
+    return module;
 }
