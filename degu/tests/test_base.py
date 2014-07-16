@@ -170,9 +170,13 @@ class TestBodyClosedError(TestCase):
         self.assertEqual(str(e), 'body already fully read: {!r}'.format(body))
 
 
-class FuzzTestFunctions(FuzzTestCase):
-    def test_read_preamble(self):
-        self.fuzz(base.read_preamble)
+class FuzzTestFunctions(AlternatesTestCase):
+    def test_read_preamble_p(self):
+        self.fuzz(fallback.read_preamble)
+
+    def test_read_preamble_c(self):
+        self.skip_if_no_c_ext()
+        self.fuzz(_degu.read_preamble)
 
     def test_read_chunk(self):
         self.fuzz(base.read_chunk)
