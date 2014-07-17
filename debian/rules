@@ -17,6 +17,8 @@ override_dh_auto_build:
 override_dh_auto_test:
 	set -ex; for python in $(shell py3versions -r); do \
 		$$python setup.py test; \
+		$$python setup.py build_ext -i; \
+		$$python setup.py test; \
 	done
 
 override_dh_auto_install:
@@ -26,3 +28,7 @@ override_dh_auto_install:
 				--root=$(CURDIR)/debian/python3-degu; \
 	done
 
+override_dh_sphinxdoc:
+ifneq "$(shell dh_listpackages | grep -- -doc)" ""
+	dh_sphinxdoc
+endif

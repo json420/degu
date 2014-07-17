@@ -223,6 +223,7 @@ def write_request(wfile, method, uri, headers, body):
 
 
 def read_response(rfile, method):
+    assert method in {'GET', 'HEAD', 'DELETE', 'PUT', 'POST'}
     (status_line, header_lines) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
     headers = (parse_headers(header_lines) if header_lines else {})

@@ -30,7 +30,7 @@ import socket
 import ssl
 from urllib.parse import urlparse
 
-from .helpers import TempDir, DummySocket
+from .helpers import TempDir, DummySocket, FuzzTestCase
 from degu.base import TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -94,6 +94,12 @@ class TestUnconsumedResponseError(TestCase):
         self.assertEqual(str(exc),
             'previous response body not consumed: {!r}'.format(body)
         )
+
+
+class FuzzTestFunctions(FuzzTestCase):
+    def test_read_response(self):
+        for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
+            self.fuzz(client.read_response, method)
 
 
 class TestFunctions(TestCase):
