@@ -24,8 +24,12 @@ Authors:
 #include <Python.h>
 
 
-#define _MAX_LINE_BYTES 4096
+#define MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
+
+static PyObject *degu_MAX_LINE_BYTES = NULL;
+static PyObject *degu_EmptyPreambleError = NULL;
+static PyObject *_TWO = NULL;
 
 #define _SET(pyobj, source) \
     Py_CLEAR(pyobj); \
@@ -65,11 +69,6 @@ Authors:
         Py_CLEAR(crlf); \
         goto cleanup; \
     }
-
-
-static PyObject *EmptyPreambleError = NULL;
-static PyObject *MAX_LINE_BYTES = NULL;
-static PyObject *TWO = NULL;
 
 
 static PyObject *
@@ -114,9 +113,9 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     // Read the first line:
-    _READLINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
+    _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
     if (line_size <= 0) {
-        PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
+        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
     }
     _CHECK_LINE_TERMINATION("bad line termination: %R")
@@ -124,23 +123,23 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto cleanup;
     }
-    _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL))
+    _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
 
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        _READLINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
+        _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
         _CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
-        _SET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL))
+        _SET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
         PyList_Append(header_lines, text);
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
-    _READLINE(TWO, 2)
+    _READLINE(_TWO, 2)
     if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
@@ -188,43 +187,32 @@ PyInit__degu(void)
         return NULL;
     }
 
-    // _degu.EmptyPreambleError:
-    if (EmptyPreambleError != NULL) {
-        Py_FatalError("EmptyPreambleError != NULL");
-    }
-    EmptyPreambleError = PyErr_NewException(
-        "_degu.EmptyPreambleError",
-        PyExc_ConnectionError,
-        NULL
-    );
-    if (EmptyPreambleError == NULL) {
-        return NULL;
-    }
-    Py_INCREF(EmptyPreambleError);
-    PyModule_AddObject(module, "EmptyPreambleError", EmptyPreambleError);
+    // Integer constants:
+    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
+    PyModule_AddIntMacro(module, MAX_LINE_BYTES);
 
-    // _degu.MAX_LINE_BYTES:
-    if (MAX_LINE_BYTES != NULL) {
-        Py_FatalError("MAX_LINE_BYTES != NULL");
-    }
-    MAX_LINE_BYTES = PyLong_FromLong(_MAX_LINE_BYTES);
-    if (MAX_LINE_BYTES == NULL) {
+    // We need a reference to the pyobj MAX_LINE_BYTES for _READLINE():
+    degu_MAX_LINE_BYTES = PyObject_GetAttrString(module, "MAX_LINE_BYTES");
+    if (degu_MAX_LINE_BYTES == NULL) {
         return NULL;
     }
-    Py_INCREF(MAX_LINE_BYTES);
-    PyModule_AddObject(module, "MAX_LINE_BYTES", MAX_LINE_BYTES);
+
+    // _degu.EmptyPreambleError:
+    degu_EmptyPreambleError = PyErr_NewException(
+        "_degu.EmptyPreambleError", PyExc_ConnectionError, NULL
+    );
+    if (degu_EmptyPreambleError == NULL) {
+        return NULL;
+    }
+    Py_INCREF(degu_EmptyPreambleError);
+    PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     // Python int ``2`` used with _READLINE() macro:
-    if (TWO != NULL) {
-        Py_FatalError("TWO != NULL");
-    }
-    TWO = PyLong_FromLong(2);
-    if (TWO == NULL) {
+    _TWO = PyLong_FromLong(2);
+    if (_TWO == NULL) {
         return NULL;
     }
-    Py_INCREF(TWO);
-
-    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
+    Py_INCREF(_TWO);
 
     return module;
 }
