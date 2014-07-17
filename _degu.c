@@ -27,14 +27,17 @@ Authors:
 #define _MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
-#define READ_LINE(py_maxsize, c_maxsize) \
-    line_size = 0; \
-    line_data = NULL; \
-    Py_CLEAR(line); \
-    line = PyObject_CallFunctionObjArgs(rfile_readline, (py_maxsize), NULL); \
-    if (line == NULL) { \
+#define _SET(pyobj, source) \
+    Py_CLEAR(pyobj); \
+    pyobj = source; \
+    if (pyobj == NULL) { \
         goto cleanup; \
     } \
+
+#define _READLINE(py_size, size) \
+    line_size = 0; \
+    line_data = NULL; \
+    _SET(line, PyObject_CallFunctionObjArgs(rfile_readline, py_size, NULL)) \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
             "rfile.readline() returned %R, should return <class 'bytes'>", \
@@ -43,24 +46,21 @@ Authors:
         goto cleanup; \
     } \
     line_size = PyBytes_GET_SIZE(line); \
-    if (line_size > (c_maxsize)) { \
+    if (line_size > size) { \
         PyErr_Format(PyExc_ValueError, \
             "rfile.readline() returned %u bytes, expected at most %u", \
-            line_size, (c_maxsize) \
+            line_size, size \
         ); \
         goto cleanup; \
     } \
     line_data = PyBytes_AS_STRING(line);
 
-#define CRLF_START(size) \
-    ((size) < 2 ? 0 : (size) - 2)
+#define _START(size) \
+    (size < 2 ? 0 : size - 2)
 
-#define CHECK_LINE_TERMINATION(format) \
+#define _CHECK_LINE_TERMINATION(format) \
     if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
-        crlf = PySequence_GetSlice(line, CRLF_START(line_size), line_size); \
-        if (crlf == NULL) { \
-            goto cleanup; \
-        } \
+        _SET(crlf, PySequence_GetSlice(line, _START(line_size), line_size)) \
         PyErr_Format(PyExc_ValueError, (format), crlf); \
         Py_CLEAR(crlf); \
         goto cleanup; \
@@ -78,7 +78,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *rfile = NULL;
     PyObject *rfile_readline = NULL;  // rfile.readline() method
     PyObject *line = NULL;
-    Py_ssize_t line_size = 0;
+    size_t line_size = 0;
     const char *line_data = NULL;
     PyObject *crlf = NULL;
     PyObject *first_line = NULL;
@@ -104,12 +104,9 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject_CallMethod() to PyObject_CallFunctionObjArgs() with the retained
     rfile_readline reference (from around 300k to 500k calls per second).
 
-    See the READ_LINE() macro for more details. 
+    See the _READLINE() macro for more details. 
     */
-    rfile_readline = PyObject_GetAttrString(rfile, "readline");
-    if (rfile_readline == NULL) {
-        return NULL;
-    }
+    _SET(rfile_readline, PyObject_GetAttrString(rfile, "readline"))
     if (!PyCallable_Check(rfile_readline)) {
         Py_CLEAR(rfile_readline);
         PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
@@ -117,40 +114,33 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     // Read the first line:
-    READ_LINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
+    _READLINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
     if (line_size <= 0) {
         PyErr_SetString(EmptyPreambleError, "HTTP preamble is empty");
         goto cleanup;
     }
-    CHECK_LINE_TERMINATION("bad line termination: %R")
+    _CHECK_LINE_TERMINATION("bad line termination: %R")
     if (line_size == 2) {
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto cleanup;
     }
-    first_line = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
-    if (first_line == NULL) {
-        goto cleanup;
-    }
+    _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL))
 
     // Read the header lines:
     header_lines = PyList_New(0);
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        READ_LINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
-        CHECK_LINE_TERMINATION("bad header line termination: %R")
+        _READLINE(MAX_LINE_BYTES, _MAX_LINE_BYTES)
+        _CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
-        Py_CLEAR(text);
-        text = PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL);
-        if (text == NULL) {
-            goto cleanup;
-        }
+        _SET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, NULL))
         PyList_Append(header_lines, text);
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
-    READ_LINE(TWO, 2)
+    _READLINE(TWO, 2)
     if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
@@ -224,7 +214,7 @@ PyInit__degu(void)
     Py_INCREF(MAX_LINE_BYTES);
     PyModule_AddObject(module, "MAX_LINE_BYTES", MAX_LINE_BYTES);
 
-    // Python int ``2`` used with READ_LINE() macro:
+    // Python int ``2`` used with _READLINE() macro:
     if (TWO != NULL) {
         Py_FatalError("TWO != NULL");
     }
