@@ -26,22 +26,29 @@ Common HTTP parser and IO abstractions used by server and client.
 try:
     from _degu import (
         MAX_LINE_BYTES,
+        MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 except ImportError:
     from .fallback import (
         MAX_LINE_BYTES,
+        MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 
-__all__ = ('MAX_LINE_BYTES', 'EmptyPreambleError', 'read_preamble')
+
+__all__ = (
+    'MAX_LINE_BYTES',
+    'MAX_HEADER_COUNT',
+    'EmptyPreambleError',
+    'read_preamble',
+)
 
 assert issubclass(EmptyPreambleError, ConnectionError)
 assert callable(read_preamble)
 
-MAX_HEADER_COUNT = 15
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB

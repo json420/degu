@@ -23,6 +23,13 @@
 Pure-python fall back implementations for what is in _degu.c.
 """
 
+__all__ = (
+    'MAX_LINE_BYTES',
+    'MAX_HEADER_COUNT',
+    'EmptyPreambleError',
+    'read_preamble',
+)
+
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 

@@ -224,5 +224,7 @@ PyInit__degu(void)
     }
     Py_INCREF(TWO);
 
+    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
+
     return module;
 }
