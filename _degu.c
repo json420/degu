@@ -36,7 +36,7 @@ static PyObject *_TWO = NULL;
     pyobj = source; \
     if (pyobj == NULL) { \
         goto cleanup; \
-    } \
+    }
 
 #define _READLINE(py_size, size) \
     line_size = 0; \
@@ -64,9 +64,12 @@ static PyObject *_TWO = NULL;
 
 #define _CHECK_LINE_TERMINATION(format) \
     if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
-        _SET(crlf, PySequence_GetSlice(line, _START(line_size), line_size)) \
-        PyErr_Format(PyExc_ValueError, (format), crlf); \
-        Py_CLEAR(crlf); \
+        PyObject *_crlf = PySequence_GetSlice(line, _START(line_size), line_size); \
+        if (_crlf == NULL) { \
+            goto cleanup; \
+        } \
+        PyErr_Format(PyExc_ValueError, (format), _crlf); \
+        Py_CLEAR(_crlf); \
         goto cleanup; \
     }
 
@@ -79,7 +82,6 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *line = NULL;
     size_t line_size = 0;
     const char *line_data = NULL;
-    PyObject *crlf = NULL;
     PyObject *first_line = NULL;
     PyObject *header_lines = NULL;
     uint8_t i;
