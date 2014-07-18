@@ -32,6 +32,7 @@ static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *_TWO = NULL;
 static PyObject *_SEP = NULL;
 static PyObject *name_casefold = NULL;
+static PyObject *name_readline = NULL;
 
 #define _SET(pyobj, source) \
     Py_CLEAR(pyobj); \
@@ -109,7 +110,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
     See the _READLINE() macro for more details. 
     */
-    _SET(rfile_readline, PyObject_GetAttrString(rfile, "readline"))
+    _SET(rfile_readline, PyObject_GetAttr(rfile, name_readline))
     if (!PyCallable_Check(rfile_readline)) {
         Py_CLEAR(rfile_readline);
         PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
@@ -284,20 +285,10 @@ PyInit__degu(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     // Python int ``2`` used with _READLINE() macro:
-    _TWO = PyLong_FromLong(2);
-    if (_TWO == NULL) {
-        return NULL;
-    }
-
-    _SEP = PyUnicode_InternFromString(": ");
-    if (_SEP == NULL) {
-        return NULL;
-    }
-
-    name_casefold = PyUnicode_InternFromString("casefold");
-    if (name_casefold == NULL) {
-        return NULL;
-    }
+    _SET(_TWO, PyLong_FromLong(2))
+    _SET(_SEP, PyUnicode_InternFromString(": "))
+    _SET(name_casefold, PyUnicode_InternFromString("casefold"))
+    _SET(name_readline, PyUnicode_InternFromString("readline"))
 
     return module;
 
