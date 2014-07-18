@@ -30,6 +30,8 @@ Authors:
 static PyObject *degu_MAX_LINE_BYTES = NULL;
 static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *_TWO = NULL;
+static PyObject *_SEP = NULL;
+static PyObject *name_casefold = NULL;
 
 #define _SET(pyobj, source) \
     Py_CLEAR(pyobj); \
@@ -169,9 +171,77 @@ cleanup:
 }
 
 
+static PyObject *
+degu_parse_headers(PyObject *self, PyObject *args)
+{
+    PyObject *header_lines = NULL;
+    Py_ssize_t i, count;
+    PyObject *line = NULL;
+    PyObject *headers = NULL;
+    PyObject *pair = NULL;
+    PyObject *rawkey = NULL;
+    PyObject *value = NULL;
+    PyObject *key = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:parse_headers", &header_lines)) {
+        return NULL;
+    }
+    if (!PyList_CheckExact(header_lines)) {
+        PyErr_Format(PyExc_TypeError,
+            "header_lines: need a <class 'list'>; got a %R",
+            header_lines->ob_type
+        );
+        goto error;
+    }
+    count = PyList_GET_SIZE(header_lines);
+    _SET(headers, PyDict_New())
+
+    for (i=0; i<count; i++) {
+        line = PyList_GET_ITEM(header_lines, i);
+        if (!PyUnicode_CheckExact(line)) {
+            PyErr_Format(PyExc_TypeError,
+                "header_lines[%u]: need a <class 'str'>; got a %R",
+                i, line->ob_type
+            );
+            goto error;
+        }
+        _SET(pair, PyUnicode_Split(line, _SEP, -1))
+        if (PyList_GET_SIZE(pair) != 2) {
+            if (PyList_GET_SIZE(pair) > 2) {
+                PyErr_SetString(PyExc_TypeError,
+                    "too many values to unpack (expected 2)"
+                );
+            }
+            else {
+                PyErr_SetString(PyExc_TypeError,
+                    "need more than 1 value to unpack"
+                );
+            }
+            goto error;
+        }
+        rawkey = PyList_GET_ITEM(pair, 0);
+        value = PyList_GET_ITEM(pair, 1);
+        _SET(key, PyObject_CallMethodObjArgs(rawkey, name_casefold, NULL))
+        if (PyDict_SetItem(headers, key, value) != 0) {
+            goto error;
+        }
+    }
+    goto exit;
+
+error:
+    Py_CLEAR(headers);
+
+exit:
+    Py_CLEAR(pair);
+    Py_CLEAR(key);
+    return headers;
+}
+
+
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
+    {"parse_headers", degu_parse_headers, METH_VARARGS, "parse_headers(header_lines)"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -219,5 +289,18 @@ PyInit__degu(void)
         return NULL;
     }
 
+    _SEP = PyUnicode_InternFromString(": ");
+    if (_SEP == NULL) {
+        return NULL;
+    }
+
+    name_casefold = PyUnicode_InternFromString("casefold");
+    if (name_casefold == NULL) {
+        return NULL;
+    }
+
     return module;
+
+error:
+    return NULL;
 }
