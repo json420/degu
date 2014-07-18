@@ -35,7 +35,7 @@ static PyObject *_TWO = NULL;
     Py_CLEAR(pyobj); \
     pyobj = source; \
     if (pyobj == NULL) { \
-        goto cleanup; \
+        goto error; \
     }
 
 #define _READLINE(py_size, size) \
@@ -47,7 +47,7 @@ static PyObject *_TWO = NULL;
             "rfile.readline() returned %R, should return <class 'bytes'>", \
             line->ob_type \
         ); \
-        goto cleanup; \
+        goto error; \
     } \
     line_size = PyBytes_GET_SIZE(line); \
     if (line_size > size) { \
@@ -55,7 +55,7 @@ static PyObject *_TWO = NULL;
             "rfile.readline() returned %u bytes, expected at most %u", \
             line_size, size \
         ); \
-        goto cleanup; \
+        goto error; \
     } \
     line_data = PyBytes_AS_STRING(line);
 
@@ -66,11 +66,11 @@ static PyObject *_TWO = NULL;
     if (line_size < 2 || memcmp(line_data + (line_size - 2), "\r\n", 2) != 0) { \
         PyObject *_crlf = PySequence_GetSlice(line, _START(line_size), line_size); \
         if (_crlf == NULL) { \
-            goto cleanup; \
+            goto error; \
         } \
         PyErr_Format(PyExc_ValueError, (format), _crlf); \
         Py_CLEAR(_crlf); \
-        goto cleanup; \
+        goto error; \
     }
 
 
@@ -118,12 +118,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
     _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
     if (line_size <= 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        goto cleanup;
+        goto error;
     }
     _CHECK_LINE_TERMINATION("bad line termination: %R")
     if (line_size == 2) {
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
-        goto cleanup;
+        goto error;
     }
     _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
 
@@ -146,7 +146,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
         );
-        goto cleanup;
+        goto error;
     }
 
 success:
@@ -154,6 +154,10 @@ success:
         Py_FatalError("very bad things");
     }
     ret = PyTuple_Pack(2, first_line, header_lines);
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
 
 cleanup:
     Py_CLEAR(rfile_readline);
