@@ -218,7 +218,6 @@ PyInit__degu(void)
     if (_TWO == NULL) {
         return NULL;
     }
-    Py_INCREF(_TWO);
 
     return module;
 }
