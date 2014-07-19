@@ -287,12 +287,13 @@ degu_read_preamble2(PyObject *self, PyObject *args)
     PyObject *headers = NULL;
     uint8_t i;
 
-    PyObject *text = NULL;
-    PyObject *pair = NULL;
+    const char *data = NULL;
+    size_t size1, size2;
+
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *casefolded_key = NULL;
-    PyObject *int_value = NULL;
+    PyObject *borrowed = NULL;
 
     PyObject *ret = NULL;
 
@@ -331,6 +332,13 @@ degu_read_preamble2(PyObject *self, PyObject *args)
     _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
 
     // Read the header lines:
+    /*
+
+      char| K: V
+    offset| 0123
+      size| 1234
+
+    */
     _SET(headers, PyDict_New())
     for (i=0; i<MAX_HEADER_COUNT; i++) {
         _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
@@ -338,26 +346,19 @@ degu_read_preamble2(PyObject *self, PyObject *args)
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto done;
         }
-        _RESET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
-        _RESET(pair, PyUnicode_Split(text, colon_space, -1))
-        if (PyList_GET_SIZE(pair) != 2) {
-            if (PyList_GET_SIZE(pair) > 2) {
-                PyErr_SetString(PyExc_ValueError,
-                    "too many values to unpack (expected 2)"
-                );
-            }
-            else {
-                PyErr_SetString(PyExc_ValueError,
-                    "need more than 1 value to unpack"
-                );
-            }
-            goto error;
+        data = memmem(line_data, line_size - 2, ": ", 2);
+        if (data == NULL || data < line_data + 1 || data > line_data + line_size - 5) {
+            PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
         }
-        key = PyList_GET_ITEM(pair, 0);
-        value = PyList_GET_ITEM(pair, 1);
+        size1 = data - line_data;
+        size2 = line_size - size1 - 4;
+        data += 2;
+
+        _RESET(key, PyUnicode_DecodeLatin1(line_data, size1, "strict"))
+        _RESET(value, PyUnicode_DecodeLatin1(data, size2, "strict"))
         _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
         if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
-            PyErr_Format(PyExc_ValueError, "duplicate header: %R", text);
+            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
     }
@@ -383,20 +384,20 @@ done:
             );
             goto error;
         }
-        _SET(value, PyDict_GetItemWithError(headers, key_content_length))
-        _RESET(int_value, PyLong_FromUnicodeObject(value, 10))
-        if (PyObject_RichCompareBool(int_value, int_zero, Py_LT) > 0) {
-            PyErr_Format(PyExc_ValueError, "negative content-length: %R", int_value);
+        _SET(borrowed, PyDict_GetItemWithError(headers, key_content_length))
+        _RESET(value, PyLong_FromUnicodeObject(borrowed, 10))
+        if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
+            PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
             goto error;
         }
-        if (PyDict_SetItem(headers, key_content_length, int_value) != 0) {
+        if (PyDict_SetItem(headers, key_content_length, value) != 0) {
             goto error;
         }
     }
     else if (PyDict_Contains(headers, key_transfer_encoding)) {
-        _SET(value, PyDict_GetItemWithError(headers, key_transfer_encoding))
-        if (PyUnicode_Compare(value, value_chunked) != 0) {
-            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+        _SET(borrowed, PyDict_GetItemWithError(headers, key_transfer_encoding))
+        if (PyUnicode_Compare(borrowed, value_chunked) != 0) {
+            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
             goto error;
         }
     }
@@ -411,10 +412,9 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(text);
-    Py_CLEAR(pair);
+    Py_CLEAR(key);
+    Py_CLEAR(value);
     Py_CLEAR(casefolded_key);
-    Py_CLEAR(int_value);
     return ret;  
 }
 
