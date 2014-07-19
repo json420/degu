@@ -29,6 +29,7 @@ try:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
+        parse_headers,
     )
 except ImportError:
     from .fallback import (
@@ -36,6 +37,7 @@ except ImportError:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
+        parse_headers,
     )
 
 
@@ -44,6 +46,7 @@ __all__ = (
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
+    'parse_headers',
 )
 
 assert issubclass(EmptyPreambleError, ConnectionError)
@@ -154,45 +157,6 @@ def write_chunk(wfile, data, extension=None):
     # Flush buffer as it could be some time before the next chunk is available:
     wfile.flush()
     return total
-
-
-def parse_headers(header_lines):
-    """
-    Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
-
-    The return value will be a `dict` mapping header names to header values, and
-    the header names will be case-folded (lowercase).  For example:
-
-    >>> parse_headers(['Content-Type: application/json'])
-    {'content-type': 'application/json'}
-
-    Over time, there is a good chance that parts of Degu will be replaced with
-    high-performance C extensions... and this function is a good candidate.
-    """
-    headers = {}
-    for line in header_lines:
-        (key, value) = line.split(': ')
-        headers[key.casefold()] = value
-    if len(headers) != len(header_lines):
-        raise ValueError(
-            'duplicates in header_lines:\n  ' + '\n  '.join(header_lines)
-        )
-    if 'content-length' in headers:
-        headers['content-length'] = int(headers['content-length'])
-        if headers['content-length'] < 0:
-            raise ValueError(
-                'negative content-length: {!r}'.format(headers['content-length'])
-            ) 
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                'cannot have both content-length and transfer-encoding headers'
-            ) 
-    elif 'transfer-encoding' in headers:
-        if headers['transfer-encoding'] != 'chunked':
-            raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
-            )
-    return headers
 
 
 def write_body(wfile, body):

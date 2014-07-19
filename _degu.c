@@ -29,12 +29,22 @@ Authors:
 
 static PyObject *degu_MAX_LINE_BYTES = NULL;
 static PyObject *degu_EmptyPreambleError = NULL;
-static PyObject *_TWO = NULL;
-static PyObject *_SEP = NULL;
+static PyObject *int_zero = NULL;
+static PyObject *int_two = NULL;
+static PyObject *colon_space = NULL;
 static PyObject *name_casefold = NULL;
 static PyObject *name_readline = NULL;
+static PyObject *key_content_length = NULL;
+static PyObject *key_transfer_encoding = NULL;
+static PyObject *value_chunked = NULL;
 
 #define _SET(pyobj, source) \
+    pyobj = source; \
+    if (pyobj == NULL) { \
+        goto error; \
+    }
+
+#define _RESET(pyobj, source) \
     Py_CLEAR(pyobj); \
     pyobj = source; \
     if (pyobj == NULL) { \
@@ -44,7 +54,7 @@ static PyObject *name_readline = NULL;
 #define _READLINE(py_size, size) \
     line_size = 0; \
     line_data = NULL; \
-    _SET(line, PyObject_CallFunctionObjArgs(rfile_readline, py_size, NULL)) \
+    _RESET(line, PyObject_CallFunctionObjArgs(rfile_readline, py_size, NULL)) \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
             "rfile.readline() returned %R, should return <class 'bytes'>", \
@@ -138,13 +148,13 @@ degu_read_preamble(PyObject *self, PyObject *args)
         if (line_size == 2) {  // Stop on the first empty CRLF terminated line
             goto success;
         }
-        _SET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
+        _RESET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
         PyList_Append(header_lines, text);
     }
 
     // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
     // we just need to check for the final CRLF preamble termination:
-    _READLINE(_TWO, 2)
+    _READLINE(int_two, 2)
     if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
@@ -180,9 +190,10 @@ degu_parse_headers(PyObject *self, PyObject *args)
     PyObject *line = NULL;
     PyObject *headers = NULL;
     PyObject *pair = NULL;
-    PyObject *rawkey = NULL;
-    PyObject *value = NULL;
     PyObject *key = NULL;
+    PyObject *value = NULL;
+    PyObject *casefolded_key = NULL;
+    PyObject *int_value = NULL;
 
     if (!PyArg_ParseTuple(args, "O:parse_headers", &header_lines)) {
         return NULL;
@@ -194,9 +205,8 @@ degu_parse_headers(PyObject *self, PyObject *args)
         );
         goto error;
     }
-    count = PyList_GET_SIZE(header_lines);
     _SET(headers, PyDict_New())
-
+    count = PyList_GET_SIZE(header_lines);
     for (i=0; i<count; i++) {
         line = PyList_GET_ITEM(header_lines, i);
         if (!PyUnicode_CheckExact(line)) {
@@ -206,27 +216,53 @@ degu_parse_headers(PyObject *self, PyObject *args)
             );
             goto error;
         }
-        _SET(pair, PyUnicode_Split(line, _SEP, -1))
+        _RESET(pair, PyUnicode_Split(line, colon_space, -1))
         if (PyList_GET_SIZE(pair) != 2) {
             if (PyList_GET_SIZE(pair) > 2) {
-                PyErr_SetString(PyExc_TypeError,
+                PyErr_SetString(PyExc_ValueError,
                     "too many values to unpack (expected 2)"
                 );
             }
             else {
-                PyErr_SetString(PyExc_TypeError,
+                PyErr_SetString(PyExc_ValueError,
                     "need more than 1 value to unpack"
                 );
             }
             goto error;
         }
-        rawkey = PyList_GET_ITEM(pair, 0);
+        key = PyList_GET_ITEM(pair, 0);
         value = PyList_GET_ITEM(pair, 1);
-        _SET(key, PyObject_CallMethodObjArgs(rawkey, name_casefold, NULL))
-        if (PyDict_SetItem(headers, key, value) != 0) {
+        _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
+        if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
+            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
     }
+    if (PyDict_Contains(headers, key_content_length)) {
+        if (PyDict_Contains(headers, key_transfer_encoding)) {
+            PyErr_SetString(PyExc_ValueError, 
+                "cannot have both content-length and transfer-encoding headers"
+            );
+            goto error;
+        }
+        _SET(value, PyDict_GetItemWithError(headers, key_content_length))
+        _RESET(int_value, PyLong_FromUnicodeObject(value, 10))
+        if (PyObject_RichCompareBool(int_value, int_zero, Py_LT) > 0) {
+            PyErr_Format(PyExc_ValueError, "negative content-length: %R", int_value);
+            goto error;
+        }
+        if (PyDict_SetItem(headers, key_content_length, int_value) != 0) {
+            goto error;
+        }
+    }
+    else if (PyDict_Contains(headers, key_transfer_encoding)) {
+        _SET(value, PyDict_GetItemWithError(headers, key_transfer_encoding))
+        if (PyUnicode_Compare(value, value_chunked) != 0) {
+            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+            goto error;
+        }
+    }
+
     goto exit;
 
 error:
@@ -234,7 +270,8 @@ error:
 
 exit:
     Py_CLEAR(pair);
-    Py_CLEAR(key);
+    Py_CLEAR(casefolded_key);
+    Py_CLEAR(int_value);
     return headers;
 }
 
@@ -285,10 +322,14 @@ PyInit__degu(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     // Python int ``2`` used with _READLINE() macro:
-    _SET(_TWO, PyLong_FromLong(2))
-    _SET(_SEP, PyUnicode_InternFromString(": "))
-    _SET(name_casefold, PyUnicode_InternFromString("casefold"))
-    _SET(name_readline, PyUnicode_InternFromString("readline"))
+    _RESET(int_zero, PyLong_FromLong(0))
+    _RESET(int_two, PyLong_FromLong(2))
+    _RESET(colon_space, PyUnicode_InternFromString(": "))
+    _RESET(name_casefold, PyUnicode_InternFromString("casefold"))
+    _RESET(name_readline, PyUnicode_InternFromString("readline"))
+    _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
+    _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
+    _RESET(value_chunked, PyUnicode_InternFromString("chunked"))
 
     return module;
 

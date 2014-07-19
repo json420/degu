@@ -87,7 +87,7 @@ run('fallback.read_preamble(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")
-run('parse_headers(header_lines)')
+run('fallback.parse_headers(header_lines)')
 run('_degu.parse_headers(header_lines)')
 
 print('\nHigh-level formatters:')
