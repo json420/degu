@@ -36,7 +36,7 @@ static PyObject *name_casefold = NULL;
 static PyObject *name_readline = NULL;
 static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
-static PyObject *value_chunked = NULL;
+static PyObject *str_chunked = NULL;
 
 #define _SET(pyobj, source) \
     pyobj = source; \
@@ -256,8 +256,12 @@ degu_parse_headers(PyObject *self, PyObject *args)
     }
     else if (PyDict_Contains(headers, key_transfer_encoding)) {
         _SET(value, PyDict_GetItemWithError(headers, key_transfer_encoding))
-        if (PyUnicode_Compare(value, value_chunked) != 0) {
+        if (PyUnicode_Compare(value, str_chunked) != 0) {
             PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+            goto error;
+        }
+        // Replace with interned key and value:
+        if (PyDict_SetItem(headers, key_transfer_encoding, str_chunked) != 0) {
             goto error;
         }
     }
@@ -390,8 +394,12 @@ done:
     }
     else if (PyDict_Contains(headers, key_transfer_encoding)) {
         _SET(borrowed, PyDict_GetItemWithError(headers, key_transfer_encoding))
-        if (PyUnicode_Compare(borrowed, value_chunked) != 0) {
+        if (PyUnicode_Compare(borrowed, str_chunked) != 0) {
             PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
+            goto error;
+        }
+        // Replace with interned key and value:
+        if (PyDict_SetItem(headers, key_transfer_encoding, str_chunked) != 0) {
             goto error;
         }
     }
@@ -467,7 +475,7 @@ PyInit__degu(void)
     _RESET(name_readline, PyUnicode_InternFromString("readline"))
     _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
     _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _RESET(value_chunked, PyUnicode_InternFromString("chunked"))
+    _RESET(str_chunked, PyUnicode_InternFromString("chunked"))
 
     return module;
 
