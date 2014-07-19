@@ -355,10 +355,6 @@ def read_request(rfile):
     }
 
 
-def validate_request(request):
-    pass
-
-
 def write_response(wfile, status, reason, headers, body):
     lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
     lines.extend(
@@ -373,18 +369,54 @@ def write_response(wfile, status, reason, headers, body):
 
 
 def handle_requests(app, sock, session):
-    (wfile, rfile) = makefiles(sock)
-    while True:
-        request = read_request(rfile)
-        validate_request(request)
-        response = app(session, request)
-        validate_response(request, response)
-        write_response(wfile, response)
+    (rfile, wfile) = makefiles(sock)
+    while handle_one(app, rfile, wfile, session) is True:
         session['requests'] += 1
-        status = response[0]
-        if status >= 400 and status not in {404, 409, 412}:
-            break
-    wfile.close()
+    wfile.close()  # Will block till write buffer is flushed
+
+
+def handle_one(app, rfile, wfile, session):
+    # Read the next request:
+    request = read_request(rfile)
+    request_method = request['method']
+    request_body = request['body']
+
+    # Call the application:
+    (status, reason, headers, body) = app(session, request)
+
+    # Make sure application fully consumed request body:
+    if request_body and not request_body.closed:
+        raise UnconsumedRequestError(request_body)
+
+    # Make sure HEAD requests are properly handled:
+    if request_method == 'HEAD':
+        if body is not None:
+            raise TypeError(
+                'response body must be None when request method is HEAD'
+            )
+
+    # Set default content-length or transfer-encoding header as needed:
+    if isinstance(body, (bytes, bytearray)):
+        headers.setdefault('content-length', len(body))
+    elif isinstance(body, (Body, BodyIter)):
+        headers.setdefault('content-length', body.content_length)
+    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
+        headers.setdefault('transfer-encoding', 'chunked') 
+    elif body is not None:
+        raise TypeError(
+            'body: not valid type: {!r}: {!r}'.format(type(body), body)
+        )
+
+    # Write response
+    write_response(wfile, status, reason, headers, body)
+
+    # Possibly close the connection:
+    if status >= 400 and status not in {404, 409, 412}:
+        log.warning('closing connection to %r after %d %r',
+            session['client'], status, reason
+        )
+        return False
+    return True
 
 
 class Handler:
@@ -629,8 +661,9 @@ class Server:
 
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
-            handler = Handler(self.app, sock, session)
-            handler.handle()
+            handle_requests(self.app, sock, session)
+            #handler = Handler(self.app, sock, session)
+            #handler.handle()
         else:
             log.warning('rejecting connection: %r', session['client'])
 
