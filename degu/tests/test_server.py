@@ -648,9 +648,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server.read_request(rfile)
-        self.assertEqual(str(cm.exception),
-            'duplicates in header_lines:\n  Foo: bar\n  foo: baz'
-        )
+        self.assertEqual(str(cm.exception), "duplicate header: 'foo: baz'")
         self.assertEqual(rfile.tell(), 38)
         self.assertEqual(rfile.read(), b'body')
 

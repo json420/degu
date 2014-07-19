@@ -166,9 +166,7 @@ Parsing functions
     >>> parse_headers(lines)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: duplicates in header_lines:
-      content-type: foo/bar
-      Content-Type: stuff/junk
+    ValueError: duplicate header: 'Content-Type: stuff/junk'
 
     If a Content-Length header is included, its value will be parsed into an
     ``int`` and validated:

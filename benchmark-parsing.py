@@ -17,7 +17,7 @@ line = (b'L' *  50) + b'\\r\\n'
 assert line.endswith(b'\\r\\n')
 assert line[-2:] == b'\\r\\n'
 
-header_lines = (
+header_lines = [
     'Content-Type: application/json',
     'Accept: application/json',
     'Content-Length: 1234567',
@@ -25,7 +25,8 @@ header_lines = (
     'X-Token: VVI5KPPRN5VOG9DITDLEOEIB',
     'Extra: Super',
     'Hello: World',
-)
+    'K: V',
+]
 
 headers = parse_headers(header_lines)
 
@@ -36,6 +37,10 @@ del fp
 
 data = b'D' * 1776
 
+
+def read_preamble2(rfile):
+    (first_line, header_lines) = _degu.read_preamble(rfile)
+    return (first_line, _degu.parse_headers(header_lines))
 
 class wfile:
     @staticmethod
@@ -84,10 +89,13 @@ run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 print('\nHigh-level parsers:')
 run('_degu.read_preamble(BytesIO(request_preamble))')
 run('fallback.read_preamble(BytesIO(request_preamble))')
+run('_degu.parse_headers(header_lines)')
+run('fallback.parse_headers(header_lines)')
+run('_degu.read_preamble2(BytesIO(request_preamble))')
+run('read_preamble2(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")
-run('parse_headers(header_lines)')
 
 print('\nHigh-level formatters:')
 run("write_response(wfile, 404, 'Not Found', headers, None)")

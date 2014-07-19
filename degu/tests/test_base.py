@@ -786,89 +786,89 @@ class TestFunctions(AlternatesTestCase):
         fp.seek(0)
         self.assertEqual(base.read_chunk(fp), (data, (key, value)))
 
-    def test_parse_headers(self):
+    def check_parse_headers(self, backend):
         # Too few values:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['foo:bar'])
+            backend.parse_headers(['foo:bar'])
         self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['foo bar'])
+            backend.parse_headers(['foo bar'])
         self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
 
         # Too many values:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['foo: bar: baz'])
+            backend.parse_headers(['foo: bar: baz'])
         self.assertEqual(str(cm.exception),
             'too many values to unpack (expected 2)'
         )
 
         # Bad Content-Length:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Length: 16.9'])
+            backend.parse_headers(['Content-Length: 16.9'])
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 10: '16.9'"
         )
 
         # Negative Content-Length:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Content-Length: -17'])
+            backend.parse_headers(['Content-Length: -17'])
         self.assertEqual(str(cm.exception), 'negative content-length: -17')
 
         # Bad Transfer-Encoding:
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(['Transfer-Encoding: clumped'])
+            backend.parse_headers(['Transfer-Encoding: clumped'])
         self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
 
         # Duplicate header:
         lines = ['Content-Type: text/plain', 'content-type: text/plain']
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(lines)
+            backend.parse_headers(lines)
         self.assertEqual(str(cm.exception),
-            'duplicates in header_lines:\n  ' + '\n  '.join(lines)
+            "duplicate header: 'content-type: text/plain'"
         )
 
         # Content-Length with Transfer-Encoding:
-        lines = ('Content-Length: 17', 'Transfer-Encoding: chunked')
+        lines = ['Content-Length: 17', 'Transfer-Encoding: chunked']
         with self.assertRaises(ValueError) as cm:
-            base.parse_headers(lines)
+            backend.parse_headers(lines)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
         )
 
         # Test a number of good single values:
-        self.assertEqual(base.parse_headers(['Content-Type: application/json']),
+        self.assertEqual(backend.parse_headers(['Content-Type: application/json']),
             {'content-type': 'application/json'}
         )
-        self.assertEqual(base.parse_headers(['Content-Length: 17']),
+        self.assertEqual(backend.parse_headers(['Content-Length: 17']),
             {'content-length': 17}
         )
-        self.assertEqual(base.parse_headers(['Content-Length: 0']),
+        self.assertEqual(backend.parse_headers(['Content-Length: 0']),
             {'content-length': 0}
         )
-        self.assertEqual(base.parse_headers(['Transfer-Encoding: chunked']),
+        self.assertEqual(backend.parse_headers(['Transfer-Encoding: chunked']),
             {'transfer-encoding': 'chunked'}
         )
 
         # Test a few good groups of values:
-        lines = (
+        lines = [
             'Content-Length: 18',
             'Content-Type: application/json',
             'Accept: application/json',
             'User-Agent: Microfiber/14.04',
-        )
-        self.assertEqual(base.parse_headers(lines), {
+        ]
+        self.assertEqual(backend.parse_headers(lines), {
             'content-length': 18,
             'content-type': 'application/json',
             'accept': 'application/json',
             'user-agent': 'Microfiber/14.04',
         })
-        lines = (
+        lines = [
             'transfer-encoding: chunked',
             'Content-Type: application/json',
             'Accept: application/json',
             'User-Agent: Microfiber/14.04',
-        )
-        self.assertEqual(base.parse_headers(lines), {
+        ]
+        self.assertEqual(backend.parse_headers(lines), {
             'transfer-encoding': 'chunked',
             'content-type': 'application/json',
             'accept': 'application/json',
@@ -880,19 +880,26 @@ class TestFunctions(AlternatesTestCase):
         headers = dict(
             ('X-' + random_id(), random_id()) for i in range(25)
         )
-        lines = tuple(
+        lines = list(
             '{}: {}'.format(key, value) for (key, value) in headers.items()
         )
         headers = dict(
             (key.casefold(), value) for (key, value) in headers.items()
         )
-        self.assertEqual(base.parse_headers(lines), headers)
+        self.assertEqual(backend.parse_headers(lines), headers)
 
         # Sanity check when header names are already casefolded:
-        lines = tuple(
+        lines = list(
             '{}: {}'.format(key, value) for (key, value) in headers.items()
         )
-        self.assertEqual(base.parse_headers(lines), headers)
+        self.assertEqual(backend.parse_headers(lines), headers)
+
+    def test_parse_headers_p(self):
+        self.check_parse_headers(fallback)
+
+    def test_parse_headers_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_headers(_degu)
 
     def test_write_body(self):
         # body is bytes:
