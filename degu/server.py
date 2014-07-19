@@ -394,6 +394,15 @@ def handle_one(app, rfile, wfile, session):
             raise TypeError(
                 'response body must be None when request method is HEAD'
             )
+        if 'content-length' in headers:
+            if 'transfer-encoding' in headers:
+                raise ValueError(
+                    'cannot have both content-length and transfer-encoding headers'
+                )
+        elif headers.get('transfer-encoding') != 'chunked':
+            raise ValueError(
+                'response to HEAD request must include content-length or transfer-encoding'
+            )
 
     # Set default content-length or transfer-encoding header as needed:
     if isinstance(body, (bytes, bytearray)):
