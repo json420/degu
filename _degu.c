@@ -275,10 +275,155 @@ exit:
 }
 
 
+static PyObject *
+degu_read_preamble2(PyObject *self, PyObject *args)
+{
+    PyObject *rfile = NULL;
+    PyObject *rfile_readline = NULL;  // rfile.readline() method
+    PyObject *line = NULL;
+    size_t line_size = 0;
+    const char *line_data = NULL;
+    PyObject *first_line = NULL;
+    PyObject *headers = NULL;
+    uint8_t i;
+
+    PyObject *text = NULL;
+    PyObject *pair = NULL;
+    PyObject *key = NULL;
+    PyObject *value = NULL;
+    PyObject *casefolded_key = NULL;
+    PyObject *int_value = NULL;
+
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:read_preamble2", &rfile)) {
+        return NULL;
+    }
+
+    /*
+    For performance, we first get a reference to the rfile.readline() method and
+    then call it each time we need using PyObject_CallFunctionObjArgs().
+
+    This creates an additional reference to the rfile that we own, which means
+    that the rfile can't get GC'ed through any subtle weirdness when the
+    rfile.readline() callback is called.
+
+    See the _READLINE() macro for more details. 
+    */
+    _SET(rfile_readline, PyObject_GetAttr(rfile, name_readline))
+    if (!PyCallable_Check(rfile_readline)) {
+        Py_CLEAR(rfile_readline);
+        PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
+        return NULL;
+    }
+
+    // Read the first line:
+    _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
+    if (line_size <= 0) {
+        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
+        goto error;
+    }
+    _CHECK_LINE_TERMINATION("bad line termination: %R")
+    if (line_size == 2) {
+        PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
+        goto error;
+    }
+    _SET(first_line, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
+
+    // Read the header lines:
+    _SET(headers, PyDict_New())
+    for (i=0; i<MAX_HEADER_COUNT; i++) {
+        _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
+        _CHECK_LINE_TERMINATION("bad header line termination: %R")
+        if (line_size == 2) {  // Stop on the first empty CRLF terminated line
+            goto done;
+        }
+        _RESET(text, PyUnicode_DecodeLatin1(line_data, line_size - 2, "strict"))
+        _RESET(pair, PyUnicode_Split(text, colon_space, -1))
+        if (PyList_GET_SIZE(pair) != 2) {
+            if (PyList_GET_SIZE(pair) > 2) {
+                PyErr_SetString(PyExc_ValueError,
+                    "too many values to unpack (expected 2)"
+                );
+            }
+            else {
+                PyErr_SetString(PyExc_ValueError,
+                    "need more than 1 value to unpack"
+                );
+            }
+            goto error;
+        }
+        key = PyList_GET_ITEM(pair, 0);
+        value = PyList_GET_ITEM(pair, 1);
+        _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
+        if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
+            PyErr_Format(PyExc_ValueError, "duplicate header: %R", text);
+            goto error;
+        }
+    }
+
+    // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+    // we just need to check for the final CRLF preamble termination:
+    _READLINE(int_two, 2)
+    if (line_size != 2 || memcmp(line_data, "\r\n", 2) != 0) {
+        PyErr_Format(PyExc_ValueError,
+            "too many headers (> %u)", MAX_HEADER_COUNT
+        );
+        goto error;
+    }
+
+done:
+    if (first_line == NULL || headers== NULL) {
+        Py_FatalError("very bad things");
+    }
+    if (PyDict_Contains(headers, key_content_length)) {
+        if (PyDict_Contains(headers, key_transfer_encoding)) {
+            PyErr_SetString(PyExc_ValueError, 
+                "cannot have both content-length and transfer-encoding headers"
+            );
+            goto error;
+        }
+        _SET(value, PyDict_GetItemWithError(headers, key_content_length))
+        _RESET(int_value, PyLong_FromUnicodeObject(value, 10))
+        if (PyObject_RichCompareBool(int_value, int_zero, Py_LT) > 0) {
+            PyErr_Format(PyExc_ValueError, "negative content-length: %R", int_value);
+            goto error;
+        }
+        if (PyDict_SetItem(headers, key_content_length, int_value) != 0) {
+            goto error;
+        }
+    }
+    else if (PyDict_Contains(headers, key_transfer_encoding)) {
+        _SET(value, PyDict_GetItemWithError(headers, key_transfer_encoding))
+        if (PyUnicode_Compare(value, value_chunked) != 0) {
+            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+            goto error;
+        }
+    }
+    ret = PyTuple_Pack(2, first_line, headers);
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(rfile_readline);
+    Py_CLEAR(line);
+    Py_CLEAR(first_line);
+    Py_CLEAR(headers);
+    Py_CLEAR(text);
+    Py_CLEAR(pair);
+    Py_CLEAR(casefolded_key);
+    Py_CLEAR(int_value);
+    return ret;  
+}
+
+
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
     {"parse_headers", degu_parse_headers, METH_VARARGS, "parse_headers(header_lines)"},
+    {"read_preamble2", degu_read_preamble2, METH_VARARGS, "read_preamble2(rfile)"},
     {NULL, NULL, 0, NULL}
 };
 
