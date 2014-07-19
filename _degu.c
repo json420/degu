@@ -262,7 +262,6 @@ degu_parse_headers(PyObject *self, PyObject *args)
             goto error;
         }
     }
-
     goto exit;
 
 error:
