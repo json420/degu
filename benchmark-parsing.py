@@ -25,6 +25,7 @@ header_lines = [
     'X-Token: VVI5KPPRN5VOG9DITDLEOEIB',
     'Extra: Super',
     'Hello: World',
+    'K: V',
 ]
 
 headers = parse_headers(header_lines)

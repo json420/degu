@@ -53,7 +53,6 @@ static PyObject *value_chunked = NULL;
 
 #define _READLINE(py_size, size) \
     line_size = 0; \
-    line_data = NULL; \
     _RESET(line, PyObject_CallFunctionObjArgs(rfile_readline, py_size, NULL)) \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
@@ -281,15 +280,13 @@ degu_read_preamble2(PyObject *self, PyObject *args)
     PyObject *rfile = NULL;
     PyObject *rfile_readline = NULL;  // rfile.readline() method
     PyObject *line = NULL;
-    size_t line_size = 0;
-    const char *line_data = NULL;
-    PyObject *first_line = NULL;
-    PyObject *headers = NULL;
+
+    size_t line_size, ksize, vsize;
+    const char *line_data, *data;
     uint8_t i;
 
-    const char *data = NULL;
-    size_t size1, size2;
-
+    PyObject *first_line = NULL;
+    PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *casefolded_key = NULL;
@@ -349,13 +346,13 @@ degu_read_preamble2(PyObject *self, PyObject *args)
         data = memmem(line_data, line_size - 2, ": ", 2);
         if (data == NULL || data < line_data + 1 || data > line_data + line_size - 5) {
             PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
+            goto error;
         }
-        size1 = data - line_data;
-        size2 = line_size - size1 - 4;
+        ksize = data - line_data;
+        vsize = line_size - ksize - 4;
         data += 2;
-
-        _RESET(key, PyUnicode_DecodeLatin1(line_data, size1, "strict"))
-        _RESET(value, PyUnicode_DecodeLatin1(data, size2, "strict"))
+        _RESET(key, PyUnicode_DecodeLatin1(line_data, ksize, "strict"))
+        _RESET(value, PyUnicode_DecodeLatin1(data, vsize, "strict"))
         _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
         if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
@@ -374,9 +371,6 @@ degu_read_preamble2(PyObject *self, PyObject *args)
     }
 
 done:
-    if (first_line == NULL || headers== NULL) {
-        Py_FatalError("very bad things");
-    }
     if (PyDict_Contains(headers, key_content_length)) {
         if (PyDict_Contains(headers, key_transfer_encoding)) {
             PyErr_SetString(PyExc_ValueError, 
