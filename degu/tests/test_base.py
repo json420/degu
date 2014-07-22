@@ -774,6 +774,51 @@ class TestFunctions(AlternatesTestCase):
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
+        ###############################
+        # Back to testing first line...
+
+        # First line is completely empty, no termination:
+        lines = [b'']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(backend.EmptyPreambleError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
+        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # First line badly terminated:
+        lines = [b'hello\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception), "bad line termination: b'o\\n'")
+        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # First line empty yet well terminated:
+        lines = [b'\r\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception), 'first preamble line is empty')
+        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
     def test_read_preamble2_p(self):
         self.check_read_preamble2(fallback)
 
