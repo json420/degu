@@ -157,3 +157,60 @@ def parse_headers(header_lines):
             )
     return headers
 
+
+def _read_preamble(rfile):
+    rfile_readline = rfile.readline
+    if not callable(rfile_readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _readline(rfile_readline, MAX_LINE_BYTES)
+    if not line:
+        raise EmptyPreambleError('HTTP preamble is empty')
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
+    first_line = line[:-2].decode('latin_1')
+    header_lines = []
+    for i in range(MAX_HEADER_COUNT):
+        line = _readline(rfile_readline, MAX_LINE_BYTES)
+        if line[-2:] != b'\r\n':
+            raise ValueError(
+                'bad header line termination: {!r}'.format(line[-2:])
+            )
+        if len(line) == 2:  # Stop on the first empty CRLF terminated line
+            return (first_line, header_lines)
+        header_lines.append(line[:-2])
+    if _readline(rfile_readline, 2) != b'\r\n':
+        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
+    return (first_line, header_lines)
+
+
+def _parse_headers(header_lines):
+    headers = {}
+    for line in header_lines:
+        (key, value) = line.split(': ')
+        if headers.setdefault(key.casefold(), value) is not value:
+            raise ValueError(
+                'duplicate header: {!r}'.format(line)
+            )
+    if 'content-length' in headers:
+        headers['content-length'] = int(headers['content-length'])
+        if headers['content-length'] < 0:
+            raise ValueError(
+                'negative content-length: {!r}'.format(headers['content-length'])
+            ) 
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                'cannot have both content-length and transfer-encoding headers'
+            ) 
+    elif 'transfer-encoding' in headers:
+        if headers['transfer-encoding'] != 'chunked':
+            raise ValueError(
+                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+            )
+    return headers
+
+
+def read_preamble2(rfile):
+    (first_line, header_lines) = _read_preamble(rfile)
+
