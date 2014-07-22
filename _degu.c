@@ -332,13 +332,12 @@ degu_read_preamble2(PyObject *self, PyObject *args)
     }
     _SET(first_line, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
 
-    // Read the header lines:
     /*
+    Read the header lines:
 
-      char| K: V
-    offset| 0123
-      size| 1234
-
+          char| K: V
+        offset| 0123
+          size| 1234
     */
     _SET(headers, PyDict_New())
     for (i=0; i<MAX_HEADER_COUNT; i++) {
@@ -347,13 +346,14 @@ degu_read_preamble2(PyObject *self, PyObject *args)
         if (line_len == 2) {  // Stop on the first empty CRLF terminated line
             goto done;
         }
-        buf = memmem(line_buf, line_len - 2, ": ", 2);
-        if (buf == NULL || buf < line_buf + 1 || buf > line_buf + line_len - 5) {
+        line_len -= 2;
+        buf = memmem(line_buf, line_len, ": ", 2);
+        if (buf == NULL || buf < line_buf + 1 || buf > line_buf + line_len - 3) {
             PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
             goto error;
         }
         key_len = buf - line_buf;
-        value_len = line_len - key_len - 4;
+        value_len = line_len - key_len - 2;
         buf += 2;
         _RESET(key, PyUnicode_DecodeLatin1(line_buf, key_len, "strict"))
         _RESET(value, PyUnicode_DecodeLatin1(buf, value_len, "strict"))

@@ -48,6 +48,15 @@ except ImportError:
 random = SystemRandom()
 
 
+BAD_HEADER_LINES = (
+    b'K:V\r\n',
+    b'K V\r\n',
+    b': V\r\n',
+    b'K: \r\n',
+    b': \r\n',
+)
+
+
 def random_headers(count):
     return dict(
         ('X-' + random_id(), random_id()) for i in range(count)
@@ -805,7 +814,7 @@ class TestFunctions(AlternatesTestCase):
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
-        # First line empty yet well terminated:
+        # First line is empty yet well terminated:
         lines = [b'\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
@@ -818,6 +827,78 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
+
+        ###############################
+        # Back to testing header lines:
+
+        # 1st header line is completely empty, no termination:
+        lines = [random_line(), b'']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # 1st header line is just b'\n':
+        lines = [random_line(), b'\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception), "bad header line termination: b'\\n'")
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # Valid header but missing \r:
+        lines = [random_line(), b'Content-Length: 1776\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            "bad header line termination: b'6\\n'"
+        )
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # Problems in parsing header line:
+        for bad in BAD_HEADER_LINES:
+            lines = [random_line(), bad]
+            counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+            rfile = DummyFile(lines.copy())
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            with self.assertRaises(ValueError) as cm:
+                backend.read_preamble2(rfile)
+            self.assertEqual(str(cm.exception),
+                'bad header line: {!r}'.format(bad)
+            )
+            self.assertEqual(rfile._calls,
+                [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            self.assertEqual(counts,
+                tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+            )
 
     def test_read_preamble2_p(self):
         self.check_read_preamble2(fallback)
