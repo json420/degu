@@ -4,6 +4,7 @@ import time
 import logging
 import json
 import argparse
+import statistics
 
 import degu
 from degu.sslhelpers import random_id
@@ -60,7 +61,7 @@ headers = {
 
 count = 5000
 deltas = []
-for i in range(10):
+for i in range(15):
     start = time.monotonic()
     conn = client.connect()
     for i in range(count):
@@ -69,6 +70,12 @@ for i in range(10):
     deltas.append(time.monotonic() - start)
     conn.close()
 server.terminate()
-delta = min(deltas)
-print('\n{:.2f} requests/second'.format(count / delta))
 
+rates = tuple(count / d for d in deltas)
+fastest = '{:.2f}'.format(max(rates))
+stdev = '{:.2f}'.format(statistics.stdev(rates))
+width = max(len(fastest), len(stdev))
+
+print('')
+print('fastest: {} requests/second'.format(fastest.rjust(width)))
+print('  stdev: {} requests/second'.format(stdev.rjust(width)))
