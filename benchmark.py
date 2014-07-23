@@ -62,8 +62,8 @@ headers = {
 count = 5000
 deltas = []
 for i in range(15):
-    start = time.monotonic()
     conn = client.connect()
+    start = time.monotonic()
     for i in range(count):
         data = conn.request('POST', '/', headers, body).body.read()
         assert json.loads(data.decode()) == {'pong': marker}
