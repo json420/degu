@@ -630,16 +630,21 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server.read_request(rfile)
-        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
-        self.assertEqual(rfile.tell(), 30)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz\\r\\n'")
+        self.assertEqual(rfile.tell(), 28)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # 1st header line has too many items to split:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz: jazz\r\n\r\nbody')
-        with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
-        self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 2)'
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'GET',
+                'script': [],
+                'path': ['foo'],
+                'query': '',
+                'headers': {'bar': 'baz: jazz'},
+                'body': None,
+            }
         )
         self.assertEqual(rfile.tell(), 37)
         self.assertEqual(rfile.read(), b'body')
@@ -648,9 +653,9 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server.read_request(rfile)
-        self.assertEqual(str(cm.exception), "duplicate header: 'foo: baz'")
-        self.assertEqual(rfile.tell(), 38)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception), "duplicate header: b'foo: baz\\r\\n'")
+        self.assertEqual(rfile.tell(), 36)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Content-Length can't be parsed as a base-10 integer:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: 16.9\r\n\r\nbody')
