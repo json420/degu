@@ -30,6 +30,7 @@ try:
         EmptyPreambleError,
         read_preamble,
         parse_headers,
+        read_preamble2,
     )
 except ImportError:
     from .fallback import (
@@ -38,6 +39,7 @@ except ImportError:
         EmptyPreambleError,
         read_preamble,
         parse_headers,
+        read_preamble2,
     )
 
 
@@ -47,6 +49,7 @@ __all__ = (
     'EmptyPreambleError',
     'read_preamble',
     'parse_headers',
+    'read_preamble2',
 )
 
 assert issubclass(EmptyPreambleError, ConnectionError)

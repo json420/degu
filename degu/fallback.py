@@ -157,3 +157,62 @@ def parse_headers(header_lines):
             )
     return headers
 
+
+def _read_preamble2(rfile):
+    rfile_readline = rfile.readline
+    if not callable(rfile_readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _readline(rfile_readline, MAX_LINE_BYTES)
+    if not line:
+        raise EmptyPreambleError('HTTP preamble is empty')
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
+    first_line = line[:-2].decode('latin_1')
+    headers = {}
+    for i in range(MAX_HEADER_COUNT):
+        line = _readline(rfile_readline, MAX_LINE_BYTES)
+        if line[-2:] != b'\r\n':
+            raise ValueError(
+                'bad header line termination: {!r}'.format(line[-2:])
+            )
+        if len(line) == 2:  # Stop on the first empty CRLF terminated line
+            return (first_line, headers)
+        try:
+            (key, value) = line[:-2].split(b': ', 1)
+        except ValueError:
+            key = None
+            value = None
+        if not (key and value):
+            raise ValueError('bad header line: {!r}'.format(line))
+        key = key.decode('latin_1').casefold()
+        value = value.decode('latin_1')
+        if headers.setdefault(key, value) is not value:
+            raise ValueError(
+                'duplicate header: {!r}'.format(line)
+            )
+    if _readline(rfile_readline, 2) != b'\r\n':
+        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
+    return (first_line, headers)
+
+
+def read_preamble2(rfile):
+    (first_line, headers) = _read_preamble2(rfile)
+    if 'content-length' in headers:
+        headers['content-length'] = int(headers['content-length'])
+        if headers['content-length'] < 0:
+            raise ValueError(
+                'negative content-length: {!r}'.format(headers['content-length'])
+            ) 
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                'cannot have both content-length and transfer-encoding headers'
+            )
+    elif 'transfer-encoding' in headers:
+        if headers['transfer-encoding'] != 'chunked':
+            raise ValueError(
+                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+            )
+    return (first_line, headers)
+

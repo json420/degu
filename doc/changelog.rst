@@ -5,6 +5,18 @@ Changelog
 0.7 (unreleased)
 ----------------
 
+Changes:
+
+    * Rework read_preamble() to combine functionality of previous
+      read_preamble() plus parse_header() functions
+
+    * Add C implementation of the new read_preamble() function, which provides
+      around a 318% performance improvement over the pure-Python equivalent in
+      Degu 0.6
+
+    * When using the C version of read_preamble(), benchmark.py is now around
+      11% faster for AF_INET6, and around 25% faster for AF_UNIX
+
 
 0.6 (June 2014)
 ---------------

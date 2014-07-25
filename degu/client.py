@@ -38,8 +38,7 @@ from .base import (
     ChunkedBody,
     ChunkedBodyIter,
     makefiles,
-    read_preamble,
-    parse_headers,
+    read_preamble2,
     write_body,
 )
 
@@ -223,10 +222,8 @@ def write_request(wfile, method, uri, headers, body):
 
 
 def read_response(rfile, method):
-    assert method in {'GET', 'HEAD', 'DELETE', 'PUT', 'POST'}
-    (status_line, header_lines) = read_preamble(rfile)
+    (status_line, headers) = read_preamble2(rfile)
     (status, reason) = parse_status(status_line)
-    headers = (parse_headers(header_lines) if header_lines else {})
     if 'content-length' in headers and method != 'HEAD':
         body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
