@@ -281,22 +281,25 @@ exit:
 static PyObject *
 degu_read_preamble2(PyObject *self, PyObject *args)
 {
+    // Borrowed references we don't need to decrement:
     PyObject *rfile = NULL;
+    PyObject *borrowed = NULL;
+
+    // Owned references we need to decrement when != NULL:
     PyObject *rfile_readline = NULL;  // rfile.readline() method
     PyObject *line = NULL;
-
-    size_t line_len, key_len, value_len;
-    const char *line_buf, *buf;
-    uint8_t i;
-
     PyObject *first_line = NULL;
     PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *casefolded_key = NULL;
-    PyObject *borrowed = NULL;
 
+    // Owned reference we transfer on success, decrement on error:
     PyObject *ret = NULL;
+
+    size_t line_len, key_len, value_len;
+    const char *line_buf, *buf;
+    uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble2", &rfile)) {
         return NULL;
