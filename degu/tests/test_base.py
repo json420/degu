@@ -568,6 +568,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(IndexError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -580,6 +581,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -595,6 +597,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -613,6 +616,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(IndexError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -627,6 +631,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -647,6 +652,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -670,6 +676,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(IndexError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
         )
@@ -688,6 +695,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
         )
@@ -709,6 +717,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
         )
@@ -733,6 +742,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(IndexError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
             + [2]
@@ -752,6 +762,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
             + [2]
@@ -774,6 +785,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 3 bytes, expected at most 2'
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
             + [2]
@@ -794,6 +806,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(backend.EmptyPreambleError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -808,6 +821,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), "bad line termination: b'o\\n'")
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -822,6 +836,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), 'first preamble line is empty')
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -839,6 +854,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -854,7 +870,10 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             backend.read_preamble2(rfile)
-        self.assertEqual(str(cm.exception), "bad header line termination: b'\\n'")
+        self.assertEqual(str(cm.exception),
+            "bad header line termination: b'\\n'"
+        )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -873,6 +892,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             "bad header line termination: b'6\\n'"
         )
+        self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
             [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
         )
@@ -892,6 +912,7 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(str(cm.exception),
                 'bad header line: {!r}'.format(bad)
             )
+            self.assertEqual(rfile._lines, [])
             self.assertEqual(rfile._calls,
                 [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
             )
