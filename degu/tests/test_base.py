@@ -900,6 +900,124 @@ class TestFunctions(AlternatesTestCase):
                 tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
             )
 
+        # Too many headers:
+        first_line = random_line()
+        header_lines = tuple(
+            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+        )
+        lines = [first_line]
+        lines.extend(header_lines)
+        lines.append(b'D\n')
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(ValueError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            'too many headers (> {!r})'.format(backend.MAX_HEADER_COUNT)
+        )
+        self.assertEqual(rfile._lines, [])
+        calls = [
+            backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)
+        ]
+        calls.append(2)
+        self.assertEqual(rfile._calls, calls)
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        # No headers:
+        first_line = random_line()
+        lines = [first_line, b'\r\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        (first, headers) = backend.read_preamble2(rfile)
+        self.assertEqual(sys.getrefcount(first), 2)
+        self.assertEqual(sys.getrefcount(headers), 2)
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+        self.assertIsInstance(first, str)
+        self.assertEqual(first, first_line[:-2].decode('latin_1'))
+        self.assertIsInstance(headers, dict)
+        self.assertEqual(headers, {})
+
+        # 1 header:
+        first_line = random_line()
+        header_line = random_header_line()
+        lines = [first_line, header_line, b'\r\n']
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        (first, headers) = backend.read_preamble2(rfile)
+        self.assertEqual(sys.getrefcount(first), 2)
+        self.assertEqual(sys.getrefcount(headers), 2)
+        for kv in headers.items():
+            self.assertEqual(sys.getrefcount(kv[0]), 3)
+            self.assertEqual(sys.getrefcount(kv[1]), 3)
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES for i in range(3)]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+        self.assertIsInstance(first, str)
+        self.assertEqual(first, first_line[:-2].decode('latin_1'))
+        self.assertIsInstance(headers, dict)
+        self.assertEqual(len(headers), 1)
+        key = header_line.split(b': ')[0].decode('latin_1').lower()
+        value = headers[key]
+        self.assertIsInstance(value, str)
+        self.assertEqual(value,
+            header_line[:-2].split(b': ')[1].decode('latin_1')
+        )
+
+        # MAX_HEADER_COUNT:
+        first_line = random_line()
+        header_lines = tuple(
+            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+        )
+        lines = [first_line]
+        lines.extend(header_lines)
+        lines.append(b'\r\n')
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        (first, headers) = backend.read_preamble2(rfile)
+        self.assertEqual(sys.getrefcount(first), 2)
+        self.assertEqual(sys.getrefcount(headers), 2)
+        for kv in headers.items():
+            self.assertEqual(sys.getrefcount(kv[0]), 3)
+            self.assertEqual(sys.getrefcount(kv[1]), 3)
+        self.assertEqual(rfile._lines, [])
+        calls = [
+            backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)
+        ]
+        calls.append(2)
+        self.assertEqual(rfile._calls, calls)
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+        self.assertIsInstance(first, str)
+        self.assertEqual(first, first_line[:-2].decode('latin_1'))
+        self.assertIsInstance(headers, dict)
+        self.assertEqual(len(headers), len(header_lines))
+        for line in header_lines:
+            key = line.split(b': ')[0].decode('latin_1').lower()
+            value = headers[key]
+            self.assertIsInstance(value, str)
+            self.assertEqual(value, line[:-2].split(b': ')[1].decode('latin_1'))
+
     def test_read_preamble2_p(self):
         self.check_read_preamble2(fallback)
 

@@ -417,7 +417,7 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);
+    Py_CLEAR(key);  // Note: we can't unit test this object with sys.getrefcount()
     Py_CLEAR(value);
     Py_CLEAR(casefolded_key);
     return ret;  
