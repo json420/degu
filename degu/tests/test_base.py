@@ -56,6 +56,25 @@ BAD_HEADER_LINES = (
     b': \r\n',
 )
 
+GOOD_HEADERS = (
+    (
+        b'Content-Type: application/json\r\n',
+        ('content-type', 'application/json')
+    ),
+    (
+        b'Content-Length: 17\r\n',
+        ('content-length', 17)
+    ),
+    (
+        b'Content-Length: 0\r\n',
+        ('content-length', 0)
+    ),
+    (
+        b'Transfer-Encoding: chunked\r\n',
+        ('transfer-encoding', 'chunked')
+    ),
+)
+
 
 def random_headers(count):
     return dict(
@@ -1071,6 +1090,29 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
+
+        # Test a number of good single values:
+        for (header_line, (key, value)) in GOOD_HEADERS:
+            first_line = random_line()
+            lines = [first_line, header_line, b'\r\n']
+            counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+            rfile = DummyFile(lines.copy())
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            (first, headers) = backend.read_preamble2(rfile)
+            self.assertEqual(sys.getrefcount(first), 2)
+            self.assertEqual(sys.getrefcount(headers), 2)
+            self.assertEqual(rfile._lines, [])
+            self.assertEqual(rfile._calls,
+                [backend.MAX_LINE_BYTES for i in range(3)]
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            self.assertEqual(counts,
+                tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+            )
+            self.assertIsInstance(first, str)
+            self.assertEqual(first, first_line[:-2].decode('latin_1'))
+            self.assertIsInstance(headers, dict)
+            self.assertEqual(headers, {key: value})
 
         # No headers:
         first_line = random_line()
