@@ -401,10 +401,6 @@ done:
             PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
             goto error;
         }
-        // Replace with interned key and value:
-        if (PyDict_SetItem(headers, key_transfer_encoding, str_chunked) != 0) {
-            goto error;
-        }
     }
     ret = PyTuple_Pack(2, first_line, headers);
     goto cleanup;
