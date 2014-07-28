@@ -29,7 +29,6 @@ try:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
-        parse_headers,
         read_preamble2,
     )
 except ImportError:
@@ -38,7 +37,6 @@ except ImportError:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
-        parse_headers,
         read_preamble2,
     )
 
@@ -48,7 +46,6 @@ __all__ = (
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
-    'parse_headers',
     'read_preamble2',
 )
 
