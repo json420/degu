@@ -553,6 +553,22 @@ class TestFunctions(AlternatesTestCase):
         self.check_read_preamble(_degu)
 
     def check_read_preamble2(self, backend):
+        self.assertIn(backend, (fallback, _degu))
+
+        # Test number of arguments read_preamble2() takes:
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2()
+        self.assertIn(str(cm.exception), {
+            'read_preamble2() takes exactly 1 argument (0 given)',
+            "read_preamble2() missing 1 required positional argument: 'rfile'"
+        })
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2('foo', 'bar')
+        self.assertIn(str(cm.exception), {
+            'read_preamble2() takes exactly 1 argument (2 given)',
+            'read_preamble2() takes 1 positional argument but 2 were given'
+        })
+
         class Bad1:
             pass
 
