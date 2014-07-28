@@ -2,20 +2,32 @@ Changelog
 =========
 
 
+
 0.7 (unreleased)
 ----------------
 
 Changes:
 
-    * Rework read_preamble() to combine functionality of previous
-      read_preamble() plus parse_header() functions
+    * Rework :func:`degu.base.read_preamble()` to do header parsing itself; this
+      combines the functionality of the previous ``read_preamble()`` function
+      with the functionality of the now removed ``parse_header()`` function
+      (this is a breaking internal API change)
 
-    * Add C implementation of the new read_preamble() function, which provides
-      around a 318% performance improvement over the pure-Python equivalent in
-      Degu 0.6
+    * Add C implementation of the new ``read_preamble()`` function, which
+      provides around a 318% performance improvement over the pure-Python
+      equivalent in Degu 0.6
 
-    * When using the C version of read_preamble(), benchmark.py is now around
-      11% faster for AF_INET6, and around 25% faster for AF_UNIX
+    * The RGI server application used in the ``benchmark.py`` script now uses a
+      static response body, which removes the noise from ``json.loads()``,
+      ``json.dumps()``, and makes the ``benchmark.py`` results more consistent
+      and more representative of true Degu performance
+
+    * When using the new C version of ``read_preamble()``, ``benchmark.py`` is
+      now around 20% faster for ``AF_INET6``, and around 26% faster for
+      ``AF_UNIX`` (on an Intel® Core™ i7-4900MQ when using the *performance*
+      governor); note that to verify this measurement, you need to copy the
+      ``benchmark.py`` script from the Degu 0.7 tree back into the Degu 0.6 tree
+
 
 
 0.6 (June 2014)
