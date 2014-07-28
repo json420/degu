@@ -623,6 +623,21 @@ class TestFunctions(AlternatesTestCase):
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
+        lines = [UserBytes(random_line())]
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
+        )
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
         # `rfile.readline()` returns more than *size* bytes:
         lines = [b'D' * (backend.MAX_LINE_BYTES - 1) + b'\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -665,6 +680,23 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
+        )
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        lines = [random_line(), UserBytes(random_header_line())]
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -739,6 +771,27 @@ class TestFunctions(AlternatesTestCase):
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
+        lines = [random_line()]
+        lines.extend(
+            random_header_line() for i in range(backend.MAX_HEADER_COUNT - 1)
+        )
+        lines.append(UserBytes(random_header_line()))
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
+        )
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
         # `rfile.readline()` returns more than *size* bytes:
         lines = [random_line()]
         lines.extend(
@@ -796,6 +849,28 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble2(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
+        )
+        self.assertEqual(rfile._lines, [])
+        self.assertEqual(rfile._calls,
+            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            + [2]
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertEqual(counts,
+            tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        )
+
+        lines = [random_line()]
+        lines.extend(
+            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+        )
+        lines.append(UserBytes(b'\r\n'))
+        counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+        rfile = DummyFile(lines.copy())
+        with self.assertRaises(TypeError) as cm:
+            backend.read_preamble2(rfile)
+        self.assertEqual(str(cm.exception),
+            'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
