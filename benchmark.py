@@ -30,14 +30,21 @@ logging.basicConfig(
 )
 
 
+agent = 'Degu/{}'.format(degu.__version__)
+ping = random_id(60)
+request_body = json.dumps({'ping': ping}).encode()
+pong = random_id(60)
+response_body = json.dumps({'pong': pong}).encode()
+
+
 def ping_pong_app(connection, request):
-    obj = json.loads(request['body'].read().decode())
-    body = json.dumps({'pong': obj['ping']}).encode()
+    data = request['body'].read()
+    #assert json.loads(data.decode()) == {'ping': ping}
     headers = {
-        'content-length': len(body),
         'content-type': 'application/json',
+        'server': agent,
     }
-    return (200, 'OK', headers, body)
+    return (200, 'OK', headers, response_body)
 
 
 if args.unix:
@@ -49,24 +56,19 @@ server = TempServer(address, None, ping_pong_app)
 client = Client(server.address)
 
 
-marker = random_id(60)
-body = json.dumps({'ping': marker}).encode()
 headers = {
-    'content-length': len(body),
     'accept': 'application/json',
     'content-type': 'application/json',
-    'user-agent': 'Degu/{}'.format(degu.__version__),
+    'user-agent': agent
 }
-
-
 count = 5000
 deltas = []
 for i in range(15):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
-        data = conn.request('POST', '/', headers, body).body.read()
-        assert json.loads(data.decode()) == {'pong': marker}
+        data = conn.request('POST', '/', headers, request_body).body.read()
+        #assert json.loads(data.decode()) == {'pong': pong}
     deltas.append(time.monotonic() - start)
     conn.close()
 server.terminate()
