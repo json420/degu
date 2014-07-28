@@ -27,7 +27,7 @@ __all__ = (
     'MAX_LINE_BYTES',
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    'read_preamble',
+    'read_preamble2',
 )
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
