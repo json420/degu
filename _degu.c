@@ -86,101 +86,6 @@ static PyObject *str_chunked = NULL;
 
 
 static PyObject *
-degu_read_preamble(PyObject *self, PyObject *args)
-{
-    PyObject *rfile = NULL;
-    PyObject *rfile_readline = NULL;  // rfile.readline() method
-    PyObject *line = NULL;
-    size_t line_len = 0;
-    const char *line_buf = NULL;
-    PyObject *first_line = NULL;
-    PyObject *header_lines = NULL;
-    uint8_t i;
-    PyObject *text = NULL;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
-        return NULL;
-    }
-
-    /*
-    For performance, we first get a reference to the rfile.readline() method and
-    then call it each time we need using PyObject_CallFunctionObjArgs().
-
-    This creates an additional reference to the rfile that we own, which means
-    that the rfile can't get GC'ed through any subtle weirdness when the
-    (potentially pure-Python) rfile.readline() callback is called.
-
-    The performance improvement is impressive, though.  At the time of this
-    change, we got around a 66% improvement by switching from
-    PyObject_CallMethod() to PyObject_CallFunctionObjArgs() with the retained
-    rfile_readline reference (from around 300k to 500k calls per second).
-
-    See the _READLINE() macro for more details. 
-    */
-    _SET(rfile_readline, PyObject_GetAttr(rfile, name_readline))
-    if (!PyCallable_Check(rfile_readline)) {
-        Py_CLEAR(rfile_readline);
-        PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
-        return NULL;
-    }
-
-    // Read the first line:
-    _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
-    if (line_len <= 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        goto error;
-    }
-    _CHECK_LINE_TERMINATION("bad line termination: %R")
-    if (line_len == 2) {
-        PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
-        goto error;
-    }
-    _SET(first_line, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
-
-    // Read the header lines:
-    header_lines = PyList_New(0);
-    for (i=0; i<MAX_HEADER_COUNT; i++) {
-        _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
-        _CHECK_LINE_TERMINATION("bad header line termination: %R")
-        if (line_len == 2) {  // Stop on the first empty CRLF terminated line
-            goto success;
-        }
-        _RESET(text, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
-        PyList_Append(header_lines, text);
-    }
-
-    // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
-    // we just need to check for the final CRLF preamble termination:
-    _READLINE(int_two, 2)
-    if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
-        PyErr_Format(PyExc_ValueError,
-            "too many headers (> %u)", MAX_HEADER_COUNT
-        );
-        goto error;
-    }
-
-success:
-    if (first_line == NULL || header_lines == NULL) {
-        Py_FatalError("very bad things");
-    }
-    ret = PyTuple_Pack(2, first_line, header_lines);
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(rfile_readline);
-    Py_CLEAR(line);
-    Py_CLEAR(first_line);
-    Py_CLEAR(header_lines);
-    Py_CLEAR(text);
-    return ret;  
-}
-
-
-static PyObject *
 degu_read_preamble2(PyObject *self, PyObject *args)
 {
     // Borrowed references we don't need to decrement:
@@ -324,7 +229,6 @@ cleanup:
 
 /* module init */
 static struct PyMethodDef degu_functions[] = {
-    {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
     {"read_preamble2", degu_read_preamble2, METH_VARARGS, "read_preamble2(rfile)"},
     {NULL, NULL, 0, NULL}
 };
