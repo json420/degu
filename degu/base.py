@@ -29,8 +29,6 @@ try:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
-        parse_headers,
-        read_preamble2,
     )
 except ImportError:
     from .fallback import (
@@ -38,8 +36,6 @@ except ImportError:
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
-        parse_headers,
-        read_preamble2,
     )
 
 
@@ -48,12 +44,8 @@ __all__ = (
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
-    'parse_headers',
-    'read_preamble2',
 )
 
-assert issubclass(EmptyPreambleError, ConnectionError)
-assert callable(read_preamble)
 
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB

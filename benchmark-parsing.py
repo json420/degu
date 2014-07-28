@@ -11,24 +11,23 @@ import _degu
 from degu import fallback
 from degu.client import parse_status, write_request
 from degu.server import parse_request, read_request, write_response
-from degu.base import parse_headers, write_chunk
+from degu.base import write_chunk
 
 line = (b'L' *  50) + b'\\r\\n'
 assert line.endswith(b'\\r\\n')
 assert line[-2:] == b'\\r\\n'
 
-header_lines = [
-    'Content-Type: application/json',
-    'Accept: application/json',
-    'Content-Length: 1234567',
-    'User-Agent: Microfiber/14.04',
-    'X-Token: VVI5KPPRN5VOG9DITDLEOEIB',
-    'Extra: Super',
-    'Hello: World',
-    'K: V',
-]
 
-headers = parse_headers(header_lines)
+headers = {
+    'content-type': 'application/json',
+    'accept': 'application/json',
+    'content-length': 1234567,
+    'user-agent': 'Microfiber/14.04',
+    'x-token': 'VVI5KPPRN5VOG9DITDLEOEIB',
+    'extra': 'Super',
+    'hello': 'World',
+    'k': 'V',
+}
 
 fp = BytesIO()
 write_request(fp, 'POST', '/foo/bar?stuff=junk', headers, b'hello')
@@ -37,10 +36,6 @@ del fp
 
 data = b'D' * 1776
 
-
-def read_preamble2(rfile):
-    (first_line, header_lines) = _degu.read_preamble(rfile)
-    return (first_line, _degu.parse_headers(header_lines))
 
 class wfile:
     @staticmethod
@@ -89,10 +84,6 @@ run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 print('\nHigh-level parsers:')
 run('_degu.read_preamble(BytesIO(request_preamble))')
 run('fallback.read_preamble(BytesIO(request_preamble))')
-run('_degu.parse_headers(header_lines)')
-run('fallback.parse_headers(header_lines)')
-run('_degu.read_preamble2(BytesIO(request_preamble))')
-run('read_preamble2(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")

@@ -85,80 +85,7 @@ def _readline(rfile_readline, maxsize):
     return line
 
 
-def read_preamble(rfile):
-    """
-    Read the HTTP request or response preamble, do low-level parsing.
-
-    The return value will be a ``(first_line, header_lines)`` tuple.
-
-    Over time, there is a good chance that parts of Degu will be replaced with
-    high-performance C extensions... and this function is a good candidate.
-    """
-    rfile_readline = rfile.readline
-    if not callable(rfile_readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _readline(rfile_readline, MAX_LINE_BYTES)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    first_line = line[:-2].decode('latin_1')
-    header_lines = []
-    for i in range(MAX_HEADER_COUNT):
-        line = _readline(rfile_readline, MAX_LINE_BYTES)
-        if line[-2:] != b'\r\n':
-            raise ValueError(
-                'bad header line termination: {!r}'.format(line[-2:])
-            )
-        if len(line) == 2:  # Stop on the first empty CRLF terminated line
-            return (first_line, header_lines)
-        header_lines.append(line[:-2].decode('latin_1'))
-    if _readline(rfile_readline, 2) != b'\r\n':
-        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
-    return (first_line, header_lines)
-
-
-def parse_headers(header_lines):
-    """
-    Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
-
-    The return value will be a `dict` mapping header names to header values, and
-    the header names will be case-folded (lowercase).  For example:
-
-    >>> parse_headers(['Content-Type: application/json'])
-    {'content-type': 'application/json'}
-
-    Over time, there is a good chance that parts of Degu will be replaced with
-    high-performance C extensions... and this function is a good candidate.
-    """
-    headers = {}
-    for line in header_lines:
-        (key, value) = line.split(': ')
-        if headers.setdefault(key.casefold(), value) is not value:
-            raise ValueError(
-                'duplicate header: {!r}'.format(line)
-            )
-    if 'content-length' in headers:
-        headers['content-length'] = int(headers['content-length'])
-        if headers['content-length'] < 0:
-            raise ValueError(
-                'negative content-length: {!r}'.format(headers['content-length'])
-            ) 
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                'cannot have both content-length and transfer-encoding headers'
-            ) 
-    elif 'transfer-encoding' in headers:
-        if headers['transfer-encoding'] != 'chunked':
-            raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
-            )
-    return headers
-
-
-def _read_preamble2(rfile):
+def _read_preamble(rfile):
     rfile_readline = rfile.readline
     if not callable(rfile_readline):
         raise TypeError('rfile.readline is not callable')
@@ -197,8 +124,8 @@ def _read_preamble2(rfile):
     return (first_line, headers)
 
 
-def read_preamble2(rfile):
-    (first_line, headers) = _read_preamble2(rfile)
+def read_preamble(rfile):
+    (first_line, headers) = _read_preamble(rfile)
     if 'content-length' in headers:
         headers['content-length'] = int(headers['content-length'])
         if headers['content-length'] < 0:
