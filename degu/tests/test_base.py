@@ -203,13 +203,6 @@ class TestBodyClosedError(TestCase):
 
 
 class FuzzTestFunctions(AlternatesTestCase):
-    def test_read_preamble_p(self):
-        self.fuzz(fallback.read_preamble)
-
-    def test_read_preamble_c(self):
-        self.skip_if_no_c_ext()
-        self.fuzz(_degu.read_preamble)
-
     def test_read_preamble2_p(self):
         self.fuzz(fallback.read_preamble2)
 
