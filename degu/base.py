@@ -28,7 +28,6 @@ try:
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
         read_preamble2,
     )
 except ImportError:
@@ -36,7 +35,6 @@ except ImportError:
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
         read_preamble2,
     )
 
@@ -45,12 +43,9 @@ __all__ = (
     'MAX_LINE_BYTES',
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    'read_preamble',
     'read_preamble2',
 )
 
-assert issubclass(EmptyPreambleError, ConnectionError)
-assert callable(read_preamble)
 
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
