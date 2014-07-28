@@ -10,7 +10,7 @@ Changes:
 
     * Rework :func:`degu.base.read_preamble()` to do header parsing itself; this
       combines the functionality of the previous ``read_preamble()`` function
-      with the functionality of the now removed ``parse_header()`` function
+      with the functionality of the now removed ``parse_headers()`` function
       (this is a breaking internal API change)
 
     * Add C implementation of the new ``read_preamble()`` function, which

@@ -38,7 +38,7 @@ response_body = json.dumps({'pong': pong}).encode()
 
 
 def ping_pong_app(connection, request):
-    data = request['body'].read()
+    request['body'].read()
     #assert json.loads(data.decode()) == {'ping': ping}
     headers = {
         'content-type': 'application/json',
@@ -67,7 +67,7 @@ for i in range(15):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
-        data = conn.request('POST', '/', headers, request_body).body.read()
+        conn.request('POST', '/', headers, request_body).body.read()
         #assert json.loads(data.decode()) == {'pong': pong}
     deltas.append(time.monotonic() - start)
     conn.close()
