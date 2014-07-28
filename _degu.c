@@ -31,7 +31,6 @@ static PyObject *degu_MAX_LINE_BYTES = NULL;
 static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *int_zero = NULL;
 static PyObject *int_two = NULL;
-static PyObject *colon_space = NULL;
 static PyObject *name_casefold = NULL;
 static PyObject *name_readline = NULL;
 static PyObject *key_content_length = NULL;
@@ -182,103 +181,6 @@ cleanup:
 
 
 static PyObject *
-degu_parse_headers(PyObject *self, PyObject *args)
-{
-    PyObject *header_lines = NULL;
-    Py_ssize_t i, count;
-    PyObject *line = NULL;
-    PyObject *headers = NULL;
-    PyObject *pair = NULL;
-    PyObject *key = NULL;
-    PyObject *value = NULL;
-    PyObject *casefolded_key = NULL;
-    PyObject *int_value = NULL;
-
-    if (!PyArg_ParseTuple(args, "O:parse_headers", &header_lines)) {
-        return NULL;
-    }
-    if (!PyList_CheckExact(header_lines)) {
-        PyErr_Format(PyExc_TypeError,
-            "header_lines: need a <class 'list'>; got a %R",
-            header_lines->ob_type
-        );
-        goto error;
-    }
-    _SET(headers, PyDict_New())
-    count = PyList_GET_SIZE(header_lines);
-    for (i=0; i<count; i++) {
-        line = PyList_GET_ITEM(header_lines, i);
-        if (!PyUnicode_CheckExact(line)) {
-            PyErr_Format(PyExc_TypeError,
-                "header_lines[%u]: need a <class 'str'>; got a %R",
-                i, line->ob_type
-            );
-            goto error;
-        }
-        _RESET(pair, PyUnicode_Split(line, colon_space, -1))
-        if (PyList_GET_SIZE(pair) != 2) {
-            if (PyList_GET_SIZE(pair) > 2) {
-                PyErr_SetString(PyExc_ValueError,
-                    "too many values to unpack (expected 2)"
-                );
-            }
-            else {
-                PyErr_SetString(PyExc_ValueError,
-                    "need more than 1 value to unpack"
-                );
-            }
-            goto error;
-        }
-        key = PyList_GET_ITEM(pair, 0);
-        value = PyList_GET_ITEM(pair, 1);
-        _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
-        if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
-            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
-            goto error;
-        }
-    }
-    if (PyDict_Contains(headers, key_content_length)) {
-        if (PyDict_Contains(headers, key_transfer_encoding)) {
-            PyErr_SetString(PyExc_ValueError, 
-                "cannot have both content-length and transfer-encoding headers"
-            );
-            goto error;
-        }
-        _SET(value, PyDict_GetItemWithError(headers, key_content_length))
-        _RESET(int_value, PyLong_FromUnicodeObject(value, 10))
-        if (PyObject_RichCompareBool(int_value, int_zero, Py_LT) > 0) {
-            PyErr_Format(PyExc_ValueError, "negative content-length: %R", int_value);
-            goto error;
-        }
-        if (PyDict_SetItem(headers, key_content_length, int_value) != 0) {
-            goto error;
-        }
-    }
-    else if (PyDict_Contains(headers, key_transfer_encoding)) {
-        _SET(value, PyDict_GetItemWithError(headers, key_transfer_encoding))
-        if (PyUnicode_Compare(value, str_chunked) != 0) {
-            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
-            goto error;
-        }
-        // Replace with interned key and value:
-        if (PyDict_SetItem(headers, key_transfer_encoding, str_chunked) != 0) {
-            goto error;
-        }
-    }
-    goto exit;
-
-error:
-    Py_CLEAR(headers);
-
-exit:
-    Py_CLEAR(pair);
-    Py_CLEAR(casefolded_key);
-    Py_CLEAR(int_value);
-    return headers;
-}
-
-
-static PyObject *
 degu_read_preamble2(PyObject *self, PyObject *args)
 {
     // Borrowed references we don't need to decrement:
@@ -423,7 +325,6 @@ cleanup:
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
-    {"parse_headers", degu_parse_headers, METH_VARARGS, "parse_headers(header_lines)"},
     {"read_preamble2", degu_read_preamble2, METH_VARARGS, "read_preamble2(rfile)"},
     {NULL, NULL, 0, NULL}
 };
@@ -469,7 +370,6 @@ PyInit__degu(void)
     // Python int ``2`` used with _READLINE() macro:
     _RESET(int_zero, PyLong_FromLong(0))
     _RESET(int_two, PyLong_FromLong(2))
-    _RESET(colon_space, PyUnicode_InternFromString(": "))
     _RESET(name_casefold, PyUnicode_InternFromString("casefold"))
     _RESET(name_readline, PyUnicode_InternFromString("readline"))
     _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
