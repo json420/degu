@@ -13,7 +13,7 @@ Changes:
       with the functionality of the now removed ``parse_headers()`` function
       (this is a breaking internal API change)
 
-    * Add C implementation of the new ``read_preamble()`` function, which
+    * Add a C implementation of the new ``read_preamble()`` function, which
       provides around a 318% performance improvement over the pure-Python
       equivalent in Degu 0.6
 
