@@ -38,7 +38,7 @@ from .base import (
     ChunkedBody,
     ChunkedBodyIter,
     makefiles,
-    read_preamble2,
+    read_preamble,
     write_body,
 )
 
@@ -222,7 +222,7 @@ def write_request(wfile, method, uri, headers, body):
 
 
 def read_response(rfile, method):
-    (status_line, headers) = read_preamble2(rfile)
+    (status_line, headers) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
     if 'content-length' in headers and method != 'HEAD':
         body = Body(rfile, headers['content-length'])

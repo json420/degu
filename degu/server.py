@@ -35,7 +35,7 @@ from .base import (
     ChunkedBody,
     ChunkedBodyIter,
     makefiles,
-    read_preamble2,
+    read_preamble,
     write_body,
 )
 
@@ -316,7 +316,7 @@ def validate_response(request, response):
 
 def read_request(rfile):
     # Read the entire request preamble:
-    (request_line, headers) = read_preamble2(rfile)
+    (request_line, headers) = read_preamble(rfile)
 
     # Parse the request line:
     (method, path_list, query) = parse_request(request_line)

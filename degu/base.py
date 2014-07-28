@@ -28,14 +28,14 @@ try:
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble2,
+        read_preamble,
     )
 except ImportError:
     from .fallback import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble2,
+        read_preamble,
     )
 
 
@@ -43,7 +43,7 @@ __all__ = (
     'MAX_LINE_BYTES',
     'MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    'read_preamble2',
+    'read_preamble',
 )
 
 
