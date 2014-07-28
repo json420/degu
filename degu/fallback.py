@@ -120,44 +120,6 @@ def read_preamble(rfile):
     return (first_line, header_lines)
 
 
-def parse_headers(header_lines):
-    """
-    Parse *header_lines* into a dictionary with case-folded (lowercase) keys.
-
-    The return value will be a `dict` mapping header names to header values, and
-    the header names will be case-folded (lowercase).  For example:
-
-    >>> parse_headers(['Content-Type: application/json'])
-    {'content-type': 'application/json'}
-
-    Over time, there is a good chance that parts of Degu will be replaced with
-    high-performance C extensions... and this function is a good candidate.
-    """
-    headers = {}
-    for line in header_lines:
-        (key, value) = line.split(': ')
-        if headers.setdefault(key.casefold(), value) is not value:
-            raise ValueError(
-                'duplicate header: {!r}'.format(line)
-            )
-    if 'content-length' in headers:
-        headers['content-length'] = int(headers['content-length'])
-        if headers['content-length'] < 0:
-            raise ValueError(
-                'negative content-length: {!r}'.format(headers['content-length'])
-            ) 
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                'cannot have both content-length and transfer-encoding headers'
-            ) 
-    elif 'transfer-encoding' in headers:
-        if headers['transfer-encoding'] != 'chunked':
-            raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
-            )
-    return headers
-
-
 def _read_preamble2(rfile):
     rfile_readline = rfile.readline
     if not callable(rfile_readline):
