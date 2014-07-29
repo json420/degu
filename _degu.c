@@ -1,25 +1,25 @@
 /*
-degu: an embedded HTTP server and client library
-Copyright (C) 2014 Novacut Inc
-
-This file is part of `degu`.
-
-`degu` is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version.
-
-`degu` is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
-details.
-
-You should have received a copy of the GNU Lesser General Public License along
-with `degu`.  If not, see <http://www.gnu.org/licenses/>.
-
-Authors:
-    Jason Gerard DeRose <jderose@novacut.com>
-*/
+ * degu: an embedded HTTP server and client library
+ * Copyright (C) 2014 Novacut Inc
+ *
+ * This file is part of `degu`.
+ *
+ * `degu` is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * `degu` is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with `degu`.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Authors:
+ *     Jason Gerard DeRose <jderose@novacut.com>
+ */
 
 #include <Python.h>
 
@@ -113,15 +113,15 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     /*
-    For performance, we first get a reference to the rfile.readline() method and
-    then call it each time we need using PyObject_CallFunctionObjArgs().
-
-    This creates an additional reference to the rfile that we own, which means
-    that the rfile can't get GC'ed through any subtle weirdness when the
-    rfile.readline() callback is called.
-
-    See the _READLINE() macro for more details. 
-    */
+     * For performance, we first get a reference to the rfile.readline() method
+     * and then call it each time we need using PyObject_CallFunctionObjArgs().
+     *
+     * This creates an additional reference to the rfile that we own, which
+     * means that the rfile can't get GC'ed through any subtle weirdness when
+     * the rfile.readline() callback is called.
+     *
+     * See the _READLINE() macro for more details. 
+     */
     _SET(rfile_readline, PyObject_GetAttr(rfile, name_readline))
     if (!PyCallable_Check(rfile_readline)) {
         Py_CLEAR(rfile_readline);
@@ -143,12 +143,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
     _SET(first_line, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
 
     /*
-    Read the header lines:
-
-          char| K: V
-        offset| 0123
-          size| 1234
-    */
+     * Read the header lines:
+     *
+     *      char| K: V
+     *    offset| 0123
+     *      size| 1234
+     */
     _SET(headers, PyDict_New())
     for (i=0; i<MAX_HEADER_COUNT; i++) {
         _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
@@ -174,8 +174,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         }
     }
 
-    // If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
-    // we just need to check for the final CRLF preamble termination:
+    /*
+     * If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+     * we just need to check for the final CRLF preamble termination:
+     */
     _READLINE(int_two, 2)
     if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
@@ -220,7 +222,7 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);  // Note: we can't unit test this object with sys.getrefcount()
+    Py_CLEAR(key);  // Note we can't unit test this object with sys.getrefcount()
     Py_CLEAR(value);
     Py_CLEAR(casefolded_key);
     return ret;  
@@ -271,7 +273,7 @@ PyInit__degu(void)
     Py_INCREF(degu_EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
-    // Python int ``2`` used with _READLINE() macro:
+    // Other Python `int` and `str` objects we need for performance:
     _RESET(int_zero, PyLong_FromLong(0))
     _RESET(int_two, PyLong_FromLong(2))
     _RESET(name_casefold, PyUnicode_InternFromString("casefold"))
