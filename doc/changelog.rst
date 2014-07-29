@@ -3,8 +3,8 @@ Changelog
 
 
 
-0.7 (unreleased)
-----------------
+0.7 (July 2014)
+---------------
 
 Changes:
 
