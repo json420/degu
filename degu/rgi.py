@@ -27,13 +27,21 @@ RGI validation middleware.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-SESSION_REQUIRED = frozenset([
+SESSION_REQUIRED = (
     'rgi.version',
     'rgi.Body',
     'rgi.BodyIter',
     'rgi.ChunkedBody',
     'rgi.ChunkedBodyIter',
-])
+    'scheme',
+    'protocol',
+    'server',
+    'client',
+)
+
+SESSION_SCHEMES = ('http', 'https')
+
+SESSION_PROTOCOLS = ('HTTP/1.1',)
 
 
 def _check_str_keys(name, obj):
@@ -56,7 +64,6 @@ def _check_required_keys(name, obj, required):
     """
     assert isinstance(name, str)
     assert isinstance(obj, dict)
-    assert isinstance(required, frozenset)
     for key in required:
         assert isinstance(key, str)
         if key not in obj:
@@ -106,4 +113,40 @@ def _validate_session(session):
         if not issubclass(value, object):
             raise Exception('Internal error, should not be reached')
 
+    # scheme:
+    value = session['scheme']
+    if value not in SESSION_SCHEMES:
+        raise ValueError(
+            "session['scheme']: value {!r} not in {!r}".format(value, SESSION_SCHEMES)
+        )
+
+    # protocol:
+    value = session['protocol']
+    if value not in SESSION_PROTOCOLS:
+        raise ValueError(
+            "session['protocol']: value {!r} not in {!r}".format(value, SESSION_PROTOCOLS)
+        )
+
+
+class Validator:
+    def __init__(self, app):
+        if not callable(app):
+            raise TypeError('app: not callable: {!r}'.format(app))
+        on_connect = getattr(app, 'on_connect', None)
+        if not (on_connect is None or callable(on_connect)):
+            raise TypeError(
+                'app.on_connect: not callable: {!r}'.format(on_connect)
+            )
+        self.app = app
+        self._on_connect = on_connect
+
+    def __call__(self, session, request):
+        _validate_session(session)
+        return self.app(session, request)
+
+    def on_connect(self, sock, session):
+        _validate_session(session)
+        if self._on_connect is None:
+            return True
+        return self._on_connect(sock, session)
 
