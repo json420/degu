@@ -124,6 +124,13 @@ def _get_path(label, value, *path):
     return (label, value)
 
 
+def _check_headers(label, value):
+    if not isinstance(value, dict):
+        raise TypeError(
+            TYPE_ERROR.format(label, dict, type(value), value) 
+        )
+
+
 def _validate_session(session):
     """
     Validate the *session* argument.
@@ -216,15 +223,40 @@ def _validate_request(request):
 
     # script:
     (label, value) = _get_path('request', request, 'script')
+    if not isinstance(value, list):
+        raise TypeError(
+            TYPE_ERROR.format(label, list, type(value), value) 
+        )
+    for i in range(len(value)):
+        (label, value) = _get_path('request', request, 'script', i)
+        if not isinstance(value, str):
+            raise TypeError(
+                TYPE_ERROR.format(label, str, type(value), value) 
+            )
 
     # path:
     (label, value) = _get_path('request', request, 'path')
+    if not isinstance(value, list):
+        raise TypeError(
+            TYPE_ERROR.format(label, list, type(value), value) 
+        )
+    for i in range(len(value)):
+        (label, value) = _get_path('request', request, 'path', i)
+        if not isinstance(value, str):
+            raise TypeError(
+                TYPE_ERROR.format(label, str, type(value), value) 
+            )
 
     # query:
     (label, value) = _get_path('request', request, 'query')
+    if not isinstance(value, str):
+        raise TypeError(
+            TYPE_ERROR.format(label, str, type(value), value) 
+        )
 
     # headers:
     (label, value) = _get_path('request', request, 'headers')
+    _check_headers(label, value)
 
     # body:
     (label, value) = _get_path('request', request, 'body')

@@ -245,3 +245,76 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             "request['method']: value 'OPTIONS' not in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')"
         )
+
+        # Bad request['script'] type:
+        bad = deepcopy(good)
+        bad['script'] = ('foo',)
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['script']: need a <class 'list'>; got a <class 'tuple'>: ('foo',)"
+        )
+
+        # Bad request['script'][0] type:
+        bad = deepcopy(good)
+        bad['script'] = [b'foo']
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['script'][0]: need a <class 'str'>; got a <class 'bytes'>: b'foo'"
+        )
+
+        # Bad request['script'][1] type:
+        bad = deepcopy(good)
+        bad['script'] = ['foo', b'baz']
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['script'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
+        )
+
+        # Bad request['path'] type:
+        bad = deepcopy(good)
+        bad['path'] = ('bar',)
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['path']: need a <class 'list'>; got a <class 'tuple'>: ('bar',)"
+        )
+
+        # Bad request['path'][0] type:
+        bad = deepcopy(good)
+        bad['path'] = [b'bar']
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['path'][0]: need a <class 'str'>; got a <class 'bytes'>: b'bar'"
+        )
+
+        # Bad request['path'][1] type:
+        bad = deepcopy(good)
+        bad['path'] = ['bar', b'baz']
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['path'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
+        )
+
+        # Bad request['query'] type:
+        bad = deepcopy(good)
+        bad['query'] = {'stuff': 'junk'}
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['query']: need a <class 'str'>; got a <class 'dict'>: {'stuff': 'junk'}"
+        )
+
+        # Bad request['headers'] type:
+        bad = deepcopy(good)
+        bad['headers'] = [('content-length', 17)]
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['headers']: need a <class 'dict'>; got a <class 'list'>: [('content-length', 17)]"
+        )
+
