@@ -21,17 +21,56 @@
 
 """
 RGI validation middleware.
+
+The `Validator` class is a middleware component for verifying that both server
+and application comply with the REST Gateway Interface (RGI) specification.
+
+The aim is to be strict and comprehensive, and to deliver clear error messages
+when non-conforming behavior is detected.
+
+As such, performance is generally sacrificed for the sake of clarity and
+maintainability.  The `Validator` middleware is not intended for everyday
+production use.  Whenever you use it, expect a substantial performance hit.
+
+`degu.rgi` and its tests should be fully self-contained and should not rely on
+any other `degu` functionality.  With time, assuming RGI gains wider adoption,
+`degu.rgi` should be split out of Degu and into its own source tree.
 """
 
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
+# Allowed values for session['scheme']:
 SESSION_SCHEMES = ('http', 'https')
 
+# Allowed values for session['protocol']:
 SESSION_PROTOCOLS = ('HTTP/1.1',)
 
+# Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
+
+
+def _check_str_keys(name, obj):
+    """
+    Ensure that all keys in *obj* are `str` instances.
+
+    For example:
+
+    >>> _check_str_keys('session', {b'foo': 'bar'})
+    Traceback (most recent call last):
+      ...
+    TypeError: session: keys must be <class 'str'>; got a <class 'bytes'>: b'foo'
+
+    """
+    assert isinstance(name, str)
+    assert isinstance(obj, dict)
+    for key in obj:
+        if not isinstance(key, str):
+            raise TypeError('{}: keys must be {!r}; got a {!r}: {!r}'.format(
+                    name, str, type(key), key
+                )
+            )
 
 
 def _get_path(label, value, *path):
@@ -57,17 +96,21 @@ def _get_path(label, value, *path):
     ("session['client'][1]", 52521)
 
     Or when first path item is missing:
+
     >>> _get_path('session', session, 'server')
     Traceback (most recent call last):
       ...
     ValueError: session['server'] does not exist
 
     Or when the 2nd path item is missing:
+
     >>> _get_path('session', session, 'client', 2)
     Traceback (most recent call last):
       ...
     ValueError: session['client'][2] does not exist
 
+    Note that this function carries a substantial performance overhead.  But the
+    point is to be clear, correct, and maintainable, so that's okay :D
     """
     for key in path:
         assert isinstance(key, (str, int))
@@ -81,21 +124,10 @@ def _get_path(label, value, *path):
     return (label, value)
 
 
-def _check_str_keys(name, obj):
-    """
-    Make sure all keys in *obj* are `str` instances.
-    """
-    assert isinstance(name, str)
-    assert isinstance(obj, dict)
-    for key in obj:
-        if not isinstance(key, str):
-            raise TypeError('{}: keys must be {!r}; got a {!r}: {!r}'.format(
-                    name, str, type(key), key
-                )
-            )
-
-
 def _validate_session(session):
+    """
+    Validate the *session* argument.
+    """
     if not isinstance(session, dict):
         raise TypeError(
             TYPE_ERROR.format('session', dict, type(session), session)
@@ -165,6 +197,9 @@ def _validate_session(session):
 
 
 def _validate_request(request):
+    """
+    Validate the *request* argument.
+    """
     if not isinstance(request, dict):
         raise TypeError(
             TYPE_ERROR.format('request', dict, type(request), request)
