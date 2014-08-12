@@ -27,22 +27,11 @@ RGI validation middleware.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-SESSION_REQUIRED = (
-    'rgi.version',
-    'rgi.Body',
-    'rgi.BodyIter',
-    'rgi.ChunkedBody',
-    'rgi.ChunkedBodyIter',
-    'scheme',
-    'protocol',
-    'server',
-    'client',
-    'requests',
-)
-
 SESSION_SCHEMES = ('http', 'https')
 
 SESSION_PROTOCOLS = ('HTTP/1.1',)
+
+REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 
 def _get_path(label, value, *path):
@@ -106,18 +95,6 @@ def _check_str_keys(name, obj):
             )
 
 
-def _check_required_keys(name, obj, required):
-    """
-    Make sure all required keys are present in *obj*.
-    """
-    assert isinstance(name, str)
-    assert isinstance(obj, dict)
-    for key in required:
-        assert isinstance(key, str)
-        if key not in obj:
-            raise ValueError('{}: missing required key {!r}'.format(name, key))
-
-
 def _validate_session(session):
     if not isinstance(session, dict):
         raise TypeError(
@@ -125,7 +102,6 @@ def _validate_session(session):
 
         )
     _check_str_keys('session', session)
-    _check_required_keys('session', session, SESSION_REQUIRED)
 
     # rgi.version:
     (label, value) = _get_path('session', session, 'rgi.version')
@@ -172,6 +148,12 @@ def _validate_session(session):
             "{}: value {!r} not in {!r}".format(label, value, SESSION_PROTOCOLS)
         )
 
+    # server:
+    (label, value) = _get_path('session', session, 'server')
+
+    # client:
+    (label, value) = _get_path('session', session, 'client')
+
     # requests:
     (label, value) = _get_path('session', session, 'requests')
     if not isinstance(value, int):
@@ -180,6 +162,37 @@ def _validate_session(session):
         )
     if value < 0:
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
+
+
+def _validate_request(request):
+    if not isinstance(request, dict):
+        raise TypeError(
+            TYPE_ERROR.format('request', dict, type(request), request)
+
+        )
+    _check_str_keys('request', request)
+
+    # method:
+    (label, value) = _get_path('request', request, 'method')
+    if value not in REQUEST_METHODS:
+        raise ValueError(
+            "{}: value {!r} not in {!r}".format(label, value, REQUEST_METHODS)
+        )
+
+    # script:
+    (label, value) = _get_path('request', request, 'script')
+
+    # path:
+    (label, value) = _get_path('request', request, 'path')
+
+    # query:
+    (label, value) = _get_path('request', request, 'query')
+
+    # headers:
+    (label, value) = _get_path('request', request, 'headers')
+
+    # body:
+    (label, value) = _get_path('request', request, 'body')
 
 
 class Validator:

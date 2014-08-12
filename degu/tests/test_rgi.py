@@ -67,7 +67,7 @@ class TestFunctions(TestCase):
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_session(bad)
             self.assertEqual(str(cm.exception),
-                'session: missing required key {!r}'.format(key)
+                'session[{!r}] does not exist'.format(key)
             )
 
         # session['rgi.version'] isn't a tuple:
@@ -204,3 +204,44 @@ class TestFunctions(TestCase):
             "session['requests'] must be >= 0; got -1"
         )
 
+    def test_validate_request(self):
+        # request isn't a `dict`:
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(['hello'])
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format('request', dict, list, ['hello'])
+        )
+
+        # request has non-str keys:
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request({'foo': 'bar', b'hello': 'world'})
+        self.assertEqual(str(cm.exception),
+            "request: keys must be <class 'str'>; got a <class 'bytes'>: b'hello'"
+        )
+
+        good = {
+            'method': 'GET',
+            'script': ['foo'],
+            'path': ['bar'],
+            'query': 'stuff=junk',
+            'headers': {},
+            'body': None,
+        }
+        self.assertIsNone(rgi._validate_request(good))
+        for key in sorted(good):
+            bad = deepcopy(good)
+            del bad[key]
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(bad)
+            self.assertEqual(str(cm.exception),
+                'request[{!r}] does not exist'.format(key)
+            )
+
+        # Bad request['method'] value:
+        bad = deepcopy(good)
+        bad['method'] = 'OPTIONS'
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_request(bad)
+        self.assertEqual(str(cm.exception),
+            "request['method']: value 'OPTIONS' not in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')"
+        )
