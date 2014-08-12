@@ -58,6 +58,7 @@ class TestFunctions(TestCase):
             'protocol': 'HTTP/1.1',
             'server': ('127.0.0.1', 60111),
             'client': ('127.0.0.1', 52521),
+            'requests': 0,
         }
         self.assertIsNone(rgi._validate_session(good))
         for key in sorted(good):
@@ -183,5 +184,23 @@ class TestFunctions(TestCase):
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),
             "session['protocol']: value 'HTTP/1.0' not in ('HTTP/1.1',)"
+        )
+
+        # session['requests'] isn't an `int`:
+        bad = deepcopy(good)
+        bad['requests'] = 0.0
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            "session['requests']: need a <class 'int'>; got a <class 'float'>: 0.0"
+        )
+
+        # session['requests'] is negative:
+        bad = deepcopy(good)
+        bad['requests'] = -1
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            "session['requests'] must be >= 0; got -1"
         )
 

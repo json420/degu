@@ -37,11 +37,59 @@ SESSION_REQUIRED = (
     'protocol',
     'server',
     'client',
+    'requests',
 )
 
 SESSION_SCHEMES = ('http', 'https')
 
 SESSION_PROTOCOLS = ('HTTP/1.1',)
+
+
+def _get_path(label, value, *path):
+    """
+    Return a ``(label, value)`` tuple.
+
+    For example, with an empty path:
+
+    >>> session = {'client': ('127.0.0.1', 52521)}
+    >>> _get_path('session', session)
+    ('session', {'client': ('127.0.0.1', 52521)})
+
+    Or with a single value path:
+
+    >>> _get_path('session', session, 'client')
+    ("session['client']", ('127.0.0.1', 52521))
+
+    Or with a path that is 2 deep:
+
+    >>> _get_path('session', session, 'client', 0)
+    ("session['client'][0]", '127.0.0.1')
+    >>> _get_path('session', session, 'client', 1)
+    ("session['client'][1]", 52521)
+
+    Or when first path item is missing:
+    >>> _get_path('session', session, 'server')
+    Traceback (most recent call last):
+      ...
+    ValueError: session['server'] does not exist
+
+    Or when the 2nd path item is missing:
+    >>> _get_path('session', session, 'client', 2)
+    Traceback (most recent call last):
+      ...
+    ValueError: session['client'][2] does not exist
+
+    """
+    for key in path:
+        assert isinstance(key, (str, int))
+        label = '{}[{!r}]'.format(label, key)
+        try:
+            value = value[key]
+        except (KeyError, IndexError):
+            raise ValueError(
+                '{} does not exist'.format(label)
+            )
+    return (label, value)
 
 
 def _check_str_keys(name, obj):
@@ -80,8 +128,7 @@ def _validate_session(session):
     _check_required_keys('session', session, SESSION_REQUIRED)
 
     # rgi.version:
-    value = session['rgi.version']
-    label = "session['rgi.version']"
+    (label, value) = _get_path('session', session, 'rgi.version')
     if not isinstance(value, tuple):
         raise TypeError(
             TYPE_ERROR.format(label, tuple, type(value), value) 
@@ -91,8 +138,7 @@ def _validate_session(session):
             'len({}) must be 2; got {}: {!r}'.format(label, len(value), value)
         )
     for i in range(len(value)):
-        value = session['rgi.version'][i]
-        label = "session['rgi.version'][{!r}]".format(i)
+        (label, value) = _get_path('session', session, 'rgi.version', i)
         if not isinstance(value, int):
             raise TypeError(
                 TYPE_ERROR.format(label, int, type(value), value) 
@@ -108,24 +154,32 @@ def _validate_session(session):
         'rgi.ChunkedBodyIter',
     )
     for key in keys:
-        value = session[key]
-        label = 'session[{!r}]'.format(key)
+        (label, value) = _get_path('session', session, key)
         if not issubclass(value, object):
             raise Exception('Internal error, should not be reached')
 
     # scheme:
-    value = session['scheme']
+    (label, value) = _get_path('session', session, 'scheme')
     if value not in SESSION_SCHEMES:
         raise ValueError(
-            "session['scheme']: value {!r} not in {!r}".format(value, SESSION_SCHEMES)
+            "{}: value {!r} not in {!r}".format(label, value, SESSION_SCHEMES)
         )
 
     # protocol:
-    value = session['protocol']
+    (label, value) = _get_path('session', session, 'protocol')
     if value not in SESSION_PROTOCOLS:
         raise ValueError(
-            "session['protocol']: value {!r} not in {!r}".format(value, SESSION_PROTOCOLS)
+            "{}: value {!r} not in {!r}".format(label, value, SESSION_PROTOCOLS)
         )
+
+    # requests:
+    (label, value) = _get_path('session', session, 'requests')
+    if not isinstance(value, int):
+        raise TypeError(
+            TYPE_ERROR.format(label, int, type(value), value) 
+        )
+    if value < 0:
+        raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
 class Validator:
