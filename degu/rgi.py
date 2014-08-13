@@ -203,7 +203,7 @@ def _validate_session(session):
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
-def _validate_request(request):
+def _validate_request(request, body_types):
     """
     Validate the *request* argument.
     """
@@ -260,6 +260,16 @@ def _validate_request(request):
 
     # body:
     (label, value) = _get_path('request', request, 'body')
+    if value is not None:
+        if not isinstance(value, body_types):
+            raise TypeError(
+                TYPE_ERROR.format(label, body_types, type(value), value) 
+            )
+        # body.closed must be False prior to calling the application:
+        if value.closed is not False:
+            raise ValueError(
+                '{}.closed must be False; got {!r}'.format(label, value.closed)
+            )
 
 
 class Validator:

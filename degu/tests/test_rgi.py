@@ -25,6 +25,7 @@ Unit tests for the `degu.rgi` module`
 
 from unittest import TestCase
 import io
+import os
 from copy import deepcopy
 
 from degu import base
@@ -205,16 +206,19 @@ class TestFunctions(TestCase):
         )
 
     def test_validate_request(self):
+        # Validator.__call__() will extract these from session:
+        body_types = (base.Body, base.ChunkedBody)
+
         # request isn't a `dict`:
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(['hello'])
+            rgi._validate_request(['hello'], body_types)
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('request', dict, list, ['hello'])
         )
 
         # request has non-str keys:
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request({'foo': 'bar', b'hello': 'world'})
+            rgi._validate_request({'foo': 'bar', b'hello': 'world'}, body_types)
         self.assertEqual(str(cm.exception),
             "request: keys must be <class 'str'>; got a <class 'bytes'>: b'hello'"
         )
@@ -227,12 +231,12 @@ class TestFunctions(TestCase):
             'headers': {},
             'body': None,
         }
-        self.assertIsNone(rgi._validate_request(good))
+        self.assertIsNone(rgi._validate_request(good, body_types))
         for key in sorted(good):
             bad = deepcopy(good)
             del bad[key]
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_request(bad)
+                rgi._validate_request(bad, body_types)
             self.assertEqual(str(cm.exception),
                 'request[{!r}] does not exist'.format(key)
             )
@@ -241,7 +245,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['method'] = 'OPTIONS'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['method']: value 'OPTIONS' not in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')"
         )
@@ -250,7 +254,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = ('foo',)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['script']: need a <class 'list'>; got a <class 'tuple'>: ('foo',)"
         )
@@ -259,7 +263,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = [b'foo']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['script'][0]: need a <class 'str'>; got a <class 'bytes'>: b'foo'"
         )
@@ -268,7 +272,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = ['foo', b'baz']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['script'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
         )
@@ -277,7 +281,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = ('bar',)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['path']: need a <class 'list'>; got a <class 'tuple'>: ('bar',)"
         )
@@ -286,7 +290,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = [b'bar']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['path'][0]: need a <class 'str'>; got a <class 'bytes'>: b'bar'"
         )
@@ -295,7 +299,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = ['bar', b'baz']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['path'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
         )
@@ -304,7 +308,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['query'] = {'stuff': 'junk'}
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['query']: need a <class 'str'>; got a <class 'dict'>: {'stuff': 'junk'}"
         )
@@ -313,8 +317,41 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['headers'] = [('content-length', 17)]
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(bad)
+            rgi._validate_request(bad, body_types)
         self.assertEqual(str(cm.exception),
             "request['headers']: need a <class 'dict'>; got a <class 'list'>: [('content-length', 17)]"
         )
 
+        # Bad request['body'] type:
+        bad_bodies = (base.BodyIter([], 17), base.ChunkedBodyIter([]))
+        for body in bad_bodies:
+            bad = deepcopy(good)
+            bad['body'] = body
+            with self.assertRaises(TypeError) as cm:
+                rgi._validate_request(bad, body_types)
+            self.assertEqual(str(cm.exception),
+                rgi.TYPE_ERROR.format(
+                    "request['body']", body_types, type(body), body
+                )
+            )
+
+        # Test the two allowed body types (non-None):
+        rfile = io.BytesIO()
+        bodies = (base.Body(rfile, 17), base.ChunkedBody(rfile))
+        for body in bodies:
+            request = deepcopy(good)
+            request['body'] = body
+            self.assertIsNone(rgi._validate_request(request, body_types))
+
+        # body.closed must be False prior to calling the application:
+        for body in bodies:
+            body.closed = True
+            bad = deepcopy(good)
+            bad['body'] = body
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(bad, body_types)
+            self.assertEqual(str(cm.exception),
+                "request['body'].closed must be False; got True"
+            )
+
+  
