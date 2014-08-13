@@ -51,6 +51,17 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 
+def _getattr(label, value, name):
+    """
+    `getattr()` with a clearer error message when attribute is missing.
+    """
+    if not hasattr(value, name):
+        raise ValueError(
+            '{} is missing {!r} attribute: {!r}'.format(label, name, value)
+        )
+    return getattr(value, name)
+
+
 def _check_str_keys(name, obj):
     """
     Ensure that all keys in *obj* are `str` instances.
@@ -122,14 +133,6 @@ def _get_path(label, value, *path):
                 '{} does not exist'.format(label)
             )
     return (label, value)
-
-
-def _check_attribute(label, value, name):
-    if not hasattr(value, name):
-        raise ValueError(
-            '{} is missing {!r} attribute: {!r}'.format(label, name, value)
-        )
-    return getattr(value, name)
 
 
 def _check_headers(label, value):

@@ -33,7 +33,7 @@ from degu import rgi
 
 
 class TestFunctions(TestCase):
-    def test_check_attribute(self):
+    def test_getattr(self):
         class Example:
             def __init__(self, marker):
                 self.foo = marker
@@ -41,9 +41,9 @@ class TestFunctions(TestCase):
         label = "request['body']"
         marker = os.urandom(16)
         value = Example(marker)
-        self.assertIs(rgi._check_attribute(label, value, 'foo'), marker)
+        self.assertIs(rgi._getattr(label, value, 'foo'), marker)
         with self.assertRaises(ValueError) as cm:
-            rgi._check_attribute(label, value, 'bar')
+            rgi._getattr(label, value, 'bar')
         self.assertEqual(str(cm.exception),
             "request['body'] is missing 'bar' attribute: {!r}".format(value)
         )
