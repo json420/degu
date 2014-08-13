@@ -124,6 +124,14 @@ def _get_path(label, value, *path):
     return (label, value)
 
 
+def _check_attribute(label, value, name):
+    if not hasattr(value, name):
+        raise ValueError(
+            '{} is missing {!r} attribute: {!r}'.format(label, name, value)
+        )
+    return getattr(value, name)
+
+
 def _check_headers(label, value):
     if not isinstance(value, dict):
         raise TypeError(

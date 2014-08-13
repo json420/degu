@@ -33,6 +33,21 @@ from degu import rgi
 
 
 class TestFunctions(TestCase):
+    def test_check_attribute(self):
+        class Example:
+            def __init__(self, marker):
+                self.foo = marker
+
+        label = "request['body']"
+        marker = os.urandom(16)
+        value = Example(marker)
+        self.assertIs(rgi._check_attribute(label, value, 'foo'), marker)
+        with self.assertRaises(ValueError) as cm:
+            rgi._check_attribute(label, value, 'bar')
+        self.assertEqual(str(cm.exception),
+            "request['body'] is missing 'bar' attribute: {!r}".format(value)
+        )
+
     def test_validate_session(self):
         # session isn't a `dict`:
         with self.assertRaises(TypeError) as cm:
