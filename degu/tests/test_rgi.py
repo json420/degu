@@ -24,12 +24,41 @@ Unit tests for the `degu.rgi` module`
 """
 
 from unittest import TestCase
-import io
 import os
 from copy import deepcopy
 
-from degu import base
 from degu import rgi
+
+
+class MockBody:
+    def __init__(self, **kw):
+        for (key, value) in kw.items():
+            assert not key.startswith('_')
+            setattr(self, key, value)
+
+
+class Body(MockBody):
+    """
+    Mock class used for session['rgi.Body'].
+    """
+
+
+class BodyIter(MockBody):
+    """
+    Mock class used for session['rgi.BodyIter'].
+    """
+
+
+class ChunkedBody(MockBody):
+    """
+    Mock class used for session['rgi.ChunkedBody'].
+    """
+
+
+class ChunkedBodyIter(MockBody):
+    """
+    Mock class used for session['rgi.ChunkedBodyIter'].
+    """
 
 
 class TestFunctions(TestCase):
@@ -45,7 +74,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._getattr(label, value, 'bar')
         self.assertEqual(str(cm.exception),
-            "request['body'] is missing 'bar' attribute: {!r}".format(value)
+            "request['body']: 'Example' object has no attribute 'bar'"
         )
 
     def test_validate_session(self):
@@ -66,10 +95,10 @@ class TestFunctions(TestCase):
         # Missing required keys:
         good = {
             'rgi.version': (0, 1),
-            'rgi.Body': base.Body,
-            'rgi.BodyIter': base.BodyIter,
-            'rgi.ChunkedBody': base.ChunkedBody,
-            'rgi.ChunkedBodyIter': base.ChunkedBodyIter,
+            'rgi.Body': Body,
+            'rgi.BodyIter': BodyIter,
+            'rgi.ChunkedBody': ChunkedBody,
+            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': ('127.0.0.1', 60111),
@@ -152,33 +181,30 @@ class TestFunctions(TestCase):
             "session['rgi.version'][1] must be >= 0; got -1"
         )
 
-        # session['rgi.Body'] isn't an object subclass:
+        # session['rgi.Body'] is an instance instead of a subclass:
         bad = deepcopy(good)
-        value = base.Body(io.BytesIO(), 17)
-        bad['rgi.Body'] = value
+        bad['rgi.Body'] = Body()
         with self.assertRaises(TypeError) as cm:
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
 
-        # session['rgi.ChunkedBody'] isn't an object subclass:
+        # session['rgi.ChunkedBody'] is an instance instead of a subclass:
         bad = deepcopy(good)
-        value = base.ChunkedBody(io.BytesIO())
-        bad['rgi.ChunkedBody'] = value
+        bad['rgi.ChunkedBody'] = ChunkedBody()
         with self.assertRaises(TypeError) as cm:
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
 
-        # session['rgi.BodyIter'] isn't an object subclass:
+        # session['rgi.BodyIter'] is an instance instead of a subclass:
         bad = deepcopy(good)
-        value = base.BodyIter([], 17)
-        bad['rgi.BodyIter'] = value
+        bad['rgi.BodyIter'] = BodyIter()
         with self.assertRaises(TypeError) as cm:
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
 
-        # session['rgi.ChunkedBodyIter'] isn't an object subclass:
+        # session['rgi.ChunkedBodyIter'] is an instance instead of a subclass:
         bad = deepcopy(good)
-        value = base.ChunkedBodyIter([])
+        value = ChunkedBodyIter()
         bad['rgi.ChunkedBodyIter'] = value
         with self.assertRaises(TypeError) as cm:
             rgi._validate_session(bad)
@@ -222,7 +248,7 @@ class TestFunctions(TestCase):
 
     def test_validate_request(self):
         # Validator.__call__() will extract these from session:
-        body_types = (base.Body, base.ChunkedBody)
+        body_types = (Body, ChunkedBody)
 
         # request isn't a `dict`:
         with self.assertRaises(TypeError) as cm:
@@ -338,7 +364,7 @@ class TestFunctions(TestCase):
         )
 
         # Bad request['body'] type:
-        bad_bodies = (base.BodyIter([], 17), base.ChunkedBodyIter([]))
+        bad_bodies = (BodyIter(), ChunkedBodyIter())
         for body in bad_bodies:
             bad = deepcopy(good)
             bad['body'] = body
@@ -350,23 +376,36 @@ class TestFunctions(TestCase):
                 )
             )
 
-        # Test the two allowed body types (non-None):
-        rfile = io.BytesIO()
-        bodies = (base.Body(rfile, 17), base.ChunkedBody(rfile))
-        for body in bodies:
-            request = deepcopy(good)
-            request['body'] = body
-            self.assertIsNone(rgi._validate_request(request, body_types))
+        # Body is missing 'closed' attribute
+        for klass in (Body, ChunkedBody):
+            bad = deepcopy(good)
+            bad['body'] = klass()
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(bad, body_types)
+            self.assertEqual(str(cm.exception),
+                "request['body']: {!r} object has no attribute 'closed'".format(klass.__name__)
+            )
 
         # body.closed must be False prior to calling the application:
-        for body in bodies:
-            body.closed = True
+        for klass in (Body, ChunkedBody):
             bad = deepcopy(good)
-            bad['body'] = body
+            bad['body'] = klass(closed=True)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(bad, body_types)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_request(bad, body_types)
             self.assertEqual(str(cm.exception),
                 "request['body'].closed must be False; got True"
             )
+
+        # Test the two allowed body types (non-None):
+        bodies = [
+            Body(closed=False),
+            ChunkedBody(closed=False),
+        ]
+        for body in bodies:
+            request = deepcopy(good)
+            request['body'] = body
+            self.assertIsNone(rgi._validate_request(request, body_types))
 
   

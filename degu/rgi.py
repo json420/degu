@@ -57,7 +57,9 @@ def _getattr(label, value, name):
     """
     if not hasattr(value, name):
         raise ValueError(
-            '{} is missing {!r} attribute: {!r}'.format(label, name, value)
+            '{}: {!r} object has no attribute {!r}'.format(
+                label, type(value).__name__, name
+            )
         )
     return getattr(value, name)
 
@@ -277,9 +279,10 @@ def _validate_request(request, body_types):
                 TYPE_ERROR.format(label, body_types, type(value), value) 
             )
         # body.closed must be False prior to calling the application:
-        if value.closed is not False:
+        attr = _getattr(label, value, 'closed')
+        if attr is not False:
             raise ValueError(
-                '{}.closed must be False; got {!r}'.format(label, value.closed)
+                '{}.closed must be False; got {!r}'.format(label, attr)
             )
 
 
