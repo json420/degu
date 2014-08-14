@@ -51,17 +51,25 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 
-def _getattr(label, value, name):
+def _getattr(label, obj, name):
     """
     `getattr()` with a clearer error message when attribute is missing.
     """
-    if not hasattr(value, name):
+    if not hasattr(obj, name):
         raise ValueError(
             '{}: {!r} object has no attribute {!r}'.format(
-                label, type(value).__name__, name
+                label, type(obj).__name__, name
             )
         )
-    return getattr(value, name)
+    return getattr(obj, name)
+
+
+def _ensure_attr_is(label, obj, name, expected):
+    attr = _getattr(label, obj, name)
+    if attr is not expected:
+        raise ValueError(
+            '{}.{} must be {!r}; got {!r}'.format(label, name, expected, attr)
+        )
 
 
 def _check_str_keys(name, obj):
@@ -279,11 +287,7 @@ def _validate_request(request, body_types):
                 TYPE_ERROR.format(label, body_types, type(value), value) 
             )
         # body.closed must be False prior to calling the application:
-        attr = _getattr(label, value, 'closed')
-        if attr is not False:
-            raise ValueError(
-                '{}.closed must be False; got {!r}'.format(label, attr)
-            )
+        _ensure_attr_is(label, value, 'closed', False)
 
 
 class Validator:
