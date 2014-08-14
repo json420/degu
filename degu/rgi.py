@@ -93,26 +93,37 @@ def _ensure_attr_is(label, obj, name, expected):
         )
 
 
-def _check_str_keys(name, obj):
+def _check_dict(label, obj):
     """
-    Ensure that all keys in *obj* are `str` instances.
+    Ensure that *obj* is a `dict` instance and contains only `str` keys.
 
-    For example:
+    For example, when *obj* isn't a `dict`:
 
-    >>> _check_str_keys('session', {b'foo': 'bar'})
+    >>> _check_dict('session', [('foo', 'bar')])
+    Traceback (most recent call last):
+      ...
+    TypeError: session: need a <class 'dict'>; got a <class 'list'>: [('foo', 'bar')]
+
+    Or when *obj* contains a non-string key:
+
+    >>> _check_dict('session', {b'foo': 'bar'})
     Traceback (most recent call last):
       ...
     TypeError: session: keys must be <class 'str'>; got a <class 'bytes'>: b'foo'
 
     """
-    assert isinstance(name, str)
-    assert isinstance(obj, dict)
+    if not isinstance(obj, dict):
+        raise TypeError(TYPE_ERROR.format(label, dict, type(obj), obj))
     for key in obj:
         if not isinstance(key, str):
             raise TypeError('{}: keys must be {!r}; got a {!r}: {!r}'.format(
-                    name, str, type(key), key
+                    label, str, type(key), key
                 )
             )
+
+
+def _check_headers(label, value):
+    _check_dict(label, value)
 
 
 def _get_path(label, value, *path):
@@ -166,23 +177,11 @@ def _get_path(label, value, *path):
     return (label, value)
 
 
-def _check_headers(label, value):
-    if not isinstance(value, dict):
-        raise TypeError(
-            TYPE_ERROR.format(label, dict, type(value), value) 
-        )
-
-
 def _validate_session(session):
     """
     Validate the *session* argument.
     """
-    if not isinstance(session, dict):
-        raise TypeError(
-            TYPE_ERROR.format('session', dict, type(session), session)
-
-        )
-    _check_str_keys('session', session)
+    _check_dict('session', session)
 
     # rgi.version:
     (label, value) = _get_path('session', session, 'rgi.version')
@@ -249,12 +248,7 @@ def _validate_request(request, body_types):
     """
     Validate the *request* argument.
     """
-    if not isinstance(request, dict):
-        raise TypeError(
-            TYPE_ERROR.format('request', dict, type(request), request)
-
-        )
-    _check_str_keys('request', request)
+    _check_dict('request', request)
 
     # method:
     (label, value) = _get_path('request', request, 'method')

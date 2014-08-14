@@ -87,7 +87,7 @@ class TestMockBody(TestCase):
 
             # One kw arg:
             key1 = random_identifier()
-            val1 = os.urandom(16)
+            val1 = random_value()
             kw = {key1: val1}
             body = klass(**kw)
             self.assertIsInstance(body, MockBody)
@@ -99,7 +99,7 @@ class TestMockBody(TestCase):
 
             # Two kw args:
             key2 = random_identifier()
-            val2 = os.urandom(16)
+            val2 = random_value()
             kw = {key1: val1, key2: val2}
             body = klass(**kw)
             self.assertIsInstance(body, MockBody)
@@ -112,7 +112,7 @@ class TestMockBody(TestCase):
 
             # Three kw args:
             key3 = random_identifier()
-            val3 = os.urandom(16)
+            val3 = random_value()
             kw = {key1: val1, key2: val2, key3: val3}
             body = klass(**kw)
             self.assertIsInstance(body, MockBody)
@@ -128,17 +128,23 @@ class TestMockBody(TestCase):
 class TestFunctions(TestCase):
     def test_getattr(self):
         class Example:
-            def __init__(self, marker):
-                self.foo = marker
+            def __init__(self, key, value):
+                setattr(self, key, value)
 
-        label = "request['body']"
-        marker = os.urandom(16)
-        obj = Example(marker)
-        self.assertIs(rgi._getattr(label, obj, 'foo'), marker)
+        label = random_identifier()
+        key = random_identifier()
+        value = random_value()
+        obj = Example(key, value)
+
+        # Attribute is present:
+        self.assertIs(rgi._getattr(label, obj, key), value)
+
+        # Attribute is missing:
+        key2 = random_identifier()
         with self.assertRaises(ValueError) as cm:
-            rgi._getattr(label, obj, 'bar')
+            rgi._getattr(label, obj, key2)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'Example' object has no attribute 'bar'"
+            "{}: 'Example' object has no attribute {!r}".format(label, key2)
         )
 
     def test_ensure_attr_is(self):
