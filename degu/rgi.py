@@ -65,6 +65,27 @@ def _getattr(label, obj, name):
 
 
 def _ensure_attr_is(label, obj, name, expected):
+    """
+    Raise a ValueError if *obj* attribute *name* is not *expected*.
+
+    For example, when *obj* has the attribute *name*, but said attribute is not
+    *expected*:
+
+    >>> import io
+    >>> body = io.BytesIO()
+    >>> _ensure_attr_is("request['body']", body, 'closed', True)
+    Traceback (most recent call last):
+      ...
+    ValueError: request['body'].closed must be True; got False
+    
+    Or when *obj* has no attribute *name*:
+
+    >>> _ensure_attr_is("request['body']", body, 'chunked', False)
+    Traceback (most recent call last):
+      ...
+    ValueError: request['body']: 'BytesIO' object has no attribute 'chunked'
+
+    """
     attr = _getattr(label, obj, name)
     if attr is not expected:
         raise ValueError(

@@ -25,9 +25,22 @@ Unit tests for the `degu.rgi` module`
 
 from unittest import TestCase
 import os
+import string
+from random import SystemRandom
 from copy import deepcopy
 
 from degu import rgi
+
+
+random = SystemRandom()
+
+
+def random_identifier():
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
+
+
+def random_value():
+    return os.urandom(10)
 
 
 class MockBody:
@@ -61,6 +74,57 @@ class ChunkedBodyIter(MockBody):
     """
 
 
+class TestMockBody(TestCase):
+    def test_init(self):
+        for klass in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
+            # No kw args:
+            body = klass()
+            self.assertIsInstance(body, MockBody)
+            self.assertEqual(
+                list(filter(lambda n: not n.startswith('_'), dir(body))),
+                []
+            )
+
+            # One kw arg:
+            key1 = random_identifier()
+            val1 = os.urandom(16)
+            kw = {key1: val1}
+            body = klass(**kw)
+            self.assertIsInstance(body, MockBody)
+            self.assertEqual(
+                list(filter(lambda n: not n.startswith('_'), dir(body))),
+                [key1]
+            )
+            self.assertIs(getattr(body, key1), val1)
+
+            # Two kw args:
+            key2 = random_identifier()
+            val2 = os.urandom(16)
+            kw = {key1: val1, key2: val2}
+            body = klass(**kw)
+            self.assertIsInstance(body, MockBody)
+            self.assertEqual(
+                list(filter(lambda n: not n.startswith('_'), dir(body))),
+                sorted([key1, key2])
+            )
+            self.assertIs(getattr(body, key1), val1)
+            self.assertIs(getattr(body, key2), val2)
+
+            # Three kw args:
+            key3 = random_identifier()
+            val3 = os.urandom(16)
+            kw = {key1: val1, key2: val2, key3: val3}
+            body = klass(**kw)
+            self.assertIsInstance(body, MockBody)
+            self.assertEqual(
+                list(filter(lambda n: not n.startswith('_'), dir(body))),
+                sorted([key1, key2, key3])
+            )
+            self.assertIs(getattr(body, key1), val1)
+            self.assertIs(getattr(body, key2), val2)
+            self.assertIs(getattr(body, key3), val3)
+
+
 class TestFunctions(TestCase):
     def test_getattr(self):
         class Example:
@@ -69,12 +133,41 @@ class TestFunctions(TestCase):
 
         label = "request['body']"
         marker = os.urandom(16)
-        value = Example(marker)
-        self.assertIs(rgi._getattr(label, value, 'foo'), marker)
+        obj = Example(marker)
+        self.assertIs(rgi._getattr(label, obj, 'foo'), marker)
         with self.assertRaises(ValueError) as cm:
-            rgi._getattr(label, value, 'bar')
+            rgi._getattr(label, obj, 'bar')
         self.assertEqual(str(cm.exception),
             "request['body']: 'Example' object has no attribute 'bar'"
+        )
+
+    def test_ensure_attr_is(self):
+        class Example:
+            def __init__(self, key, value):
+                setattr(self, key, value)
+
+        label = random_identifier()
+        key = random_identifier()
+        value = random_value()
+        obj = Example(key, value)
+
+        # Attribute is expected:
+        self.assertIsNone(rgi._ensure_attr_is(label, obj, key, value))
+
+        # Attribute is not expected:
+        value2 = random_value()
+        with self.assertRaises(ValueError) as cm:
+            rgi._ensure_attr_is(label, obj, key, value2)
+        self.assertEqual(str(cm.exception),
+            "{}.{} must be {!r}; got {!r}".format(label, key, value2, value)
+        )
+
+        # Attribute is missing:
+        key2 = random_identifier()
+        with self.assertRaises(ValueError) as cm:
+            rgi._ensure_attr_is(label, obj, key2, value)
+        self.assertEqual(str(cm.exception),
+            "{}: 'Example' object has no attribute {!r}".format(label, key2)
         )
 
     def test_validate_session(self):
