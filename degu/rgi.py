@@ -122,8 +122,27 @@ def _check_dict(label, obj):
             )
 
 
-def _check_headers(label, value):
-    _check_dict(label, value)
+def _check_headers(label, headers):
+    _check_dict(label, headers)
+    for key in headers:
+        if key != key.casefold():
+            raise ValueError(
+                '{}: non-casefolded header name: {!r}'.format(label, key)
+            )
+    if 'content-length' in headers:
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                '{}: content-length and transfer-encoding in headers'.format(label)
+            )
+        (l, v) = _get_path(label, headers, 'content-length')
+        if not isinstance(v, int):
+            raise TypeError(TYPE_ERROR.format(l, int, type(v), v))
+        if v < 0:
+            raise ValueError('{}: must be >=0; got {!r}'.format(l, v))
+    if 'transfer-encoding' in headers:
+        (l, v) = _get_path(label, headers, 'transfer-encoding')
+        if v != 'chunked':
+            raise ValueError("{}: must be 'chunked'; got {!r}".format(l, v))
 
 
 def _get_path(label, value, *path):
