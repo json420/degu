@@ -216,10 +216,10 @@ class TestFunctions(TestCase):
 
         # headers contains a non-string key:
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
         key = random_identifier().encode()
-        headers[key] = random_value()
+        headers[key] = random_identifier()
         with self.assertRaises(TypeError) as cm:
             rgi._check_headers(label, headers)
         self.assertEqual(str(cm.exception),
@@ -228,22 +228,35 @@ class TestFunctions(TestCase):
 
         # headers contains a non-casefolded key:
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
         key = random_identifier().upper()
-        headers[key] = random_value()
+        headers[key] = random_identifier()
         with self.assertRaises(ValueError) as cm:
             rgi._check_headers(label, headers)
         self.assertEqual(str(cm.exception),
             '{}: non-casefolded header name: {!r}'.format(label, key)
         )
 
+        # headers contains a non-string value:
+        headers = dict(
+            (random_identifier(), random_identifier()) for i in range(5)
+        )
+        key = random_identifier()
+        value = random_value()
+        headers[key] = value
+        with self.assertRaises(TypeError) as cm:
+            rgi._check_headers(label, headers)
+        self.assertEqual(str(cm.exception),
+            '{}[{!r}]: need a {!r}; got a {!r}: {!r}'.format(label, key, str, bytes, value)
+        )
+
         # content-length plus tranfer-encoding
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
-        headers['content-length'] = random_value()
-        headers['transfer-encoding'] = random_value()
+        headers['content-length'] = random_identifier()
+        headers['transfer-encoding'] = random_identifier()
         with self.assertRaises(ValueError) as cm:
             rgi._check_headers(label, headers)
         self.assertEqual(str(cm.exception),
@@ -252,7 +265,7 @@ class TestFunctions(TestCase):
 
         # content-length isn't an int:
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
         headers['content-length'] = '17'
         with self.assertRaises(TypeError) as cm:
@@ -263,7 +276,7 @@ class TestFunctions(TestCase):
 
         # content-length is negative:
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
         headers['content-length'] = -1
         with self.assertRaises(ValueError) as cm:
@@ -274,7 +287,7 @@ class TestFunctions(TestCase):
 
         # Bad transfer-encoding:
         headers = dict(
-            (random_identifier(), random_value()) for i in range(5)
+            (random_identifier(), random_identifier()) for i in range(5)
         )
         headers['transfer-encoding'] = 'clumped'
         with self.assertRaises(ValueError) as cm:
@@ -284,9 +297,26 @@ class TestFunctions(TestCase):
         )
 
         # All good:
+        label = random_identifier()
         headers = dict(
-            (random_identifier(), random_value()) for i in range(6)
+            (random_identifier(), random_identifier()) for i in range(6)
         )
+        self.assertIsNone(rgi._check_headers(label, headers))
+
+        # All good, with a content-length:
+        label = random_identifier()
+        headers = dict(
+            (random_identifier(), random_identifier()) for i in range(5)
+        )
+        headers['content-length'] = 0
+        self.assertIsNone(rgi._check_headers(label, headers))
+
+        # All good, with a transfer-encoding:
+        label = random_identifier()
+        headers = dict(
+            (random_identifier(), random_identifier()) for i in range(5)
+        )
+        headers['transfer-encoding'] = 'chunked'
         self.assertIsNone(rgi._check_headers(label, headers))
 
     def test_validate_session(self):

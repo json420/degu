@@ -124,10 +124,16 @@ def _check_dict(label, obj):
 
 def _check_headers(label, headers):
     _check_dict(label, headers)
-    for key in headers:
+    for (key, value) in headers.items():
         if key != key.casefold():
             raise ValueError(
                 '{}: non-casefolded header name: {!r}'.format(label, key)
+            )
+        if not isinstance(value, str) and key != 'content-length':
+            raise TypeError(
+                '{}[{!r}]: need a {!r}; got a {!r}: {!r}'.format(
+                    label, key, str, type(value), value
+                )
             )
     if 'content-length' in headers:
         if 'transfer-encoding' in headers:
