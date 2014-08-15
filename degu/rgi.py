@@ -331,6 +331,8 @@ def _validate_request(request, body_types):
 
 
 class Validator:
+    __slots__ = ('app', '_on_connect')
+
     def __init__(self, app):
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))

@@ -650,4 +650,66 @@ class TestFunctions(TestCase):
             request['body'] = body
             self.assertIsNone(rgi._validate_request(request, body_types))
 
-  
+
+class TestValidator(TestCase):
+    def test_init(self):
+        # app not callable:
+        class Bad:
+            pass
+
+        bad = Bad()
+        with self.assertRaises(TypeError) as cm:
+            rgi.Validator(bad)
+        self.assertEqual(str(cm.exception),
+            'app: not callable: {!r}'.format(bad)
+        )
+
+        # app.on_connect not callable:
+        class Bad:
+            def __init__(self):
+                self.on_connect = random_identifier()
+
+            def __call__(self, session, request):
+                return (200, 'OK', {}, None)
+
+        bad = Bad()
+        with self.assertRaises(TypeError) as cm:
+            rgi.Validator(bad)
+        self.assertEqual(str(cm.exception),
+            'app.on_connect: not callable: {!r}'.format(bad.on_connect)
+        )
+
+        # app is callable, no on_connect attribute:
+        def good_app(session, request):
+            return (200, 'OK', {}, None)
+
+        inst = rgi.Validator(good_app)
+        self.assertIs(inst.app, good_app)
+        self.assertIsNone(inst._on_connect)
+
+        # app is callable, on_connect attribute is None:
+        class GoodApp:
+            def __init__(self):
+                self.on_connect = None
+
+            def __call__(self, session, request):
+                return (200, 'OK', {}, None)
+
+        good_app = GoodApp()
+        inst = rgi.Validator(good_app)
+        self.assertIs(inst.app, good_app)
+        self.assertIsNone(inst._on_connect)
+
+        #app is callable, on_connect attribute also callable:
+        class GoodApp:
+            def __call__(self, session, request):
+                return (200, 'OK', {}, None)
+
+            def on_connect(self, sock, session):
+                return True
+
+        good_app = GoodApp()
+        inst = rgi.Validator(good_app)
+        self.assertIs(inst.app, good_app)
+        self.assertEqual(inst._on_connect, good_app.on_connect)
+
