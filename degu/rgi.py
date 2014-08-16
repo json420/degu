@@ -324,9 +324,9 @@ def _validate_request(session, request):
     if value is None:
         return
     if isinstance(value, session['rgi.Body']):
-        pass
+        _ensure_attr_is(label, value, 'chunked', False)
     elif isinstance(value, session['rgi.ChunkedBody']):
-        pass
+        _ensure_attr_is(label, value, 'chunked', True)
     else:
         body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
         raise TypeError(

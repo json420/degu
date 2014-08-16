@@ -627,20 +627,53 @@ class TestFunctions(TestCase):
                 )
             )
 
-        # Body is missing 'closed' attribute
+        # Body is missing 'chunked' attribute:
         for klass in (Body, ChunkedBody):
             bad = deepcopy(good)
-            bad['body'] = klass()
+            bad['body'] = klass(closed=False)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_request(dict(session), bad)
             self.assertEqual(str(cm.exception),
-                "request['body']: {!r} object has no attribute 'closed'".format(klass.__name__)
+                "request['body']: {!r} object has no attribute 'chunked'".format(klass.__name__)
+            )
+
+        # Body.chunked is True:
+        bad = deepcopy(good)
+        bad['body'] = Body(chunked=True)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_request(dict(session), bad)
+        self.assertEqual(str(cm.exception),
+            "request['body'].chunked must be False; got True"
+        )
+
+        # ChunkedBody.chunked is False:
+        bad = deepcopy(good)
+        bad['body'] = ChunkedBody(chunked=False)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_request(dict(session), bad)
+        self.assertEqual(str(cm.exception),
+            "request['body'].chunked must be True; got False"
+        )
+
+        # body is missing 'closed' attribute
+        for body in [Body(chunked=False), ChunkedBody(chunked=True)]:
+            bad = deepcopy(good)
+            bad['body'] = body
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(dict(session), bad)
+            name = body.__class__.__name__
+            self.assertEqual(str(cm.exception),
+                "request['body']: {!r} object has no attribute 'closed'".format(name)
             )
 
         # body.closed must be False prior to calling the application:
-        for klass in (Body, ChunkedBody):
+        bodies = [
+            Body(chunked=False, closed=True),
+            ChunkedBody(chunked=True, closed=True),
+        ]
+        for body in bodies:
             bad = deepcopy(good)
-            bad['body'] = klass(closed=True)
+            bad['body'] = body
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_request(dict(session), bad)
             self.assertEqual(str(cm.exception),
@@ -649,8 +682,8 @@ class TestFunctions(TestCase):
 
         # Test the two allowed body types (non-None):
         bodies = [
-            Body(closed=False),
-            ChunkedBody(closed=False),
+            Body(chunked=False, closed=False),
+            ChunkedBody(chunked=True, closed=False),
         ]
         for body in bodies:
             request = deepcopy(good)
