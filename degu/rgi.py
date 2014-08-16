@@ -330,6 +330,10 @@ def _validate_request(request, body_types):
         _ensure_attr_is(label, value, 'closed', False)
 
 
+def _validate_response(session, request, response):
+    pass    
+
+
 class Validator:
     __slots__ = ('app', '_on_connect')
 
@@ -346,7 +350,10 @@ class Validator:
 
     def __call__(self, session, request):
         _validate_session(session)
-        return self.app(session, request)
+        _validate_request(session, request)
+        response = self.app(session, request)
+        _validate_response(session, request, response)
+        return response
 
     def on_connect(self, sock, session):
         _validate_session(session)
