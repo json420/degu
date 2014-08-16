@@ -269,7 +269,7 @@ def _validate_session(session):
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
-def _validate_request(request, body_types):
+def _validate_request(session, request):
     """
     Validate the *request* argument.
     """
@@ -321,13 +321,19 @@ def _validate_request(request, body_types):
 
     # body:
     (label, value) = _get_path('request', request, 'body')
-    if value is not None:
-        if not isinstance(value, body_types):
-            raise TypeError(
-                TYPE_ERROR.format(label, body_types, type(value), value) 
-            )
-        # body.closed must be False prior to calling the application:
-        _ensure_attr_is(label, value, 'closed', False)
+    if value is None:
+        return
+    if isinstance(value, session['rgi.Body']):
+        pass
+    elif isinstance(value, session['rgi.ChunkedBody']):
+        pass
+    else:
+        body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
+        raise TypeError(
+            TYPE_ERROR.format(label, body_types, type(value), value) 
+        )
+    # body.closed must be False prior to calling the application:
+    _ensure_attr_is(label, value, 'closed', False)
 
 
 def _validate_response(session, request, response):
