@@ -282,6 +282,10 @@ def _validate_request(session, request):
         raise ValueError(
             "{}: value {!r} not in {!r}".format(label, value, REQUEST_METHODS)
         )
+    if not (request.get('body') is None or value in {'PUT', 'POST'}):
+        raise ValueError(
+            "{} cannot be {!r} when request['body'] is not None".format(label, value)
+        )
 
     # script:
     (label, value) = _get_path('request', request, 'script')

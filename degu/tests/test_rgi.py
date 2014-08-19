@@ -517,7 +517,7 @@ class TestFunctions(TestCase):
         )
 
         good = {
-            'method': 'GET',
+            'method': 'POST',
             'script': ['foo'],
             'path': ['bar'],
             'query': 'stuff=junk',
@@ -650,6 +650,12 @@ class TestFunctions(TestCase):
             "request['body'] is None but 'transfer-encoding' header is included"
         )
 
+        # All valid request['method'] should work when request['body'] is None:
+        for method in rgi.REQUEST_METHODS:
+            request = deepcopy(good)
+            request['method'] = method
+            self.assertIsNone(rgi._validate_request(dict(session), request))
+
         #######################################
         # request['body'] is a `Body` instance:
 
@@ -730,11 +736,25 @@ class TestFunctions(TestCase):
             "request['body'].closed must be False; got True"
         )
 
-        # valid request with Body:
-        request = deepcopy(good)
-        request['body'] = Body(closed=False, chunked=False, content_length=17)
-        request['headers']['content-length'] = 17
-        self.assertIsNone(rgi._validate_request(dict(session), request))
+        # Methods that should work when request['body'] is a Body instance:
+        for method in ('PUT', 'POST'):
+            request = deepcopy(good)
+            request['method'] = method
+            request['body'] = Body(closed=False, chunked=False, content_length=17)
+            request['headers']['content-length'] = 17
+            self.assertIsNone(rgi._validate_request(dict(session), request))
+
+        # Methods that should *not* work when request['body'] is a Body instance:
+        for method in ('GET', 'HEAD', 'DELETE'):
+            request = deepcopy(good)
+            request['method'] = method
+            request['body'] = Body(closed=False, chunked=False, content_length=17)
+            request['headers']['content-length'] = 17
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(dict(session), request)
+            self.assertEqual(str(cm.exception),
+                "request['method'] cannot be {!r} when request['body'] is not None".format(method)
+            )
 
         ##############################################
         # request['body'] is a `ChunkedBody` instance:
@@ -798,11 +818,25 @@ class TestFunctions(TestCase):
             "request['body'].closed must be False; got True"
         )
 
-        # valid request with ChunkedBody:
-        request = deepcopy(good)
-        request['body'] = ChunkedBody(closed=False, chunked=True)
-        request['headers']['transfer-encoding'] = 'chunked'
-        self.assertIsNone(rgi._validate_request(dict(session), request))
+        # Methods that should work when request['body'] is a ChunkedBody instance:
+        for method in ('PUT', 'POST'):
+            request = deepcopy(good)
+            request['method'] = method
+            request['body'] = ChunkedBody(closed=False, chunked=True)
+            request['headers']['transfer-encoding'] = 'chunked'
+            self.assertIsNone(rgi._validate_request(dict(session), request))
+
+        # Methods that should *not* work when request['body'] is a ChunkedBody instance:
+        for method in ('GET', 'HEAD', 'DELETE'):
+            request = deepcopy(good)
+            request['method'] = method
+            request['body'] = ChunkedBody(closed=False, chunked=True)
+            request['headers']['transfer-encoding'] = 'chunked'
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_request(dict(session), request)
+            self.assertEqual(str(cm.exception),
+                "request['method'] cannot be {!r} when request['body'] is not None".format(method)
+            )
 
 
 class TestValidator(TestCase):
