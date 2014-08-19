@@ -323,7 +323,16 @@ def _validate_request(session, request):
     # body:
     (label, value) = _get_path('request', request, 'body')
     if value is None:
+        # When there is no request body, there should be neither 'content-length'
+        # nor 'tranfer-encoding' headers:
+        for key in ('content-length', 'transfer-encoding'):
+            if key in request['headers']:
+                raise ValueError(
+                    "{} is None but {!r} header is included".format(label, key)
+                )
         return
+
+    # body is not None:
     if isinstance(value, session['rgi.Body']):
         _ensure_attr_is(label, value, 'chunked', False)
         if 'transfer-encoding' in request['headers']:

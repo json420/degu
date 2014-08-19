@@ -629,6 +629,27 @@ class TestFunctions(TestCase):
                 )
             )
 
+        ############################
+        # request['body'] is `None`:
+
+        # 'content-length' header is present:
+        bad = deepcopy(good)
+        bad['headers']['content-length'] = 17
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_request(dict(session), bad)
+        self.assertEqual(str(cm.exception),
+            "request['body'] is None but 'content-length' header is included"
+        )
+
+        # 'transfer-encoding' header is present:
+        bad = deepcopy(good)
+        bad['headers']['transfer-encoding'] = 'chunked'
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_request(dict(session), bad)
+        self.assertEqual(str(cm.exception),
+            "request['body'] is None but 'transfer-encoding' header is included"
+        )
+
         #######################################
         # request['body'] is a `Body` instance:
 
