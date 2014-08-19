@@ -61,7 +61,8 @@ def _getattr(label, obj, name):
                 label, type(obj).__name__, name
             )
         )
-    return getattr(obj, name)
+    label = '{}.{}'.format(label, name)
+    return (label, getattr(obj, name))
 
 
 def _ensure_attr_is(label, obj, name, expected):
@@ -86,10 +87,10 @@ def _ensure_attr_is(label, obj, name, expected):
     ValueError: request['body']: 'BytesIO' object has no attribute 'chunked'
 
     """
-    attr = _getattr(label, obj, name)
-    if attr is not expected:
+    (label, value) = _getattr(label, obj, name)
+    if value is not expected:
         raise ValueError(
-            '{}.{} must be {!r}; got {!r}'.format(label, name, expected, attr)
+            '{} must be {!r}; got {!r}'.format(label, expected, value)
         )
 
 
@@ -325,8 +326,31 @@ def _validate_request(session, request):
         return
     if isinstance(value, session['rgi.Body']):
         _ensure_attr_is(label, value, 'chunked', False)
+        if 'transfer-encoding' in request['headers']:
+            raise ValueError(
+                "{}: 'rgi.Body' with 'transfer-encoding' header".format(label)
+            )
+        (L1, V1) = _getattr(label, value, 'content_length')
+        if 'content-length' not in request['headers']:
+            raise ValueError(
+                "{}: 'rgi.Body', but missing 'content-length' header".format(label)
+            )
+        (L2, V2) = _get_path('request', request, 'headers', 'content-length')
+        if V1 != V2:
+            raise ValueError(
+                '{} != {}: {!r} != {!r}'.format(L1, L2, V1, V2)
+            )
     elif isinstance(value, session['rgi.ChunkedBody']):
         _ensure_attr_is(label, value, 'chunked', True)
+        if 'content-length' in request['headers']:
+            raise ValueError(
+                "{}: 'rgi.ChunkedBody' with 'content-length' header".format(label)
+            )
+        if 'transfer-encoding' not in request['headers']:
+            raise ValueError(
+                "{}: 'rgi.ChunkedBody', but missing 'transfer-encoding' header".format(label)
+            )
+        assert request['headers']['transfer-encoding'] == 'chunked'
     else:
         body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
         raise TypeError(
