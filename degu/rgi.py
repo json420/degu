@@ -413,9 +413,29 @@ def _validate_response(session, request, response):
     # response[2] (headers):
     (label, value) = _get_path('response', response, 2)
     _check_headers(label, value)
+    if request['method'] == 'HEAD':
+        # response to 'HEAD' request must include either a 'content-length' or a
+        # 'transfer-encoding' header (but not both):
+        k1 = 'content-length'
+        k2 = 'transfer-encoding'
+        if not {k1, k2}.intersection(value):
+            raise ValueError(
+                "{}: response to HEAD request must include {!r} or {!r} header".format(
+                    label, k1, k2
+                )
+            )
 
     # response[3] (body):
     (label, value) = _get_path('response', response, 3)
+    if request['method'] == 'HEAD':
+        # response body must be None when request method is 'HEAD':
+        if value is not None:
+            raise TypeError(
+                "{}: must be None when request['method'] is 'HEAD'; got a {!r}".format(
+                    label, type(value)
+                )
+            )
+        return  # Skip remaining tests
     bodies = (
         session['rgi.Body'],
         session['rgi.BodyIter'],

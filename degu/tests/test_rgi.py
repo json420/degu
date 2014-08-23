@@ -924,6 +924,27 @@ class TestFunctions(TestCase):
             rgi.TYPE_ERROR.format('response[2]', dict, list, [('foo', 'BAR')])
         )
 
+        # request method is 'HEAD', but response headers include neither
+        # 'content-length' nor 'transfer-encoding'
+        r = deepcopy(request)
+        r['method'] = 'HEAD'
+        bad = (200, 'OK', {}, None)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), r, bad)
+        self.assertEqual(str(cm.exception),
+            "response[2]: response to HEAD request must include 'content-length' or 'transfer-encoding' header"
+        )
+
+        # Test valid responses to 'HEAD' request:
+        r = deepcopy(request)
+        r['method'] = 'HEAD'
+        good = (200, 'OK', {'content-length': 17}, None)
+        self.assertIsNone(rgi._validate_response(dict(session), r, good))
+        r = deepcopy(request)
+        r['method'] = 'HEAD'
+        good = (200, 'OK', {'transfer-encoding': 'chunked'}, None)
+        self.assertIsNone(rgi._validate_response(dict(session), r, good))
+
         # bad response body type:
         bad = (200, 'OK', {}, 'hello')
         with self.assertRaises(TypeError) as cm:
@@ -931,6 +952,31 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             'response[3]: bad response body type: {!r}'.format(str)
         )
+
+        # 'HEAD' request, but response body isn't None:
+        bad_bodies = (
+            b'D' * 17,
+            bytearray(b'D' * 17),
+            Body(closed=False, chunked=False, content_length=17),
+            BodyIter(closed=False, chunked=False, content_length=17),
+            ChunkedBody(closed=False, chunked=False),
+            ChunkedBodyIter(closed=False, chunked=False),
+        )
+        for body in bad_bodies:
+            r = deepcopy(request)
+            r['method'] = 'HEAD'
+            if isinstance(body, (ChunkedBody, ChunkedBodyIter)):
+                headers = {'transfer-encoding': 'chunked'}
+            else:
+                headers = {'content-length': 17}
+            bad = (200, 'OK', headers, body)
+            with self.assertRaises(TypeError) as cm:
+                rgi._validate_response(dict(session), r, bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: must be None when request['method'] is 'HEAD'; got a {!r}".format(
+                    type(body)
+                )
+            )
 
 
 class TestValidator(TestCase):
