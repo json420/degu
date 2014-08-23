@@ -838,6 +838,100 @@ class TestFunctions(TestCase):
                 "request['method'] cannot be {!r} when request['body'] is not None".format(method)
             )
 
+    def test_validate_response(self):
+        # Validator.__call__() will supply the session and request arguments:
+        session = (
+            ('rgi.Body', Body),
+            ('rgi.ChunkedBody', ChunkedBody),
+            ('rgi.BodyIter', BodyIter),
+            ('rgi.ChunkedBodyIter', ChunkedBodyIter),
+        )
+        request = {
+            'method': 'GET',
+        }
+
+        # response isn't a `tuple`:
+        bad = [200, 'OK', {}, None]
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format('response', tuple, list, bad)
+        )
+
+        # len(response) != 4:
+        bad = (200, 'OK', {})
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception), 'len(response) must be 4, got 3')
+        bad = (200, 'OK', {}, None, None)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception), 'len(response) must be 4, got 5')
+
+        # response status isn't an int:
+        bad = ('200', 'OK', {}, None)
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format('response[0]', int, str, '200')
+        )
+
+        # response status < 100:
+        bad = (99, 'OK', {}, None)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            'response[0]: need 100 <= status <= 599; got 99'
+        )
+
+        # response status > 599:
+        bad = (600, 'OK', {}, None)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            'response[0]: need 100 <= status <= 599; got 600'
+        )
+
+        # Test all valid response status:
+        for status in range(100, 600):
+            self.assertTrue(100 <= status <= 599)
+            good = (status, 'OK', {}, None)
+            self.assertIsNone(
+                rgi._validate_response(dict(session), deepcopy(request), good)
+            )
+
+        # response reason isn't an str:
+        bad = (200, b'OK', {}, None)
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format('response[1]', str, bytes, b'OK')
+        )
+
+        # response reason is empty:
+        bad = (200, '', {}, None)
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            "response[1]: reason cannot be an empty ''"
+        )
+
+        # response headers isn't a dict:
+        bad = (200, 'OK', [('foo', 'BAR')], None)
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format('response[2]', dict, list, [('foo', 'BAR')])
+        )
+
+        # bad response body type:
+        bad = (200, 'OK', {}, 'hello')
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_response(dict(session), deepcopy(request), bad)
+        self.assertEqual(str(cm.exception),
+            'response[3]: bad response body type: {!r}'.format(str)
+        )
+
 
 class TestValidator(TestCase):
     def test_init(self):

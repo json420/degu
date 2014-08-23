@@ -25,17 +25,20 @@ RGI validation middleware.
 The `Validator` class is a middleware component for verifying that both server
 and application comply with the REST Gateway Interface (RGI) specification.
 
-The aim is to be strict and comprehensive, and to deliver clear error messages
-when non-conforming behavior is detected.
+The aim is to be strict and comprehensive, and to deliver exceedingly clear
+error messages when non-conforming behavior is detected.
 
-As such, performance is generally sacrificed for the sake of clarity and
-maintainability.  The `Validator` middleware is not intended for everyday
-production use.  Whenever you use it, expect a substantial performance hit.
+As such, performance is sacrificed for the sake of clarity and maintainability.
+The `Validator` middleware is not intended for everyday production use.
+Whenever you use it, expect a substantial performance hit.
 
 `degu.rgi` and its tests should be fully self-contained and should not rely on
 any other `degu` functionality.  With time, assuming RGI gains wider adoption,
-`degu.rgi` should be split out of Degu and into its own source tree.
+`degu.rgi` should be split out of Degu and into its own source tree, so that it
+can better act as an independent RGI validation tool.
 """
+
+from copy import deepcopy
 
 
 # Provide very clear TypeError messages:
@@ -276,7 +279,7 @@ def _validate_request(session, request):
     """
     _check_dict('request', request)
 
-    # method:
+    # request['method']:
     (label, value) = _get_path('request', request, 'method')
     if value not in REQUEST_METHODS:
         raise ValueError(
@@ -287,7 +290,7 @@ def _validate_request(session, request):
             "{} cannot be {!r} when request['body'] is not None".format(label, value)
         )
 
-    # script:
+    # request['script']:
     (label, value) = _get_path('request', request, 'script')
     if not isinstance(value, list):
         raise TypeError(
@@ -300,7 +303,7 @@ def _validate_request(session, request):
                 TYPE_ERROR.format(label, str, type(value), value) 
             )
 
-    # path:
+    # request['path']:
     (label, value) = _get_path('request', request, 'path')
     if not isinstance(value, list):
         raise TypeError(
@@ -313,18 +316,18 @@ def _validate_request(session, request):
                 TYPE_ERROR.format(label, str, type(value), value) 
             )
 
-    # query:
+    # request['query']:
     (label, value) = _get_path('request', request, 'query')
     if not isinstance(value, str):
         raise TypeError(
             TYPE_ERROR.format(label, str, type(value), value) 
         )
 
-    # headers:
+    # request['headers']:
     (label, value) = _get_path('request', request, 'headers')
     _check_headers(label, value)
 
-    # body:
+    # request['body']:
     (label, value) = _get_path('request', request, 'body')
     if value is None:
         # When there is no request body, there should be neither 'content-length'
@@ -334,9 +337,10 @@ def _validate_request(session, request):
                 raise ValueError(
                     "{} is None but {!r} header is included".format(label, key)
                 )
-        return
+        return  # Skip remaining checks when request body is None
 
-    # body is not None:
+    # request['body'] is not None:
+    assert value is not None
     if isinstance(value, session['rgi.Body']):
         _ensure_attr_is(label, value, 'chunked', False)
         if 'transfer-encoding' in request['headers']:
@@ -369,12 +373,69 @@ def _validate_request(session, request):
         raise TypeError(
             TYPE_ERROR.format(label, body_types, type(value), value) 
         )
-    # body.closed must be False prior to calling the application:
+
+    # request['body'].closed must be False prior to calling the application:
     _ensure_attr_is(label, value, 'closed', False)
 
 
 def _validate_response(session, request, response):
-    pass    
+    if not isinstance(response, tuple):
+        raise TypeError(
+            TYPE_ERROR.format('response', tuple, type(response), response)
+        )
+    if len(response) != 4:
+        raise ValueError(
+            'len(response) must be 4, got {}'.format(len(response))
+        )
+
+    # response[0] (status):
+    (label, value) = _get_path('response', response, 0)
+    if not isinstance(value, int):
+        raise TypeError(
+            TYPE_ERROR.format(label, int, type(value), value)
+        )
+    if not (100 <= value <= 599):
+        raise ValueError(
+            '{}: need 100 <= status <= 599; got {}'.format(label, value)
+        )
+
+    # response[1] (reason):
+    (label, value) = _get_path('response', response, 1)
+    if not isinstance(value, str):
+        raise TypeError(
+            TYPE_ERROR.format(label, str, type(value), value)
+        )
+    if value == '':
+        raise ValueError(
+            "{}: reason cannot be an empty ''".format(label)
+        )
+
+    # response[2] (headers):
+    (label, value) = _get_path('response', response, 2)
+    _check_headers(label, value)
+
+    # response[3] (body):
+    (label, value) = _get_path('response', response, 3)
+    bodies = (
+        session['rgi.Body'],
+        session['rgi.BodyIter'],
+    )
+    chunked_bodies = (
+        session['rgi.ChunkedBody'],
+        session['rgi.ChunkedBodyIter'],
+    )
+    if value is None:
+        pass
+    elif isinstance(value, (bytes, bytearray)):
+        pass
+    elif isinstance(value, bodies):
+        pass
+    elif isinstance(value, chunked_bodies):
+        pass
+    else:
+        raise TypeError(
+            '{}: bad response body type: {!r}'.format(label, type(value))
+        )
 
 
 class Validator:
@@ -392,15 +453,22 @@ class Validator:
         self._on_connect = on_connect
 
     def __call__(self, session, request):
+        orig_session = deepcopy(session)
+        orig_request = deepcopy(request)
         _validate_session(session)
         _validate_request(session, request)
+        assert session == orig_session
+        assert request == orig_request
         response = self.app(session, request)
-        _validate_response(session, request, response)
+        _validate_response(orig_session, orig_request, response)
         return response
 
     def on_connect(self, sock, session):
+        orig_session = deepcopy(session)
         _validate_session(session)
+        assert session == orig_session
         if self._on_connect is None:
             return True
-        return self._on_connect(sock, session)
+        ret = self._on_connect(sock, orig_session)
+        return ret
 
