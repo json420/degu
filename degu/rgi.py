@@ -52,8 +52,8 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 # 'content-length' and 'transfer-encoding' header keys, defined as constants
-# here as typing the literals over an over is rather error prone plus a bit too
-# verbose for comfort at times:
+# here as typing the literals over and over is rather error prone plus is a bit
+# too verbose for comfort at times:
 LENGTH = 'content-length'
 ENCODING = 'transfer-encoding'
 
@@ -151,17 +151,17 @@ def _check_headers(label, headers):
                 )
             )
     if LENGTH in headers:
-        if 'transfer-encoding' in headers:
+        if ENCODING in headers:
             raise ValueError(
-                '{}: content-length and transfer-encoding in headers'.format(label)
+                '{}: {} and {} in headers'.format(label, LENGTH, ENCODING)
             )
         (l, v) = _get_path(label, headers, LENGTH)
         if not isinstance(v, int):
             raise TypeError(TYPE_ERROR.format(l, int, type(v), v))
         if v < 0:
             raise ValueError('{}: must be >=0; got {!r}'.format(l, v))
-    if 'transfer-encoding' in headers:
-        (l, v) = _get_path(label, headers, 'transfer-encoding')
+    if ENCODING in headers:
+        (l, v) = _get_path(label, headers, ENCODING)
         if v != 'chunked':
             raise ValueError("{}: must be 'chunked'; got {!r}".format(l, v))
 
@@ -372,7 +372,7 @@ def _validate_request(session, request):
     if value is None:
         # When there is no request body, there should be neither 'content-length'
         # nor 'tranfer-encoding' headers:
-        for key in (LENGTH, 'transfer-encoding'):
+        for key in (LENGTH, ENCODING):
             if key in request['headers']:
                 raise ValueError(
                     "{} is None but {!r} header is included".format(label, key)
@@ -383,9 +383,9 @@ def _validate_request(session, request):
     assert value is not None
     if isinstance(value, session['rgi.Body']):
         _ensure_attr_is(label, value, 'chunked', False)
-        if 'transfer-encoding' in request['headers']:
+        if ENCODING in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body' with 'transfer-encoding' header".format(label)
+                "{}: 'rgi.Body' with {!r} header".format(label, ENCODING)
             )
         (L1, V1) = _getattr(label, value, 'content_length')
         if LENGTH not in request['headers']:
@@ -403,11 +403,11 @@ def _validate_request(session, request):
             raise ValueError(
                 "{}: 'rgi.ChunkedBody' with {!r} header".format(label, LENGTH)
             )
-        if 'transfer-encoding' not in request['headers']:
+        if ENCODING not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody', but missing 'transfer-encoding' header".format(label)
+                "{}: 'rgi.ChunkedBody', but missing {!r} header".format(label, ENCODING)
             )
-        assert request['headers']['transfer-encoding'] == 'chunked'
+        assert request['headers'][ENCODING] == 'chunked'
     else:
         body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
         raise TypeError(
