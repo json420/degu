@@ -35,7 +35,7 @@ import ssl
 import json
 from hashlib import sha1
 
-from .helpers import TempDir, DummySocket, DummyFile, FuzzTestCase
+from .helpers import TempDir, FuzzTestCase
 import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
