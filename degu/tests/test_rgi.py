@@ -848,6 +848,10 @@ class TestFunctions(TestCase):
         )
         request = {
             'method': 'GET',
+            'script': ['foo'],
+            'path': ['bar'],
+            'query': '',
+            'body': None,
         }
 
         # response isn't a `tuple`:

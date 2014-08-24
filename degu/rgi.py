@@ -51,6 +51,10 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 # Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
+# 'content-length' and 'transfer-encoding' header keys:
+K1 = 'content-length'
+K2 = 'transfer-encoding'
+
 
 def _getattr(label, obj, name):
     """
@@ -414,12 +418,10 @@ def _validate_response(session, request, response):
     if request['method'] == 'HEAD':
         # response to 'HEAD' request must include either a 'content-length' or a
         # 'transfer-encoding' header (but not both):
-        k1 = 'content-length'
-        k2 = 'transfer-encoding'
-        if not {k1, k2}.intersection(value):
+        if not {K1, K2}.intersection(value):
             raise ValueError(
                 "{}: response to HEAD request must include {!r} or {!r} header".format(
-                    label, k1, k2
+                    label, K1, K2
                 )
             )
 
