@@ -37,12 +37,11 @@ from hashlib import sha1
 
 from .helpers import TempDir, DummySocket, DummyFile, FuzzTestCase
 import degu
-from degu import util
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import TYPE_ERROR
-from degu import base, server
+from degu import util, rgi, base, server
 
 
 random = SystemRandom()
@@ -1399,11 +1398,15 @@ class AppWithConnectionHandler:
         return self.accept
 
 
+def wrap_with_validator(app):
+    return rgi.Validator(app)
+
+
 class TestLiveServer(TestCase):
     address = degu.IPv4_LOOPBACK
 
-    def build_with_app(self, build_func, *build_args):
-        httpd = TempServer(self.address, build_func, *build_args)
+    def build_with_app(self, app):
+        httpd = TempServer(self.address, wrap_with_validator, app)
         client = Client(httpd.address)
         return (httpd, client)
 
@@ -1429,7 +1432,7 @@ class TestLiveServer(TestCase):
         """
         if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
             self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
-        (httpd, client) = self.build_with_app(None, timeout_app)
+        (httpd, client) = self.build_with_app(timeout_app)
         conn = client.connect()
 
         # Make an inital request:
@@ -1452,7 +1455,7 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_chunked_request(self):
-        (httpd, client) = self.build_with_app(None, chunked_request_app)
+        (httpd, client) = self.build_with_app(chunked_request_app)
         conn = client.connect()
 
         body = base.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
@@ -1482,7 +1485,7 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_chunked_response(self):
-        (httpd, client) = self.build_with_app(None, chunked_response_app)
+        (httpd, client) = self.build_with_app(chunked_response_app)
         conn = client.connect()
 
         response = conn.request('GET', '/foo')
@@ -1518,7 +1521,7 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_response(self):
-        (httpd, client) = self.build_with_app(None, response_app)
+        (httpd, client) = self.build_with_app(response_app)
         conn = client.connect()
 
         response = conn.request('GET', '/foo')
@@ -1552,7 +1555,7 @@ class TestLiveServer(TestCase):
     def test_always_accept_connections(self):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, True)
-        (httpd, client) = self.build_with_app(None, app)
+        (httpd, client) = self.build_with_app(app)
         for i in range(17):
             conn = client.connect()
             for j in range(69):
@@ -1568,7 +1571,7 @@ class TestLiveServer(TestCase):
     def test_always_reject_connections(self):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, False)
-        (httpd, client) = self.build_with_app(None, app)
+        (httpd, client) = self.build_with_app(app)
         for i in range(17):
             conn = client.connect()
             with self.assertRaises(ConnectionError):
@@ -1578,7 +1581,7 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_ok_status(self):
-        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        (httpd, client) = self.build_with_app(standard_harness_app)
         conn = client.connect()
         # At no point should the connection be closed by the server:
         for status in range(100, 400):
@@ -1601,7 +1604,7 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_error_status(self):
-        (httpd, client) = self.build_with_app(None, standard_harness_app)
+        (httpd, client) = self.build_with_app(standard_harness_app)
         for status in range(400, 600):
             reason = random_id()
             uri = '/status/{}/{}'.format(status, reason)
@@ -1633,10 +1636,10 @@ class TestLiveServer_AF_INET6(TestLiveServer):
 
 
 class TestLiveServer_AF_UNIX(TestLiveServer):
-    def build_with_app(self, build_func, *build_args):
+    def build_with_app(self, app):
         tmp = TempDir()
         filename = tmp.join('my.socket')
-        httpd = TempServer(filename, build_func, *build_args)
+        httpd = TempServer(filename, wrap_with_validator, app)
         httpd.tmp = tmp
         return (httpd, Client(httpd.address))
 
@@ -1653,10 +1656,10 @@ def ssl_app(session, request):
 
 
 class TestLiveSSLServer(TestLiveServer):
-    def build_with_app(self, build_func, *build_args):
+    def build_with_app(self, app):
         pki = TempPKI()
         httpd = TempSSLServer(
-            pki.get_server_config(), self.address, build_func, *build_args
+            pki.get_server_config(), self.address, wrap_with_validator, app
         )
         httpd.pki = pki
         sslctx = build_client_sslctx(pki.get_client_config())
