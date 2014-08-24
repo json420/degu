@@ -144,18 +144,18 @@ def _check_headers(label, headers):
             raise ValueError(
                 '{}: non-casefolded header name: {!r}'.format(label, key)
             )
-        if not isinstance(value, str) and key != 'content-length':
+        if not isinstance(value, str) and key != LENGTH:
             raise TypeError(
                 '{}[{!r}]: need a {!r}; got a {!r}: {!r}'.format(
                     label, key, str, type(value), value
                 )
             )
-    if 'content-length' in headers:
+    if LENGTH in headers:
         if 'transfer-encoding' in headers:
             raise ValueError(
                 '{}: content-length and transfer-encoding in headers'.format(label)
             )
-        (l, v) = _get_path(label, headers, 'content-length')
+        (l, v) = _get_path(label, headers, LENGTH)
         if not isinstance(v, int):
             raise TypeError(TYPE_ERROR.format(l, int, type(v), v))
         if v < 0:
@@ -372,7 +372,7 @@ def _validate_request(session, request):
     if value is None:
         # When there is no request body, there should be neither 'content-length'
         # nor 'tranfer-encoding' headers:
-        for key in ('content-length', 'transfer-encoding'):
+        for key in (LENGTH, 'transfer-encoding'):
             if key in request['headers']:
                 raise ValueError(
                     "{} is None but {!r} header is included".format(label, key)
@@ -388,20 +388,20 @@ def _validate_request(session, request):
                 "{}: 'rgi.Body' with 'transfer-encoding' header".format(label)
             )
         (L1, V1) = _getattr(label, value, 'content_length')
-        if 'content-length' not in request['headers']:
+        if LENGTH not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body', but missing 'content-length' header".format(label)
+                "{}: 'rgi.Body', but missing {!r} header".format(label, LENGTH)
             )
-        (L2, V2) = _get_path('request', request, 'headers', 'content-length')
+        (L2, V2) = _get_path('request', request, 'headers', LENGTH)
         if V1 != V2:
             raise ValueError(
                 '{} != {}: {!r} != {!r}'.format(L1, L2, V1, V2)
             )
     elif isinstance(value, session['rgi.ChunkedBody']):
         _ensure_attr_is(label, value, 'chunked', True)
-        if 'content-length' in request['headers']:
+        if LENGTH in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody' with 'content-length' header".format(label)
+                "{}: 'rgi.ChunkedBody' with {!r} header".format(label, LENGTH)
             )
         if 'transfer-encoding' not in request['headers']:
             raise ValueError(
