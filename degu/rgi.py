@@ -51,9 +51,11 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 # Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
-# 'content-length' and 'transfer-encoding' header keys:
-K1 = 'content-length'
-K2 = 'transfer-encoding'
+# 'content-length' and 'transfer-encoding' header keys, defined as constants
+# here as typing the literals over and over is rather error prone plus is a bit
+# too verbose for comfort at times:
+LENGTH = 'content-length'
+ENCODING = 'transfer-encoding'
 
 
 def _getattr(label, obj, name):
@@ -142,24 +144,24 @@ def _check_headers(label, headers):
             raise ValueError(
                 '{}: non-casefolded header name: {!r}'.format(label, key)
             )
-        if not isinstance(value, str) and key != 'content-length':
+        if not isinstance(value, str) and key != LENGTH:
             raise TypeError(
                 '{}[{!r}]: need a {!r}; got a {!r}: {!r}'.format(
                     label, key, str, type(value), value
                 )
             )
-    if 'content-length' in headers:
-        if 'transfer-encoding' in headers:
+    if LENGTH in headers:
+        if ENCODING in headers:
             raise ValueError(
-                '{}: content-length and transfer-encoding in headers'.format(label)
+                '{}: {} and {} in headers'.format(label, LENGTH, ENCODING)
             )
-        (l, v) = _get_path(label, headers, 'content-length')
+        (l, v) = _get_path(label, headers, LENGTH)
         if not isinstance(v, int):
             raise TypeError(TYPE_ERROR.format(l, int, type(v), v))
         if v < 0:
             raise ValueError('{}: must be >=0; got {!r}'.format(l, v))
-    if 'transfer-encoding' in headers:
-        (l, v) = _get_path(label, headers, 'transfer-encoding')
+    if ENCODING in headers:
+        (l, v) = _get_path(label, headers, ENCODING)
         if v != 'chunked':
             raise ValueError("{}: must be 'chunked'; got {!r}".format(l, v))
 
@@ -370,7 +372,7 @@ def _validate_request(session, request):
     if value is None:
         # When there is no request body, there should be neither 'content-length'
         # nor 'tranfer-encoding' headers:
-        for key in ('content-length', 'transfer-encoding'):
+        for key in (LENGTH, ENCODING):
             if key in request['headers']:
                 raise ValueError(
                     "{} is None but {!r} header is included".format(label, key)
@@ -381,31 +383,31 @@ def _validate_request(session, request):
     assert value is not None
     if isinstance(value, session['rgi.Body']):
         _ensure_attr_is(label, value, 'chunked', False)
-        if 'transfer-encoding' in request['headers']:
+        if ENCODING in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body' with 'transfer-encoding' header".format(label)
+                "{}: 'rgi.Body' with {!r} header".format(label, ENCODING)
             )
-        (L1, V1) = _getattr(label, value, 'content_length')
-        if 'content-length' not in request['headers']:
+        (l1, v1) = _getattr(label, value, 'content_length')
+        if LENGTH not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body', but missing 'content-length' header".format(label)
+                "{}: 'rgi.Body', but missing {!r} header".format(label, LENGTH)
             )
-        (L2, V2) = _get_path('request', request, 'headers', 'content-length')
-        if V1 != V2:
+        (l2, v2) = _get_path('request', request, 'headers', LENGTH)
+        if v1 != v2:
             raise ValueError(
-                '{} != {}: {!r} != {!r}'.format(L1, L2, V1, V2)
+                '{} != {}: {!r} != {!r}'.format(l1, l2, v1, v2)
             )
     elif isinstance(value, session['rgi.ChunkedBody']):
         _ensure_attr_is(label, value, 'chunked', True)
-        if 'content-length' in request['headers']:
+        if LENGTH in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody' with 'content-length' header".format(label)
+                "{}: 'rgi.ChunkedBody' with {!r} header".format(label, LENGTH)
             )
-        if 'transfer-encoding' not in request['headers']:
+        if ENCODING not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody', but missing 'transfer-encoding' header".format(label)
+                "{}: 'rgi.ChunkedBody', but missing {!r} header".format(label, ENCODING)
             )
-        assert request['headers']['transfer-encoding'] == 'chunked'
+        assert request['headers'][ENCODING] == 'chunked'
     else:
         body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
         raise TypeError(
@@ -457,10 +459,10 @@ def _validate_response(session, request, response):
     if request['method'] == 'HEAD':
         # response to 'HEAD' request must include either a 'content-length' or a
         # 'transfer-encoding' header (but not both):
-        if not {K1, K2}.intersection(value):
+        if not {LENGTH, ENCODING}.intersection(value):
             raise ValueError(
                 "{}: response to HEAD request must include {!r} or {!r} header".format(
-                    label, K1, K2
+                    label, LENGTH, ENCODING
                 )
             )
 
@@ -478,7 +480,7 @@ def _validate_response(session, request, response):
     if value is None:
         # When response body is None and request method is not 'HEAD', should
         # include neither 'content-length' nor 'transfer-encoding' headers:
-        for key in (K1, K2):
+        for key in (LENGTH, ENCODING):
             if key in response[2]:
                 raise ValueError(
                     '{}: response body is None, but {!r} header is included'.format(label, key)
@@ -497,33 +499,33 @@ def _validate_response(session, request, response):
     if isinstance(value, bodies):
         # Cannot include a 'transfer-encoding' header with a length-encoded
         # response body:
-        if K2 in response[2]:
+        if ENCODING in response[2]:
             raise ValueError(
                 '{}: response body is {!r}, but {!r} header is included'.format(
-                    label, type(value), K2
+                    label, type(value), ENCODING
                 )
             )
         if isinstance(value, (bytes, bytearray)):
             length = len(value)
             _repr = 'len(body)'
         else:
-            (L, length) = _getattr(label, value, 'content_length')
+            (l, length) = _getattr(label, value, 'content_length')
             _repr = 'body.content_length'
             _ensure_attr_is(label, value, 'chunked', False)
             _ensure_attr_is(label, value, 'closed', False)
-        if K1 in response[2] and response[2][K1] != length:
+        if LENGTH in response[2] and response[2][LENGTH] != length:
             raise ValueError(
                 '{}: {} is {}, but {!r} is {}'.format(
-                    label, _repr, length, K1, response[2][K1]
+                    label, _repr, length, LENGTH, response[2][LENGTH]
                 )
             )
     elif isinstance(value, chunked_bodies):
         # Cannot include a 'content-length' header with a chunk-encoded response
         # body:
-        if K1 in response[2]:
+        if LENGTH in response[2]:
             raise ValueError(
                 '{}: response body is {!r}, but {!r} header is included'.format(
-                    label, type(value), K1
+                    label, type(value), LENGTH
                 )
             )
         _ensure_attr_is(label, value, 'chunked', True)
@@ -555,17 +557,27 @@ class Validator:
         self.app = app
         self._on_connect = on_connect
 
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self.app)
+
     def __call__(self, session, request):
         orig_session = session.copy()
         orig_request = request.copy()
-        orig_request['script'] = request['script'].copy()
-        orig_request['path'] = request['path'].copy()
-        orig_request['headers'] = request['headers'].copy()
+        for key in ('script', 'path', 'headers'):
+            orig_request[key] = request[key].copy()
         _validate_session(session)
         _validate_request(session, request)
         assert session == orig_session
         assert request == orig_request
+        request_body = orig_request['body']
         response = self.app(session, request)
+        if request_body is not None and request_body.closed is not True:
+            # request body was not fully consumed:
+            raise ValueError(
+                '{} must be True after app() was called; got {!r}'.format(
+                    "request['body'].closed", request_body.closed
+                )
+            )
         _validate_response(orig_session, orig_request, response)
         return response
 
@@ -573,8 +585,20 @@ class Validator:
         orig_session = session.copy()
         _validate_session(session)
         assert session == orig_session
+        if session['requests'] != 0:
+            raise ValueError(
+                '{} must be 0 when app.on_connect() is called; got {!r}'.format(
+                    "session['requests']", session['requests']
+                )
+            )
         if self._on_connect is None:
             return True
-        ret = self._on_connect(sock, orig_session)
-        return ret
+        allow = self._on_connect(sock, orig_session)
+        if not isinstance(allow, bool):
+            raise TypeError(
+                'app.on_connect() must return a {!r}; got a {!r}: {!r}'.format(
+                    bool, type(allow), allow
+                )
+            )
+        return allow
 
