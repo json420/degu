@@ -567,7 +567,15 @@ class Validator:
         _validate_request(session, request)
         assert session == orig_session
         assert request == orig_request
+        request_body = orig_request['body']
         response = self.app(session, request)
+        if request_body is not None and request_body.closed is not True:
+            # request body was not fully consumed:
+            raise ValueError(
+                '{} must be True after app() was called; got {!r}'.format(
+                    "request['body'].closed", request_body.closed
+                )
+            )
         _validate_response(orig_session, orig_request, response)
         return response
 
@@ -577,7 +585,7 @@ class Validator:
         assert session == orig_session
         if session['requests'] != 0:
             raise ValueError(
-                '{} must be 0 when app.on_connect() is called; got {}'.format(
+                '{} must be 0 when app.on_connect() is called; got {!r}'.format(
                     "session['requests']", session['requests']
                 )
             )

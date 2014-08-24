@@ -1373,6 +1373,38 @@ class TestValidator(TestCase):
         inst = Example(my_app)
         self.assertEqual(repr(inst), 'Example({!r})'.format(my_app))
 
+    def test_call(self):
+        # request['body'].closed is not True after app() was called:
+        def my_app(session, request):
+            return (200, 'OK', {}, None)
+
+        inst = rgi.Validator(my_app)
+        session = build_session()
+        request = build_request(
+            body=Body(closed=False, chunked=False, content_length=17),
+            headers={'content-length': 17},
+        )
+        with self.assertRaises(ValueError) as cm:
+            inst(session, request)
+        self.assertEqual(str(cm.exception),
+            "request['body'].closed must be True after app() was called; got False"
+        )
+
+        # request['body'].closed is True after app() is called:
+        def my_app(session, request):
+            request['body'].closed = True
+            return (200, 'OK', {}, None)
+
+        inst = rgi.Validator(my_app)
+        session = build_session()
+        request = build_request(
+            body=Body(closed=False, chunked=False, content_length=17),
+            headers={'content-length': 17},
+        )
+        self.assertEqual(inst(session, request),
+            (200, 'OK', {}, None)
+        )
+
     def test_on_connect(self):
         class App:
             def __init__(self, allow):
