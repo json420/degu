@@ -321,6 +321,50 @@ class TestFunctions(TestCase):
         headers['transfer-encoding'] = 'chunked'
         self.assertIsNone(rgi._check_headers(label, headers))
 
+    def test_check_address(self):
+        # Bad address type:
+        label = random_identifier()
+        address = ['127.0.0.1', 12345]
+        with self.assertRaises(TypeError) as cm:
+            rgi._check_address(label, address)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format(label, (tuple, str, bytes), list, address)
+        )
+        label = random_identifier()
+        address = ['::1', 12345, 0, 0]
+        with self.assertRaises(TypeError) as cm:
+            rgi._check_address(label, address)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format(label, (tuple, str, bytes), list, address)
+        )
+
+        # Tuple of wrong length:
+        label = random_identifier()
+        address = ('::1', 12345, 0)
+        with self.assertRaises(ValueError) as cm:
+            rgi._check_address(label, address)
+        self.assertEqual(str(cm.exception),
+            '{}: tuple must have 2 or 4 items; got {!r}'.format(label, address)
+        )
+        label = random_identifier()
+        address = ('::1', 12345, 0, 0, 0)
+        with self.assertRaises(ValueError) as cm:
+            rgi._check_address(label, address)
+        self.assertEqual(str(cm.exception),
+            '{}: tuple must have 2 or 4 items; got {!r}'.format(label, address)
+        )
+
+        # Test all 4 types of good values:
+        good = (
+            ('127.0.0.1', 12345),
+            ('::1', 23456, 0, 0),
+            '/tmp/random/my.socket',
+            b'\x0000022',
+        )
+        for address in good:    
+            label = random_identifier()
+            self.assertIsNone(rgi._check_address(label, address))
+
     def test_validate_session(self):
         # session isn't a `dict`:
         with self.assertRaises(TypeError) as cm:
@@ -470,6 +514,46 @@ class TestFunctions(TestCase):
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),
             "session['protocol']: value 'HTTP/1.0' not in ('HTTP/1.1',)"
+        )
+
+        # Bad session['server'] type:
+        address = bytearray(b'\x0000022')
+        bad = deepcopy(good)
+        bad['server'] = address
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format("session['server']", (tuple, str, bytes), bytearray, address)
+        )
+
+        # session['server'] tuple is wrong length:
+        address = ('127.0.0.1', 1234, 0)
+        bad = deepcopy(good)
+        bad['server'] = address
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            "session['server']: tuple must have 2 or 4 items; got ('127.0.0.1', 1234, 0)"
+        )
+
+        # Bad session['client'] type:
+        address = ['127.0.0.1', 12345]
+        bad = deepcopy(good)
+        bad['client'] = address
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            rgi.TYPE_ERROR.format("session['client']", (tuple, str, bytes), list, address)
+        )
+
+        # session['client'] tuple is wrong length:
+        address = ('::1', 2345, 0, 0, 0)
+        bad = deepcopy(good)
+        bad['client'] = address
+        with self.assertRaises(ValueError) as cm:
+            rgi._validate_session(bad)
+        self.assertEqual(str(cm.exception),
+            "session['client']: tuple must have 2 or 4 items; got ('::1', 2345, 0, 0, 0)"
         )
 
         # session['requests'] isn't an `int`:

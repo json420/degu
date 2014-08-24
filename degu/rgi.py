@@ -129,6 +129,13 @@ def _check_dict(label, obj):
 
 
 def _check_headers(label, headers):
+    """
+    Validate *headers* dictionary.
+
+    `_validate_request()` uses this to validate the incoming request headers.
+
+    `_validate_response()` uses this to validate the outgoing response headers.
+    """
     _check_dict(label, headers)
     for (key, value) in headers.items():
         if key != key.casefold():
@@ -155,6 +162,33 @@ def _check_headers(label, headers):
         (l, v) = _get_path(label, headers, 'transfer-encoding')
         if v != 'chunked':
             raise ValueError("{}: must be 'chunked'; got {!r}".format(l, v))
+
+
+def _check_address(label, address):
+    """
+    Validate a socket address.
+
+    `_validate_session()` uses this to validate the ``session['server']`` and
+    ``session['client']`` socket address values.
+
+    For example:
+
+    >>> _check_address("session['server']", ('::1', 1234, 0, 0))
+    >>> _check_address("session['server']", ('::1', 1234, 0))
+    Traceback (most recent call last):
+      ...
+    ValueError: session['server']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
+
+    """
+    if isinstance(address, tuple):
+        if len(address) not in (2, 4):
+            raise ValueError(
+                '{}: tuple must have 2 or 4 items; got {!r}'.format(label, address)
+            )
+    elif not isinstance(address, (str, bytes)):
+        raise TypeError(
+            TYPE_ERROR.format(label, (tuple, str, bytes), type(address), address)
+        )
 
 
 def _get_path(label, value, *path):
@@ -261,9 +295,11 @@ def _validate_session(session):
 
     # server:
     (label, value) = _get_path('session', session, 'server')
+    _check_address(label, value)
 
     # client:
     (label, value) = _get_path('session', session, 'client')
+    _check_address(label, value)
 
     # requests:
     (label, value) = _get_path('session', session, 'requests')
