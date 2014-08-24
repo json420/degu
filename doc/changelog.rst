@@ -2,6 +2,17 @@ Changelog
 =========
 
 
+0.8 (unreleased)
+----------------
+
+Changes:
+
+    * Add new :mod:`degu.rgi` module with :class:`degu.rgi.Validator` middleware
+      for for verifying that servers, other middleware, and applications all
+      comply with the :doc:`rgi` specification; this is a big step toward
+      stabilizing both the RGI specification and the Degu API
+
+
 
 0.7 (July 2014)
 ---------------

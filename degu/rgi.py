@@ -555,6 +555,9 @@ class Validator:
         self.app = app
         self._on_connect = on_connect
 
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self.app)
+
     def __call__(self, session, request):
         orig_session = session.copy()
         orig_request = request.copy()
