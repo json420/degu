@@ -321,9 +321,6 @@ def read_request(rfile):
     # Parse the request line:
     (method, path_list, query) = parse_request(request_line)
 
-    # Parse the header lines:
-    #headers = parse_headers(header_lines)
-
     # Hack for compatibility with the CouchDB replicator, which annoyingly
     # sends a {'content-length': 0} header with all GET and HEAD requests:
     if method in {'GET', 'HEAD'} and 'content-length' in headers:
