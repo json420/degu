@@ -387,15 +387,15 @@ def _validate_request(session, request):
             raise ValueError(
                 "{}: 'rgi.Body' with {!r} header".format(label, ENCODING)
             )
-        (L1, V1) = _getattr(label, value, 'content_length')
+        (l1, v1) = _getattr(label, value, 'content_length')
         if LENGTH not in request['headers']:
             raise ValueError(
                 "{}: 'rgi.Body', but missing {!r} header".format(label, LENGTH)
             )
-        (L2, V2) = _get_path('request', request, 'headers', LENGTH)
-        if V1 != V2:
+        (l2, v2) = _get_path('request', request, 'headers', LENGTH)
+        if v1 != v2:
             raise ValueError(
-                '{} != {}: {!r} != {!r}'.format(L1, L2, V1, V2)
+                '{} != {}: {!r} != {!r}'.format(l1, l2, v1, v2)
             )
     elif isinstance(value, session['rgi.ChunkedBody']):
         _ensure_attr_is(label, value, 'chunked', True)
@@ -509,7 +509,7 @@ def _validate_response(session, request, response):
             length = len(value)
             _repr = 'len(body)'
         else:
-            (L, length) = _getattr(label, value, 'content_length')
+            (l, length) = _getattr(label, value, 'content_length')
             _repr = 'body.content_length'
             _ensure_attr_is(label, value, 'chunked', False)
             _ensure_attr_is(label, value, 'closed', False)
