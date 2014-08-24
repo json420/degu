@@ -381,6 +381,9 @@ def _validate_request(session, request):
 
 
 def _validate_response(session, request, response):
+    """
+    Validate the *response* tuple returned by the application.
+    """
     if not isinstance(response, tuple):
         raise TypeError(
             TYPE_ERROR.format('response', tuple, type(response), response)
@@ -436,7 +439,18 @@ def _validate_response(session, request, response):
                 )
             )
         return  # Skip remaining tests
+    if value is None:
+        # When response body is None and request method is not 'HEAD', should
+        # include neither 'content-length' nor 'transfer-encoding' headers:
+        for key in (K1, K2):
+            if key in response[2]:
+                raise ValueError(
+                    '{}: response body is None, but {!r} header is included'.format(label, key)
+                )
+        return  # Skip remaning tests
     bodies = (
+        bytes,
+        bytearray,
         session['rgi.Body'],
         session['rgi.BodyIter'],
     )
@@ -444,14 +458,47 @@ def _validate_response(session, request, response):
         session['rgi.ChunkedBody'],
         session['rgi.ChunkedBodyIter'],
     )
-    if value is None:
-        pass
-    elif isinstance(value, (bytes, bytearray)):
-        pass
-    elif isinstance(value, bodies):
-        pass
+    if isinstance(value, bodies):
+        # Cannot include a 'transfer-encoding' header with a length-encoded
+        # response body:
+        if K2 in response[2]:
+            raise ValueError(
+                '{}: response body is {!r}, but {!r} header is included'.format(
+                    label, type(value), K2
+                )
+            )
+        if isinstance(value, (bytes, bytearray)):
+            length = len(value)
+            _repr = 'len(body)'
+        else:
+            (L, length) = _getattr(label, value, 'content_length')
+            _repr = 'body.content_length'
+            _ensure_attr_is(label, value, 'chunked', False)
+            _ensure_attr_is(label, value, 'closed', False)
+        if K1 in response[2] and response[2][K1] != length:
+            raise ValueError(
+                '{}: {} is {}, but {!r} is {}'.format(
+                    label, _repr, length, K1, response[2][K1]
+                )
+            )
     elif isinstance(value, chunked_bodies):
-        pass
+        # Cannot include a 'content-length' header with a chunk-encoded response
+        # body:
+        if K1 in response[2]:
+            raise ValueError(
+                '{}: response body is {!r}, but {!r} header is included'.format(
+                    label, type(value), K1
+                )
+            )
+        _ensure_attr_is(label, value, 'chunked', True)
+        _ensure_attr_is(label, value, 'closed', False)
+        name = 'content_length'
+        if hasattr(value, name):
+            raise ValueError(
+                '{}: {!r} must not have a {!r} attribute'.format(
+                    label, type(value), name
+                )
+            )
     else:
         raise TypeError(
             '{}: bad response body type: {!r}'.format(label, type(value))

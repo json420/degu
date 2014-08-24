@@ -982,6 +982,205 @@ class TestFunctions(TestCase):
                 )
             )
 
+        # response body is None, but 'content-length' or 'transfer-encoding'
+        # header is included:
+        bad_headers = (
+            ('content-length', 17),
+            ('transfer-encoding', 'chunked'),
+        )
+        for (k, v) in bad_headers:
+            bad = (200, 'OK', {k: v}, None)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                '{}: response body is None, but {!r} header is included'.format(
+                    'response[3]', k
+                )
+            )
+
+        # response body is (bytes, bytarray, Body, BodyIter), but
+        # 'transfer-encoding' header included:
+        bad_bodies = (
+            b'hello',
+            bytearray(b'hello'),
+            Body(content_length=5, chunked=False, closed=True),
+            BodyIter(content_length=5, chunked=False, closed=True),
+        )
+        for body in bad_bodies:
+            bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                '{}: response body is {!r}, but {!r} header is included'.format(
+                    'response[3]', type(body), 'transfer-encoding'
+                )
+            )
+
+        # length mismatch when body is (bytes, bytearray):
+        for body in (b'hello', bytearray(b'hello')):
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: len(body) is 5, but 'content-length' is 17"
+            )
+
+        # response body is (bytes, bytearray), but 'content-length' header is 
+        # missing (should be filled in by server before writing response):
+        for body in (b'hello', bytearray(b'hello')):
+            good = (200, 'OK', {}, body)
+            self.assertIsNone(
+                rgi._validate_response(dict(session), deepcopy(request), good)
+            )
+
+        # response body is (Body, BodyIter), but missing 'content_length'
+        # attribute:
+        for klass in (Body, BodyIter):
+            body = klass(chunked=False, closed=False)
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: {!r} object has no attribute 'content_length'".format(
+                    klass.__name__
+                )
+            )
+
+        # length mismatch when body is (Body, BodyIter):
+        for klass in (Body, BodyIter):
+            body = klass(chunked=False, closed=False, content_length=18)
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: body.content_length is 18, but 'content-length' is 17"
+            )
+
+        # response body is (Body, BodyIter), but 'content-length' header is 
+        # missing (should be filled in by server before writing response):
+        for klass in (Body, BodyIter):
+            body = klass(chunked=False, closed=False, content_length=18)
+            good = (200, 'OK', {}, body)
+            self.assertIsNone(
+                rgi._validate_response(dict(session), deepcopy(request), good)
+            )
+
+        # response body is (Body, BodyIter), but missing 'chunked' attribute:
+        for klass in (Body, BodyIter):
+            body = klass(closed=False, content_length=17)
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: {!r} object has no attribute 'chunked'".format(
+                    klass.__name__
+                )
+            )
+
+        # response body is (Body, BodyIter), but body.chunked is True:
+        for klass in (Body, BodyIter):
+            body = klass(chunked=True, closed=False, content_length=17)
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                'response[3].chunked must be False; got True'
+            )
+
+        # response body is (ChunkedBody, ChunkedBodyIter), but 'content-length'
+        # header is included:
+        for klass in (ChunkedBody, ChunkedBodyIter):
+            body = klass(closed=False, chunked=True)
+            bad = (200, 'OK', {'content-length': 17}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                '{}: response body is {!r}, but {!r} header is included'.format(
+                    'response[3]', klass, 'content-length'
+                )
+            )
+
+        # response body is (ChunkedBody, ChunkedBodyIter), but
+        # 'transfer-encoding' header is missing (should be filled in by server
+        # before writing response):
+        for klass in (ChunkedBody, ChunkedBodyIter):
+            body = klass(chunked=True, closed=False)
+            good = (200, 'OK', {}, body)
+            self.assertIsNone(
+                rgi._validate_response(dict(session), deepcopy(request), good)
+            )
+
+        # response body is (ChunkedBody, ChunkedBodyIter), but missing 'chunked'
+        # attribute:
+        for klass in (ChunkedBody, ChunkedBodyIter):
+            body = klass(closed=False)
+            bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: {!r} object has no attribute 'chunked'".format(
+                    klass.__name__
+                )
+            )
+
+        # response body is (ChunkedBody, ChunkedBodyIter), but body.chunked is
+        # False:
+        for klass in (ChunkedBody, ChunkedBodyIter):
+            body = klass(chunked=False, closed=False)
+            bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                'response[3].chunked must be True; got False'
+            )
+
+        # When response body is (ChunkedBody, ChunkedBodyIter), should not have
+        # a 'content_length' attribute:
+        for klass in (ChunkedBody, ChunkedBodyIter):
+            body = klass(chunked=True, closed=False, content_length=17)
+            bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: {!r} must not have a 'content_length' attribute".format(
+                    klass
+                )
+            )
+
+        # response body is (Body, BodyIter, ChunkedBody, ChunkedBodyIter),
+        # but missing 'closed' attribute:
+        bad_bodies = (
+            Body(chunked=False, content_length=17),
+            BodyIter(chunked=False, content_length=17),
+            ChunkedBody(chunked=True),
+            ChunkedBodyIter(chunked=True),
+        )
+        for body in bad_bodies:
+            bad = (200, 'OK', {}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3]: {!r} object has no attribute 'closed'".format(
+                    type(body).__name__
+                )
+            )
+
+        # response body is (Body, BodyIter, ChunkedBody, ChunkedBodyIter),
+        # but body.closed is True:
+        bad_bodies = (
+            Body(closed=True, chunked=False, content_length=17),
+            BodyIter(closed=True, chunked=False, content_length=17),
+            ChunkedBody(closed=True, chunked=True),
+            ChunkedBodyIter(closed=True, chunked=True),
+        )
+        for body in bad_bodies:
+            bad = (200, 'OK', {}, body)
+            with self.assertRaises(ValueError) as cm:
+                rgi._validate_response(dict(session), deepcopy(request), bad)
+            self.assertEqual(str(cm.exception),
+                "response[3].closed must be False; got True"
+            )
+
 
 class TestValidator(TestCase):
     def test_init(self):
