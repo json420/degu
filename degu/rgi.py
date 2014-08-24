@@ -51,9 +51,11 @@ SESSION_PROTOCOLS = ('HTTP/1.1',)
 # Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
-# 'content-length' and 'transfer-encoding' header keys:
-K1 = 'content-length'
-K2 = 'transfer-encoding'
+# 'content-length' and 'transfer-encoding' header keys, defined as constants
+# here as typing the literals over an over is rather error prone plus a bit too
+# verbose for comfort at times:
+LENGTH = 'content-length'
+ENCODING = 'transfer-encoding'
 
 
 def _getattr(label, obj, name):
@@ -457,10 +459,10 @@ def _validate_response(session, request, response):
     if request['method'] == 'HEAD':
         # response to 'HEAD' request must include either a 'content-length' or a
         # 'transfer-encoding' header (but not both):
-        if not {K1, K2}.intersection(value):
+        if not {LENGTH, ENCODING}.intersection(value):
             raise ValueError(
                 "{}: response to HEAD request must include {!r} or {!r} header".format(
-                    label, K1, K2
+                    label, LENGTH, ENCODING
                 )
             )
 
@@ -478,7 +480,7 @@ def _validate_response(session, request, response):
     if value is None:
         # When response body is None and request method is not 'HEAD', should
         # include neither 'content-length' nor 'transfer-encoding' headers:
-        for key in (K1, K2):
+        for key in (LENGTH, ENCODING):
             if key in response[2]:
                 raise ValueError(
                     '{}: response body is None, but {!r} header is included'.format(label, key)
@@ -497,10 +499,10 @@ def _validate_response(session, request, response):
     if isinstance(value, bodies):
         # Cannot include a 'transfer-encoding' header with a length-encoded
         # response body:
-        if K2 in response[2]:
+        if ENCODING in response[2]:
             raise ValueError(
                 '{}: response body is {!r}, but {!r} header is included'.format(
-                    label, type(value), K2
+                    label, type(value), ENCODING
                 )
             )
         if isinstance(value, (bytes, bytearray)):
@@ -511,19 +513,19 @@ def _validate_response(session, request, response):
             _repr = 'body.content_length'
             _ensure_attr_is(label, value, 'chunked', False)
             _ensure_attr_is(label, value, 'closed', False)
-        if K1 in response[2] and response[2][K1] != length:
+        if LENGTH in response[2] and response[2][LENGTH] != length:
             raise ValueError(
                 '{}: {} is {}, but {!r} is {}'.format(
-                    label, _repr, length, K1, response[2][K1]
+                    label, _repr, length, LENGTH, response[2][LENGTH]
                 )
             )
     elif isinstance(value, chunked_bodies):
         # Cannot include a 'content-length' header with a chunk-encoded response
         # body:
-        if K1 in response[2]:
+        if LENGTH in response[2]:
             raise ValueError(
                 '{}: response body is {!r}, but {!r} header is included'.format(
-                    label, type(value), K1
+                    label, type(value), LENGTH
                 )
             )
         _ensure_attr_is(label, value, 'chunked', True)
