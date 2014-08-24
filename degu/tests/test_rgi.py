@@ -92,6 +92,20 @@ def build_session(**kw):
     return session
 
 
+def build_request(**kw):
+    request = {
+        'method': 'POST',
+        'script': ['foo'],
+        'path': ['bar'],
+        'query': 'stuff=junk',
+        'headers': {},
+        'body': None,
+    }
+    for (key, value) in kw.items():
+        request[key] = value
+    return request
+
+
 class TestMockBody(TestCase):
     def test_init(self):
         for klass in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
@@ -1401,10 +1415,28 @@ class TestValidator(TestCase):
         session = build_session()
         self.assertIs(inst.on_connect(None, session), True)
 
+        # app.on_connect() returns True, but session['requests'] != 0:
+        inst = rgi.Validator(App(True))
+        session = build_session(requests=1)
+        with self.assertRaises(ValueError) as cm:
+            inst.on_connect(None, session)
+        self.assertEqual(str(cm.exception), 
+            "session['requests'] must be 0 when app.on_connect() is called; got 1"
+        )
+
         # app.on_connect() returns False:
         inst = rgi.Validator(App(False))
         session = build_session()
         self.assertIs(inst.on_connect(None, session), False)
+
+        # app.on_connect() returns False, but session['requests'] != 0:
+        inst = rgi.Validator(App(False))
+        session = build_session(requests=3)
+        with self.assertRaises(ValueError) as cm:
+            inst.on_connect(None, session)
+        self.assertEqual(str(cm.exception), 
+            "session['requests'] must be 0 when app.on_connect() is called; got 3"
+        )
 
         # app has no 'on_connect' attribute:
         def my_app(session, request):

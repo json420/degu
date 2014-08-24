@@ -575,6 +575,12 @@ class Validator:
         orig_session = session.copy()
         _validate_session(session)
         assert session == orig_session
+        if session['requests'] != 0:
+            raise ValueError(
+                '{} must be 0 when app.on_connect() is called; got {}'.format(
+                    "session['requests']", session['requests']
+                )
+            )
         if self._on_connect is None:
             return True
         allow = self._on_connect(sock, orig_session)
