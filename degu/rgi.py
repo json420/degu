@@ -38,8 +38,6 @@ any other `degu` functionality.  With time, assuming RGI gains wider adoption,
 can better act as an independent RGI validation tool.
 """
 
-from copy import deepcopy
-
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -473,8 +471,11 @@ class Validator:
         self._on_connect = on_connect
 
     def __call__(self, session, request):
-        orig_session = deepcopy(session)
-        orig_request = deepcopy(request)
+        orig_session = session.copy()
+        orig_request = request.copy()
+        orig_request['script'] = request['script'].copy()
+        orig_request['path'] = request['path'].copy()
+        orig_request['headers'] = request['headers'].copy()
         _validate_session(session)
         _validate_request(session, request)
         assert session == orig_session
@@ -484,7 +485,7 @@ class Validator:
         return response
 
     def on_connect(self, sock, session):
-        orig_session = deepcopy(session)
+        orig_session = session.copy()
         _validate_session(session)
         assert session == orig_session
         if self._on_connect is None:
