@@ -74,6 +74,24 @@ class ChunkedBodyIter(MockBody):
     """
 
 
+def build_session(**kw):
+    session = {
+        'rgi.version': (0, 1),
+        'rgi.Body': Body,
+        'rgi.BodyIter': BodyIter,
+        'rgi.ChunkedBody': ChunkedBody,
+        'rgi.ChunkedBodyIter': ChunkedBodyIter,
+        'scheme': 'http',
+        'protocol': 'HTTP/1.1',
+        'server': ('127.0.0.1', 60111),
+        'client': ('127.0.0.1', 52521),
+        'requests': 0,
+    }
+    for (key, value) in kw.items():
+        session[key] = value
+    return session
+
+
 class TestMockBody(TestCase):
     def test_init(self):
         for klass in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
@@ -1327,4 +1345,78 @@ class TestValidator(TestCase):
         inst = rgi.Validator(good_app)
         self.assertIs(inst.app, good_app)
         self.assertEqual(inst._on_connect, good_app.on_connect)
+
+    def test_repr(self):
+        def my_app(session, request):
+            return (200, 'OK', {'x-msg': 'hello, world'}, None)
+
+        inst = rgi.Validator(my_app)
+        self.assertEqual(repr(inst), 'Validator({!r})'.format(my_app))
+
+        class Example(rgi.Validator):
+            pass
+
+        inst = Example(my_app)
+        self.assertEqual(repr(inst), 'Example({!r})'.format(my_app))
+
+    def test_on_connect(self):
+        class App:
+            def __init__(self, allow):
+                self.__allow = allow
+
+            def __call__(self, session, request):
+                raise Exception('should not be called')
+
+            def on_connect(self, sock, session):
+                if isinstance(self.__allow, Exception):
+                    raise self.__allow
+                return self.__allow
+
+        # app.on_connect() doesn't return a bool:
+        inst = rgi.Validator(App(1))
+        session = build_session()
+        with self.assertRaises(TypeError) as cm:
+            inst.on_connect(None, session)
+        self.assertEqual(str(cm.exception),
+            "app.on_connect() must return a <class 'bool'>; got a <class 'int'>: 1"
+        )
+        inst = rgi.Validator(App('true'))
+        session = build_session()
+        with self.assertRaises(TypeError) as cm:
+            inst.on_connect(None, session)
+        self.assertEqual(str(cm.exception),
+            "app.on_connect() must return a <class 'bool'>; got a <class 'str'>: 'true'"
+        )
+
+        # app.on_connect() raises an Exception:
+        marker = random_identifier()
+        inst = rgi.Validator(App(ValueError(marker)))
+        session = build_session()
+        with self.assertRaises(ValueError) as cm:
+            inst.on_connect(None, session)
+        self.assertEqual(str(cm.exception), marker)
+
+        # app.on_connect() returns True:
+        inst = rgi.Validator(App(True))
+        session = build_session()
+        self.assertIs(inst.on_connect(None, session), True)
+
+        # app.on_connect() returns False:
+        inst = rgi.Validator(App(False))
+        session = build_session()
+        self.assertIs(inst.on_connect(None, session), False)
+
+        # app has no 'on_connect' attribute:
+        def my_app(session, request):
+            raise Exception('should not be called')
+
+        inst = rgi.Validator(my_app)
+        session = build_session()
+        self.assertIs(inst.on_connect(None, session), True)
+
+        # app.on_connect is None:
+        my_app.on_connect = None
+        inst = rgi.Validator(my_app)
+        session = build_session()
+        self.assertIs(inst.on_connect(None, session), True)
 

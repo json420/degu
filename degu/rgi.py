@@ -561,9 +561,8 @@ class Validator:
     def __call__(self, session, request):
         orig_session = session.copy()
         orig_request = request.copy()
-        orig_request['script'] = request['script'].copy()
-        orig_request['path'] = request['path'].copy()
-        orig_request['headers'] = request['headers'].copy()
+        for key in ('script', 'path', 'headers'):
+            orig_request[key] = request[key].copy()
         _validate_session(session)
         _validate_request(session, request)
         assert session == orig_session
@@ -578,6 +577,12 @@ class Validator:
         assert session == orig_session
         if self._on_connect is None:
             return True
-        ret = self._on_connect(sock, orig_session)
-        return ret
+        allow = self._on_connect(sock, orig_session)
+        if not isinstance(allow, bool):
+            raise TypeError(
+                'app.on_connect() must return a {!r}; got a {!r}: {!r}'.format(
+                    bool, type(allow), allow
+                )
+            )
+        return allow
 
