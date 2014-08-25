@@ -373,6 +373,11 @@ class TestFunctions(TestCase):
         with self.assertRaises(base.EmptyPreambleError):
             server.read_request(rfile)
 
+        # Contains b'\x00', big security concern should this make its way to
+        # a C extension or to an upstream HTTP server: 
+        rfile = io.BytesIO(b'GET /foo\x00/bar HTTP/1.1\r\n\r\n')
+        server.read_request(rfile)
+
        # CRLF terminated request line is empty: 
         rfile = io.BytesIO(b'\r\n')
         with self.assertRaises(ValueError) as cm:
