@@ -12,6 +12,9 @@ Changes:
       comply with the :doc:`rgi` specification; this is a big step toward
       stabilizing both the RGI specification and the Degu API
 
+    * Remove ``degu.server.Handler`` and ``degu.server.validate_response()``
+      (unused since Degu 0.6)
+
 
 
 0.7 (July 2014)
