@@ -31,7 +31,6 @@ static PyObject *degu_MAX_LINE_BYTES = NULL;
 static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *int_zero = NULL;
 static PyObject *int_two = NULL;
-static PyObject *name_casefold = NULL;
 static PyObject *name_readline = NULL;
 static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
@@ -47,25 +46,13 @@ static PyObject *str_chunked = NULL;
 static inline void
 degu_fast_lower(const size_t key_len, uint8_t *key_buf)
 {
-    size_t i, stop;
-    const uint8_t *orig_buf = key_buf;
+    size_t i;
 
-    stop = key_len / 4;
-    for (i = 0; i < stop; i++) {
-        key_buf[0] = tolower(key_buf[0]);
-        key_buf[1] = tolower(key_buf[1]);
-        key_buf[2] = tolower(key_buf[2]);
-        key_buf[3] = tolower(key_buf[3]);
-        key_buf += 4;
-    }
-    stop = key_len % 4;
-    if (key_buf + stop != orig_buf + key_len) {
-        Py_FatalError("internal error in `degu_fast_lower()`");
-    }
-    for (i = 0; i < stop; i++) {
+    for (i = 0; i < key_len; i++) {
         key_buf[i] = tolower(key_buf[i]);
     }
 }
+
 
 #define _SET(pyobj, source) \
     pyobj = source; \
@@ -129,13 +116,13 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
-    PyObject *casefolded_key = NULL;
 
     // Owned reference we transfer on success, decrement on error:
     PyObject *ret = NULL;
 
     size_t line_len, key_len, value_len;
     const char *line_buf, *buf;
+    uint8_t *key_buf;
     uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
@@ -196,9 +183,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         value_len = line_len - key_len - 2;
         buf += 2;
         _RESET(key, PyUnicode_DecodeLatin1(line_buf, key_len, "strict"))
+        key_buf = (uint8_t *)PyUnicode_1BYTE_DATA(key);
+        degu_fast_lower(key_len, key_buf);
         _RESET(value, PyUnicode_DecodeLatin1(buf, value_len, "strict"))
-        _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
-        if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
+        if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
@@ -252,9 +240,8 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);  // Note we can't unit test this object with sys.getrefcount()
+    Py_CLEAR(key);
     Py_CLEAR(value);
-    Py_CLEAR(casefolded_key);
     return ret;  
 }
 
@@ -306,7 +293,6 @@ PyInit__degu(void)
     // Other Python `int` and `str` objects we need for performance:
     _RESET(int_zero, PyLong_FromLong(0))
     _RESET(int_two, PyLong_FromLong(2))
-    _RESET(name_casefold, PyUnicode_InternFromString("casefold"))
     _RESET(name_readline, PyUnicode_InternFromString("readline"))
     _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
     _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
