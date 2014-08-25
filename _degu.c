@@ -37,6 +37,36 @@ static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
+
+/* 
+ * degu_fast_lower(): lowercase a header key (str) in-place.
+ *
+ * This avoids the expensive `str.casefold()` Python method call and avoids the
+ * overhead of an additional intermediate Python object.
+ */
+static inline void
+degu_fast_lower(const size_t key_len, uint8_t *key_buf)
+{
+    size_t i, stop;
+    const uint8_t *orig_buf = key_buf;
+
+    stop = key_len / 4;
+    for (i = 0; i < stop; i++) {
+        key_buf[0] = tolower(key_buf[0]);
+        key_buf[1] = tolower(key_buf[1]);
+        key_buf[2] = tolower(key_buf[2]);
+        key_buf[3] = tolower(key_buf[3]);
+        key_buf += 4;
+    }
+    stop = key_len % 4;
+    if (key_buf + stop != orig_buf + key_len) {
+        Py_FatalError("internal error in `degu_fast_lower()`");
+    }
+    for (i = 0; i < stop; i++) {
+        key_buf[i] = tolower(key_buf[i]);
+    }
+}
+
 #define _SET(pyobj, source) \
     pyobj = source; \
     if (pyobj == NULL) { \
