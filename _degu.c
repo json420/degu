@@ -85,7 +85,14 @@ degu_fast_lower(const size_t key_len, uint8_t *key_buf)
         ); \
         goto error; \
     } \
-    line_buf = PyBytes_AS_STRING(line);
+    line_buf = PyBytes_AS_STRING(line); \
+    if (memchr(line_buf, '\0', line_len) != NULL) { \
+        PyErr_Format(PyExc_ValueError, \
+            "%u byte line contains a NUL character", \
+            line_len \
+        ); \
+        goto error; \
+    }
 
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
