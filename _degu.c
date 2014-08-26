@@ -118,7 +118,7 @@ degu_ascii_decode_lower(const Py_UCS1 *src_buf, const size_t len)
         ); \
         goto error; \
     } \
-    line_buf = PyBytes_AS_STRING(line);
+    line_buf = (Py_UCS1 *)PyBytes_AS_STRING(line);
     
 /*
     if (memchr(line_buf, '\0', line_len) != NULL) { \
@@ -164,7 +164,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *ret = NULL;
 
     size_t line_len, key_len, value_len;
-    const char *line_buf, *buf;
+    const Py_UCS1 *line_buf, *buf;
     uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
