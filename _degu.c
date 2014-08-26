@@ -39,18 +39,27 @@ static PyObject *str_chunked = NULL;
 
 
 /* 
- * degu_fast_ascii():
+ * deg_ascii_decode():
  *
  *
  */
-static inline void
-degu_fast_ascii(const size_t size, const Py_UCS1 *src, Py_UCS1 *dst)
+static inline PyObject *
+degu_ascii_decode(const Py_UCS1 *src_buf, const size_t len)
 {
+    PyObject *dst;
+    Py_UCS1 *dst_buf;
     size_t i;
 
-    for (i = 0; i < size; i++) {
-        dst[i] = src[i] & 127;
+    dst = PyUnicode_New(len, 127);
+    if (dst == NULL) {
+        return NULL;
     }
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    for (i = 0; i < len; i++) {
+        dst_buf[i] = src_buf[i] & 127;
+    }
+
+    return dst;
 }
 
 
@@ -213,8 +222,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         degu_fast_ascii_lower(key_len, (Py_UCS1 *)line_buf, PyUnicode_1BYTE_DATA(key));
 
         /* Build value */
-        _RESET(value, PyUnicode_New(value_len, 127))
-        degu_fast_ascii(value_len, (Py_UCS1 *)buf, PyUnicode_1BYTE_DATA(value));
+        _RESET(value, degu_ascii_decode((Py_UCS1 *)buf, value_len))
 
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
