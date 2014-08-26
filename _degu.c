@@ -191,7 +191,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(first_line, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
+    _SET(first_line, degu_ascii_decode((Py_UCS1 *)line_buf, line_len - 2))
 
     /*
      * Read the header lines:
