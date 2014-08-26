@@ -37,9 +37,8 @@ static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
 
-
 /* 
- * deg_ascii_decode():
+ * deg_ascii_decode(): decode ASCII bytes.
  *
  *
  */
@@ -64,18 +63,27 @@ degu_ascii_decode(const Py_UCS1 *src_buf, const size_t len)
 
 
 /* 
- * degu_fast_ascii_lower():
+ * degu_ascii_decode_lower(): decode and lowercase ASCII bytes.
  *
  *
  */
-static inline void
-degu_fast_ascii_lower(const size_t size, const Py_UCS1 *src, Py_UCS1 *dst)
+static inline PyObject *
+degu_ascii_decode_lower(const Py_UCS1 *src_buf, const size_t len)
 {
+    PyObject *dst;
+    Py_UCS1 *dst_buf;
     size_t i;
 
-    for (i = 0; i < size; i++) {
-        dst[i] = tolower(src[i] & 127);
+    dst = PyUnicode_New(len, 127);
+    if (dst == NULL) {
+        return NULL;
     }
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    for (i = 0; i < len; i++) {
+        dst_buf[i] = tolower(src_buf[i] & 127);
+    }
+
+    return dst;
 }
 
 
@@ -217,11 +225,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         value_len = line_len - key_len - 2;
         buf += 2;
 
-        /* Build lowercase key */
-        _RESET(key, PyUnicode_New(key_len, 127))
-        degu_fast_ascii_lower(key_len, (Py_UCS1 *)line_buf, PyUnicode_1BYTE_DATA(key));
+        /* Decode & lowercase the header key */
+        _RESET(key, degu_ascii_decode_lower((Py_UCS1 *)line_buf, key_len))
 
-        /* Build value */
+        /* Decode the header value */
         _RESET(value, degu_ascii_decode((Py_UCS1 *)buf, value_len))
 
         if (PyDict_SetDefault(headers, key, value) != value) {
