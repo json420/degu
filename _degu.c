@@ -84,7 +84,9 @@ degu_fast_ascii_lower(const size_t size, const Py_UCS1 *src, Py_UCS1 *dst)
         ); \
         goto error; \
     } \
-    line_buf = PyBytes_AS_STRING(line); \
+    line_buf = PyBytes_AS_STRING(line);
+    
+/*
     if (memchr(line_buf, '\0', line_len) != NULL) { \
         PyErr_Format(PyExc_ValueError, \
             "%u byte line contains a NUL character", \
@@ -92,6 +94,7 @@ degu_fast_ascii_lower(const size_t size, const Py_UCS1 *src, Py_UCS1 *dst)
         ); \
         goto error; \
     }
+*/
 
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
