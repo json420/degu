@@ -38,18 +38,17 @@ static PyObject *str_chunked = NULL;
 
 
 /* 
- * degu_fast_lower(): lowercase a header key (str) in-place.
+ * degu_fast_ascii_lower():
  *
- * This avoids the expensive `str.casefold()` Python method call and avoids the
- * overhead of an additional intermediate Python object.
+ *
  */
 static inline void
-degu_fast_lower(const size_t key_len, uint8_t *key_buf)
+degu_fast_ascii_lower(const size_t size, const Py_UCS1 *src, Py_UCS1 *dst)
 {
     size_t i;
 
-    for (i = 0; i < key_len; i++) {
-        key_buf[i] = tolower(key_buf[i]);
+    for (i = 0; i < size; i++) {
+        dst[i] = tolower(src[i] & 127);
     }
 }
 
@@ -129,7 +128,6 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
     size_t line_len, key_len, value_len;
     const char *line_buf, *buf;
-    uint8_t *key_buf;
     uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
@@ -189,9 +187,11 @@ degu_read_preamble(PyObject *self, PyObject *args)
         key_len = buf - line_buf;
         value_len = line_len - key_len - 2;
         buf += 2;
-        _RESET(key, PyUnicode_DecodeLatin1(line_buf, key_len, "strict"))
-        key_buf = (uint8_t *)PyUnicode_1BYTE_DATA(key);
-        degu_fast_lower(key_len, key_buf);
+
+        /* Build lowercase key */
+        _RESET(key, PyUnicode_New(key_len, 127))
+        degu_fast_ascii_lower(key_len, (Py_UCS1 *)line_buf, PyUnicode_1BYTE_DATA(key));
+
         _RESET(value, PyUnicode_DecodeLatin1(buf, value_len, "strict"))
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
