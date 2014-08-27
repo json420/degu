@@ -37,7 +37,7 @@ static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
 
-static const Py_UCS1 DEGU_ASCII[256] = {
+static const uint8_t DEGU_ASCII[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -72,7 +72,7 @@ static const Py_UCS1 DEGU_ASCII[256] = {
     255,255,255,255,255,255,255,255,
 };
 
-static const Py_UCS1 DEGU_HEADER_KEY[256] = {
+static const uint8_t DEGU_HEADER_KEY[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -114,11 +114,11 @@ static const Py_UCS1 DEGU_HEADER_KEY[256] = {
  *
  */
 static inline PyObject *
-degu_decode(const size_t len, const Py_UCS1 *buf, const Py_UCS1 *table)
+degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
 {
     PyObject *dst;
-    Py_UCS1 *dst_buf;
-    Py_UCS1 r;
+    uint8_t *dst_buf;
+    uint8_t r;
     size_t i;
 
     dst = PyUnicode_New(len, 127);
@@ -172,7 +172,7 @@ degu_decode(const size_t len, const Py_UCS1 *buf, const Py_UCS1 *table)
         ); \
         goto error; \
     } \
-    line_buf = (Py_UCS1 *)PyBytes_AS_STRING(line);
+    line_buf = (uint8_t *)PyBytes_AS_STRING(line);
 
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
@@ -208,7 +208,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *ret = NULL;
 
     size_t line_len, key_len, value_len;
-    const Py_UCS1 *line_buf, *buf;
+    const uint8_t *line_buf, *buf;
     uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {

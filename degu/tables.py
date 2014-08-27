@@ -89,7 +89,7 @@ def iter_lines(table, comment):
 
 
 def iter_c(name, table):
-    yield 'static const Py_UCS1 {}[{:d}] = {{'.format(name, len(table))
+    yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(table))
     yield from iter_lines(table, '//')
     yield '};'
 
