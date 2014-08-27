@@ -36,17 +36,89 @@ static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
+static const Py_UCS1 DEGU_ASCII[256] = {
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+     32,  33,  34,  35,  36,  37,  38,  39,
+     40,  41,  42,  43,  44,  45,  46,  47,
+     48,  49,  50,  51,  52,  53,  54,  55,
+     56,  57,  58,  59,  60,  61,  62,  63,
+     64,  65,  66,  67,  68,  69,  70,  71,
+     72,  73,  74,  75,  76,  77,  78,  79,
+     80,  81,  82,  83,  84,  85,  86,  87,
+     88,  89,  90,  91,  92,  93,  94,  95,
+     96,  97,  98,  99, 100, 101, 102, 103,
+    104, 105, 106, 107, 108, 109, 110, 111,
+    112, 113, 114, 115, 116, 117, 118, 119,
+    120, 121, 122, 123, 124, 125, 126, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+};
+
+static const Py_UCS1 DEGU_HEADER_KEY[256] = {
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255,  45, 255, 255,
+     48,  49,  50,  51,  52,  53,  54,  55,
+     56,  57, 255, 255, 255, 255, 255, 255,
+    255,  97,  98,  99, 100, 101, 102, 103,
+    104, 105, 106, 107, 108, 109, 110, 111,
+    112, 113, 114, 115, 116, 117, 118, 119,
+    120, 121, 122, 255, 255, 255, 255, 255,
+    255,  97,  98,  99, 100, 101, 102, 103,
+    104, 105, 106, 107, 108, 109, 110, 111,
+    112, 113, 114, 115, 116, 117, 118, 119,
+    120, 121, 122, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+};
+
+
 
 /* 
- * deg_ascii_decode(): decode ASCII bytes.
+ * degu_decode(): valid ASCII, possibly casefold.
  *
  *
  */
 static inline PyObject *
-degu_ascii_decode(const Py_UCS1 *src_buf, const size_t len)
+degu_decode(const size_t len, const Py_UCS1 *buf, const Py_UCS1 *table)
 {
     PyObject *dst;
     Py_UCS1 *dst_buf;
+    Py_UCS1 r;
     size_t i;
 
     dst = PyUnicode_New(len, 127);
@@ -54,35 +126,17 @@ degu_ascii_decode(const Py_UCS1 *src_buf, const size_t len)
         return NULL;
     }
     dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (i = 0; i < len; i++) {
-        dst_buf[i] = src_buf[i] & 127;
+    for (r = i = 0; i < len; i++) {
+        r |= dst_buf[i] = table[buf[i]];
     }
-
-    return dst;
-}
-
-
-/* 
- * degu_ascii_decode_lower(): decode and lowercase ASCII bytes.
- *
- *
- */
-static inline PyObject *
-degu_ascii_decode_lower(const Py_UCS1 *src_buf, const size_t len)
-{
-    PyObject *dst;
-    Py_UCS1 *dst_buf;
-    size_t i;
-
-    dst = PyUnicode_New(len, 127);
-    if (dst == NULL) {
-        return NULL;
+    if (r & 128) {
+        Py_CLEAR(dst);
+        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
+        if (tmp != NULL) {
+            PyErr_Format(PyExc_ValueError, "invalid ASCII: %R", tmp);
+            Py_CLEAR(tmp);
+        }
     }
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (i = 0; i < len; i++) {
-        dst_buf[i] = tolower(src_buf[i] & 127);
-    }
-
     return dst;
 }
 
@@ -119,16 +173,6 @@ degu_ascii_decode_lower(const Py_UCS1 *src_buf, const size_t len)
         goto error; \
     } \
     line_buf = (Py_UCS1 *)PyBytes_AS_STRING(line);
-    
-/*
-    if (memchr(line_buf, '\0', line_len) != NULL) { \
-        PyErr_Format(PyExc_ValueError, \
-            "%u byte line contains a NUL character", \
-            line_len \
-        ); \
-        goto error; \
-    }
-*/
 
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
@@ -199,7 +243,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(first_line, degu_ascii_decode((Py_UCS1 *)line_buf, line_len - 2))
+    _SET(first_line, degu_decode(line_len - 2, line_buf, DEGU_ASCII))
 
     /*
      * Read the header lines:
@@ -226,10 +270,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         buf += 2;
 
         /* Decode & lowercase the header key */
-        _RESET(key, degu_ascii_decode_lower((Py_UCS1 *)line_buf, key_len))
+        _RESET(key, degu_decode(key_len, line_buf, DEGU_HEADER_KEY))
 
         /* Decode the header value */
-        _RESET(value, degu_ascii_decode((Py_UCS1 *)buf, value_len))
+        _RESET(value, degu_decode(value_len, buf, DEGU_ASCII))
 
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
