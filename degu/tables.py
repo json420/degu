@@ -23,66 +23,73 @@
 Table.
 """
 
-from collections import namedtuple
-
-Entry = namedtuple('Entry', 'i j src dst')
-
-
 VALID_KEY = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 
-def iter_valid():
+def iter_degu_ascii():
     for i in range(256):
-        if 32 <= i <= 126:
-            c = chr(i)
-            if c.isprintable():
-                yield Entry(i, i, c, c)
-            else:
-                yield Entry(i, 255, None, None)
+        c = chr(i)
+        if 32 <= i <= 126 and c.isprintable():
+            yield i
         else:
-            yield Entry(i, 255, None, None)
+            yield 255
+
+DEGU_ASCII = tuple(iter_degu_ascii())
 
 
-def iter_valid_key():
+def iter_degu_header_key():
     for i in range(256):
-        if 32 <= i <= 126:
-            src = chr(i)
-            if src in VALID_KEY:
-                dst = src.lower()
-                j = ord(dst)
-                yield Entry(i, j, src, dst)
-            else:
-                yield Entry(i, 255, None, None)
+        c = chr(i)
+        if 32 <= i <= 126 and c in VALID_KEY:
+            yield ord(c.lower())
         else:
-            yield Entry(i, 255, None, None)
+            yield 255
+
+DEGU_HEADER_KEY = tuple(iter_degu_header_key())
 
 
-def iter_lines(table):
+def format_line(line):
+    return ' '.join('{:>3}'.format(r) for r in line)
+
+
+def format_help(help):
+    return ''.join(chr(i) for i in help)
+
+
+def iter_lines(table, comment):
     line = []
-    for entry in table:
-        s = '{:>3}'.format(entry.j)
-        line.append(s)
+    help = []
+    for (i, r) in enumerate(table):
+        line.append(r)
+        if r != 255:
+            help.append(i)
         if len(line) == 8:
-            text = '    {},'.format(', '.join(line))
-            yield text
+            text = '    {},'.format(format_line(line))
+            if help:
+                yield '{}  {} {}'.format(text, comment, format_help(help))
+            else:
+                yield text
             line = []
+            help = []
     assert not line
+    assert not help
 
 
 def iter_c(name, table):
     yield 'static const Py_UCS1 {}[{:d}] = {{'.format(name, len(table))
-    yield from iter_lines(table)
+    yield from iter_lines(table, '//')
     yield '};'
 
 
     
 if __name__ == '__main__':
     print('')
-    valid = tuple(iter_valid())
-    for line in iter_c('VALID', valid):
+    for line in iter_c('DEGU_ASCII', DEGU_ASCII):
         print(line)
     print('')
 
-    valid_key = tuple(iter_valid_key())
-    for line in iter_c('VALID_KEY', valid_key):
+    m = 0
+    for line in iter_c('DEGU_HEADER_KEY', DEGU_HEADER_KEY):
+        m = max(m, len(line))
         print(line)
+    print(m)
