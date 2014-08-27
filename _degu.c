@@ -113,7 +113,7 @@ static const uint8_t DEGU_HEADER_KEY[256] = {
  *
  *
  */
-static inline PyObject *
+static PyObject *
 degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
 {
     PyObject *dst;
@@ -134,8 +134,8 @@ degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
         PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
         if (tmp != NULL) {
             PyErr_Format(PyExc_ValueError, "invalid ASCII: %R", tmp);
-            Py_CLEAR(tmp);
         }
+        Py_CLEAR(tmp);
     }
     return dst;
 }
