@@ -29,12 +29,12 @@ VALID_KEY = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 def iter_degu_ascii():
     for i in range(256):
         c = chr(i)
-        if 32 <= i <= 126 and c.isprintable():
+        if 32 <= i <= 127 and c.isprintable():
             yield i
         else:
             yield 255
 
-DEGU_ASCII = tuple(iter_degu_ascii())
+DEGU_ASCII = tuple(enumerate(iter_degu_ascii()))
 
 
 def iter_degu_header_key():
@@ -45,34 +45,47 @@ def iter_degu_header_key():
         else:
             yield 255
 
-DEGU_HEADER_KEY = tuple(iter_degu_header_key())
+DEGU_HEADER_KEY = tuple(enumerate(iter_degu_header_key()))
 
 
-def format_line(line):
-    return ' '.join('{:>3}'.format(r) for r in line)
+def format_values(line):
+    return ','.join('{:>3}'.format(r) for (i, r) in line)
 
 
-def format_help(help):
-    return ''.join(chr(i) for i in help)
+
+def needs_help(line):
+    for (i, r) in line:
+        if r != 255:
+            return True
+    return False
+
+
+def iter_help(line):
+    for (i, r) in line:
+        if r == 255:
+            yield ' ' * 4  # 4 spaces
+        else:
+            yield '{!r:<4}'.format(chr(i))
+
+
+def format_help(line):
+    if needs_help(line):
+        return ' '.join(iter_help(line))
 
 
 def iter_lines(table, comment):
     line = []
-    help = []
-    for (i, r) in enumerate(table):
-        line.append(r)
-        if r != 255:
-            help.append(i)
+    for item in table:
+        line.append(item)
         if len(line) == 8:
-            text = '    {},'.format(format_line(line))
+            text = '    {},'.format(format_values(line))
+            help = format_help(line)
             if help:
-                yield '{}  {} {}'.format(text, comment, format_help(help))
+                yield '{}  {} {}'.format(text, comment, help)
             else:
                 yield text
             line = []
-            help = []
     assert not line
-    assert not help
 
 
 def iter_c(name, table):
