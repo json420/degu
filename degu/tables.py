@@ -81,7 +81,7 @@ def iter_lines(table, comment):
             text = '    {},'.format(format_values(line))
             help = format_help(line)
             if help:
-                yield '{}  {} {}'.format(text, comment, help)
+                yield '{} {}  {}'.format(text, comment, help.rstrip())
             else:
                 yield text
             line = []
