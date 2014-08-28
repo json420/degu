@@ -47,6 +47,7 @@ Contents:
     install
     tutorial
     rgi
+    security
     degu
     degu.server
     degu.client
