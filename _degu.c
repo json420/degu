@@ -36,6 +36,7 @@ static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
+
 static const uint8_t DEGU_ASCII[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -129,11 +130,8 @@ degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
     }
     if (r & 128) {
         Py_CLEAR(dst);
-        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
-        if (tmp != NULL) {
-            PyErr_Format(PyExc_ValueError, "invalid ASCII: %R", tmp);
-        }
-        Py_CLEAR(tmp);
+        /* Don't include attacker control input in the error message! */
+        PyErr_SetString(PyExc_ValueError, "invalid ASCII in HTTP preamble");
     }
     return dst;
 }
