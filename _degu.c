@@ -37,7 +37,10 @@ static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
 
-static const uint8_t DEGU_ASCII[256] = {
+/* 
+ * Table used to validate the first line in the preamble plus header values:
+ */
+static const uint8_t DEGU_VALUES[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -72,7 +75,10 @@ static const uint8_t DEGU_ASCII[256] = {
     255,255,255,255,255,255,255,255,
 };
 
-static const uint8_t DEGU_HEADER_KEY[256] = {
+/* 
+ * Table used to validate and case-fold header names:
+ */
+static const uint8_t DEGU_KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -239,7 +245,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(first_line, degu_decode(line_len - 2, line_buf, DEGU_ASCII))
+    _SET(first_line, degu_decode(line_len - 2, line_buf, DEGU_VALUES))
 
     /*
      * Read the header lines:
@@ -266,10 +272,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         buf += 2;
 
         /* Decode & lowercase the header key */
-        _RESET(key, degu_decode(key_len, line_buf, DEGU_HEADER_KEY))
+        _RESET(key, degu_decode(key_len, line_buf, DEGU_KEYS))
 
         /* Decode the header value */
-        _RESET(value, degu_decode(value_len, buf, DEGU_ASCII))
+        _RESET(value, degu_decode(value_len, buf, DEGU_VALUES))
 
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
