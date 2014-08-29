@@ -20,37 +20,41 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Table.
+Generate tables for validating and case-folding the HTTP preamble.
+
+Print the C tables like this::
+
+    $ python3 -m degu.tables
+
+Or print the Python tables like this::
+
+    $ python3 -m degu.tables -p
+
 """
 
-VALID_KEY = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+
+VALUES = bytes(sorted(KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
 
 
-def iter_degu_ascii():
+def iter_definition(allowed, casefold):
+    assert isinstance(allowed, bytes)
+    assert isinstance(casefold, bool)
     for i in range(256):
-        c = chr(i)
-        if 32 <= i <= 127 and c.isprintable():
-            yield i
+        if 32 <= i <= 127 and i in allowed:
+            r = (ord(chr(i).lower()) if casefold else i)
+            yield (i, r)
         else:
-            yield 255
-
-DEGU_ASCII = tuple(enumerate(iter_degu_ascii()))
+            yield (i, 255)
 
 
-def iter_degu_header_key():
-    for i in range(256):
-        c = chr(i)
-        if 32 <= i <= 126 and c in VALID_KEY:
-            yield ord(c.lower())
-        else:
-            yield 255
-
-DEGU_HEADER_KEY = tuple(enumerate(iter_degu_header_key()))
+# These are table "definitions", not the actual tables:
+KEYS_DEF = tuple(iter_definition(KEYS, True))
+VALUES_DEF = tuple(iter_definition(VALUES, False))
 
 
 def format_values(line):
     return ','.join('{:>3}'.format(r) for (i, r) in line)
-
 
 
 def needs_help(line):
@@ -73,9 +77,9 @@ def format_help(line):
         return ' '.join(iter_help(line))
 
 
-def iter_lines(table, comment):
+def iter_lines(definition, comment):
     line = []
-    for item in table:
+    for item in definition:
         line.append(item)
         if len(line) == 8:
             text = '    {},'.format(format_values(line))
@@ -88,21 +92,33 @@ def iter_lines(table, comment):
     assert not line
 
 
-def iter_c(name, table):
-    yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(table))
-    yield from iter_lines(table, '//')
+def iter_c(name, definition):
+    yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(definition))
+    yield from iter_lines(definition, '//')
     yield '};'
 
 
-    
-if __name__ == '__main__':
-    print('')
-    for line in iter_c('DEGU_ASCII', DEGU_ASCII):
-        print(line)
-    print('')
+def iter_p(name, definition):
+    yield '{} = ('.format(name)
+    yield from iter_lines(definition, '#')
+    yield ')'
 
-    m = 0
-    for line in iter_c('DEGU_HEADER_KEY', DEGU_HEADER_KEY):
-        m = max(m, len(line))
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', action='store_true', default=False,
+        help='generate Python tables (instead of C)'
+    )
+    args = parser.parse_args()
+    iter_x = (iter_p if args.p else iter_c)
+
+    print('')
+    for line in iter_x('DEGU_VALUES', VALUES_DEF):
         print(line)
-    print(m)
+
+    print('')
+    for line in iter_x('DEGU_KEYS', KEYS_DEF):
+        print(line)
+
