@@ -36,6 +36,8 @@ class TestConstants(TestCase):
         for i in range(128):
             if not chr(i).isprintable():
                 self.assertNotIn(i, allowed)
+        for i in allowed:
+            self.assertEqual(i & 128, 0)
 
     def test_KEYS(self):
         self.check_allowed(tables.KEYS)
@@ -64,6 +66,7 @@ class TestConstants(TestCase):
             self.assertEqual(i, index)
             self.assertIsInstance(r, int)
             if i in allowed:
+                self.assertEqual(i & 128, 0)
                 if casefold:
                     self.assertEqual(r, ord(chr(i).lower()))
                 else:
