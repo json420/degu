@@ -119,7 +119,8 @@ static const uint8_t DEGU_KEYS[256] = {
  *
  */
 static PyObject *
-degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
+degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table,
+            const char *format)
 {
     PyObject *dst;
     uint8_t *dst_buf;
@@ -136,8 +137,14 @@ degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table)
     }
     if (r & 128) {
         Py_CLEAR(dst);
-        /* Don't include attacker control input in the error message! */
-        PyErr_SetString(PyExc_ValueError, "invalid ASCII in HTTP preamble");
+        if ((r & 128) != 128) {
+            Py_FatalError("internal error in `degu_decode()`");
+        }     
+        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
+        if (tmp != NULL) {
+            PyErr_Format(PyExc_ValueError, format, tmp);
+        }
+        Py_CLEAR(tmp);
     }
     return dst;
 }
@@ -245,7 +252,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(first_line, degu_decode(line_len - 2, line_buf, DEGU_VALUES))
+    _SET(
+        first_line,
+        degu_decode(line_len - 2, line_buf, DEGU_VALUES, "bad bytes in first line: %R")
+    )
 
     /*
      * Read the header lines:
@@ -272,10 +282,10 @@ degu_read_preamble(PyObject *self, PyObject *args)
         buf += 2;
 
         /* Decode & lowercase the header key */
-        _RESET(key, degu_decode(key_len, line_buf, DEGU_KEYS))
+        _RESET(key, degu_decode(key_len, line_buf, DEGU_KEYS, "%R"))
 
         /* Decode the header value */
-        _RESET(value, degu_decode(value_len, buf, DEGU_VALUES))
+        _RESET(value, degu_decode(value_len, buf, DEGU_VALUES, "%R"))
 
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);

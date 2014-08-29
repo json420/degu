@@ -32,6 +32,7 @@ import shutil
 from random import SystemRandom
 from unittest import TestCase
 
+from degu import tables
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 
@@ -61,6 +62,43 @@ def random_chunks():
     chunks = [random_data() for i in range(count)]
     chunks.append(b'')
     return chunks
+
+
+def _iter_good(size, allowed):
+    assert isinstance(size, int) and size >= 0
+    assert isinstance(allowed, bytes)
+    # First, yield a list with each allowed byte (int) repeated *size* times:
+    for okay in allowed:
+        yield bytes(okay for i in range(size))
+    # Now yield a number random lists of allowed int values:
+    for r in range(100):
+        yield bytes(random.choice(allowed) for i in range(size))
+
+
+_GOOD_VALUES = tuple(
+    tuple(_iter_good(size, tables.VALUES))
+    for size in range(1, 10)
+)
+
+
+def _iter_bad(size, allowed, skip, thegood):
+    assert isinstance(size, int) and size >= 0
+    assert isinstance(allowed, bytes)
+    assert isinstance(skip, bytes) and b'\n' in skip
+    for bad in range(256):
+        if bad in allowed:
+            continue  # Not actually bad!
+        if bad in skip:
+            continue  # Other values we should skip
+        for good in thegood:
+            for index in range(size):
+                notgood = bytearray(good)
+                notgood[index] = bad  # Make good bad
+                yield bytes(notgood)
+
+
+def iter_bad_values(size):
+    yield from _iter_bad(size, tables.VALUES, b'\n', _GOOD_VALUES[size - 1])
 
 
 class TempDir:

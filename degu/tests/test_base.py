@@ -29,6 +29,7 @@ import io
 import sys
 from random import SystemRandom
 
+from . import helpers
 from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
@@ -240,10 +241,19 @@ class TestFunctions(AlternatesTestCase):
     def check_read_preamble(self, backend):
         self.assertIn(backend, (fallback, _degu))
 
-        # Contains b'\x00', big security concern should this make its way to
-        # a C extension or to an upstream HTTP server: 
-        rfile = io.BytesIO(b'GET /foo\x00/bar HTTP/1.1\r\n\r\n')
-        backend.read_preamble(rfile)
+        # Bad bytes in preamble first line:
+        for size in range(1, 10):
+            for bad in helpers.iter_bad_values(size):
+                assert len(bad) == size
+                data = bad + b'\r\nFoo: Bar\r\nstuff: Junk\r\n\r\n'
+                rfile = io.BytesIO(data)
+                with self.assertRaises(ValueError) as cm:
+                    backend.read_preamble(rfile)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in first line: {!r}'.format(bad)
+                )
+                self.assertEqual(sys.getrefcount(rfile), 2)
+                self.assertEqual(rfile.tell(), size + 2)
 
         # Test number of arguments read_preamble() takes:
         with self.assertRaises(TypeError) as cm:
