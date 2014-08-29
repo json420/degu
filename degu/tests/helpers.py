@@ -71,26 +71,20 @@ def _iter_good(size, allowed):
     for okay in allowed:
         yield bytes(okay for i in range(size))
     # Now yield a number random lists of allowed int values:
-    for r in range(100):
+    for r in range(10 * size):
         yield bytes(random.choice(allowed) for i in range(size))
 
 
-_GOOD_VALUES = tuple(
-    tuple(_iter_good(size, tables.VALUES))
-    for size in range(1, 10)
-)
-
-
-def _iter_bad(size, allowed, skip, thegood):
+def _iter_bad(size, allowed, skip):
     assert isinstance(size, int) and size >= 0
     assert isinstance(allowed, bytes)
     assert isinstance(skip, bytes) and b'\n' in skip
-    for bad in range(256):
-        if bad in allowed:
-            continue  # Not actually bad!
-        if bad in skip:
-            continue  # Other values we should skip
-        for good in thegood:
+    for good in _iter_good(size, allowed):
+        for bad in range(256):
+            if bad in allowed:
+                continue  # Not actually bad!
+            if bad in skip:
+                continue  # Other values we should skip
             for index in range(size):
                 notgood = bytearray(good)
                 notgood[index] = bad  # Make good bad
@@ -98,7 +92,11 @@ def _iter_bad(size, allowed, skip, thegood):
 
 
 def iter_bad_values(size):
-    yield from _iter_bad(size, tables.VALUES, b'\n', _GOOD_VALUES[size - 1])
+    yield from _iter_bad(size, tables.VALUES, b'\n')
+
+
+def iter_bad_keys(size):
+    yield from _iter_bad(size, tables.KEYS, b'\n')
 
 
 class TempDir:

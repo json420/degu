@@ -252,8 +252,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(
-        first_line,
+    _SET(first_line,
         degu_decode(line_len - 2, line_buf, DEGU_VALUES, "bad bytes in first line: %R")
     )
 
@@ -281,11 +280,15 @@ degu_read_preamble(PyObject *self, PyObject *args)
         value_len = line_len - key_len - 2;
         buf += 2;
 
-        /* Decode & lowercase the header key */
-        _RESET(key, degu_decode(key_len, line_buf, DEGU_KEYS, "%R"))
+        /* Decode & case-fold the header key */
+        _RESET(key,
+            degu_decode(key_len, line_buf, DEGU_KEYS, "bad bytes in header name: %R")
+        )
 
         /* Decode the header value */
-        _RESET(value, degu_decode(value_len, buf, DEGU_VALUES, "%R"))
+        _RESET(value,
+            degu_decode(value_len, buf, DEGU_VALUES, "bad bytes in header value: %R")
+        )
 
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
