@@ -240,6 +240,11 @@ class TestFunctions(AlternatesTestCase):
     def check_read_preamble(self, backend):
         self.assertIn(backend, (fallback, _degu))
 
+        # Contains b'\x00', big security concern should this make its way to
+        # a C extension or to an upstream HTTP server: 
+        rfile = io.BytesIO(b'GET /foo\x00/bar HTTP/1.1\r\n\r\n')
+        backend.read_preamble(rfile)
+
         # Test number of arguments read_preamble() takes:
         with self.assertRaises(TypeError) as cm:
             backend.read_preamble()

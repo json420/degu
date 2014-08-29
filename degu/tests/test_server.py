@@ -373,11 +373,6 @@ class TestFunctions(TestCase):
         with self.assertRaises(base.EmptyPreambleError):
             server.read_request(rfile)
 
-        # Contains b'\x00', big security concern should this make its way to
-        # a C extension or to an upstream HTTP server: 
-        rfile = io.BytesIO(b'GET /foo\x00/bar HTTP/1.1\r\n\r\n')
-        server.read_request(rfile)
-
        # CRLF terminated request line is empty: 
         rfile = io.BytesIO(b'\r\n')
         with self.assertRaises(ValueError) as cm:
@@ -443,13 +438,13 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.read(), b'body')
 
         # Request line has too many items to split:
-        rfile = io.BytesIO(b'GET /f\roo HTTP/1.1\r\n\r\nbody')
+        rfile = io.BytesIO(b'GET /foo /bar HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server.read_request(rfile)
         self.assertEqual(str(cm.exception),
             'too many values to unpack (expected 3)'
         )
-        self.assertEqual(rfile.tell(), 22)
+        self.assertEqual(rfile.tell(), 26)
         self.assertEqual(rfile.read(), b'body')
 
         # Bad method:
