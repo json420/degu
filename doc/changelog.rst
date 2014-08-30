@@ -10,14 +10,15 @@ Security fixes:
     * :func:`degu.base.read_preamble()` now carefully restricts what bytes are
       allowed to exist in the first line, header keys, and header values; in
       particular this function now prevents NUL bytes (``b'\x00'``) from being
-      included in any decoded ``str`` objects; for details, please see the new
-      :doc:`security` documentation
+      included in any decoded ``str`` objects; for details, please see
+      :doc:`security`
 
 Other changes:
 
     * :func:`degu.base.read_preamble()` is now around 23% faster, largely thanks
-      to decoding and case-folding in a single passes, rather than two passes
-      using ``str.casefold()``
+      to decoding and case-folding header names in a single pass, rather than
+      case-folding in a 2nd step using ``str.casefold()``
+
 
 
 0.8 (August 2014)
