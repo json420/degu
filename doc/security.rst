@@ -7,8 +7,8 @@ HTTP preamble
 The HTTP preamble is a hot bed of attack surface!
 
 Degu aims to stop questionable input before it makes its way to other Python C
-extensions, upstream HTTP servers, or exploitable scenarios in Degu or CPython
-themselves.
+extensions, upstream HTTP servers, exploitable scenarios in Degu or CPython
+themselves, or exploitable scenarios in 3rd party applications built atop Degu.
 
 For this reason, Degu only allows a very constrained of set of bytes to exist in
 the preamble (a subset of ASCII).
@@ -31,24 +31,33 @@ Allowing the NUL byte is probably the most problematic aspect of
 
 Degu breaks down the preamble into two sets of allowed bytes:
 
-    1. *KEYS* can contain any of these 63 bytes::
+    1. ``KEYS`` can contain any of these 63 bytes:
 
-        b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+       >>> KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+       >>> len(KEYS)
+       63
 
-    2. *VALUES* can contain anything in *KEYS* plus anything in these additional
-       32 bytes (for a total of 95 possible byte values)::
+    2. ``VALUES`` can contain anything in ``KEYS`` plus anything in these
+       additional 32 bytes (for a total of 95 possible byte values):
 
-        b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'
+       >>> VALUES = KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'
+       >>> len(VALUES)
+       95
 
-The *VALUES* set applies to the first line in the preamble, and to header
-values.  The more restrictive *KEYS* set applies to header names.
+The ``VALUES`` set applies to the first line in the preamble, and to header
+values.  The more restrictive ``KEYS`` set applies to header names.
 
-To explain this more visually::
+To explain this more visually, Degu validates the HTTP preamble according to
+this structure::
 
     VALUES\r\n
     KEYS: VALUES\r\n
     KEYS: VALUES\r\n
     \r\n
+
+Note that ``VALUES`` doesn't include ``b'\r'`` or ``b'\n'``.
+
+Note that ``KEYS`` doesn't include ``b':'`` or ``b' '``.
 
 Degu uses a pair of tables to decode and validate in a single pass.
 Additionally, the table for the KEYS set is constructed such that it case-folds
