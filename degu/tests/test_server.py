@@ -438,13 +438,13 @@ class TestFunctions(TestCase):
         self.assertEqual(rfile.read(), b'body')
 
         # Request line has too many items to split:
-        rfile = io.BytesIO(b'GET /f\roo HTTP/1.1\r\n\r\nbody')
+        rfile = io.BytesIO(b'GET /foo /bar HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server.read_request(rfile)
         self.assertEqual(str(cm.exception),
             'too many values to unpack (expected 3)'
         )
-        self.assertEqual(rfile.tell(), 22)
+        self.assertEqual(rfile.tell(), 26)
         self.assertEqual(rfile.read(), b'body')
 
         # Bad method:

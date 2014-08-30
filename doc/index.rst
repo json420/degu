@@ -54,6 +54,7 @@ Contents:
     degu.rgi
     degu.misc
     degu.base
+    security
     changelog
 
 

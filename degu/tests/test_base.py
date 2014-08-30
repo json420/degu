@@ -29,6 +29,7 @@ import io
 import sys
 from random import SystemRandom
 
+from . import helpers
 from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
@@ -239,6 +240,45 @@ class TestFunctions(AlternatesTestCase):
 
     def check_read_preamble(self, backend):
         self.assertIn(backend, (fallback, _degu))
+
+        # Bad bytes in preamble first line:
+        for size in range(1, 10):
+            for bad in helpers.iter_bad_values(size):
+                data = bad + b'\r\nFoo: Bar\r\nstuff: Junk\r\n\r\n'
+                rfile = io.BytesIO(data)
+                with self.assertRaises(ValueError) as cm:
+                    backend.read_preamble(rfile)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in first line: {!r}'.format(bad)
+                )
+                self.assertEqual(sys.getrefcount(rfile), 2)
+                self.assertEqual(rfile.tell(), size + 2)
+
+        # Bad bytes in header name:
+        for size in range(1, 10):
+            for bad in helpers.iter_bad_keys(size):
+                data = b'da first line\r\n' + bad + b': Bar\r\nstuff: Junk\r\n\r\n'
+                rfile = io.BytesIO(data)
+                with self.assertRaises(ValueError) as cm:
+                    backend.read_preamble(rfile)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header name: {!r}'.format(bad)
+                )
+                self.assertEqual(sys.getrefcount(rfile), 2)
+                self.assertEqual(rfile.tell(), size + 22)
+
+        # Bad bytes in header value:
+        for size in range(1, 10):
+            for bad in helpers.iter_bad_values(size):
+                data = b'da first line\r\nFoo: ' + bad + b'\r\nstuff: Junk\r\n\r\n'
+                rfile = io.BytesIO(data)
+                with self.assertRaises(ValueError) as cm:
+                    backend.read_preamble(rfile)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header value: {!r}'.format(bad)
+                )
+                self.assertEqual(sys.getrefcount(rfile), 2)
+                self.assertEqual(rfile.tell(), size + 22)
 
         # Test number of arguments read_preamble() takes:
         with self.assertRaises(TypeError) as cm:

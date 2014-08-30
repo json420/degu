@@ -121,7 +121,10 @@ setup(
         'degu.tests',
     ],
     ext_modules=[
-        Extension('_degu', sources=['_degu.c']),
+        Extension('_degu',
+            sources=['_degu.c'],
+            extra_compile_args=['-Werror'],  # Make all warnings into errors 
+        ),
     ],
     cmdclass={
         'test': Test,

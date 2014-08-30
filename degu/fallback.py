@@ -23,6 +23,8 @@
 Pure-python fall back implementations for what is in _degu.c.
 """
 
+import re
+
 __all__ = (
     'MAX_LINE_BYTES',
     'MAX_HEADER_COUNT',
@@ -32,6 +34,30 @@ __all__ = (
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
+
+_RE_KEYS = re.compile('^[-1-9A-Za-z]+$')
+
+
+def _decode_value(src, message):
+    text = None
+    try:
+        text = src.decode('ascii')
+    except ValueError:
+        pass
+    if text is None or not text.isprintable():
+        raise ValueError(message.format(src))
+    return text
+
+
+def _decode_key(src, message):
+    text = None
+    try:
+        text = src.decode('ascii').lower()
+    except ValueError:
+        pass
+    if text is None or not _RE_KEYS.match(text):
+        raise ValueError(message.format(src))
+    return text
 
 
 class EmptyPreambleError(ConnectionError):
@@ -96,7 +122,7 @@ def _read_preamble(rfile):
         raise ValueError('bad line termination: {!r}'.format(line[-2:]))
     if len(line) == 2:
         raise ValueError('first preamble line is empty')
-    first_line = line[:-2].decode('latin_1')
+    first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
     headers = {}
     for i in range(MAX_HEADER_COUNT):
         line = _readline(rfile_readline, MAX_LINE_BYTES)
@@ -113,8 +139,8 @@ def _read_preamble(rfile):
             value = None
         if not (key and value):
             raise ValueError('bad header line: {!r}'.format(line))
-        key = key.decode('latin_1').casefold()
-        value = value.decode('latin_1')
+        key = _decode_key(key, 'bad bytes in header name: {!r}')
+        value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
                 'duplicate header: {!r}'.format(line)

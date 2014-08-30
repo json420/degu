@@ -31,11 +31,125 @@ static PyObject *degu_MAX_LINE_BYTES = NULL;
 static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *int_zero = NULL;
 static PyObject *int_two = NULL;
-static PyObject *name_casefold = NULL;
 static PyObject *name_readline = NULL;
 static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
+
+
+/* 
+ * Table used to validate the first line in the preamble plus header values:
+ */
+static const uint8_t DEGU_VALUES[256] = {
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+     32, 33, 34, 35, 36, 37, 38, 39, //  ' '  '!'  '"'  '#'  '$'  '%'  '&'  "'"
+     40, 41, 42, 43, 44, 45, 46, 47, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+     48, 49, 50, 51, 52, 53, 54, 55, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+     56, 57, 58, 59, 60, 61, 62, 63, //  '8'  '9'  ':'  ';'  '<'  '='  '>'  '?'
+     64, 65, 66, 67, 68, 69, 70, 71, //  '@'  'A'  'B'  'C'  'D'  'E'  'F'  'G'
+     72, 73, 74, 75, 76, 77, 78, 79, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+     80, 81, 82, 83, 84, 85, 86, 87, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+     88, 89, 90, 91, 92, 93, 94, 95, //  'X'  'Y'  'Z'  '['  '\\' ']'  '^'  '_'
+     96, 97, 98, 99,100,101,102,103, //  '`'  'a'  'b'  'c'  'd'  'e'  'f'  'g'
+    104,105,106,107,108,109,110,111, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+    112,113,114,115,116,117,118,119, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+    120,121,122,123,124,125,126,255, //  'x'  'y'  'z'  '{'  '|'  '}'  '~'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+};
+
+/* 
+ * Table used to validate and case-fold header names:
+ */
+static const uint8_t DEGU_KEYS[256] = {
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255, 45,255,255, //                           '-'
+     48, 49, 50, 51, 52, 53, 54, 55, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+     56, 57,255,255,255,255,255,255, //  '8'  '9'
+    255, 97, 98, 99,100,101,102,103, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
+    104,105,106,107,108,109,110,111, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+    112,113,114,115,116,117,118,119, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+    120,121,122,255,255,255,255,255, //  'X'  'Y'  'Z'
+    255, 97, 98, 99,100,101,102,103, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+    104,105,106,107,108,109,110,111, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+    112,113,114,115,116,117,118,119, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+    120,121,122,255,255,255,255,255, //  'x'  'y'  'z'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+};
+
+/* 
+ * degu_decode(): validate ASCII, possibly case-fold.
+ *
+ * The *table* determines what bytes are considered valid, and whether to
+ * case-fold.
+ */
+static PyObject *
+degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table,
+            const char *format)
+{
+    PyObject *dst;
+    uint8_t *dst_buf;
+    uint8_t r;
+    size_t i;
+
+    dst = PyUnicode_New(len, 127);
+    if (dst == NULL) {
+        return NULL;
+    }
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    for (r = i = 0; i < len; i++) {
+        r |= dst_buf[i] = table[buf[i]];
+    }
+    if (r & 128) {
+        Py_CLEAR(dst);
+        if ((r & 128) != 128) {
+            Py_FatalError("internal error in `degu_decode()`");
+        }     
+        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
+        if (tmp != NULL) {
+            PyErr_Format(PyExc_ValueError, format, tmp);
+        }
+        Py_CLEAR(tmp);
+    }
+    return dst;
+}
+
 
 #define _SET(pyobj, source) \
     pyobj = source; \
@@ -68,7 +182,7 @@ static PyObject *str_chunked = NULL;
         ); \
         goto error; \
     } \
-    line_buf = PyBytes_AS_STRING(line);
+    line_buf = (uint8_t *)PyBytes_AS_STRING(line);
 
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
@@ -99,13 +213,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
     PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
-    PyObject *casefolded_key = NULL;
 
     // Owned reference we transfer on success, decrement on error:
     PyObject *ret = NULL;
 
     size_t line_len, key_len, value_len;
-    const char *line_buf, *buf;
+    const uint8_t *line_buf, *buf;
     uint8_t i;
 
     if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
@@ -140,7 +253,9 @@ degu_read_preamble(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
         goto error;
     }
-    _SET(first_line, PyUnicode_DecodeLatin1(line_buf, line_len - 2, "strict"))
+    _SET(first_line,
+        degu_decode(line_len - 2, line_buf, DEGU_VALUES, "bad bytes in first line: %R")
+    )
 
     /*
      * Read the header lines:
@@ -165,10 +280,18 @@ degu_read_preamble(PyObject *self, PyObject *args)
         key_len = buf - line_buf;
         value_len = line_len - key_len - 2;
         buf += 2;
-        _RESET(key, PyUnicode_DecodeLatin1(line_buf, key_len, "strict"))
-        _RESET(value, PyUnicode_DecodeLatin1(buf, value_len, "strict"))
-        _RESET(casefolded_key, PyObject_CallMethodObjArgs(key, name_casefold, NULL))
-        if (PyDict_SetDefault(headers, casefolded_key, value) != value) {
+
+        /* Decode & case-fold the header key */
+        _RESET(key,
+            degu_decode(key_len, line_buf, DEGU_KEYS, "bad bytes in header name: %R")
+        )
+
+        /* Decode the header value */
+        _RESET(value,
+            degu_decode(value_len, buf, DEGU_VALUES, "bad bytes in header value: %R")
+        )
+
+        if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
@@ -222,9 +345,8 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);  // Note we can't unit test this object with sys.getrefcount()
+    Py_CLEAR(key);
     Py_CLEAR(value);
-    Py_CLEAR(casefolded_key);
     return ret;  
 }
 
@@ -276,7 +398,6 @@ PyInit__degu(void)
     // Other Python `int` and `str` objects we need for performance:
     _RESET(int_zero, PyLong_FromLong(0))
     _RESET(int_two, PyLong_FromLong(2))
-    _RESET(name_casefold, PyUnicode_InternFromString("casefold"))
     _RESET(name_readline, PyUnicode_InternFromString("readline"))
     _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
     _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
