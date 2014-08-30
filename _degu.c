@@ -114,9 +114,10 @@ static const uint8_t DEGU_KEYS[256] = {
 };
 
 /* 
- * degu_decode(): valid ASCII, possibly casefold.
+ * degu_decode(): validate ASCII, possibly case-fold.
  *
- *
+ * The *table* determines what bytes are considered valid, and whether to
+ * case-fold.
  */
 static PyObject *
 degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table,
