@@ -420,7 +420,7 @@ class Server:
         while True:
             (sock, address) = self.sock.accept()
             count = threading.active_count()
-            # The max connections and timeout value should really both be
+            # FIXME: The max connections and timeout value should really both be
             # tunable, but till we decide on the API for this, we're hard-coding
             # a limit of 100 concurrent connections:
             if count > 100:

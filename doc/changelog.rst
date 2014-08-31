@@ -13,6 +13,11 @@ Security fixes:
       included in any decoded ``str`` objects; for details, please see
       :doc:`security`
 
+    * :class:`degu.server.Server` now limits itself to 100 active threads (ie,
+      100 concurrent connections) to prevent unbounded resource usage; this is
+      hard-coded in 0.9 but will be configurable in 1.0
+
+
 Other changes:
 
     * :func:`degu.base.read_preamble()` is now around 23% faster, largely thanks
