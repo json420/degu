@@ -242,7 +242,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertIn(backend, (fallback, _degu))
 
         # Bad bytes in preamble first line:
-        for size in range(1, 10):
+        for size in range(1, 8):
             for bad in helpers.iter_bad_values(size):
                 data = bad + b'\r\nFoo: Bar\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)
@@ -255,7 +255,7 @@ class TestFunctions(AlternatesTestCase):
                 self.assertEqual(rfile.tell(), size + 2)
 
         # Bad bytes in header name:
-        for size in range(1, 10):
+        for size in range(1, 8):
             for bad in helpers.iter_bad_keys(size):
                 data = b'da first line\r\n' + bad + b': Bar\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)
@@ -268,7 +268,7 @@ class TestFunctions(AlternatesTestCase):
                 self.assertEqual(rfile.tell(), size + 22)
 
         # Bad bytes in header value:
-        for size in range(1, 10):
+        for size in range(1, 8):
             for bad in helpers.iter_bad_values(size):
                 data = b'da first line\r\nFoo: ' + bad + b'\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)

@@ -67,24 +67,23 @@ def random_chunks():
 def _iter_good(size, allowed):
     assert isinstance(size, int) and size >= 0
     assert isinstance(allowed, bytes)
-    # First, yield a list with each allowed byte (int) repeated *size* times:
     for okay in allowed:
         yield bytes(okay for i in range(size))
-    # Now yield a number random lists of allowed int values:
-    for r in range(10 * size):
-        yield bytes(random.choice(allowed) for i in range(size))
 
 
 def _iter_bad(size, allowed, skip):
     assert isinstance(size, int) and size >= 0
     assert isinstance(allowed, bytes)
     assert isinstance(skip, bytes) and b'\n' in skip
+    thebad = []
+    for i in range(256):
+        if i in allowed:
+            continue  # Not actually bad!
+        if i in skip:
+            continue  # Other values we should skip
+        thebad.append(i)
     for good in _iter_good(size, allowed):
-        for bad in range(256):
-            if bad in allowed:
-                continue  # Not actually bad!
-            if bad in skip:
-                continue  # Other values we should skip
+        for bad in thebad:
             for index in range(size):
                 notgood = bytearray(good)
                 notgood[index] = bad  # Make good bad
