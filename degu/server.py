@@ -419,9 +419,19 @@ class Server:
         base_session = self.build_base_session()
         while True:
             (sock, address) = self.sock.accept()
-            log.info('Connection from %r; active threads: %d',
-                address, threading.active_count()
-            )
+            count = threading.active_count()
+            # The max connections and timeout value should really both be
+            # tunable, but till we decide on the API for this, we're hard-coding
+            # a limit of 100 concurrent connections:
+            if count > 100:
+                log.error('%d connections, rejecting %r', count, address)
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                    sock.close()
+                except OSError:
+                    pass
+                return
+            log.info('Connection from %r; active threads: %d', address, count)
             session = base_session.copy()
             session['client'] = address
             thread = threading.Thread(
@@ -451,8 +461,6 @@ class Server:
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
             handle_requests(self.app, sock, session)
-            #handler = Handler(self.app, sock, session)
-            #handler.handle()
         else:
             log.warning('rejecting connection: %r', session['client'])
 

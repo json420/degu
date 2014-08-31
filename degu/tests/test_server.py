@@ -1358,6 +1358,30 @@ class TestLiveServer(TestCase):
                 self.assertIsNone(conn.sock)
         httpd.terminate()
 
+    def test_max_connections(self):
+        (httpd, client) = self.build_with_app(standard_harness_app)
+        allconns = []
+        for i in range(95):
+            conn = client.connect()
+            allconns.append(conn)
+            response = conn.request('GET', '/status/404/Nope')
+            self.assertEqual(response.status, 404)
+            self.assertEqual(response.reason, 'Nope')
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+        with self.assertRaises((ConnectionError, ssl.SSLError)):
+            for i in range(10):
+                conn = client.connect()
+                allconns.append(conn)
+                response = conn.request('GET', '/status/404/Nope')
+                self.assertEqual(response.status, 404)
+                self.assertEqual(response.reason, 'Nope')
+                self.assertEqual(response.headers, {})
+                self.assertIsNone(response.body)
+        for conn in allconns:
+            conn.close()
+        httpd.terminate()
+
 
 class TestLiveServer_AF_INET6(TestLiveServer):
     address = degu.IPv6_LOOPBACK
