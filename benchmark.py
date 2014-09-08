@@ -61,9 +61,9 @@ headers = {
     'content-type': 'application/json',
     'user-agent': agent
 }
-count = 5000
+count = 2500
 deltas = []
-for i in range(15):
+for i in range(20):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
