@@ -297,8 +297,14 @@ def write_response(wfile, status, reason, headers, body):
 
 def handle_requests(app, sock, session):
     (rfile, wfile) = makefiles(sock)
+    requests = session['requests']
+    assert requests == 0
     while handle_one(app, rfile, wfile, session) is True:
-        session['requests'] += 1
+        requests += 1
+        session['requests'] = requests
+        if requests >= 2500:
+            log.info("%r requests from %r, closing", requests, session['client'])
+            break
     wfile.close()  # Will block till write buffer is flushed
 
 

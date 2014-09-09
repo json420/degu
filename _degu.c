@@ -40,7 +40,7 @@ static PyObject *str_chunked = NULL;
 /* 
  * Table used to validate the first line in the preamble plus header values:
  */
-static const uint8_t DEGU_VALUES[256] = {
+static const uint8_t _VALUES[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -78,7 +78,7 @@ static const uint8_t DEGU_VALUES[256] = {
 /* 
  * Table used to validate and case-fold header names:
  */
-static const uint8_t DEGU_KEYS[256] = {
+static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -114,14 +114,13 @@ static const uint8_t DEGU_KEYS[256] = {
 };
 
 /* 
- * degu_decode(): validate ASCII, possibly case-fold.
+ * _decode(): validate ASCII, possibly case-fold.
  *
  * The *table* determines what bytes are considered valid, and whether to
  * case-fold.
  */
 static PyObject *
-degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table,
-            const char *format)
+_decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *format)
 {
     PyObject *dst;
     uint8_t *dst_buf;
@@ -139,7 +138,7 @@ degu_decode(const size_t len, const uint8_t *buf, const uint8_t *table,
     if (r & 128) {
         Py_CLEAR(dst);
         if ((r & 128) != 128) {
-            Py_FatalError("internal error in `degu_decode()`");
+            Py_FatalError("internal error in `_decode()`");
         }     
         PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
         if (tmp != NULL) {
@@ -254,7 +253,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(first_line,
-        degu_decode(line_len - 2, line_buf, DEGU_VALUES, "bad bytes in first line: %R")
+        _decode(line_len - 2, line_buf, _VALUES, "bad bytes in first line: %R")
     )
 
     /*
@@ -283,12 +282,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
         /* Decode & case-fold the header key */
         _RESET(key,
-            degu_decode(key_len, line_buf, DEGU_KEYS, "bad bytes in header name: %R")
+            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
         )
 
         /* Decode the header value */
         _RESET(value,
-            degu_decode(value_len, buf, DEGU_VALUES, "bad bytes in header value: %R")
+            _decode(value_len, buf, _VALUES, "bad bytes in header value: %R")
         )
 
         if (PyDict_SetDefault(headers, key, value) != value) {

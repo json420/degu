@@ -24,6 +24,10 @@ Other changes:
       to decoding and case-folding header names in a single pass, rather than
       case-folding in a 2nd step using ``str.casefold()``
 
+    * To keep memory usage flatter over time, :class:`degu.server.Server()` now
+      unconditionally closes a connection after 2,500 requests have bee
+      handled; this is hard-coded in 0.9 but will be configurable in 1.0
+
 
 
 0.8 (August 2014)

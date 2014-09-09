@@ -1360,11 +1360,12 @@ class TestLiveServer(TestCase):
 
     def test_max_connections(self):
         (httpd, client) = self.build_with_app(standard_harness_app)
+        uri = '/status/404/Nope'
         allconns = []
         for i in range(95):
             conn = client.connect()
             allconns.append(conn)
-            response = conn.request('GET', '/status/404/Nope')
+            response = conn.request('GET', uri)
             self.assertEqual(response.status, 404)
             self.assertEqual(response.reason, 'Nope')
             self.assertEqual(response.headers, {})
@@ -1373,13 +1374,29 @@ class TestLiveServer(TestCase):
             for i in range(10):
                 conn = client.connect()
                 allconns.append(conn)
-                response = conn.request('GET', '/status/404/Nope')
+                response = conn.request('GET', uri)
                 self.assertEqual(response.status, 404)
                 self.assertEqual(response.reason, 'Nope')
                 self.assertEqual(response.headers, {})
                 self.assertIsNone(response.body)
         for conn in allconns:
             conn.close()
+        httpd.terminate()
+
+    def test_max_requests(self):
+        (httpd, client) = self.build_with_app(standard_harness_app)
+        uri = '/status/404/Nope'
+        conn = client.connect()
+        for i in range(2500):
+            response = conn.request('GET', uri)
+            self.assertEqual(response.status, 404)
+            self.assertEqual(response.reason, 'Nope')
+            self.assertEqual(response.headers, {})
+            self.assertIsNone(response.body)
+        with self.assertRaises(ConnectionError):
+            conn.request('GET', uri)
+        self.assertIs(conn.closed, True)
+        conn.close()
         httpd.terminate()
 
 
