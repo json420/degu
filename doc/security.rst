@@ -59,6 +59,29 @@ Note that ``VALUES`` doesn't include ``b'\r'`` or ``b'\n'``.
 
 Note that ``KEYS`` doesn't include ``b':'`` or ``b' '``.
 
-Degu uses a pair of tables to decode and validate in a single pass.
-Additionally, the table for the KEYS set is constructed such that it case-folds
-the header names as part of that same single pass.
+The Degu C backend uses a pair of tables to decode and validate in a single
+pass.  Additionally, the table for the KEYS set is constructed such that it
+case-folds the header names as part of that same single pass.
+
+
+
+Error handling
+--------------
+
+When an unhandled exception occurs at any point while handling a connection or
+handling any requests for that connection, Degu will immediately shutdown the
+connection and terminate its thread.
+
+For security reasons, Degu does not convey anything about such errors through
+any HTTP response.  A traceback will never be sent in a response body as
+information in the traceback could potentially reveal secrets or other details
+that could be used to further escalate an attack (for example, the memory
+addresses of specific Python objects).
+
+Likewise, not even something like a  **500 Internal Server Error** response
+status is sent.  The connection is simply closed.  This is critical for security
+because the TCP stream might be in an inconsistent state.  Under no circumstance
+do we want an error condition to be able to create an inconsistent TCP stream
+state such that some portion of an HTTP request body is read as the next HTTP
+preamble.
+
