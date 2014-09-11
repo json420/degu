@@ -9,10 +9,18 @@ This module provides the low level HTTP parser and IO abstractions used by both
 
 .. warning::
 
-    The :mod:`degu.base` API in particular is not yet stable, will likely still
-    undergo fairly dramatic change as the dust settles.  It is documented to
-    help you understand how Degu is implemented, but you should really use the
-    higher level API in :mod:`degu.server` and :mod:`degu.client`.
+    :mod:`degu.base` includes some internal API and will still be subject to
+    breaking API changes even after the public API in :mod:`degu.server` and
+    :mod:`degu.client` are declared stable for the Degu 1.x series.
+
+    Such internal API is clearly marked here, and is documented simply to help
+    you understand how Degu is implemented.
+
+
+Overtime time, all of :mod:`degu.base` will have a C implementation for
+production use, plus a Python reference implementation to help clarify the
+design and validate the correctness of the C implementation.
+
 
 
 
