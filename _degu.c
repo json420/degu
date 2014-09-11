@@ -36,6 +36,17 @@ static PyObject *key_content_length = NULL;
 static PyObject *key_transfer_encoding = NULL;
 static PyObject *str_chunked = NULL;
 
+/*
+ * Pre-built args tuples for PyObject_Call() when calling rfile.readline():
+ *
+ * This makes read_preamble() about 18% faster compared to when it previously
+ * used PyObject_CallFunctionObjArgs() with pre-built `int` objects.
+ *
+ * See the _READLINE() macro for details.
+ */ 
+static PyObject *args_size_two = NULL;
+static PyObject *args_size_max = NULL;
+
 
 /* 
  * Table used to validate the first line in the preamble plus header values:
@@ -163,9 +174,9 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         goto error; \
     }
 
-#define _READLINE(py_size, size) \
+#define _READLINE(py_args, size) \
     line_len = 0; \
-    _RESET(line, PyObject_CallFunctionObjArgs(rfile_readline, py_size, NULL)) \
+    _RESET(line, PyObject_Call(rfile_readline, py_args, NULL)) \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
             "rfile.readline() returned %R, should return <class 'bytes'>", \
@@ -242,7 +253,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     // Read the first line:
-    _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
+    _READLINE(args_size_max, MAX_LINE_BYTES)
     if (line_len <= 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         goto error;
@@ -265,7 +276,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
      */
     _SET(headers, PyDict_New())
     for (i=0; i<MAX_HEADER_COUNT; i++) {
-        _READLINE(degu_MAX_LINE_BYTES, MAX_LINE_BYTES)
+        _READLINE(args_size_max, MAX_LINE_BYTES)
         _CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_len == 2) {  // Stop on the first empty CRLF terminated line
             goto done;
@@ -300,7 +311,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
      * If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
      * we just need to check for the final CRLF preamble termination:
      */
-    _READLINE(int_two, 2)
+    _READLINE(args_size_two, 2)
     if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", MAX_HEADER_COUNT
@@ -401,6 +412,9 @@ PyInit__degu(void)
     _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
     _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _RESET(str_chunked, PyUnicode_InternFromString("chunked"))
+
+    _RESET(args_size_two, PyTuple_Pack(1, int_two))
+    _RESET(args_size_max, PyTuple_Pack(1, degu_MAX_LINE_BYTES))
 
     return module;
 
