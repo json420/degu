@@ -20,7 +20,7 @@ assert line[-2:] == b'\\r\\n'
 headers = {
     'content-type': 'application/json',
     'accept': 'application/json',
-    'content-length': 1234567,
+    'content-length': 12,
     'user-agent': 'Microfiber/14.04',
     'x-token': 'VVI5KPPRN5VOG9DITDLEOEIB',
     'extra': 'Super',
@@ -49,14 +49,14 @@ class wfile:
 
 
 def run_iter(statement, n):
-    for i in range(5):
+    for i in range(10):
         t = timeit.Timer(statement, setup)
         yield t.timeit(n)
 
 
-def run(statement, K=100):
+def run(statement, K=50):
     n = K * 1000
-    # Choose fastest of 5 runs:
+    # Choose fastest of 10 runs:
     elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
     print('{:>12,}: {}'.format(rate, statement))
@@ -85,7 +85,7 @@ run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")
 
 print('\nHigh-level formatters:')
-run("write_response(wfile, 404, 'Not Found', headers, None)")
+run("write_response(wfile, 200, 'OK', headers, b'hello, world')")
 run("write_request(wfile, 'GET', '/foo/bar?stuff=junk', headers, None)")
 run("write_chunk(wfile, data)")
 run("write_chunk(wfile, data, ('foo', 'bar'))")
