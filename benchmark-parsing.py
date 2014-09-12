@@ -8,7 +8,6 @@ gc.enable()
 from io import BytesIO
 
 import _degu
-from degu import fallback
 from degu.client import parse_status, write_request
 from degu.server import parse_request, read_request, write_response
 from degu.base import write_chunk
@@ -63,11 +62,9 @@ def run(statement, K=100):
     print('{:>12,}: {}'.format(rate, statement))
 
 
-print('Validate and decode line:')
-run("line.endswith(b'\\r\\n')")
-run("line[-2:] == b'\\r\\n'")
-run("line[:-2].decode('latin_1')")
-run("line[:-2].decode()")
+print('Decoding:')
+run("line.decode('latin_1')")
+run("line.decode('ascii')")
 run("line.decode()")
 
 print('\nSplit performance:')
@@ -75,7 +72,7 @@ run("(method, uri, protocol) = 'GET /foo/bar?stuff=junk HTTP/1.1'.split()")
 run("(protocol, status, reason) = 'HTTP/1.1 404 Not Found'.split(' ', 2)")
 run("(key, value) = 'Content-Length: 1234567'.split(': ')")
 
-print('\nFormatting and encoding')
+print('\nFormatting and encoding:')
 run("'HTTP/1.1 {} {}\\r\\n'.format(404, 'Not Found')")
 run("'{} {} HTTP/1.1\\r\\n'.format('GET', '/foo/bar?stuff=junk')")
 run("'{}: {}\\r\\n'.format('content-length', 1234567)")
@@ -83,7 +80,6 @@ run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 
 print('\nHigh-level parsers:')
 run('_degu.read_preamble(BytesIO(request_preamble))')
-run('fallback.read_preamble(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_status('HTTP/1.1 404 Not Found')")
