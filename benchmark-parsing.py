@@ -49,14 +49,14 @@ class wfile:
 
 
 def run_iter(statement, n):
-    for i in range(10):
+    for i in range(20):
         t = timeit.Timer(statement, setup)
         yield t.timeit(n)
 
 
-def run(statement, K=50):
+def run(statement, K=100):
     n = K * 1000
-    # Choose fastest of 10 runs:
+    # Choose fastest of 20 runs:
     elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
     print('{:>12,}: {}'.format(rate, statement))

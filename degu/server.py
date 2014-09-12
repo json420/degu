@@ -329,7 +329,7 @@ def handle_requests(app, sock, session):
     while handle_one(app, rfile, wfile, session) is True:
         requests += 1
         session['requests'] = requests
-        if requests >= 2500:
+        if requests >= 5000:
             log.info("%r requests from %r, closing", requests, session['client'])
             break
     wfile.close()  # Will block till write buffer is flushed

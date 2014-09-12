@@ -61,9 +61,9 @@ headers = {
     'content-type': 'application/json',
     'user-agent': agent
 }
-count = 2500
+count = 5000
 deltas = []
-for i in range(20):
+for i in range(25):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
@@ -75,9 +75,12 @@ server.terminate()
 
 rates = tuple(count / d for d in deltas)
 fastest = '{:.2f}'.format(max(rates))
+mean = '{:.2f}'.format(statistics.mean(rates))
 stdev = '{:.2f}'.format(statistics.stdev(rates))
-width = max(len(fastest), len(stdev))
+width = max(len(fastest), len(mean), len(stdev))
 
 print('')
+print('run {} of {} was fastest'.format(rates.index(max(rates)) + 1, len(rates)))
 print('fastest: {} requests/second'.format(fastest.rjust(width)))
+print('average: {} requests/second'.format(mean.rjust(width)))
 print('  stdev: {} requests/second'.format(stdev.rjust(width)))

@@ -18,14 +18,37 @@ Security fixes:
       hard-coded in 0.9 but will be configurable in 1.0
 
 
+Performance improvements:
+
+    * The C implementation of :func:`degu.base.read_preamble()` is now around
+      42% faster; this speed-up is thanks to decoding and case-folding the
+      header keys in a single pass rather than using ``str.casefold()``, plus
+      thanks to calling ``rfile.readline()`` using ``PyObject_Call()`` with
+      pre-build argument tuples instead of ``PyObject_CallFunctionObjArgs()``
+      with pre-built ``int`` objects
+
+    * :func:`degu.server.write_response()` is now around 8% faster, thanks to
+      using a list comprehension for the headers, using a local variable for
+      ``wfile.write``, and inlining the body writing
+
+    * ``benchmark.py`` is now around 3% faster for ``AF_INET6`` and around 6%
+      faster for ``AF_UNIX``
+
+.. note::
+
+    These benchmarks were done on an Intel® Core™ i5-4200M (2.5 GHz, dual-core,
+    hyper-threaded) CPU running 64-bit Ubuntu 14.04.1, on battery power using
+    the "performance" govenor.
+
+    To reproduce these results, you'll need to copy the ``benchmark.py`` and
+    ``benchmark-parsing.py`` scripts from the Degu 0.9 source tree to the Degu
+    0.8 source tree.
+
+
 Other changes:
 
-    * :func:`degu.base.read_preamble()` is now around 23% faster, largely thanks
-      to decoding and case-folding header names in a single pass, rather than
-      case-folding in a 2nd step using ``str.casefold()``
-
     * To keep memory usage flatter over time, :class:`degu.server.Server()` now
-      unconditionally closes a connection after 2,500 requests have bee
+      unconditionally closes a connection after 5,000 requests have been
       handled; this is hard-coded in 0.9 but will be configurable in 1.0
 
 
