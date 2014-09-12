@@ -60,6 +60,7 @@ def run(statement, K=100):
     elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
     print('{:>12,}: {}'.format(rate, statement))
+    return rate
 
 
 print('Decoding:')
@@ -86,7 +87,7 @@ run("parse_status('HTTP/1.1 404 Not Found')")
 
 print('\nHigh-level formatters:')
 run("write_response(wfile, 200, 'OK', headers, b'hello, world')")
-run("write_request(wfile, 'GET', '/foo/bar?stuff=junk', headers, None)")
+run("write_request(wfile, 'PUT', '/foo/bar?stuff=junk', headers, b'hello, world')")
 run("write_chunk(wfile, data)")
 run("write_chunk(wfile, data, ('foo', 'bar'))")
 

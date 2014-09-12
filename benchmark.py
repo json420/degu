@@ -63,7 +63,7 @@ headers = {
 }
 count = 5000
 deltas = []
-for i in range(25):
+for i in range(50):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):

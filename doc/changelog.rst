@@ -31,7 +31,10 @@ Performance improvements:
       using a list comprehension for the headers, using a local variable for
       ``wfile.write``, and inlining the body writing
 
-    * ``benchmark.py`` is now around 3% faster for ``AF_INET6`` and around 6%
+    * Likewise, :func:`degu.client.write_request()` is also now around 8%
+      faster, thanks to the same optimizations
+
+    * ``benchmark.py`` is now around 6% faster for ``AF_INET6`` and around 7%
       faster for ``AF_UNIX``
 
 .. note::
