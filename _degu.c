@@ -27,47 +27,59 @@
 #define MAX_LINE_BYTES 4096
 #define MAX_HEADER_COUNT 15
 
-static PyObject *degu_MAX_LINE_BYTES = NULL;
+/* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
-static PyObject *int_zero = NULL;
-static PyObject *int_two = NULL;
-static PyObject *name_readline = NULL;
-static PyObject *key_content_length = NULL;
-static PyObject *key_transfer_encoding = NULL;
-static PyObject *str_chunked = NULL;
+
+/* Pre-built global Python `int` and `str` objects for performance */
+static PyObject *int_zero = NULL;               //  0
+static PyObject *str_readline = NULL;           //  'readline'
+static PyObject *str_content_length = NULL;     //  'content-length'
+static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
+static PyObject *str_chunked = NULL;            //  'chunked'
 
 /*
- * Pre-built args tuples for PyObject_Call() when calling rfile.readline():
+ * Pre-built args tuples for PyObject_Call() when calling rfile.readline().
  *
  * This makes read_preamble() about 18% faster compared to when it previously
  * used PyObject_CallFunctionObjArgs() with pre-built `int` objects.
  *
  * See the _READLINE() macro for details.
  */ 
-static PyObject *args_size_two = NULL;
-static PyObject *args_size_max = NULL;
+static PyObject *args_size_two = NULL;  //  (2,)
+static PyObject *args_size_max = NULL;  //  (4096,)
 
 
-/* 
- * Table used to validate the first line in the preamble plus header values:
+/*
+ * _VALUES: table for validating the first preamble line plus header values.
+ *
+ * Degu only allows these 95 possible byte values to exist in the first line of
+ * the HTTP preamble, and likewise to exist in the header values.  This is a
+ * superset of the byte values allowed in the more restrictive `_KEYS` table.
+ *
+ * Valid entries get mapped to themselves (ie, no case-folding is done).
+ * 
+ * Invalid entries will always have the high bit set, for which you can do a
+ * single error check at the end using (r & 128).
+ *
+ * See the `_decode()` function for more details.
  */
 static const uint8_t _VALUES[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
-     32, 33, 34, 35, 36, 37, 38, 39, //  ' '  '!'  '"'  '#'  '$'  '%'  '&'  "'"
-     40, 41, 42, 43, 44, 45, 46, 47, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
-     48, 49, 50, 51, 52, 53, 54, 55, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
-     56, 57, 58, 59, 60, 61, 62, 63, //  '8'  '9'  ':'  ';'  '<'  '='  '>'  '?'
-     64, 65, 66, 67, 68, 69, 70, 71, //  '@'  'A'  'B'  'C'  'D'  'E'  'F'  'G'
-     72, 73, 74, 75, 76, 77, 78, 79, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
-     80, 81, 82, 83, 84, 85, 86, 87, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
-     88, 89, 90, 91, 92, 93, 94, 95, //  'X'  'Y'  'Z'  '['  '\\' ']'  '^'  '_'
-     96, 97, 98, 99,100,101,102,103, //  '`'  'a'  'b'  'c'  'd'  'e'  'f'  'g'
-    104,105,106,107,108,109,110,111, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
-    112,113,114,115,116,117,118,119, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-    120,121,122,123,124,125,126,255, //  'x'  'y'  'z'  '{'  '|'  '}'  '~'
+     32, 33, 34, 35, 36, 37, 38, 39,  //  ' '  '!'  '"'  '#'  '$'  '%'  '&'  "'"
+     40, 41, 42, 43, 44, 45, 46, 47,  //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+     48, 49, 50, 51, 52, 53, 54, 55,  //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+     56, 57, 58, 59, 60, 61, 62, 63,  //  '8'  '9'  ':'  ';'  '<'  '='  '>'  '?'
+     64, 65, 66, 67, 68, 69, 70, 71,  //  '@'  'A'  'B'  'C'  'D'  'E'  'F'  'G'
+     72, 73, 74, 75, 76, 77, 78, 79,  //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+     80, 81, 82, 83, 84, 85, 86, 87,  //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+     88, 89, 90, 91, 92, 93, 94, 95,  //  'X'  'Y'  'Z'  '['  '\\' ']'  '^'  '_'
+     96, 97, 98, 99,100,101,102,103,  //  '`'  'a'  'b'  'c'  'd'  'e'  'f'  'g'
+    104,105,106,107,108,109,110,111,  //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+    112,113,114,115,116,117,118,119,  //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+    120,121,122,123,124,125,126,255,  //  'x'  'y'  'z'  '{'  '|'  '}'  '~'
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -86,8 +98,21 @@ static const uint8_t _VALUES[256] = {
     255,255,255,255,255,255,255,255,
 };
 
+
 /* 
- * Table used to validate and case-fold header names:
+ * _KEYS: table for validating and case-folding header keys (header names).
+ *
+ * Degu only allows these 63 possible byte values to exist in header names.
+ * This is a subset of the byte values allowed in the more permissive `_VALUES`
+ * table.
+ *
+ * Entries in [-0-9a-z] get mapped to themselves, and entries in [A-Z] get
+ * mapped to their lowercase equivalent in [a-z].
+ * 
+ * Invalid entries will always have the high bit set, for which you can do a
+ * single error check at the end using (r & 128).
+ *
+ * See the `_decode()` function for more details.
  */
 static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
@@ -95,17 +120,17 @@ static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
-    255,255,255,255,255, 45,255,255, //                           '-'
-     48, 49, 50, 51, 52, 53, 54, 55, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
-     56, 57,255,255,255,255,255,255, //  '8'  '9'
-    255, 97, 98, 99,100,101,102,103, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
-    104,105,106,107,108,109,110,111, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
-    112,113,114,115,116,117,118,119, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
-    120,121,122,255,255,255,255,255, //  'X'  'Y'  'Z'
-    255, 97, 98, 99,100,101,102,103, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
-    104,105,106,107,108,109,110,111, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
-    112,113,114,115,116,117,118,119, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-    120,121,122,255,255,255,255,255, //  'x'  'y'  'z'
+    255,255,255,255,255, 45,255,255,  //                           '-'
+     48, 49, 50, 51, 52, 53, 54, 55,  //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+     56, 57,255,255,255,255,255,255,  //  '8'  '9'
+    255, 97, 98, 99,100,101,102,103,  //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
+    104,105,106,107,108,109,110,111,  //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+    112,113,114,115,116,117,118,119,  //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+    120,121,122,255,255,255,255,255,  //  'X'  'Y'  'Z'
+    255, 97, 98, 99,100,101,102,103,  //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+    104,105,106,107,108,109,110,111,  //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+    112,113,114,115,116,117,118,119,  //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+    120,121,122,255,255,255,255,255,  //  'x'  'y'  'z'
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -124,11 +149,13 @@ static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
 };
 
+
 /* 
- * _decode(): validate ASCII, possibly case-fold.
+ * _decode(): validate against *table*, possibly case-fold.
  *
- * The *table* determines what bytes are considered valid, and whether to
- * case-fold.
+ * The *table* determines what bytes are allowed, and whether to case-fold.
+ *
+ * Return value will be an `str` instance, or NULL when there was an error.
  */
 static PyObject *
 _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *format)
@@ -161,12 +188,36 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
 }
 
 
+/*
+ * _SET() macro: assign a PyObject pointer.
+ *
+ * Use this when you're assuming *pyobj* has been initialized to NULL.
+ *
+ * This macro will call Py_FatalError() if *pyobj* does not start equal to NULL
+ * (a sign that perhaps you should be using the _RESET() macro instead).
+ *
+ * If *source* returns NULL, this macro will `goto error`, so it can only be
+ * used within a function with an appropriate "error" label.
+ */
 #define _SET(pyobj, source) \
-    pyobj = source; \
+    if (pyobj != NULL) { \
+        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
+    } \
+    pyobj = (source); \
     if (pyobj == NULL) { \
         goto error; \
     }
 
+
+/*
+ * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
+ *
+ * Use this to decrement the current object pointed to by *pyobj*, and then
+ * assign it to the PyObject pointer returned by *source*.
+ *
+ * If *source* returns NULL, this macro will `goto error`, so it can only be
+ * used within a function with an appropriate "error" label.
+ */
 #define _RESET(pyobj, source) \
     Py_CLEAR(pyobj); \
     pyobj = source; \
@@ -174,9 +225,13 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         goto error; \
     }
 
+
+/*
+ * _READLINE() macro: read the next line in the preamble using rfile.readline().
+ */
 #define _READLINE(py_args, size) \
     line_len = 0; \
-    _RESET(line, PyObject_Call(rfile_readline, py_args, NULL)) \
+    _RESET(line, PyObject_Call(readline, py_args, NULL)) \
     if (!PyBytes_CheckExact(line)) { \
         PyErr_Format(PyExc_TypeError, \
             "rfile.readline() returned %R, should return <class 'bytes'>", \
@@ -194,9 +249,15 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
     } \
     line_buf = (uint8_t *)PyBytes_AS_STRING(line);
 
+
+/* _START() macro: only used below in _CHECK_LINE_TERMINATION() */
 #define _START(size) \
     (size < 2 ? 0 : size - 2)
 
+
+/*
+ * _CHECK_LINE_TERMINATION() macro: ensure the line ends with ``b'\r\n'``.
+ */
 #define _CHECK_LINE_TERMINATION(format) \
     if (line_len < 2 || memcmp(line_buf + (line_len - 2), "\r\n", 2) != 0) { \
         PyObject *_crlf = PySequence_GetSlice(line, _START(line_len), line_len); \
@@ -209,22 +270,25 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
     }
 
 
+/*
+ * C implementation of `degu.base.read_preamble()`.
+ */
 static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
 {
-    // Borrowed references we don't need to decrement:
+    /* Borrowed references we don't need to decrement */
     PyObject *rfile = NULL;
     PyObject *borrowed = NULL;
 
-    // Owned references we need to decrement when != NULL:
-    PyObject *rfile_readline = NULL;  // rfile.readline() method
+    /* Owned references we need to decrement in "cleanup" when != NULL */
+    PyObject *readline = NULL;
     PyObject *line = NULL;
     PyObject *first_line = NULL;
     PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
 
-    // Owned reference we transfer on success, decrement on error:
+    /* Return value is a ``(first_line, headers)`` tuple */
     PyObject *ret = NULL;
 
     size_t line_len, key_len, value_len;
@@ -235,9 +299,8 @@ degu_read_preamble(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    /*
-     * For performance, we first get a reference to the rfile.readline() method
-     * and then call it each time we need using PyObject_CallFunctionObjArgs().
+    /* For performance, we first get a reference to the rfile.readline() method
+     * and then call it each time we need using PyObject_Call().
      *
      * This creates an additional reference to the rfile that we own, which
      * means that the rfile can't get GC'ed through any subtle weirdness when
@@ -245,14 +308,14 @@ degu_read_preamble(PyObject *self, PyObject *args)
      *
      * See the _READLINE() macro for more details. 
      */
-    _SET(rfile_readline, PyObject_GetAttr(rfile, name_readline))
-    if (!PyCallable_Check(rfile_readline)) {
-        Py_CLEAR(rfile_readline);
+    _SET(readline, PyObject_GetAttr(rfile, str_readline))
+    if (!PyCallable_Check(readline)) {
+        Py_CLEAR(readline);
         PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
         return NULL;
     }
 
-    // Read the first line:
+    /* Read and decode the first preamble line */
     _READLINE(args_size_max, MAX_LINE_BYTES)
     if (line_len <= 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
@@ -267,13 +330,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         _decode(line_len - 2, line_buf, _VALUES, "bad bytes in first line: %R")
     )
 
-    /*
-     * Read the header lines:
-     *
-     *      char| K: V
-     *    offset| 0123
-     *      size| 1234
-     */
+    /* Read, parse, and decode the header lines */
     _SET(headers, PyDict_New())
     for (i=0; i<MAX_HEADER_COUNT; i++) {
         _READLINE(args_size_max, MAX_LINE_BYTES)
@@ -281,7 +338,19 @@ degu_read_preamble(PyObject *self, PyObject *args)
         if (line_len == 2) {  // Stop on the first empty CRLF terminated line
             goto done;
         }
+
+        /* Below we don't care about the final two bytes (the CRLF) */
         line_len -= 2;
+
+        /* Find the ``b': '`` separator so we can split line into key and value.
+         *
+         * Be careful with the maths here!  We require both the header key and
+         * header value to be at least one byte in length:
+         *
+         *      char| K: V
+         *    offset| 0123
+         *      size| 1234
+         */
         buf = memmem(line_buf, line_len, ": ", 2);
         if (buf == NULL || buf < line_buf + 1 || buf > line_buf + line_len - 3) {
             PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
@@ -289,7 +358,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         }
         key_len = buf - line_buf;
         value_len = line_len - key_len - 2;
-        buf += 2;
+        buf += 2;  // Move the pointer to the first byte in the header value
 
         /* Decode & case-fold the header key */
         _RESET(key,
@@ -301,14 +370,14 @@ degu_read_preamble(PyObject *self, PyObject *args)
             _decode(value_len, buf, _VALUES, "bad bytes in header value: %R")
         )
 
+        /* Store in headers dict, make sure it's not a duplicate key */
         if (PyDict_SetDefault(headers, key, value) != value) {
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
     }
 
-    /*
-     * If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+    /* If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
      * we just need to check for the final CRLF preamble termination:
      */
     _READLINE(args_size_two, 2)
@@ -320,25 +389,25 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
 done:
-    if (PyDict_Contains(headers, key_content_length)) {
-        if (PyDict_Contains(headers, key_transfer_encoding)) {
+    if (PyDict_Contains(headers, str_content_length)) {
+        if (PyDict_Contains(headers, str_transfer_encoding)) {
             PyErr_SetString(PyExc_ValueError, 
                 "cannot have both content-length and transfer-encoding headers"
             );
             goto error;
         }
-        _SET(borrowed, PyDict_GetItemWithError(headers, key_content_length))
+        _SET(borrowed, PyDict_GetItemWithError(headers, str_content_length))
         _RESET(value, PyLong_FromUnicodeObject(borrowed, 10))
         if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
             PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
             goto error;
         }
-        if (PyDict_SetItem(headers, key_content_length, value) != 0) {
+        if (PyDict_SetItem(headers, str_content_length, value) != 0) {
             goto error;
         }
     }
-    else if (PyDict_Contains(headers, key_transfer_encoding)) {
-        _SET(borrowed, PyDict_GetItemWithError(headers, key_transfer_encoding))
+    else if (PyDict_Contains(headers, str_transfer_encoding)) {
+        _SET(borrowed, PyDict_GetItemWithError(headers, str_transfer_encoding))
         if (PyUnicode_Compare(borrowed, str_chunked) != 0) {
             PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
             goto error;
@@ -351,7 +420,7 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(rfile_readline);
+    Py_CLEAR(readline);
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
@@ -378,43 +447,42 @@ static struct PyModuleDef degu = {
 PyMODINIT_FUNC
 PyInit__degu(void)
 {
-    PyObject *module;
+    PyObject *module = NULL;
+    PyObject *int_size_max = NULL;
+    PyObject *int_size_two = NULL;
 
     module = PyModule_Create(&degu);
     if (module == NULL) {
         return NULL;
     }
 
-    // Integer constants:
+    /* Init integer constants */
     PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, MAX_LINE_BYTES);
 
-    // We need a reference to the pyobj MAX_LINE_BYTES for _READLINE():
-    degu_MAX_LINE_BYTES = PyObject_GetAttrString(module, "MAX_LINE_BYTES");
-    if (degu_MAX_LINE_BYTES == NULL) {
-        return NULL;
-    }
-
-    // _degu.EmptyPreambleError:
-    degu_EmptyPreambleError = PyErr_NewException(
-        "_degu.EmptyPreambleError", PyExc_ConnectionError, NULL
-    );
-    if (degu_EmptyPreambleError == NULL) {
-        return NULL;
-    }
+    /* Init EmptyPreambleError exception */
+    _SET(degu_EmptyPreambleError,
+        PyErr_NewException("_degu.EmptyPreambleError", PyExc_ConnectionError, NULL)
+    )
     Py_INCREF(degu_EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
-    // Other Python `int` and `str` objects we need for performance:
-    _RESET(int_zero, PyLong_FromLong(0))
-    _RESET(int_two, PyLong_FromLong(2))
-    _RESET(name_readline, PyUnicode_InternFromString("readline"))
-    _RESET(key_content_length, PyUnicode_InternFromString("content-length"))
-    _RESET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _RESET(str_chunked, PyUnicode_InternFromString("chunked"))
+    /* Init global Python `int` and `str` objects we need for performance */
+    _SET(int_zero, PyLong_FromLong(0))
+    _SET(str_readline, PyUnicode_InternFromString("readline"))
+    _SET(str_content_length, PyUnicode_InternFromString("content-length"))
+    _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
+    _SET(str_chunked, PyUnicode_InternFromString("chunked"))
 
-    _RESET(args_size_two, PyTuple_Pack(1, int_two))
-    _RESET(args_size_max, PyTuple_Pack(1, degu_MAX_LINE_BYTES))
+    /* Init pre-built global args tuple for rfile.readline(MAX_LINE_BYTES) */
+    _SET(int_size_max, PyObject_GetAttrString(module, "MAX_LINE_BYTES"))    
+    _SET(args_size_max, PyTuple_Pack(1, int_size_max))
+    Py_CLEAR(int_size_max);
+
+    /* Init pre-built global args tuple for rfile.readline(2) */
+    _SET(int_size_two, PyLong_FromLong(2))
+    _SET(args_size_two, PyTuple_Pack(1, int_size_two))
+    Py_CLEAR(int_size_two);
 
     return module;
 
