@@ -1387,7 +1387,7 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(standard_harness_app)
         uri = '/status/404/Nope'
         conn = client.connect()
-        for i in range(2500):
+        for i in range(5000):
             response = conn.request('GET', uri)
             self.assertEqual(response.status, 404)
             self.assertEqual(response.reason, 'Nope')

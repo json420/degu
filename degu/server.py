@@ -36,7 +36,6 @@ from .base import (
     ChunkedBodyIter,
     makefiles,
     read_preamble,
-    write_body,
 )
 
 
@@ -283,16 +282,44 @@ def read_request(rfile):
 
 
 def write_response(wfile, status, reason, headers, body):
-    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
-    lines.extend(
-        sorted('{}: {}\r\n'.format(*kv) for kv in headers.items())
-    )
-    lines.append('\r\n')
-    total = wfile.write(''.join(lines).encode('latin_1'))
-    if body is None:
-        wfile.flush()
-        return total
-    return total + write_body(wfile, body)
+    # For performance, store these attributes in local variables:
+    write = wfile.write
+    flush = wfile.flush
+
+    # Write the first line:
+    total = write('HTTP/1.1 {} {}\r\n'.format(status, reason).encode())
+
+    # Write the header lines:
+    header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
+    header_lines.sort()
+    total += write(''.join(header_lines).encode())
+
+    # Write the final preamble CRLF terminator:
+    total += write(b'\r\n')
+
+    # Write the body:
+    if isinstance(body, (bytes, bytearray)):
+        total += write(body)
+    elif isinstance(body, (Body, BodyIter)):
+        for data in body:
+            total += write(data)
+    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
+        for (data, extension) in body:
+            if extension:
+                (key, value) = extension
+                size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
+            else:
+                size_line = '{:x}\r\n'.format(len(data))
+            total += write(size_line.encode())
+            total += write(data)
+            total += write(b'\r\n')
+            flush()            
+    elif body is not None:
+        raise TypeError(
+            'invalid body type: {!r}: {!r}'.format(type(body), body)
+        )
+    flush()
+    return total
 
 
 def handle_requests(app, sock, session):
@@ -302,7 +329,7 @@ def handle_requests(app, sock, session):
     while handle_one(app, rfile, wfile, session) is True:
         requests += 1
         session['requests'] = requests
-        if requests >= 2500:
+        if requests >= 5000:
             log.info("%r requests from %r, closing", requests, session['client'])
             break
     wfile.close()  # Will block till write buffer is flushed

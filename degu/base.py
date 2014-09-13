@@ -24,14 +24,17 @@ Common HTTP parser and IO abstractions used by server and client.
 """
 
 try:
-    from _degu import (
+    from ._base import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 except ImportError:
-    from .fallback import (
+    import logging
+    log = logging.getLogger(__name__)
+    log.warning('Using `degu._basepy` instead of `degu._base` C extension')
+    from ._basepy import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
