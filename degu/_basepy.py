@@ -20,7 +20,47 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Pure-python fall back implementations for what is in _degu.c.
+Pure-Python equivalent of the `degu._base` C extension.
+
+Although `degu._basepy` is automatically imported as a fall-back when the
+`degu._base` C extension isn't available, this Python implementation really
+isn't meant for production use (mainly because it's much, much slower).
+
+This is a reference implementation whose purpose is only to help enforce the
+correctness of the C implementation.
+
+Note that the Python implementation is quite different in how it decodes and
+validates the HTTP preamble.  Using a lookup table is very fast in C, but is
+quite slow in Python.
+
+For *VALUES*, the Python implementation:
+
+    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
+
+    2. Uses ``str.isprintable()`` to further restrict down to the same 95 byte
+       values allowed by the C ``_VALUES`` table
+
+For *KEYS*, the Python implementation:
+
+    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
+
+    2. Uses ``str.lower()`` to case-fold the header key
+
+    3. Uses ``re.match()`` to further restrict down to the same 63 byte values
+       allowed by the C ``_KEYS`` table
+
+Although it might seem a bit hodge-podge, this approach is much faster than
+doing lookup tables in pure-Python.
+
+However, aside from the glaring performance difference, the Python and C
+implementations should always behave *exactly* the same, and we have oodles of
+unit tests to back this up.
+
+By not using lookup tables in the Python implementation, we can better verify
+the correctness of the C lookup tables.  Otherwise we could have two
+implementations correctly using the same incorrect tables.
+
+``str.isprintable()`` is an especially handy gem in this respect.
 """
 
 import re
@@ -35,10 +75,13 @@ __all__ = (
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 
-_RE_KEYS = re.compile('^[-1-9A-Za-z]+$')
+_RE_KEYS = re.compile('^[-1-9a-z]+$')
 
 
 def _decode_value(src, message):
+    """
+    Used to decode and validate header values, plus the preamble first line.
+    """
     text = None
     try:
         text = src.decode('ascii')
@@ -50,6 +93,9 @@ def _decode_value(src, message):
 
 
 def _decode_key(src, message):
+    """
+    Used to decode, validate, and case-fold header keys.
+    """
     text = None
     try:
         text = src.decode('ascii').lower()
@@ -64,38 +110,21 @@ class EmptyPreambleError(ConnectionError):
     pass
 
 
-def _readline(rfile_readline, maxsize):
+def _READLINE(readline, maxsize):
     """
-    Matches error checking semantics of READ_LINE() macro in _degu.c.
+    Matches error checking semantics of the _READLINE() macro in degu/_base.c.
 
-    As the C implementation of read_preamble() is already over 4x as fast as the
-    best optimized pure-Python implementation thus far concocted, it makes sense
-    to focus on making the pure-Python implementation a very correct and easy to
-    understand reference implementation, even when at the expense of
-    performance.
+    It makes sense to focus on making the pure-Python implementation a very
+    correct and easy to understand reference implementation, even when at the
+    expense of performance.
 
-    So although using this _readline() function means a rather hefty performance
+    So although using this _READLINE() function means a rather hefty performance
     hit for the pure-Python implementation, it helps define the correct behavior
     of the dramatically higher-performance C implementation (aka, the
     implementation you actually want to use).
-
-    But to document the performance impact, when the pure-Python
-    implementation of read_preamble() directly calls rfile.readline() with no
-    extra error checking::
-
-        131,636: fallback.read_preamble(BytesIO(request_preamble))
-
-    Compared to when the pure-Python implementation of read_preamble() uses this
-    _readline() helper function::
-
-         78,342: fallback.read_preamble(BytesIO(request_preamble))
-
-    Compared to the C implementation of read_preamble()::
-
-        536,342: _degu.read_preamble(BytesIO(request_preamble))
     """
     assert isinstance(maxsize, int) and maxsize in (MAX_LINE_BYTES, 2)
-    line = rfile_readline(maxsize)
+    line = readline(maxsize)
     if type(line) is not bytes:
         raise TypeError(
             'rfile.readline() returned {!r}, should return {!r}'.format(
@@ -112,10 +141,10 @@ def _readline(rfile_readline, maxsize):
 
 
 def _read_preamble(rfile):
-    rfile_readline = rfile.readline
-    if not callable(rfile_readline):
+    readline = rfile.readline
+    if not callable(readline):
         raise TypeError('rfile.readline is not callable')
-    line = _readline(rfile_readline, MAX_LINE_BYTES)
+    line = _READLINE(readline, MAX_LINE_BYTES)
     if not line:
         raise EmptyPreambleError('HTTP preamble is empty')
     if line[-2:] != b'\r\n':
@@ -125,7 +154,7 @@ def _read_preamble(rfile):
     first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
     headers = {}
     for i in range(MAX_HEADER_COUNT):
-        line = _readline(rfile_readline, MAX_LINE_BYTES)
+        line = _READLINE(readline, MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
             raise ValueError(
                 'bad header line termination: {!r}'.format(line[-2:])
@@ -147,7 +176,7 @@ def _read_preamble(rfile):
             raise ValueError(
                 'duplicate header: {!r}'.format(line)
             )
-    if _readline(rfile_readline, 2) != b'\r\n':
+    if _READLINE(readline, 2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
     return (first_line, headers)
 
