@@ -150,7 +150,7 @@ static const uint8_t _KEYS[256] = {
 };
 
 
-/* 
+/*
  * _decode(): validate against *table*, possibly case-fold.
  *
  * The *table* determines what bytes are allowed, and whether to case-fold.
@@ -160,8 +160,8 @@ static const uint8_t _KEYS[256] = {
 static PyObject *
 _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *format)
 {
-    PyObject *dst;
-    uint8_t *dst_buf;
+    PyObject *dst = NULL;
+    uint8_t *dst_buf = NULL;
     uint8_t r;
     size_t i;
 
@@ -339,18 +339,28 @@ degu_read_preamble(PyObject *self, PyObject *args)
             goto done;
         }
 
-        /* Below we don't care about the final two bytes (the CRLF) */
-        line_len -= 2;
-
-        /* Find the ``b': '`` separator so we can split line into key and value.
+        /* We require both the header key and header value to each be at least
+         * one byte in length.  This means that the shortest valid header line
+         * (including the CRLF) is six bytes in length:
          *
-         * Be careful with the maths here!  We require both the header key and
-         * header value to be at least one byte in length:
+         *      line| k: vRN  <-- "RN" means "\r\n", the CRLF terminator
+         *    offset| 012345
+         *      size| 123456
          *
-         *      char| K: V
-         *    offset| 0123
-         *      size| 1234
+         * So when (line_len < 6), there's no reason to proceed.  This
+         * short-circuiting is also a bit safer just in case a given `memmem()`
+         * implementation isn't well behaved when (haystacklen < needlelen).
          */
+        if (line_len < 6) {
+            PyErr_Format(PyExc_ValueError, "header line too short: %R", line);
+            goto error;
+        }
+
+        /* Find the ": " so we can split the line into a header key and value.
+         *
+         * Security note: we must be very careful with the pointer maths here!
+         */
+        line_len -= 2;  // Now we want the line length minus the CRLF
         buf = memmem(line_buf, line_len, ": ", 2);
         if (buf == NULL || buf < line_buf + 1 || buf > line_buf + line_len - 3) {
             PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
@@ -378,7 +388,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     /* If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
-     * we just need to check for the final CRLF preamble termination:
+     * we just need to check for the final CRLF preamble terminator:
      */
     _READLINE(args_size_two, 2)
     if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {

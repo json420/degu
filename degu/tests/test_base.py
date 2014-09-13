@@ -28,6 +28,7 @@ import os
 import io
 import sys
 from random import SystemRandom
+import itertools
 
 from . import helpers
 from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
@@ -736,6 +737,40 @@ class TestFunctions(AlternatesTestCase):
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
+        # Header line plus CRLF is fewer than six bytes in length:
+        for size in [1, 2, 3]:
+            for p in itertools.permutations('k: v', size):
+                badline = '{}\r\n'.format(''.join(p)).encode()
+                self.assertTrue(3 <= len(badline) < 6)
+
+                # 1st header line is bad:
+                lines_1 = [random_line(), badline]
+
+                # 2nd header line is bad:
+                lines_2 = [random_line(), random_header_line(), badline]
+
+                # 3rd header line is bad:
+                lines_3 = [random_line(), random_header_line(), random_header_line(), badline]
+
+                # Test 'em all:
+                for lines in (lines_1, lines_2, lines_3):
+                    counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+                    rfile = DummyFile(lines.copy())
+                    self.assertEqual(sys.getrefcount(rfile), 2)
+                    with self.assertRaises(ValueError) as cm:
+                        backend.read_preamble(rfile)
+                    self.assertEqual(str(cm.exception),
+                        'header line too short: {!r}'.format(badline)
+                    )
+                    self.assertEqual(rfile._lines, [])
+                    self.assertEqual(rfile._calls,
+                        [backend.MAX_LINE_BYTES for i in range(len(lines))]
+                    )
+                    self.assertEqual(sys.getrefcount(rfile), 2)
+                    self.assertEqual(counts,
+                        tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
+                    )
+
         # Problems in parsing header line:
         for bad in BAD_HEADER_LINES:
             lines = [random_line(), bad]
@@ -744,9 +779,14 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(sys.getrefcount(rfile), 2)
             with self.assertRaises(ValueError) as cm:
                 backend.read_preamble(rfile)
-            self.assertEqual(str(cm.exception),
-                'bad header line: {!r}'.format(bad)
-            )
+            if len(bad) < 6:
+                self.assertEqual(str(cm.exception),
+                    'header line too short: {!r}'.format(bad)
+                )
+            else:
+                self.assertEqual(str(cm.exception),
+                    'bad header line: {!r}'.format(bad)
+                )
             self.assertEqual(rfile._lines, [])
             self.assertEqual(rfile._calls,
                 [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]

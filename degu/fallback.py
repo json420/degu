@@ -132,6 +132,8 @@ def _read_preamble(rfile):
             )
         if len(line) == 2:  # Stop on the first empty CRLF terminated line
             return (first_line, headers)
+        if len(line) < 6:
+            raise ValueError('header line too short: {!r}'.format(line))
         try:
             (key, value) = line[:-2].split(b': ', 1)
         except ValueError:
