@@ -20,18 +20,14 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Pure Python equivalent of the `degu._base` C extension.
+Pure-Python equivalent of the `degu._base` C extension.
 
-Although technically you can use `degu._basepy` as a fallback when the C
-extension isn't available, these days the Python implementation is not really
-meant for production use.
+Although `degu._basepy` is automatically imported as a fall-back when the
+`degu._base` C extension isn't available, this Python implementation really
+isn't meant for production use (mainly because it's much, much slower).
 
-As the C implementation of `degu.base.read_preamble()` has become the focus, the
-Python implementation of the same has gotten slower, as now it must mirror a
-design that is fast and maintainable in C (which is sometimes at odds with a
-design that is fast and maintainable in pure Python).
-
-In summary: don't use the Python fallback in production, it's too slow!
+This is a reference implementation whose purpose is only to help enforce the
+correctness of the C implementation.
 
 Note that the Python implementation is quite different in how it decodes and
 validates the HTTP preamble.  Using a lookup table is very fast in C, but is
