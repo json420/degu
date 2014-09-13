@@ -472,7 +472,7 @@ PyInit__base(void)
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
-        PyErr_NewException("degu.base.EmptyPreambleError", PyExc_ConnectionError, NULL)
+        PyErr_NewException("degu._base.EmptyPreambleError", PyExc_ConnectionError, NULL)
     )
     Py_INCREF(degu_EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
