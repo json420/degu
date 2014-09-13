@@ -24,7 +24,7 @@ Common HTTP parser and IO abstractions used by server and client.
 """
 
 try:
-    from _degu import (
+    from ._base import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,

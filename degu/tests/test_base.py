@@ -40,10 +40,10 @@ from degu import base
 
 # True if the C extension is available
 try:
-    import _degu
+    from degu import _base
     C_EXT_AVAIL = True
 except ImportError:
-    _degu = None
+    _base = None
     C_EXT_AVAIL = False
 
 
@@ -132,7 +132,7 @@ def random_body():
 class AlternatesTestCase(FuzzTestCase):
     def skip_if_no_c_ext(self):
         if not C_EXT_AVAIL:
-            self.skipTest('cannot import `_degu` C extension')
+            self.skipTest('cannot import `degu._base` C extension')
 
 
 class TestConstants(TestCase):
@@ -210,7 +210,7 @@ class FuzzTestFunctions(AlternatesTestCase):
 
     def test_read_preamble_c(self):
         self.skip_if_no_c_ext()
-        self.fuzz(_degu.read_preamble)
+        self.fuzz(_base.read_preamble)
 
     def test_read_chunk(self):
         self.fuzz(base.read_chunk)
@@ -240,7 +240,7 @@ class TestFunctions(AlternatesTestCase):
         ])
 
     def check_read_preamble(self, backend):
-        self.assertIn(backend, (fallback, _degu))
+        self.assertIn(backend, (fallback, _base))
 
         # Bad bytes in preamble first line:
         for size in range(1, 8):
@@ -1066,7 +1066,7 @@ class TestFunctions(AlternatesTestCase):
 
     def test_read_preamble_c(self):
         self.skip_if_no_c_ext()
-        self.check_read_preamble(_degu)
+        self.check_read_preamble(_base)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than MAX_LINE_BYTES
