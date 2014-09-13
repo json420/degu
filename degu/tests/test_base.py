@@ -34,8 +34,7 @@ from . import helpers
 from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
-from degu import fallback
-from degu import base
+from degu import base, _basepy
 
 
 # True if the C extension is available
@@ -206,7 +205,7 @@ class TestBodyClosedError(TestCase):
 
 class FuzzTestFunctions(AlternatesTestCase):
     def test_read_preamble_p(self):
-        self.fuzz(fallback.read_preamble)
+        self.fuzz(_basepy.read_preamble)
 
     def test_read_preamble_c(self):
         self.skip_if_no_c_ext()
@@ -240,7 +239,7 @@ class TestFunctions(AlternatesTestCase):
         ])
 
     def check_read_preamble(self, backend):
-        self.assertIn(backend, (fallback, _base))
+        self.assertIn(backend, (_basepy, _base))
 
         # Bad bytes in preamble first line:
         for size in range(1, 8):
@@ -1062,7 +1061,7 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(value, line[:-2].split(b': ')[1].decode('latin_1'))
 
     def test_read_preamble_p(self):
-        self.check_read_preamble(fallback)
+        self.check_read_preamble(_basepy)
 
     def test_read_preamble_c(self):
         self.skip_if_no_c_ext()

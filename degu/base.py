@@ -31,7 +31,7 @@ try:
         read_preamble,
     )
 except ImportError:
-    from .fallback import (
+    from ._basepy import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
         EmptyPreambleError,
