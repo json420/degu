@@ -448,14 +448,14 @@ static struct PyMethodDef degu_functions[] = {
 
 static struct PyModuleDef degu = {
     PyModuleDef_HEAD_INIT,
-    "_degu",
+    "degu._base",
     NULL,
     -1,
     degu_functions
 };
 
 PyMODINIT_FUNC
-PyInit__degu(void)
+PyInit__base(void)
 {
     PyObject *module = NULL;
     PyObject *int_size_max = NULL;
@@ -472,7 +472,7 @@ PyInit__degu(void)
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
-        PyErr_NewException("_degu.EmptyPreambleError", PyExc_ConnectionError, NULL)
+        PyErr_NewException("degu.base.EmptyPreambleError", PyExc_ConnectionError, NULL)
     )
     Py_INCREF(degu_EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
