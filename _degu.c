@@ -335,8 +335,8 @@ degu_read_preamble(PyObject *self, PyObject *args)
     for (i=0; i<MAX_HEADER_COUNT; i++) {
         _READLINE(args_size_max, MAX_LINE_BYTES)
         _CHECK_LINE_TERMINATION("bad header line termination: %R")
-        if (line_len == 2) {  // Stop on the first empty CRLF terminated line
-            goto done;
+        if (line_len == 2) {
+            goto done;  // Stop on the first empty CRLF terminated line
         }
 
         /* We require both the header key and header value to each be at least
