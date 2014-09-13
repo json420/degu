@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Python reference implementation equivalent to the `degu._base` C extension.
+Pure Python equivalent of the `degu._base` C extension.
 
 Although technically you can use `degu._basepy` as a fallback when the C
 extension isn't available, these days the Python implementation is not really
@@ -118,11 +118,9 @@ def _READLINE(readline, maxsize):
     """
     Matches error checking semantics of the _READLINE() macro in degu/_base.c.
 
-    As the C implementation of read_preamble() is already around 5x as fast as
-    the best optimized pure-Python implementation thus far concocted, it makes
-    sense to focus on making the pure-Python implementation a very correct and
-    easy to understand reference implementation, even when at the expense of
-    performance.
+    It makes sense to focus on making the pure-Python implementation a very
+    correct and easy to understand reference implementation, even when at the
+    expense of performance.
 
     So although using this _READLINE() function means a rather hefty performance
     hit for the pure-Python implementation, it helps define the correct behavior
