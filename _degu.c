@@ -175,6 +175,9 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
     }
     if (r & 128) {
         Py_CLEAR(dst);
+        if (r != 255) {
+            Py_FatalError("internal error in `_decode()`");
+        }
         PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
         if (tmp != NULL) {
             PyErr_Format(PyExc_ValueError, format, tmp);
