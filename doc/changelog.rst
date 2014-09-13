@@ -40,8 +40,8 @@ Performance improvements:
 .. note::
 
     These benchmarks were done on an Intel® Core™ i5-4200M (2.5 GHz, dual-core,
-    hyper-threaded) CPU running 64-bit Ubuntu 14.04.1, on battery power using
-    the "performance" govenor.
+    hyper-threaded) CPU running 64-bit Ubuntu 14.04.1, on AC power using the
+    "performance" governor.
 
     To reproduce these results, you'll need to copy the ``benchmark.py`` and
     ``benchmark-parsing.py`` scripts from the Degu 0.9 source tree to the Degu
@@ -49,6 +49,11 @@ Performance improvements:
 
 
 Other changes:
+
+    * Move ``_degu`` module to ``degu._base`` (the C extension)
+
+    * Rename ``degu.fallback`` module to ``degu._basepy`` (the pure-Python
+      reference implementation)
 
     * To keep memory usage flatter over time, :class:`degu.server.Server()` now
       unconditionally closes a connection after 5,000 requests have been
