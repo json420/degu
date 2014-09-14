@@ -301,19 +301,9 @@ def write_response(wfile, status, reason, headers, body):
     if isinstance(body, (bytes, bytearray)):
         total += write(body)
     elif isinstance(body, (Body, BodyIter)):
-        for data in body:
-            total += write(data)
+        total += body.write_to(write, flush)
     elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        for (data, extension) in body:
-            if extension:
-                (key, value) = extension
-                size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-            else:
-                size_line = '{:x}\r\n'.format(len(data))
-            total += write(size_line.encode())
-            total += write(data)
-            total += write(b'\r\n')
-            flush()            
+        total += body.write_to(write, flush)           
     elif body is not None:
         raise TypeError(
             'invalid body type: {!r}: {!r}'.format(type(body), body)
