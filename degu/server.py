@@ -298,16 +298,12 @@ def write_response(wfile, status, reason, headers, body):
     total += write(b'\r\n')
 
     # Write the body:
-    if isinstance(body, (bytes, bytearray)):
+    if body is None:
+        pass
+    elif isinstance(body, (bytes, bytearray)):
         total += write(body)
-    elif isinstance(body, (Body, BodyIter)):
-        total += body.write_to(write, flush)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
+    else:
         total += body.write_to(write, flush)           
-    elif body is not None:
-        raise TypeError(
-            'invalid body type: {!r}: {!r}'.format(type(body), body)
-        )
     flush()
     return total
 

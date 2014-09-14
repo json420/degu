@@ -177,9 +177,7 @@ def write_body(wfile, body):
 
 class _Body:
     def write_to(self, write, flush):
-        total = sum(write(data) for data in self)
-        flush()
-        return total
+        return sum(write(data) for data in self)
 
 
 class Body(_Body):
