@@ -173,29 +173,24 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.RGI_VERSION[1], 0)
         self.assertGreater(base.RGI_VERSION, (0, 0))
 
-    def test_RGI(self):
-        self.assertIsInstance(base.RGI, tuple)
-        self.assertIsInstance(base.RGI, base._RGI)
+    def test_iowrappers(self):
+        self.assertTrue(issubclass(base.IOWrappers, tuple))
+        self.assertIsInstance(base.iowrappers, tuple)
+        self.assertIsInstance(base.iowrappers, base.IOWrappers)
 
-        self.assertIs(base.RGI.version, base.RGI_VERSION)
-        self.assertIs(base.RGI.Body, base.Body)
-        self.assertIs(base.RGI.BodyIter, base.BodyIter)
-        self.assertIs(base.RGI.ChunkedBody, base.ChunkedBody)
-        self.assertIs(base.RGI.ChunkedBodyIter, base.ChunkedBodyIter)
+        self.assertIs(base.iowrappers.Body, base.Body)
+        self.assertIs(base.iowrappers.BodyIter, base.BodyIter)
+        self.assertIs(base.iowrappers.ChunkedBody, base.ChunkedBody)
+        self.assertIs(base.iowrappers.ChunkedBodyIter, base.ChunkedBodyIter)
 
-        self.assertIs(base.RGI[0], base.RGI_VERSION)
-        self.assertIs(base.RGI[1], base.Body)
-        self.assertIs(base.RGI[2], base.BodyIter)
-        self.assertIs(base.RGI[3], base.ChunkedBody)
-        self.assertIs(base.RGI[4], base.ChunkedBodyIter)
+        self.assertIs(base.iowrappers[0], base.Body)
+        self.assertIs(base.iowrappers[1], base.BodyIter)
+        self.assertIs(base.iowrappers[2], base.ChunkedBody)
+        self.assertIs(base.iowrappers[3], base.ChunkedBodyIter)
 
-        self.assertEqual(base.RGI, (
-            base.RGI_VERSION,
-            base.Body,
-            base.BodyIter,
-            base.ChunkedBody,
-            base.ChunkedBodyIter,
-        ))
+        self.assertEqual(base.iowrappers,
+            (base.Body, base.BodyIter, base.ChunkedBody, base.ChunkedBodyIter)
+        )
 
 
 class TestEmptyPreambleError(TestCase):

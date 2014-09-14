@@ -353,6 +353,6 @@ class ChunkedBodyIter(_ChunkedBody):
             raise ChunkError('final chunk data was not empty')
 
 
-# Used to expose the RGI IO abstractions:
-_RGI = namedtuple('RGI', 'version Body BodyIter ChunkedBody ChunkedBodyIter')
-RGI = _RGI(RGI_VERSION, Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+# Used to expose the RGI IO wrappers:
+IOWrappers = namedtuple('IOWrappers', 'Body BodyIter ChunkedBody ChunkedBodyIter')
+iowrappers = IOWrappers(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

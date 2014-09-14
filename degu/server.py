@@ -29,12 +29,12 @@ import threading
 from os import path
 
 from .base import (
-    RGI,
     TYPE_ERROR,
     Body,
     BodyIter,
     ChunkedBody,
     ChunkedBodyIter,
+    iowrappers,
     makefiles,
     read_preamble,
 )
@@ -480,7 +480,7 @@ class Server:
 
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
-            handle_requests(self.app, sock, RGI, session)
+            handle_requests(self.app, sock, iowrappers, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
