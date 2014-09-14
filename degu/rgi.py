@@ -560,7 +560,7 @@ class Validator:
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.app)
 
-    def __call__(self, session, request):
+    def __call__(self, rgi, session, request):
         orig_session = session.copy()
         orig_request = request.copy()
         for key in ('script', 'path', 'headers'):
@@ -570,7 +570,7 @@ class Validator:
         assert session == orig_session
         assert request == orig_request
         request_body = orig_request['body']
-        response = self.app(session, request)
+        response = self.app(rgi, session, request)
         if request_body is not None and request_body.closed is not True:
             # request body was not fully consumed:
             raise ValueError(
