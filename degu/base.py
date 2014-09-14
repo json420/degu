@@ -176,7 +176,8 @@ def write_body(wfile, body):
 
 
 class _Body:
-    def write_to(self, write, flush):
+    def write_to(self, wfile):
+        write = wfile.write
         return sum(write(data) for data in self)
 
 
@@ -272,7 +273,9 @@ class BodyIter(_Body):
 
 
 class _ChunkedBody:
-    def write_to(self, write, flush):
+    def write_to(self, wfile):
+        write = wfile.write
+        flush = wfile.flush
         total = 0
         for (data, extension) in self:
             if extension:

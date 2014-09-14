@@ -303,7 +303,7 @@ def write_response(wfile, status, reason, headers, body):
     elif isinstance(body, (bytes, bytearray)):
         total += write(body)
     else:
-        total += body.write_to(write, flush)           
+        total += body.write_to(wfile)          
     flush()
     return total
 
