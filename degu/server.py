@@ -309,11 +309,11 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, rgi, session):
+def handle_requests(app, sock, iowrap, session):
     (rfile, wfile) = makefiles(sock)
     requests = session['requests']
     assert requests == 0
-    while handle_one(app, rfile, wfile, rgi, session) is True:
+    while handle_one(app, rfile, wfile, iowrap, session) is True:
         requests += 1
         session['requests'] = requests
         if requests >= 5000:
@@ -322,14 +322,14 @@ def handle_requests(app, sock, rgi, session):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, rgi, session):
+def handle_one(app, rfile, wfile, iowrap, session):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
     request_body = request['body']
 
     # Call the application:
-    (status, reason, headers, body) = app(rgi, session, request)
+    (status, reason, headers, body) = app(iowrap, session, request)
 
     # Make sure application fully consumed request body:
     if request_body and not request_body.closed:
