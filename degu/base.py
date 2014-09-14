@@ -23,6 +23,7 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
+from collections import namedtuple
 try:
     from ._base import (
         MAX_LINE_BYTES,
@@ -50,6 +51,7 @@ __all__ = (
 )
 
 
+RGI_VERSION = (0, 1)
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
 FILE_BUFFER_BYTES = 1048576  # 1 MiB
@@ -350,3 +352,7 @@ class ChunkedBodyIter(_ChunkedBody):
         if not empty:
             raise ChunkError('final chunk data was not empty')
 
+
+# Used to expose the RGI IO abstractions:
+_RGI = namedtuple('RGI', 'version Body BodyIter ChunkedBody ChunkedBodyIter')
+RGI = _RGI(RGI_VERSION, Body, BodyIter, ChunkedBody, ChunkedBodyIter)

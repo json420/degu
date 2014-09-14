@@ -164,6 +164,39 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
+    def test_RGI_VERSION(self):
+        self.assertIsInstance(base.RGI_VERSION, tuple)
+        self.assertEqual(len(base.RGI_VERSION), 2)
+        self.assertIsInstance(base.RGI_VERSION[0], int)
+        self.assertGreaterEqual(base.RGI_VERSION[0], 0)
+        self.assertIsInstance(base.RGI_VERSION[1], int)
+        self.assertGreaterEqual(base.RGI_VERSION[1], 0)
+        self.assertGreater(base.RGI_VERSION, (0, 0))
+
+    def test_RGI(self):
+        self.assertIsInstance(base.RGI, tuple)
+        self.assertIsInstance(base.RGI, base._RGI)
+
+        self.assertIs(base.RGI.version, base.RGI_VERSION)
+        self.assertIs(base.RGI.Body, base.Body)
+        self.assertIs(base.RGI.BodyIter, base.BodyIter)
+        self.assertIs(base.RGI.ChunkedBody, base.ChunkedBody)
+        self.assertIs(base.RGI.ChunkedBodyIter, base.ChunkedBodyIter)
+
+        self.assertIs(base.RGI[0], base.RGI_VERSION)
+        self.assertIs(base.RGI[1], base.Body)
+        self.assertIs(base.RGI[2], base.BodyIter)
+        self.assertIs(base.RGI[3], base.ChunkedBody)
+        self.assertIs(base.RGI[4], base.ChunkedBodyIter)
+
+        self.assertEqual(base.RGI, (
+            base.RGI_VERSION,
+            base.Body,
+            base.BodyIter,
+            base.ChunkedBody,
+            base.ChunkedBodyIter,
+        ))
+
 
 class TestEmptyPreambleError(TestCase):
     def test_init(self):
