@@ -29,6 +29,7 @@ import threading
 from os import path
 
 from .base import (
+    RGI,
     TYPE_ERROR,
     Body,
     BodyIter,
@@ -308,11 +309,11 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, session):
+def handle_requests(app, sock, rgi, session):
     (rfile, wfile) = makefiles(sock)
     requests = session['requests']
     assert requests == 0
-    while handle_one(app, rfile, wfile, session) is True:
+    while handle_one(app, rfile, wfile, rgi, session) is True:
         requests += 1
         session['requests'] = requests
         if requests >= 5000:
@@ -321,7 +322,7 @@ def handle_requests(app, sock, session):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, session):
+def handle_one(app, rfile, wfile, rgi, session):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
@@ -479,7 +480,7 @@ class Server:
 
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
-            handle_requests(self.app, sock, session)
+            handle_requests(self.app, sock, RGI, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
