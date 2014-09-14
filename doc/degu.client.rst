@@ -14,7 +14,7 @@ differences).
 For example, say we define a simple RGI application and create a
 :class:`degu.misc.TempServer` instance:
 
->>> def example_app(iowrap, session, request):
+>>> def example_app(bodies, session, request):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 >>> from degu.misc import TempServer

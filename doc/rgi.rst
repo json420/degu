@@ -82,20 +82,20 @@ value::
 
 RGI applications are called with three arguments when handling a request:
 
->>> def tiny_rgi_app(iowrap, session, request):
+>>> def tiny_rgi_app(bodies, session, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-The *iowrap* argument is a ``namedtuple`` exposing four wrapper classes that RGI
+The *bodies* argument is a ``namedtuple`` exposing four wrapper classes that RGI
 applications can use when building their HTTP response body:
 
     ==========================  ==================================
     Exposed via                 Degu reference implementation
     ==========================  ==================================
-    ``iowrap.Body``             :class:`degu.base.Body`
-    ``iowrap.BodyIter``         :class:`degu.base.BodyIter`
-    ``iowrap.ChunkedBody``      :class:`degu.base.ChunkedBody`
-    ``iowrap.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+    ``bodies.Body``             :class:`degu.base.Body`
+    ``bodies.BodyIter``         :class:`degu.base.BodyIter`
+    ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+    ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
     ==========================  ==================================
 
 We'll cover these wrappers in detail below, but in a nutshell, they are the RGI
@@ -105,7 +105,7 @@ The *session* argument is a ``dict`` containing the server-wide and
 per-connection information, whereas the *request* argument is a ``dict``
 containing only the per-request information.
 
-Together, the *iowrap*, *session*, and *request* arguments provide the same
+Together, the *bodies*, *session*, and *request* arguments provide the same
 information as the WSGI *environ*.
 
 Importantly, a *session* instance is created for each new connection, and then

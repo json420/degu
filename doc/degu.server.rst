@@ -7,7 +7,7 @@
 
 As a quick example, say you have this simple RGI application:
 
->>> def hello_world_app(iowrap, session, request):
+>>> def hello_world_app(bodies, session, request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'Hello, world!'

@@ -40,7 +40,7 @@ Example: SSL reverse-proxy
 
 Here's a minimal :doc:`rgi` application:
 
->>> def example_app(iowrap, session, request):
+>>> def example_app(bodies, session, request):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
@@ -103,7 +103,7 @@ will use the :func:`degu.util.relative_uri()` helper function:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
 ... 
-...     def __call__(self, iowrap, session, request):
+...     def __call__(self, bodies, session, request):
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
@@ -259,7 +259,7 @@ However, for your essential survival guide, you only need to know three things:
 
 Before we dive into the details, here's a quick example:
 
->>> def hello_response_body(iowrap, session, request):
+>>> def hello_response_body(bodies, session, request):
 ...     return (200, 'OK', {}, b'hello, world')
 ...
 >>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
@@ -354,18 +354,18 @@ internally handles the writing.
 
 **Server agnostic RGI applications** are generally possible.
 
-These four IO wrapper classes are exposed in the RGI *iowrap* argument:
+These four IO wrapper classes are exposed in the RGI *bodies* argument:
 
     ==========================  ==================================
     Exposed via                 Degu implementation
     ==========================  ==================================
-    ``iowrap.Body``             :class:`degu.base.Body`
-    ``iowrap.BodyIter``         :class:`degu.base.BodyIter`
-    ``iowrap.ChunkedBody``      :class:`degu.base.ChunkedBody`
-    ``iowrap.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+    ``bodies.Body``             :class:`degu.base.Body`
+    ``bodies.BodyIter``         :class:`degu.base.BodyIter`
+    ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+    ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
     ==========================  ==================================
 
-If server applications only use these wrapper classes via the *iowrap* argument
+If server applications only use these wrapper classes via the *bodies* argument
 (rather than directly importing them from :mod:`degu.base`), they are kept
 abstracted from Degu as an implementation, and could potentially run on other
 HTTP servers that implement the :doc:`rgi`.
@@ -377,7 +377,7 @@ forwarded client request.  Likewise, you couldn't *directly* use the response
 body from the upstream HTTP server in your application response.
 
 In both directions, these HTTP input bodies would need to be wrapped in a
-``iowrap.Body`` or ``iowrap.ChunkedBody`` instance as appropriate (but no
+``bodies.Body`` or ``bodies.ChunkedBody`` instance as appropriate (but no
 wrapping is needed when the HTTP body is ``None``).
 
 
@@ -430,7 +430,7 @@ Second, we'll define an RGI server application that will return a response body 
 chunked transfer encoding if we ``POST /chunked``, and that will return a body
 with a content-length if we ``POST /length``:
 
->>> def rgi_io_app(iowrap, session, request):
+>>> def rgi_io_app(bodies, session, request):
 ...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
 ...         return (404, 'Not Found', {}, None)
 ...     if request['method'] != 'POST':
@@ -439,9 +439,9 @@ with a content-length if we ``POST /length``:
 ...         return (400, 'Bad Request', {}, None)
 ...     echo = request['body'].read()  # Body/ChunkedBody agnostic
 ...     if request['path'][0] == 'chunked':
-...         body = iowrap.ChunkedBodyIter(chunked_response_body(echo))
+...         body = bodies.ChunkedBodyIter(chunked_response_body(echo))
 ...     else:
-...         body = iowrap.BodyIter(response_body(echo), len(echo) + 17)
+...         body = bodies.BodyIter(response_body(echo), len(echo) + 17)
 ...     return (200, 'OK', {}, body)
 ... 
 
