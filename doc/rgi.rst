@@ -49,8 +49,8 @@ WSGI applications are called with two arguments when handling a request:
 ...     return [b'hello, world']
 ...
 
-The WSGI *environ* is a ``dict`` containing information from three distinct
-domains:
+The WSGI *environ* argument is a ``dict`` containing information from three
+distinct domains:
 
     1. Server-wide information that will be the same throughout the server
        process lifetime (for example, the server IP and port)
@@ -76,16 +76,37 @@ requirements of WSGI, ``start_response()`` is the most problematic aspect of the
 design as it adds considerable complexity to the response flow control.
 
 In contrast, RGI applications convey their entire response via a 4-tuple return
-value.  RGI applications are called with two arguments when handling a request:
+value::
 
->>> def tiny_rgi_app(session, request):
+    (status, reason, headers, body)
+
+RGI applications are called with three arguments when handling a request:
+
+>>> def tiny_rgi_app(iowrap, session, request):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-The RGI *session* is a ``dict`` containing the server-wide and per-connection
-information, whereas the RGI *request* is a ``dict`` containing only the
-per-request information.  Together, the RGI *session* and *request* provide the
-same information as the WSGI *environ*.
+The *iowrap* argument is a ``namedtuple`` exposing four wrapper classes that RGI
+applications can use when building their HTTP response body:
+
+    ==========================  ==================================
+    Exposed via                 Degu reference implementation
+    ==========================  ==================================
+    ``iowrap.Body``             :class:`degu.base.Body`
+    ``iowrap.BodyIter``         :class:`degu.base.BodyIter`
+    ``iowrap.ChunkedBody``      :class:`degu.base.ChunkedBody`
+    ``iowrap.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+    ==========================  ==================================
+
+We'll cover these wrappers in detail below, but in a nutshell, they are the RGI
+equivalent of the WSGI ``environ['wsgi.file_wrapper']``.
+
+The *session* argument is a ``dict`` containing the server-wide and
+per-connection information, whereas the *request* argument is a ``dict``
+containing only the per-request information.
+
+Together, the *iowrap*, *session*, and *request* arguments provide the same
+information as the WSGI *environ*.
 
 Importantly, a *session* instance is created for each new connection, and then
 RGI applications are called with this exact same *session* instance for each
@@ -114,7 +135,7 @@ RGI applications specify the connection handler via a callable
 ``app.on_connect()`` attribute, for example:
 
 >>> class TinyRGIApp:
-...     def __call__(self, session, request):
+...     def __call__(self, rgi, session, request):
 ...         if '__hello' not in session:
 ...             session['__hello'] = b'hello, world'
 ...         body = session['__hello']
@@ -206,7 +227,7 @@ application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(session, request):
+>>> def rgi_app(rgi, session, request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -240,8 +261,8 @@ example middleware application:
 ...         self._on_connect = getattr(app, 'on_connect', None)
 ...         assert self._on_connect is None or callable(self._on_connect)
 ... 
-...     def __call__(self, session, request):
-...         return self.app(session, request)
+...     def __call__(self, rgi, session, request):
+...         return self.app(rgi, session, request)
 ... 
 ...     def on_connect(self, sock, session):
 ...         if self._on_connect is None:
