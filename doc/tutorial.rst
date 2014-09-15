@@ -40,7 +40,7 @@ Example: SSL reverse-proxy
 
 Here's a minimal :doc:`rgi` application:
 
->>> def example_app(bodies, session, request):
+>>> def example_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
@@ -103,7 +103,7 @@ will use the :func:`degu.util.relative_uri()` helper function:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
 ... 
-...     def __call__(self, bodies, session, request):
+...     def __call__(self, session, request, bodies):
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
@@ -259,7 +259,7 @@ However, for your essential survival guide, you only need to know three things:
 
 Before we dive into the details, here's a quick example:
 
->>> def hello_response_body(bodies, session, request):
+>>> def hello_response_body(session, request, bodies):
 ...     return (200, 'OK', {}, b'hello, world')
 ...
 >>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
@@ -430,7 +430,7 @@ Second, we'll define an RGI server application that will return a response body 
 chunked transfer encoding if we ``POST /chunked``, and that will return a body
 with a content-length if we ``POST /length``:
 
->>> def rgi_io_app(bodies, session, request):
+>>> def rgi_io_app(session, request, bodies):
 ...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
 ...         return (404, 'Not Found', {}, None)
 ...     if request['method'] != 'POST':

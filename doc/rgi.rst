@@ -758,13 +758,13 @@ For example, consider this simple RGI application:
 
 Here's what ``demo_app()`` returns for a suitable GET request:
 
->>> demo_app(None, {}, {'method': 'GET', 'path': []})
+>>> demo_app({}, {'method': 'GET', 'path': []}, None)
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 However, note that ``demo_app()`` isn't actually HTTP/1.1 compliant as it should
 not return a response body for a HEAD request:
 
->>> demo_app(None, {}, {'method': 'HEAD', 'path': []})
+>>> demo_app({}, {'method': 'HEAD', 'path': []}, None)
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 Now consider this example middleware that checks for just such a faulty
@@ -784,12 +784,12 @@ application and overrides its response:
 ``Middleware`` will let the response to a GET request pass through unchanged: 
 
 >>> middleware = Middleware(demo_app)
->>> middleware(None, {}, {'method': 'GET', 'path': []})
+>>> middleware({}, {'method': 'GET', 'path': []}, None)
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 But ``Middleware`` will intercept the faulty response to a HEAD request:
 
->>> middleware(None, {}, {'method': 'HEAD', 'path': []})
+>>> middleware({}, {'method': 'HEAD', 'path': []}, None)
 (500, 'Internal Server Error', {}, None)
 
 
