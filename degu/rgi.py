@@ -313,7 +313,7 @@ def _validate_session(session):
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
-def _validate_request(session, request):
+def _validate_request(bodies, request):
     """
     Validate the *request* argument.
     """
@@ -381,7 +381,7 @@ def _validate_request(session, request):
 
     # request['body'] is not None:
     assert value is not None
-    if isinstance(value, session['rgi.Body']):
+    if isinstance(value, bodies.Body):
         _ensure_attr_is(label, value, 'chunked', False)
         if ENCODING in request['headers']:
             raise ValueError(
@@ -397,7 +397,7 @@ def _validate_request(session, request):
             raise ValueError(
                 '{} != {}: {!r} != {!r}'.format(l1, l2, v1, v2)
             )
-    elif isinstance(value, session['rgi.ChunkedBody']):
+    elif isinstance(value, bodies.ChunkedBody):
         _ensure_attr_is(label, value, 'chunked', True)
         if LENGTH in request['headers']:
             raise ValueError(
@@ -409,7 +409,7 @@ def _validate_request(session, request):
             )
         assert request['headers'][ENCODING] == 'chunked'
     else:
-        body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
+        body_types = (bodies.Body, bodies.ChunkedBody)
         raise TypeError(
             TYPE_ERROR.format(label, body_types, type(value), value) 
         )
@@ -566,7 +566,7 @@ class Validator:
         for key in ('script', 'path', 'headers'):
             orig_request[key] = request[key].copy()
         _validate_session(session)
-        _validate_request(session, request)
+        _validate_request(bodies, request)
         assert session == orig_session
         assert request == orig_request
         request_body = orig_request['body']
