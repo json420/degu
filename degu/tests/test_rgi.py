@@ -53,25 +53,25 @@ class MockBody:
 
 class Body(MockBody):
     """
-    Mock class used for session['rgi.Body'].
+    Mock class used for bodies.Body.
     """
 
 
 class BodyIter(MockBody):
     """
-    Mock class used for session['rgi.BodyIter'].
+    Mock class used for bodies.BodyIter.
     """
 
 
 class ChunkedBody(MockBody):
     """
-    Mock class used for session['rgi.ChunkedBody'].
+    Mock class used for bodies.ChunkedBody.
     """
 
 
 class ChunkedBodyIter(MockBody):
     """
-    Mock class used for session['rgi.ChunkedBodyIter'].
+    Mock class used for bodies.ChunkedBodyIter.
     """
 
 
@@ -82,10 +82,6 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 def build_session(**kw):
     session = {
         'rgi.version': (0, 1),
-        'rgi.Body': Body,
-        'rgi.BodyIter': BodyIter,
-        'rgi.ChunkedBody': ChunkedBody,
-        'rgi.ChunkedBodyIter': ChunkedBodyIter,
         'scheme': 'http',
         'protocol': 'HTTP/1.1',
         'server': ('127.0.0.1', 60111),
