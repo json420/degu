@@ -425,10 +425,6 @@ class Server:
         """
         return {
             'rgi.version': (0, 1),
-            'rgi.Body': Body,
-            'rgi.BodyIter': BodyIter,
-            'rgi.ChunkedBody': ChunkedBody,
-            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,

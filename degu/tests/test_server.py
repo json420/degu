@@ -854,10 +854,6 @@ class TestServer(TestCase):
         inst = ServerSubclass(address)
         self.assertEqual(inst.build_base_session(), {
             'rgi.version': (0, 1),
-            'rgi.Body': base.Body,
-            'rgi.ChunkedBody': base.ChunkedBody,
-            'rgi.BodyIter': base.BodyIter,
-            'rgi.ChunkedBodyIter': base.ChunkedBodyIter,
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -1026,10 +1022,6 @@ class TestSSLServer(TestCase):
         inst = SSLServerSubclass(address)
         self.assertEqual(inst.build_base_session(), {
             'rgi.version': (0, 1),
-            'rgi.Body': base.Body,
-            'rgi.ChunkedBody': base.ChunkedBody,
-            'rgi.BodyIter': base.BodyIter,
-            'rgi.ChunkedBodyIter': base.ChunkedBodyIter,
             'scheme': 'https',
             'protocol': 'HTTP/1.1',
             'server': address,
@@ -1075,7 +1067,7 @@ def chunked_response_app(bodies, session, request):
         rfile = io.BytesIO(b'0\r\n\r\n')
     else:
         return (404, 'Not Found', {}, None)
-    body = session['rgi.ChunkedBody'](rfile)
+    body = bodies.ChunkedBody(rfile)
     return (200, 'OK', headers, body)
 
 
@@ -1089,9 +1081,9 @@ def response_app(bodies, session, request):
     assert request['script'] == []
     assert request['body'] is None
     if request['path'] == ['foo']:
-        body = session['rgi.Body'](io.BytesIO(DATA), len(DATA))
+        body = bodies.Body(io.BytesIO(DATA), len(DATA))
     elif request['path'] == ['bar']:
-        body = session['rgi.Body'](io.BytesIO(), 0)
+        body = bodies.Body(io.BytesIO(), 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
