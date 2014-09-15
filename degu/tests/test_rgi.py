@@ -768,7 +768,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.Body' with 'transfer-encoding' header"
+            "request['body']: bodies.Body with 'transfer-encoding' header"
         )
 
         # Body.content_length attribute is missing:
@@ -786,7 +786,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.Body', but missing 'content-length' header"
+            "request['body']: bodies.Body, but missing 'content-length' header"
         )
 
         # Body.content_length != headers['content-length']:
@@ -869,7 +869,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.ChunkedBody' with 'content-length' header"
+            "request['body']: bodies.ChunkedBody with 'content-length' header"
         )
 
         # ChunkedBody without 'transfer-encoding' header:
@@ -878,7 +878,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.ChunkedBody', but missing 'transfer-encoding' header"
+            "request['body']: bodies.ChunkedBody, but missing 'transfer-encoding' header"
         )
 
         # ChunkedBody is missing 'closed' attribute:

@@ -373,12 +373,12 @@ def _validate_request(bodies, request):
         _ensure_attr_is(label, value, 'chunked', False)
         if ENCODING in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body' with {!r} header".format(label, ENCODING)
+                "{}: bodies.Body with {!r} header".format(label, ENCODING)
             )
         (l1, v1) = _getattr(label, value, 'content_length')
         if LENGTH not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body', but missing {!r} header".format(label, LENGTH)
+                "{}: bodies.Body, but missing {!r} header".format(label, LENGTH)
             )
         (l2, v2) = _get_path('request', request, 'headers', LENGTH)
         if v1 != v2:
@@ -389,11 +389,11 @@ def _validate_request(bodies, request):
         _ensure_attr_is(label, value, 'chunked', True)
         if LENGTH in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody' with {!r} header".format(label, LENGTH)
+                "{}: bodies.ChunkedBody with {!r} header".format(label, LENGTH)
             )
         if ENCODING not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody', but missing {!r} header".format(label, ENCODING)
+                "{}: bodies.ChunkedBody, but missing {!r} header".format(label, ENCODING)
             )
         assert request['headers'][ENCODING] == 'chunked'
     else:
