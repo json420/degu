@@ -37,7 +37,7 @@ pong = random_id(60)
 response_body = json.dumps({'pong': pong}).encode()
 
 
-def ping_pong_app(connection, request):
+def ping_pong_app(bodies, session, request):
     request['body'].read()
     #assert json.loads(data.decode()) == {'ping': ping}
     headers = {
