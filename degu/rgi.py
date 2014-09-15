@@ -418,7 +418,7 @@ def _validate_request(bodies, request):
     _ensure_attr_is(label, value, 'closed', False)
 
 
-def _validate_response(session, request, response):
+def _validate_response(bodies, request, response):
     """
     Validate the *response* tuple returned by the application.
     """
@@ -486,17 +486,9 @@ def _validate_response(session, request, response):
                     '{}: response body is None, but {!r} header is included'.format(label, key)
                 )
         return  # Skip remaning tests
-    bodies = (
-        bytes,
-        bytearray,
-        session['rgi.Body'],
-        session['rgi.BodyIter'],
-    )
-    chunked_bodies = (
-        session['rgi.ChunkedBody'],
-        session['rgi.ChunkedBodyIter'],
-    )
-    if isinstance(value, bodies):
+    length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
+    chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
+    if isinstance(value, length_types):
         # Cannot include a 'transfer-encoding' header with a length-encoded
         # response body:
         if ENCODING in response[2]:
@@ -519,7 +511,7 @@ def _validate_response(session, request, response):
                     label, _repr, length, LENGTH, response[2][LENGTH]
                 )
             )
-    elif isinstance(value, chunked_bodies):
+    elif isinstance(value, chunked_types):
         # Cannot include a 'content-length' header with a chunk-encoded response
         # body:
         if LENGTH in response[2]:
@@ -578,7 +570,7 @@ class Validator:
                     "request['body'].closed", request_body.closed
                 )
             )
-        _validate_response(orig_session, orig_request, response)
+        _validate_response(bodies, orig_request, response)
         return response
 
     def on_connect(self, sock, session):
