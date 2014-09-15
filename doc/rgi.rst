@@ -82,12 +82,17 @@ value::
 
 RGI applications are called with three arguments when handling a request:
 
->>> def tiny_rgi_app(bodies, session, request):
+>>> def tiny_rgi_app(session, request, bodies):
 ...     return (200, 'OK', {'content-length': 12}, b'hello, world')
 ...
 
-The *bodies* argument is a ``namedtuple`` exposing four wrapper classes that RGI
-applications can use when building their HTTP response body:
+The *session* is a ``dict`` containing server-wide(1) and per-connection(2)
+information.
+
+The *request* is a ``dict`` containing only per-request(3) information.
+
+Finally, the *bodies* argument is a ``namedtuple`` exposing four wrapper classes
+that RGI applications can use when building their HTTP response body:
 
     ==========================  ==================================
     Exposed via                 Degu implementation
@@ -98,62 +103,11 @@ applications can use when building their HTTP response body:
     ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
     ==========================  ==================================
 
-We'll cover these wrappers in detail below, but in a nutshell, they are the RGI
-equivalent of the WSGI ``environ['wsgi.file_wrapper']``.
+Combined, the RGI *session*, *request*, and *bodies* arguments contain the same
+information as the WSGI *environ* argument.
 
-The *session* argument is a ``dict`` containing the server-wide and
-per-connection information, whereas the *request* argument is a ``dict``
-containing only the per-request information.
-
-Together, the *bodies*, *session*, and *request* arguments provide the same
-information as the WSGI *environ*.
-
-Importantly, a *session* instance is created for each new connection, and then
-RGI applications are called with this exact same *session* instance for each
-request made throughout the lifetime of the connection.
-
-As such, RGI applications can use the *session* to store per-connection
-resources that will persist from one request to the next.  For example, an RGI
-reverse-proxy application could use this to lazily create its upstream HTTP
-client connection, and then reuse it on subsequent requests.
-
-However, as expected, RGI applications are called with a unique *request*
-instance for each request.
-
-In addition to the traditional request handler, RGI also allows applications to
-specify a connection handler that will be called after a new connection is
-received, but before any requests are handled.  The connection handler can store
-application-specific information in the *session*, which will then be available
-to the request handler for each request handled during the lifetime of the
-connection.
-
-In particular, the connection handler is aimed at allowing RGI applications to
-do application-specific extended per-connection authentication when using SSL
-with client certificates.
-
-RGI applications specify the connection handler via a callable
-``app.on_connect()`` attribute, for example:
-
->>> class TinyRGIApp:
-...     def __call__(self, bodies, session, request):
-...         if '__hello' not in session:
-...             session['__hello'] = b'hello, world'
-...         body = session['__hello']
-...         return (200, 'OK', {'content-length': len(body)}, body)
-...
-...     def on_connect(self, sock, session):
-...         session['_user'] = '<special per-connection authentication result>'
-...         return True
-... 
-
-(Note that storing ``b'hello, world'`` in ``session['__body']`` is just a silly
-example to illustrate the API, not something you'd want to do in real-life.) 
-
-Even though the RGI *session* and *request* arguments are quite different than
-the WSGI *environ* argument, there is a simple, one-to-one mapping between
-WSGI and RGI in this respect.
-
-For example, this WSGI *environ*::
+There is a simple one-to-one mapping from WSGI to RGI in this respect.  For
+example, this WSGI *environ*::
 
     environ = {
         'wsgi.version': (1, 0),
@@ -171,6 +125,7 @@ For example, this WSGI *environ*::
         'CONTENT_LENGTH': '1776',
         'HTTP_ACCEPT': 'application/json',
         'wsgi.input': <file-like request body>,
+        'wsgi.file_wrapper': <file-like wrapper class>,
     }
 
 Would translate into this RGI *session* and *request*::
@@ -196,16 +151,50 @@ Would translate into this RGI *session* and *request*::
         'body': <file-like request body>,
     }
 
-As RGI doesn't aim for CGI compatibility, it uses shorter, lower-case keys (for
-example, ``'method'`` instead of ``'REQUEST_METHOD'``).  Likewise, whereas
-all CGI variable values are strings in the WSGI *environ*, RGI coverts some of
-these string values to other more useful Python types when it makes sense.
+.. note::
 
-Note that the RGI ``request['headers']`` sub-dictionary contains the full
-request headers with the original (although lowercased) header names, instead of
-the mangled (and uppercased) names in the WSGI *environ*: for example,
-``'accept'`` in RGI vs. ``'HTTP_ACCEPT'`` in WSGI.
+    ``bodies.Body`` is the equivalent of ``environ['wsgi.file_wrapper']``
 
+A *session* instance is created for each new connection, and then RGI
+applications are called with this exact same *session* instance for each request
+made throughout the lifetime of the connection.
+
+As such, RGI applications can use the *session* to store per-connection
+resources that will persist from one request to the next.  For example, an RGI
+reverse-proxy application could use this to lazily create its upstream HTTP
+client connection, and then reuse it on subsequent requests.
+
+However, as expected, RGI applications are called with a unique *request*
+instance for each request.
+
+In addition to the traditional request handler, RGI also allows applications to
+specify a connection handler that will be called after a new connection is
+received, but before any requests are handled.  The connection handler can store
+application-specific information in the *session*, which will then be available
+to the request handler for each request handled during the lifetime of the
+connection.
+
+In particular, the connection handler is aimed at allowing RGI applications to
+do application-specific extended per-connection authentication when using SSL
+with client certificates.
+
+RGI applications specify the connection handler via a callable
+``app.on_connect()`` attribute, for example:
+
+>>> class TinyRGIApp:
+...     def __call__(self, session, request, bodies):
+...         if '__hello' not in session:
+...             session['__hello'] = b'hello, world'
+...         body = session['__hello']
+...         return (200, 'OK', {'content-length': len(body)}, body)
+...
+...     def on_connect(self, sock, session):
+...         session['_user'] = '<special per-connection authentication result>'
+...         return True
+... 
+
+(Note that storing ``b'hello, world'`` in ``session['__body']`` is just a silly
+example to illustrate the API, not something you'd want to do in real-life.) 
 
 To further compare and contrast, this more realistically complex WSGI
 application:
@@ -227,7 +216,7 @@ application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(bodies, session, request):
+>>> def rgi_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -261,8 +250,8 @@ example middleware application:
 ...         self._on_connect = getattr(app, 'on_connect', None)
 ...         assert self._on_connect is None or callable(self._on_connect)
 ... 
-...     def __call__(self, bodies, session, request):
-...         return self.app(bodies, session, request)
+...     def __call__(self, session, request, bodies):
+...         return self.app(session, request, bodies)
 ... 
 ...     def on_connect(self, sock, session):
 ...         if self._on_connect is None:
@@ -325,7 +314,7 @@ For example:
 
 >>> import ssl
 >>> class MyApp:
-...     def __call__(self, bodies, session, request):
+...     def __call__(self, session, request, bodies):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
 ...     def on_connect(self, sock, session):
@@ -413,7 +402,7 @@ we can implement a simple reverse-proxy with the help of the the
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
-...     def __call__(self, bodies, session, request):
+...     def __call__(self, session, request, bodies):
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
@@ -520,7 +509,7 @@ request headers.
 For example, an RGI application that handles POST requests might look something
 like this:
 
->>> def rgi_post_app(bodies, session, request):
+>>> def rgi_post_app(session, request, bodies):
 ...     if request['method'] != 'POST':
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request['body'] is None:
@@ -638,7 +627,7 @@ niche.
 Not to mention that ``bytes`` in particular are the most illustrative, which
 helps RGI be an inviting specification.  For example:
 
->>> def rgi_hello_world_app(bodies, session, request):
+>>> def rgi_hello_world_app(session, request, bodies):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
 
@@ -649,7 +638,7 @@ HTTP content-length based framing atop an arbitrary file-like object with a
 For example, you would use a ``bodies.Body`` instance to return a response body
 read from a regular file:
 
->>> def rgi_file_app(bodies, session, request):
+>>> def rgi_file_app(session, request, bodies):
 ...     fp = open('/ultimate/answer', 'rb')
 ...     body = bodies.Body(fp, 42)
 ...     return (200, 'OK', {'content-length': 42}, body)
@@ -673,7 +662,7 @@ For example:
 ...     yield b'hello'
 ...     yield b', world'
 ... 
->>> def rgi_generator_app(bodies, session, request):
+>>> def rgi_generator_app(session, request, bodies):
 ...     body = bodies.BodyIter(generate_body(), 12)
 ...     return (200, 'OK', {'content-length': 12}, body)
 ... 
@@ -710,7 +699,7 @@ a chunk-encoded HTTP client response from an *rfile* returned by
 But you can likewise use ``bodies.ChunkedBody`` to frame a regular file that
 happens to be chunk-encoded, for example:
 
->>> def rgi_chunked_file_app(bodies, session, request):
+>>> def rgi_chunked_file_app(session, request, bodies):
 ...     fp = open('/chunky/delight', 'rb')
 ...     body = bodies.ChunkedBody(fp)
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
@@ -740,7 +729,7 @@ For example:
 ...     yield (b', world', ('key2', 'value2'))
 ...     yield (b'', ('key3', 'value3'))
 ... 
->>> def rgi_chunked_generator_app(bodies, session, request):
+>>> def rgi_chunked_generator_app(session, request, bodies):
 ...     body = bodies.ChunkedBodyIter(generate_chunked_body())
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
 ... 
@@ -759,7 +748,7 @@ to WSGI.
 
 For example, consider this simple RGI application:
 
->>> def demo_app(bodies, session, request):
+>>> def demo_app(session, request, bodies):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -785,8 +774,8 @@ application and overrides its response:
 ...     def __init__(self, app):
 ...         self.app = app
 ...
-...     def __call__(self, bodies, session, request):
-...         (status, reason, headers, body) = self.app(bodies, session, request)
+...     def __call__(self, session, request, bodies):
+...         (status, reason, headers, body) = self.app(session, request, bodies)
 ...         if request['method'] == 'HEAD' and body is not None:
 ...             return (500, 'Internal Server Error', {}, None)
 ...         return (status, reason, headers, body)
