@@ -90,7 +90,7 @@ The *bodies* argument is a ``namedtuple`` exposing four wrapper classes that RGI
 applications can use when building their HTTP response body:
 
     ==========================  ==================================
-    Exposed via                 Degu reference implementation
+    Exposed via                 Degu implementation
     ==========================  ==================================
     ``bodies.Body``             :class:`degu.base.Body`
     ``bodies.BodyIter``         :class:`degu.base.BodyIter`
@@ -534,10 +534,10 @@ like this:
 ...     return (200, 'OK', {}, None)
 
 When the request body has a content-length, ``request['body']`` will be an
-instance of the ``session['rgi.Body']`` class.
+instance of the ``bodies.Body`` class.
 
 When the request body is chunk-encoded, ``request['body']`` will be an instance
-of the ``session['rgi.ChunkedBody']`` class.
+of the ``bodies.ChunkedBody`` class.
 
 Details of the standard API for these RGI request body objects is still being
 finalized, so for now, please see the reference implementations in Degu:
@@ -562,16 +562,16 @@ conditions:
     3. When the response body is chunk-encoded
 
 Very much in the spirit of the WSGI ``environ['wsgi.file_wrapper']``, there are
-four specialized wrapper classes exposed in the RGI *session* argument:
+four specialized wrapper classes exposed in the RGI *bodies* argument:
 
-    ==================================  =====================================
-    Exposed via                         Reference implementation
-    ==================================  =====================================
-    ``session['rgi.Body']``             :class:`degu.base.Body`
-    ``session['rgi.BodyIter']``         :class:`degu.base.BodyIter`
-    ``session['rgi.ChunkedBody']``      :class:`degu.base.ChunkedBody`
-    ``session['rgi.ChunkedBodyIter']``  :class:`degu.base.ChunkedBodyIter`
-    ==================================  =====================================
+    ==========================  =====================================
+    Exposed via                 Degu reference implementation
+    ==========================  =====================================
+    ``bodies.Body``             :class:`degu.base.Body`
+    ``bodies.BodyIter``         :class:`degu.base.BodyIter`
+    ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+    ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+    ==========================  =====================================
 
 Although four distinct wrapper classes might seem excessive, granularity here
 eliminates ambiguity and needless magic elsewhere.
@@ -584,10 +584,10 @@ applications::
 Because of this single, comprehensive response return value, RGI has a much
 simpler response flow control compared to WSGI.
 
-Yet the ``session['rgi.BodyIter']`` and ``session['rgi.ChunkedBodyIter']``
-classes allow RGI to maintain an important and elegant WSGI feature: the ability
-of the response body to be an arbitrary iterable that yields the response body
-one piece at a time, as generated on-the-fly by the application.
+Yet the ``bodies.BodyIter`` and ``bodies.ChunkedBodyIter`` classes allow RGI to
+maintain an important and elegant WSGI feature: the ability of the response body
+to be an arbitrary iterable that yields the response body one piece at a time,
+as generated on-the-fly by the application.
 
 
 **1. No response body:**
@@ -618,9 +618,9 @@ content-length:
 
     2. A native Python3 ``bytearray`` instance
 
-    3. A ``session['Body']`` instance (:class:`degu.base.Body`)
+    3. A ``bodies.Body`` instance (:class:`degu.base.Body`)
 
-    4. A ``session['BodyIter']`` instance (:class:`degu.base.BodyIter`)
+    4. A ``bodies.BodyIter`` instance (:class:`degu.base.BodyIter`)
 
 When the response body is understood as having a content-length, RGI
 applications can never include a ``'transfer-encoding'`` in their response
@@ -642,30 +642,30 @@ helps RGI be an inviting specification.  For example:
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
 
-The ``session['rgi.Body']`` class (:class:`degu.base.Body`) is used to provide
+The ``bodies.Body`` class (:class:`degu.base.Body`) is used to provide
 HTTP content-length based framing atop an arbitrary file-like object with a
 ``read()`` method that accepts a *size* argument and returns ``bytes``.
 
-For example, you would use a ``session['rgi.Body']`` instance to return a
-response body read from a regular file:
+For example, you would use a ``bodies.Body`` instance to return a response body
+read from a regular file:
 
->>> def rgi_file_app(session, request):
+>>> def rgi_file_app(bodies, session, request):
 ...     fp = open('/ultimate/answer', 'rb')
-...     body = session['rgi.Body'](fp, 42)
+...     body = bodies.Body(fp, 42)
 ...     return (200, 'OK', {'content-length': 42}, body)
 ... 
 
 (Note that for clarity, the above RGI application redundantly specifies the
 response ``'content-length'``.)
 
-You can likewise use ``session['rgi.Body']`` to frame an *rfile* returned by
+You can likewise use ``bodies.Body`` to frame an *rfile* returned by
 `socket.socket.makefile()`_, which is especially useful for RGI reverse-proxy
 applications.
 
-On the other hand, the ``session['rgi.BodyIter']`` class
-(:class:`degu.base.BodyIter`) is used to wrap an arbitrary iterable that
-yields the response body one piece at a time as generated by the application,
-yet sill with an explicit agreement as to the ultimate content-length.
+On the other hand, the ``bodies.BodyIter`` class (:class:`degu.base.BodyIter`)
+is used to wrap an arbitrary iterable that yields the response body one piece at
+a time as generated by the application, yet sill with an explicit agreement as
+to the ultimate content-length.
 
 For example:
 
@@ -673,8 +673,8 @@ For example:
 ...     yield b'hello'
 ...     yield b', world'
 ... 
->>> def rgi_generator_app(session, request):
-...     body = session['rgi.BodyIter'](generate_body(), 12)
+>>> def rgi_generator_app(bodies, session, request):
+...     body = bodies.BodyIter(generate_body(), 12)
 ...     return (200, 'OK', {'content-length': 12}, body)
 ... 
 
@@ -698,37 +698,37 @@ if applications include a ``'transfer-encoding'`` in their response headers,
 its value must be ``'chunked'``.  Otherwise a
 ``{'transfer-encoding': 'chunked'}`` header will be set by the RGI server.
 
-The ``session['rgi.ChunkedBody']`` class (:class:`degu.base.ChunkedBody`) is
-used to provide HTTP chunked-encoding based framing atop an arbitrary file-like
-object with ``readline()`` and ``read()`` methods that accept a *size* argument
-and return ``bytes``.
+The ``bodies.ChunkedBody`` class (:class:`degu.base.ChunkedBody`) is used to
+provide HTTP chunked-encoding based framing atop an arbitrary file-like object
+with ``readline()`` and ``read()`` methods that accept a *size* argument and
+return ``bytes``.
 
 This is especially useful for RGI reverse-proxy applications that want to frame
 a chunk-encoded HTTP client response from an *rfile* returned by
 `socket.socket.makefile()`_.
 
-But you can likewise use ``session['rgi.ChunkedBody']`` to frame a regular file
-that happens to be chunk-encoded, for example:
+But you can likewise use ``bodies.ChunkedBody`` to frame a regular file that
+happens to be chunk-encoded, for example:
 
 >>> def rgi_chunked_file_app(session, request):
 ...     fp = open('/chunky/delight', 'rb')
-...     body = session['rgi.ChunkedBody'](fp)
+...     body = bodies.ChunkedBody(fp)
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
 ...
 
 (Note that for clarity, the above RGI application redundantly specifies the
 response ``'transfer-encoding'``.) 
 
-It's important to understand that ``session['rgi.ChunkedBody']`` expects the
-content read from the *rfile* to itself be properly HTTP chunk-encoded.  It will
-stop yielding ``(data, extension)`` items after the first chunk with an empty
-data ``b''`` is encountered.  The *rfile* must always contain at least one
+It's important to understand that ``bodies.ChunkedBody`` expects the content
+read from the provided *rfile* to itself be properly HTTP chunk-encoded.  It
+will stop yielding ``(data, extension)`` items after the first chunk with an
+empty data ``b''`` is encountered.  The *rfile* must always contain at least one
 empty chunk.
 
-On the other hand, the ``session['rgi.ChunkedBodyIter']`` class
-(:class:`degu.base.ChunkedBodyIter`) is used to wrap an arbitrary iterable
-that yields the response body as a series of ``(data, extension)`` tuples for
-each chunk in the response.
+On the other hand, the ``bodies.ChunkedBodyIter`` class
+(:class:`degu.base.ChunkedBodyIter`) is used to wrap an arbitrary iterable that
+yields the response body as a series of ``(data, extension)`` tuples for each
+chunk in the response.
 
 The *source* iterable must always produce at least one item, and the last (and
 only the last) item must have have empty ``b''`` *data*.
@@ -740,8 +740,8 @@ For example:
 ...     yield (b', world', ('key2', 'value2'))
 ...     yield (b'', ('key3', 'value3'))
 ... 
->>> def rgi_chunked_generator_app(session, request):
-...     body = session['rgi.ChunkedBodyIter'](generate_chunked_body())
+>>> def rgi_chunked_generator_app(bodies, session, request):
+...     body = bodies.ChunkedBodyIter(generate_chunked_body())
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
 ... 
 
@@ -810,26 +810,27 @@ WSGI to RGI
 
 Here's a table of common `WSGI`_ to RGI equivalents when handling requests:
 
-==============================  ========================================
-WSGI                            RGI
-==============================  ========================================
-``environ['wsgi.version']``     ``session['rgi.version']``
-``environ['wsgi.url_scheme']``  ``session['scheme']``
-``environ['SERVER_PROTOCOL']``  ``session['protocol']``
-``environ['SERVER_NAME']``      ``session['server'][0]``
-``environ['SERVER_PORT']``      ``session['server'][1]``
-``environ['REMOTE_ADDR']``      ``session['client'][0]``
-``environ['REMOTE_PORT']``      ``session['client'][1]``
-``environ['REQUEST_METHOD']``   ``request['method']``
-``environ['SCRIPT_NAME']``      ``request['script']``
-``environ['PATH_INFO']``        ``request['path']``
-``environ['QUERY_STRING']``     ``request['query']``
-``environ['CONTENT_TYPE']``     ``request['headers']['content-type']``
-``environ['CONTENT_LENGTH']``   ``request['headers']['content-length']``
-``environ['HTTP_FOO']``         ``request['headers']['foo']``
-``environ['HTTP_BAR_BAZ']``     ``request['headers']['bar-baz']``
-``environ['wsgi.input']``       ``request['body']``
-==============================  ========================================
+================================  ========================================
+WSGI                              RGI
+================================  ========================================
+``environ['wsgi.file_wrapper']``  ``bodies.Body``
+``environ['wsgi.version']``       ``session['rgi.version']``
+``environ['wsgi.url_scheme']``    ``session['scheme']``
+``environ['SERVER_PROTOCOL']``    ``session['protocol']``
+``environ['SERVER_NAME']``        ``session['server'][0]``
+``environ['SERVER_PORT']``        ``session['server'][1]``
+``environ['REMOTE_ADDR']``        ``session['client'][0]``
+``environ['REMOTE_PORT']``        ``session['client'][1]``
+``environ['REQUEST_METHOD']``     ``request['method']``
+``environ['SCRIPT_NAME']``        ``request['script']``
+``environ['PATH_INFO']``          ``request['path']``
+``environ['QUERY_STRING']``       ``request['query']``
+``environ['CONTENT_TYPE']``       ``request['headers']['content-type']``
+``environ['CONTENT_LENGTH']``     ``request['headers']['content-length']``
+``environ['HTTP_FOO']``           ``request['headers']['foo']``
+``environ['HTTP_BAR_BAZ']``       ``request['headers']['bar-baz']``
+``environ['wsgi.input']``         ``request['body']``
+================================  ========================================
 
 Note that the above RGI equivalents for these *environ* variables:
 
