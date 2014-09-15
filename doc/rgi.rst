@@ -135,7 +135,7 @@ RGI applications specify the connection handler via a callable
 ``app.on_connect()`` attribute, for example:
 
 >>> class TinyRGIApp:
-...     def __call__(self, rgi, session, request):
+...     def __call__(self, bodies, session, request):
 ...         if '__hello' not in session:
 ...             session['__hello'] = b'hello, world'
 ...         body = session['__hello']
@@ -227,7 +227,7 @@ application:
 
 Would translate into this RGI application:
 
->>> def rgi_app(rgi, session, request):
+>>> def rgi_app(bodies, session, request):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -261,8 +261,8 @@ example middleware application:
 ...         self._on_connect = getattr(app, 'on_connect', None)
 ...         assert self._on_connect is None or callable(self._on_connect)
 ... 
-...     def __call__(self, rgi, session, request):
-...         return self.app(rgi, session, request)
+...     def __call__(self, bodies, session, request):
+...         return self.app(bodies, session, request)
 ... 
 ...     def on_connect(self, sock, session):
 ...         if self._on_connect is None:
@@ -325,7 +325,7 @@ For example:
 
 >>> import ssl
 >>> class MyApp:
-...     def __call__(self, session, request):
+...     def __call__(self, bodies, session, request):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
 ...     def on_connect(self, sock, session):
@@ -413,7 +413,7 @@ we can implement a simple reverse-proxy with the help of the the
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
-...     def __call__(self, session, request):
+...     def __call__(self, bodies, session, request):
 ...         if '__conn' not in session:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
@@ -520,7 +520,7 @@ request headers.
 For example, an RGI application that handles POST requests might look something
 like this:
 
->>> def rgi_post_app(session, request):
+>>> def rgi_post_app(bodies, session, request):
 ...     if request['method'] != 'POST':
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request['body'] is None:
@@ -638,7 +638,7 @@ niche.
 Not to mention that ``bytes`` in particular are the most illustrative, which
 helps RGI be an inviting specification.  For example:
 
->>> def rgi_hello_world_app(session, request):
+>>> def rgi_hello_world_app(bodies, session, request):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
 
@@ -710,7 +710,7 @@ a chunk-encoded HTTP client response from an *rfile* returned by
 But you can likewise use ``bodies.ChunkedBody`` to frame a regular file that
 happens to be chunk-encoded, for example:
 
->>> def rgi_chunked_file_app(session, request):
+>>> def rgi_chunked_file_app(bodies, session, request):
 ...     fp = open('/chunky/delight', 'rb')
 ...     body = bodies.ChunkedBody(fp)
 ...     return (200, 'OK', {'transfer-encoding': 'chunked'}, body)
@@ -759,7 +759,7 @@ to WSGI.
 
 For example, consider this simple RGI application:
 
->>> def demo_app(session, request):
+>>> def demo_app(bodies, session, request):
 ...     if request['method'] not in ('GET', 'HEAD'):
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -769,13 +769,13 @@ For example, consider this simple RGI application:
 
 Here's what ``demo_app()`` returns for a suitable GET request:
 
->>> demo_app({}, {'method': 'GET', 'path': []})
+>>> demo_app(None, {}, {'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 However, note that ``demo_app()`` isn't actually HTTP/1.1 compliant as it should
 not return a response body for a HEAD request:
 
->>> demo_app({}, {'method': 'HEAD', 'path': []})
+>>> demo_app(None, {}, {'method': 'HEAD', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 Now consider this example middleware that checks for just such a faulty
@@ -785,8 +785,8 @@ application and overrides its response:
 ...     def __init__(self, app):
 ...         self.app = app
 ...
-...     def __call__(self, session, request):
-...         (status, reason, headers, body) = self.app(session, request)
+...     def __call__(self, bodies, session, request):
+...         (status, reason, headers, body) = self.app(bodies, session, request)
 ...         if request['method'] == 'HEAD' and body is not None:
 ...             return (500, 'Internal Server Error', {}, None)
 ...         return (status, reason, headers, body)
@@ -795,12 +795,12 @@ application and overrides its response:
 ``Middleware`` will let the response to a GET request pass through unchanged: 
 
 >>> middleware = Middleware(demo_app)
->>> middleware({}, {'method': 'GET', 'path': []})
+>>> middleware(None, {}, {'method': 'GET', 'path': []})
 (200, 'OK', {'content-length': 12}, b'hello, world')
 
 But ``Middleware`` will intercept the faulty response to a HEAD request:
 
->>> middleware({}, {'method': 'HEAD', 'path': []})
+>>> middleware(None, {}, {'method': 'HEAD', 'path': []})
 (500, 'Internal Server Error', {}, None)
 
 
