@@ -420,10 +420,6 @@ class TestFunctions(TestCase):
         # Missing required keys:
         good = {
             'rgi.version': (0, 1),
-            'rgi.Body': Body,
-            'rgi.BodyIter': BodyIter,
-            'rgi.ChunkedBody': ChunkedBody,
-            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': ('127.0.0.1', 60111),
@@ -505,35 +501,6 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             "session['rgi.version'][1] must be >= 0; got -1"
         )
-
-        # session['rgi.Body'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.Body'] = Body()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.ChunkedBody'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.ChunkedBody'] = ChunkedBody()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.BodyIter'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.BodyIter'] = BodyIter()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.ChunkedBodyIter'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        value = ChunkedBodyIter()
-        bad['rgi.ChunkedBodyIter'] = value
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
 
         # Bad session['scheme'] value:
         bad = deepcopy(good)

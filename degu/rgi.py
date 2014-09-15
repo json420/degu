@@ -269,18 +269,6 @@ def _validate_session(session):
         if value < 0:
             raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
-    # Make sure Body, BodyIter, ChunkedBody, ChunkedBodyIter are classes:
-    keys = (
-        'rgi.Body',
-        'rgi.BodyIter',
-        'rgi.ChunkedBody',
-        'rgi.ChunkedBodyIter',
-    )
-    for key in keys:
-        (label, value) = _get_path('session', session, key)
-        if not issubclass(value, object):
-            raise Exception('Internal error, should not be reached')
-
     # scheme:
     (label, value) = _get_path('session', session, 'scheme')
     if value not in SESSION_SCHEMES:
