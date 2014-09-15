@@ -47,7 +47,7 @@ from degu import util, rgi, base, server
 random = SystemRandom()
 
 
-def standard_harness_app(bodies, session, request):
+def standard_harness_app(session, request, bodies):
     if len(request['path']) == 3 and request['path'][0] == 'status':
         code = int(request['path'][1])
         reason = request['path'][2]
@@ -701,19 +701,19 @@ class BadApp:
     """
 
 
-def good_app(bodies, session, request):
+def good_app(session, request, bodies):
     return (200, 'OK', {}, None)
 
 
 class BadConnectionHandler:
-    def __call__(self, bodies, session, request):
+    def __call__(self, session, request, bodies):
         pass
 
     on_connect = 'nope'
 
 
 class GoodConnectionHandler:
-    def __call__(self, bodies, session, request):
+    def __call__(self, session, request, bodies):
         pass
 
     def on_connect(self, sock, session):
@@ -1042,7 +1042,7 @@ ENCODED_CHUNKS = wfile.getvalue()
 del wfile
 
 
-def chunked_request_app(bodies, session, request):
+def chunked_request_app(session, request, bodies):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['path'] == []
@@ -1056,7 +1056,7 @@ def chunked_request_app(bodies, session, request):
     return (200, 'OK', headers, body)
 
 
-def chunked_response_app(bodies, session, request):
+def chunked_response_app(session, request, bodies):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
@@ -1076,7 +1076,7 @@ DATA2 = os.urandom(3469)
 DATA = DATA1 + DATA2
 
 
-def response_app(bodies, session, request):
+def response_app(session, request, bodies):
     assert request['method'] == 'GET'
     assert request['script'] == []
     assert request['body'] is None
@@ -1090,7 +1090,7 @@ def response_app(bodies, session, request):
     return (200, 'OK', headers, body)
 
 
-def timeout_app(bodies, session, request):
+def timeout_app(session, request, bodies):
     assert request['method'] == 'POST'
     assert request['script'] == []
     assert request['body'] is None
@@ -1111,7 +1111,7 @@ class AppWithConnectionHandler:
         self.marker = marker
         self.accept = accept
 
-    def __call__(self, bodies, session, request):
+    def __call__(self, session, request, bodies):
         return (200, 'OK', {}, self.marker)
 
     def on_connect(self, sock, session):
@@ -1405,7 +1405,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         return (httpd, Client(httpd.address))
 
 
-def ssl_app(bodies, session, request):
+def ssl_app(session, request, bodies):
     assert session['ssl_cipher'] == (
         'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
     )

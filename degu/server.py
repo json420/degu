@@ -329,7 +329,7 @@ def handle_one(app, rfile, wfile, bodies, session):
     request_body = request['body']
 
     # Call the application:
-    (status, reason, headers, body) = app(bodies, session, request)
+    (status, reason, headers, body) = app(session, request, bodies)
 
     # Make sure application fully consumed request body:
     if request_body and not request_body.closed:
