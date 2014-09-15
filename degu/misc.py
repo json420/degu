@@ -37,14 +37,20 @@ from .sslhelpers import PKI
 from . import start_server, start_sslserver
 
 
+JSON_TYPES = (dict, list, tuple, str, int, float, bool, type(None))
+
 def get_value(value):
-    if not isinstance(value, (dict, list, tuple, str, int, float, bool)):
-        return repr(value)
-    return value
+    if isinstance(value, JSON_TYPES):
+        return value
+    return repr(value)
 
 
-def echo_app(session, request):
-    obj = {'session': {}, 'request': {}}
+def echo_app(bodies, session, request):
+    obj = {
+        'bodies': [repr(item) for item in bodies],
+        'session': {},
+        'request': {},
+    }
     for (key, value) in session.items():
         obj['session'][key] = get_value(value)
     for (key, value) in request.items():

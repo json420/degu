@@ -354,5 +354,5 @@ class ChunkedBodyIter(_ChunkedBody):
 
 
 # Used to expose the RGI IO wrappers:
-IOWrappers = namedtuple('IOWrappers', 'Body BodyIter ChunkedBody ChunkedBodyIter')
-iowrappers = IOWrappers(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+Bodies = namedtuple('Bodies', 'Body BodyIter ChunkedBody ChunkedBodyIter')
+default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

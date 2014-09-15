@@ -173,22 +173,22 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.RGI_VERSION[1], 0)
         self.assertGreater(base.RGI_VERSION, (0, 0))
 
-    def test_iowrappers(self):
-        self.assertTrue(issubclass(base.IOWrappers, tuple))
-        self.assertIsInstance(base.iowrappers, tuple)
-        self.assertIsInstance(base.iowrappers, base.IOWrappers)
+    def test_default_bodies(self):
+        self.assertTrue(issubclass(base.Bodies, tuple))
+        self.assertIsInstance(base.default_bodies, tuple)
+        self.assertIsInstance(base.default_bodies, base.Bodies)
 
-        self.assertIs(base.iowrappers.Body, base.Body)
-        self.assertIs(base.iowrappers.BodyIter, base.BodyIter)
-        self.assertIs(base.iowrappers.ChunkedBody, base.ChunkedBody)
-        self.assertIs(base.iowrappers.ChunkedBodyIter, base.ChunkedBodyIter)
+        self.assertIs(base.default_bodies.Body, base.Body)
+        self.assertIs(base.default_bodies.BodyIter, base.BodyIter)
+        self.assertIs(base.default_bodies.ChunkedBody, base.ChunkedBody)
+        self.assertIs(base.default_bodies.ChunkedBodyIter, base.ChunkedBodyIter)
 
-        self.assertIs(base.iowrappers[0], base.Body)
-        self.assertIs(base.iowrappers[1], base.BodyIter)
-        self.assertIs(base.iowrappers[2], base.ChunkedBody)
-        self.assertIs(base.iowrappers[3], base.ChunkedBodyIter)
+        self.assertIs(base.default_bodies[0], base.Body)
+        self.assertIs(base.default_bodies[1], base.BodyIter)
+        self.assertIs(base.default_bodies[2], base.ChunkedBody)
+        self.assertIs(base.default_bodies[3], base.ChunkedBodyIter)
 
-        self.assertEqual(base.iowrappers,
+        self.assertEqual(base.default_bodies,
             (base.Body, base.BodyIter, base.ChunkedBody, base.ChunkedBodyIter)
         )
 

@@ -34,7 +34,7 @@ from .base import (
     BodyIter,
     ChunkedBody,
     ChunkedBodyIter,
-    iowrappers,
+    default_bodies,
     makefiles,
     read_preamble,
 )
@@ -309,11 +309,11 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, iowrap, session):
+def handle_requests(app, sock, bodies, session):
     (rfile, wfile) = makefiles(sock)
     requests = session['requests']
     assert requests == 0
-    while handle_one(app, rfile, wfile, iowrap, session) is True:
+    while handle_one(app, rfile, wfile, bodies, session) is True:
         requests += 1
         session['requests'] = requests
         if requests >= 5000:
@@ -322,14 +322,14 @@ def handle_requests(app, sock, iowrap, session):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, iowrap, session):
+def handle_one(app, rfile, wfile, bodies, session):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
     request_body = request['body']
 
     # Call the application:
-    (status, reason, headers, body) = app(iowrap, session, request)
+    (status, reason, headers, body) = app(bodies, session, request)
 
     # Make sure application fully consumed request body:
     if request_body and not request_body.closed:
@@ -480,7 +480,7 @@ class Server:
 
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
-            handle_requests(self.app, sock, iowrappers, session)
+            handle_requests(self.app, sock, default_bodies, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
