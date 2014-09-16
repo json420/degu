@@ -250,25 +250,6 @@ def _validate_session(session):
     """
     _check_dict('session', session)
 
-    # rgi.version:
-    (label, value) = _get_path('session', session, 'rgi.version')
-    if not isinstance(value, tuple):
-        raise TypeError(
-            TYPE_ERROR.format(label, tuple, type(value), value) 
-        )
-    if len(value) != 2:
-        raise ValueError(
-            'len({}) must be 2; got {}: {!r}'.format(label, len(value), value)
-        )
-    for i in range(len(value)):
-        (label, value) = _get_path('session', session, 'rgi.version', i)
-        if not isinstance(value, int):
-            raise TypeError(
-                TYPE_ERROR.format(label, int, type(value), value) 
-            )
-        if value < 0:
-            raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
-
     # scheme:
     (label, value) = _get_path('session', session, 'scheme')
     if value not in SESSION_SCHEMES:
