@@ -32,9 +32,6 @@ try:
         read_preamble,
     )
 except ImportError:
-    import logging
-    log = logging.getLogger(__name__)
-    log.warning('Using `degu._basepy` instead of `degu._base` C extension')
     from ._basepy import (
         MAX_LINE_BYTES,
         MAX_HEADER_COUNT,
