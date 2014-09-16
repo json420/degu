@@ -28,6 +28,7 @@ import os
 import string
 from random import SystemRandom
 from copy import deepcopy
+from collections import namedtuple
 
 from degu import rgi
 
@@ -52,35 +53,35 @@ class MockBody:
 
 class Body(MockBody):
     """
-    Mock class used for session['rgi.Body'].
+    Mock class used for bodies.Body.
     """
 
 
 class BodyIter(MockBody):
     """
-    Mock class used for session['rgi.BodyIter'].
+    Mock class used for bodies.BodyIter.
     """
 
 
 class ChunkedBody(MockBody):
     """
-    Mock class used for session['rgi.ChunkedBody'].
+    Mock class used for bodies.ChunkedBody.
     """
 
 
 class ChunkedBodyIter(MockBody):
     """
-    Mock class used for session['rgi.ChunkedBodyIter'].
+    Mock class used for bodies.ChunkedBodyIter.
     """
+
+
+Bodies = namedtuple('Bodies', 'Body BodyIter ChunkedBody ChunkedBodyIter')
+default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 
 def build_session(**kw):
     session = {
         'rgi.version': (0, 1),
-        'rgi.Body': Body,
-        'rgi.BodyIter': BodyIter,
-        'rgi.ChunkedBody': ChunkedBody,
-        'rgi.ChunkedBodyIter': ChunkedBodyIter,
         'scheme': 'http',
         'protocol': 'HTTP/1.1',
         'server': ('127.0.0.1', 60111),
@@ -415,10 +416,6 @@ class TestFunctions(TestCase):
         # Missing required keys:
         good = {
             'rgi.version': (0, 1),
-            'rgi.Body': Body,
-            'rgi.BodyIter': BodyIter,
-            'rgi.ChunkedBody': ChunkedBody,
-            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': 'http',
             'protocol': 'HTTP/1.1',
             'server': ('127.0.0.1', 60111),
@@ -501,35 +498,6 @@ class TestFunctions(TestCase):
             "session['rgi.version'][1] must be >= 0; got -1"
         )
 
-        # session['rgi.Body'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.Body'] = Body()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.ChunkedBody'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.ChunkedBody'] = ChunkedBody()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.BodyIter'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        bad['rgi.BodyIter'] = BodyIter()
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
-        # session['rgi.ChunkedBodyIter'] is an instance instead of a subclass:
-        bad = deepcopy(good)
-        value = ChunkedBodyIter()
-        bad['rgi.ChunkedBodyIter'] = value
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),'issubclass() arg 1 must be a class')
-
         # Bad session['scheme'] value:
         bad = deepcopy(good)
         bad['scheme'] = 'ftp'
@@ -607,25 +575,20 @@ class TestFunctions(TestCase):
         )
 
     def test_validate_request(self):
-        # Validator.__call__() will pass in the *session* argument, by which
-        # the session['rgi.Body'] and session['rgi.ChunkedBody'] classes are
-        # exposed in a server-agnostic fashion:
-        session = (
-            ('rgi.Body', Body),
-            ('rgi.ChunkedBody', ChunkedBody),
-        )
+        # Validator.__call__() will pass in the *bodies* argument, by which the
+        # the Body and ChunkedBody classes are exposed in a server-agnostic
+        # fashion.
 
         # request isn't a `dict`:
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), ['hello'])
+            rgi._validate_request(default_bodies, ['hello'])
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('request', dict, list, ['hello'])
         )
 
         # request has non-str keys:
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(
-                dict(session),
+            rgi._validate_request(default_bodies,
                 {'foo': 'bar', b'hello': 'world'}
             )
         self.assertEqual(str(cm.exception),
@@ -640,12 +603,12 @@ class TestFunctions(TestCase):
             'headers': {},
             'body': None,
         }
-        self.assertIsNone(rgi._validate_request(dict(session), good))
+        self.assertIsNone(rgi._validate_request(default_bodies, good))
         for key in sorted(good):
             bad = deepcopy(good)
             del bad[key]
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_request(dict(session), bad)
+                rgi._validate_request(default_bodies, bad)
             self.assertEqual(str(cm.exception),
                 'request[{!r}] does not exist'.format(key)
             )
@@ -654,7 +617,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['method'] = 'OPTIONS'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['method']: value 'OPTIONS' not in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')"
         )
@@ -663,7 +626,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = ('foo',)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['script']: need a <class 'list'>; got a <class 'tuple'>: ('foo',)"
         )
@@ -672,7 +635,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = [b'foo']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['script'][0]: need a <class 'str'>; got a <class 'bytes'>: b'foo'"
         )
@@ -681,7 +644,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['script'] = ['foo', b'baz']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['script'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
         )
@@ -690,7 +653,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = ('bar',)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['path']: need a <class 'list'>; got a <class 'tuple'>: ('bar',)"
         )
@@ -699,7 +662,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = [b'bar']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['path'][0]: need a <class 'str'>; got a <class 'bytes'>: b'bar'"
         )
@@ -708,7 +671,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['path'] = ['bar', b'baz']
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['path'][1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
         )
@@ -717,7 +680,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['query'] = {'stuff': 'junk'}
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['query']: need a <class 'str'>; got a <class 'dict'>: {'stuff': 'junk'}"
         )
@@ -726,7 +689,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['headers'] = [('content-length', 17)]
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['headers']: need a <class 'dict'>; got a <class 'list'>: [('content-length', 17)]"
         )
@@ -738,7 +701,7 @@ class TestFunctions(TestCase):
             bad = deepcopy(good)
             bad['body'] = body
             with self.assertRaises(TypeError) as cm:
-                rgi._validate_request(dict(session), bad)
+                rgi._validate_request(default_bodies, bad)
             self.assertEqual(str(cm.exception),
                 rgi.TYPE_ERROR.format(
                     "request['body']", body_types, type(body), body
@@ -752,7 +715,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['headers']['content-length'] = 17
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'] is None but 'content-length' header is included"
         )
@@ -761,7 +724,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'] is None but 'transfer-encoding' header is included"
         )
@@ -770,7 +733,7 @@ class TestFunctions(TestCase):
         for method in rgi.REQUEST_METHODS:
             request = deepcopy(good)
             request['method'] = method
-            self.assertIsNone(rgi._validate_request(dict(session), request))
+            self.assertIsNone(rgi._validate_request(default_bodies, request))
 
         #######################################
         # request['body'] is a `Body` instance:
@@ -780,7 +743,7 @@ class TestFunctions(TestCase):
         bad['body'] = Body(content_length=17, closed=False)
         bad['headers']['content-length'] = 17
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body']: 'Body' object has no attribute 'chunked'"
         )
@@ -789,7 +752,7 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['body'] = Body(chunked=True)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'].chunked must be False; got True"
         )
@@ -799,16 +762,16 @@ class TestFunctions(TestCase):
         bad['body'] = Body(chunked=False)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.Body' with 'transfer-encoding' header"
+            "request['body']: bodies.Body with 'transfer-encoding' header"
         )
 
         # Body.content_length attribute is missing:
         bad = deepcopy(good)
         bad['body'] = Body(chunked=False)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body']: 'Body' object has no attribute 'content_length'"
         )
@@ -817,9 +780,9 @@ class TestFunctions(TestCase):
         bad = deepcopy(good)
         bad['body'] = Body(chunked=False, content_length=17)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.Body', but missing 'content-length' header"
+            "request['body']: bodies.Body, but missing 'content-length' header"
         )
 
         # Body.content_length != headers['content-length']:
@@ -827,7 +790,7 @@ class TestFunctions(TestCase):
         bad['body'] = Body(chunked=False, content_length=17)
         bad['headers']['content-length'] = 16
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'].content_length != request['headers']['content-length']: 17 != 16"
         )
@@ -837,7 +800,7 @@ class TestFunctions(TestCase):
         bad['body'] = Body(chunked=False, content_length=17)
         bad['headers']['content-length'] = 17
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body']: 'Body' object has no attribute 'closed'"
         )
@@ -847,7 +810,7 @@ class TestFunctions(TestCase):
         bad['body'] = Body(chunked=False, content_length=17, closed=True)
         bad['headers']['content-length'] = 17
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'].closed must be False; got True"
         )
@@ -858,7 +821,7 @@ class TestFunctions(TestCase):
             request['method'] = method
             request['body'] = Body(closed=False, chunked=False, content_length=17)
             request['headers']['content-length'] = 17
-            self.assertIsNone(rgi._validate_request(dict(session), request))
+            self.assertIsNone(rgi._validate_request(default_bodies, request))
 
         # Methods that should *not* work when request['body'] is a Body instance:
         for method in ('GET', 'HEAD', 'DELETE'):
@@ -867,7 +830,7 @@ class TestFunctions(TestCase):
             request['body'] = Body(closed=False, chunked=False, content_length=17)
             request['headers']['content-length'] = 17
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_request(dict(session), request)
+                rgi._validate_request(default_bodies, request)
             self.assertEqual(str(cm.exception),
                 "request['method'] cannot be {!r} when request['body'] is not None".format(method)
             )
@@ -880,7 +843,7 @@ class TestFunctions(TestCase):
         bad['body'] = ChunkedBody(closed=False)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body']: 'ChunkedBody' object has no attribute 'chunked'"
         )
@@ -890,7 +853,7 @@ class TestFunctions(TestCase):
         bad['body'] = ChunkedBody(closed=False, chunked=False)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'].chunked must be True; got False"
         )
@@ -900,18 +863,18 @@ class TestFunctions(TestCase):
         bad['body'] = ChunkedBody(chunked=True, closed=False)
         bad['headers']['content-length'] = 17
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.ChunkedBody' with 'content-length' header"
+            "request['body']: bodies.ChunkedBody with 'content-length' header"
         )
 
         # ChunkedBody without 'transfer-encoding' header:
         bad = deepcopy(good)
         bad['body'] = ChunkedBody(chunked=True, closed=False)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
-            "request['body']: 'rgi.ChunkedBody', but missing 'transfer-encoding' header"
+            "request['body']: bodies.ChunkedBody, but missing 'transfer-encoding' header"
         )
 
         # ChunkedBody is missing 'closed' attribute:
@@ -919,7 +882,7 @@ class TestFunctions(TestCase):
         bad['body'] = ChunkedBody(chunked=True)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body']: 'ChunkedBody' object has no attribute 'closed'"
         )
@@ -929,7 +892,7 @@ class TestFunctions(TestCase):
         bad['body'] = ChunkedBody(chunked=True, closed=True)
         bad['headers']['transfer-encoding'] = 'chunked'
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_request(dict(session), bad)
+            rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['body'].closed must be False; got True"
         )
@@ -940,7 +903,7 @@ class TestFunctions(TestCase):
             request['method'] = method
             request['body'] = ChunkedBody(closed=False, chunked=True)
             request['headers']['transfer-encoding'] = 'chunked'
-            self.assertIsNone(rgi._validate_request(dict(session), request))
+            self.assertIsNone(rgi._validate_request(default_bodies, request))
 
         # Methods that should *not* work when request['body'] is a ChunkedBody instance:
         for method in ('GET', 'HEAD', 'DELETE'):
@@ -949,19 +912,16 @@ class TestFunctions(TestCase):
             request['body'] = ChunkedBody(closed=False, chunked=True)
             request['headers']['transfer-encoding'] = 'chunked'
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_request(dict(session), request)
+                rgi._validate_request(default_bodies, request)
             self.assertEqual(str(cm.exception),
                 "request['method'] cannot be {!r} when request['body'] is not None".format(method)
             )
 
     def test_validate_response(self):
-        # Validator.__call__() will supply the session and request arguments:
-        session = (
-            ('rgi.Body', Body),
-            ('rgi.ChunkedBody', ChunkedBody),
-            ('rgi.BodyIter', BodyIter),
-            ('rgi.ChunkedBodyIter', ChunkedBodyIter),
-        )
+        # Validator.__call__() will pass in the *bodies* argument, by which the
+        # the Body, BodyIter, ChunkedBody, and ChunkedBodyIter classes are
+        # exposed in a server-agnostic fashion.
+
         request = {
             'method': 'GET',
             'script': ['foo'],
@@ -973,7 +933,7 @@ class TestFunctions(TestCase):
         # response isn't a `tuple`:
         bad = [200, 'OK', {}, None]
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('response', tuple, list, bad)
         )
@@ -981,17 +941,17 @@ class TestFunctions(TestCase):
         # len(response) != 4:
         bad = (200, 'OK', {})
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception), 'len(response) must be 4, got 3')
         bad = (200, 'OK', {}, None, None)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception), 'len(response) must be 4, got 5')
 
         # response status isn't an int:
         bad = ('200', 'OK', {}, None)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('response[0]', int, str, '200')
         )
@@ -999,7 +959,7 @@ class TestFunctions(TestCase):
         # response status < 100:
         bad = (99, 'OK', {}, None)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             'response[0]: need 100 <= status <= 599; got 99'
         )
@@ -1007,7 +967,7 @@ class TestFunctions(TestCase):
         # response status > 599:
         bad = (600, 'OK', {}, None)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             'response[0]: need 100 <= status <= 599; got 600'
         )
@@ -1017,13 +977,13 @@ class TestFunctions(TestCase):
             self.assertTrue(100 <= status <= 599)
             good = (status, 'OK', {}, None)
             self.assertIsNone(
-                rgi._validate_response(dict(session), deepcopy(request), good)
+                rgi._validate_response(default_bodies, deepcopy(request), good)
             )
 
         # response reason isn't an str:
         bad = (200, b'OK', {}, None)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('response[1]', str, bytes, b'OK')
         )
@@ -1031,7 +991,7 @@ class TestFunctions(TestCase):
         # response reason is empty:
         bad = (200, '', {}, None)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             "response[1]: reason cannot be an empty ''"
         )
@@ -1039,7 +999,7 @@ class TestFunctions(TestCase):
         # response headers isn't a dict:
         bad = (200, 'OK', [('foo', 'BAR')], None)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             rgi.TYPE_ERROR.format('response[2]', dict, list, [('foo', 'BAR')])
         )
@@ -1050,7 +1010,7 @@ class TestFunctions(TestCase):
         r['method'] = 'HEAD'
         bad = (200, 'OK', {}, None)
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_response(dict(session), r, bad)
+            rgi._validate_response(default_bodies, r, bad)
         self.assertEqual(str(cm.exception),
             "response[2]: response to HEAD request must include 'content-length' or 'transfer-encoding' header"
         )
@@ -1059,16 +1019,16 @@ class TestFunctions(TestCase):
         r = deepcopy(request)
         r['method'] = 'HEAD'
         good = (200, 'OK', {'content-length': 17}, None)
-        self.assertIsNone(rgi._validate_response(dict(session), r, good))
+        self.assertIsNone(rgi._validate_response(default_bodies, r, good))
         r = deepcopy(request)
         r['method'] = 'HEAD'
         good = (200, 'OK', {'transfer-encoding': 'chunked'}, None)
-        self.assertIsNone(rgi._validate_response(dict(session), r, good))
+        self.assertIsNone(rgi._validate_response(default_bodies, r, good))
 
         # bad response body type:
         bad = (200, 'OK', {}, 'hello')
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_response(dict(session), deepcopy(request), bad)
+            rgi._validate_response(default_bodies, deepcopy(request), bad)
         self.assertEqual(str(cm.exception),
             'response[3]: bad response body type: {!r}'.format(str)
         )
@@ -1091,7 +1051,7 @@ class TestFunctions(TestCase):
                 headers = {'content-length': 17}
             bad = (200, 'OK', headers, body)
             with self.assertRaises(TypeError) as cm:
-                rgi._validate_response(dict(session), r, bad)
+                rgi._validate_response(default_bodies, r, bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: must be None when request['method'] is 'HEAD'; got a {!r}".format(
                     type(body)
@@ -1107,7 +1067,7 @@ class TestFunctions(TestCase):
         for (k, v) in bad_headers:
             bad = (200, 'OK', {k: v}, None)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 '{}: response body is None, but {!r} header is included'.format(
                     'response[3]', k
@@ -1125,7 +1085,7 @@ class TestFunctions(TestCase):
         for body in bad_bodies:
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 '{}: response body is {!r}, but {!r} header is included'.format(
                     'response[3]', type(body), 'transfer-encoding'
@@ -1136,7 +1096,7 @@ class TestFunctions(TestCase):
         for body in (b'hello', bytearray(b'hello')):
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: len(body) is 5, but 'content-length' is 17"
             )
@@ -1146,7 +1106,7 @@ class TestFunctions(TestCase):
         for body in (b'hello', bytearray(b'hello')):
             good = (200, 'OK', {}, body)
             self.assertIsNone(
-                rgi._validate_response(dict(session), deepcopy(request), good)
+                rgi._validate_response(default_bodies, deepcopy(request), good)
             )
 
         # response body is (Body, BodyIter), but missing 'content_length'
@@ -1155,7 +1115,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=False, closed=False)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: {!r} object has no attribute 'content_length'".format(
                     klass.__name__
@@ -1167,7 +1127,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=False, closed=False, content_length=18)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: body.content_length is 18, but 'content-length' is 17"
             )
@@ -1178,7 +1138,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=False, closed=False, content_length=18)
             good = (200, 'OK', {}, body)
             self.assertIsNone(
-                rgi._validate_response(dict(session), deepcopy(request), good)
+                rgi._validate_response(default_bodies, deepcopy(request), good)
             )
 
         # response body is (Body, BodyIter), but missing 'chunked' attribute:
@@ -1186,7 +1146,7 @@ class TestFunctions(TestCase):
             body = klass(closed=False, content_length=17)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: {!r} object has no attribute 'chunked'".format(
                     klass.__name__
@@ -1198,7 +1158,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=True, closed=False, content_length=17)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 'response[3].chunked must be False; got True'
             )
@@ -1209,7 +1169,7 @@ class TestFunctions(TestCase):
             body = klass(closed=False, chunked=True)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 '{}: response body is {!r}, but {!r} header is included'.format(
                     'response[3]', klass, 'content-length'
@@ -1223,7 +1183,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=True, closed=False)
             good = (200, 'OK', {}, body)
             self.assertIsNone(
-                rgi._validate_response(dict(session), deepcopy(request), good)
+                rgi._validate_response(default_bodies, deepcopy(request), good)
             )
 
         # response body is (ChunkedBody, ChunkedBodyIter), but missing 'chunked'
@@ -1232,7 +1192,7 @@ class TestFunctions(TestCase):
             body = klass(closed=False)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: {!r} object has no attribute 'chunked'".format(
                     klass.__name__
@@ -1245,7 +1205,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=False, closed=False)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 'response[3].chunked must be True; got False'
             )
@@ -1256,7 +1216,7 @@ class TestFunctions(TestCase):
             body = klass(chunked=True, closed=False, content_length=17)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: {!r} must not have a 'content_length' attribute".format(
                     klass
@@ -1274,7 +1234,7 @@ class TestFunctions(TestCase):
         for body in bad_bodies:
             bad = (200, 'OK', {}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3]: {!r} object has no attribute 'closed'".format(
                     type(body).__name__
@@ -1292,7 +1252,7 @@ class TestFunctions(TestCase):
         for body in bad_bodies:
             bad = (200, 'OK', {}, body)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_response(dict(session), deepcopy(request), bad)
+                rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
                 "response[3].closed must be False; got True"
             )
@@ -1375,7 +1335,7 @@ class TestValidator(TestCase):
 
     def test_call(self):
         # request['body'].closed is not True after app() was called:
-        def my_app(session, request):
+        def my_app(session, request, bodies):
             return (200, 'OK', {}, None)
 
         inst = rgi.Validator(my_app)
@@ -1385,13 +1345,13 @@ class TestValidator(TestCase):
             headers={'content-length': 17},
         )
         with self.assertRaises(ValueError) as cm:
-            inst(session, request)
+            inst(session, request, default_bodies)
         self.assertEqual(str(cm.exception),
             "request['body'].closed must be True after app() was called; got False"
         )
 
         # request['body'].closed is True after app() is called:
-        def my_app(session, request):
+        def my_app(session, request, bodies):
             request['body'].closed = True
             return (200, 'OK', {}, None)
 
@@ -1401,7 +1361,7 @@ class TestValidator(TestCase):
             body=Body(closed=False, chunked=False, content_length=17),
             headers={'content-length': 17},
         )
-        self.assertEqual(inst(session, request),
+        self.assertEqual(inst(session, request, default_bodies),
             (200, 'OK', {}, None)
         )
 

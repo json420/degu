@@ -1,0 +1,114 @@
+Road to 1.0 (or something like that)
+====================================
+
+
+Definite
+--------
+
+    * Add 'uri' to the RGI request; this will be the raw, unparsed URI from the
+      request line; by having access to the raw URI, `degu.rgi.Validator` (or
+      similar RGI middleware) can check that the server correctly parsed the URI
+      into the (script, path, query) components, and can likewise check that any
+      path shifting done by middleware or applications was done correctly... ie,
+      you should always be able to reconstruct the original URI from
+      (script, path, query), even if items have been shifted from path to script
+
+    * `Body()` should take an optional *iosize* argument to allow both client
+      and server applications to specify the size of data chunks that will be
+      read from the source rfile and written to the outgoing wfile; for example,
+      the Dmedia FilesApp will perform best using an 8 MiB *iosize* as that's
+      the same *iosize* the client will be using when reading the body on the
+      receiving end
+
+    * `ChunkedBody.read()` should take a size argument and should have the same
+      semantics as `Body.read()`; likewise, `ChunkedBody.read()` should return
+      bytes instead of a bytearray (in order to match standard Python file-like
+      object API expectations)
+
+    * `Body.read()` and `ChunkedBody.read()` need to enforce a sane max read
+      size as current implementation allows for unbounded resource usage; maybe
+      a max of 32 MiB or thereabouts; but this change would introduce a bit
+      ambiguity about size=None: if you call read() with no size argument, are
+      you done reading after that, or did you hit an internal sanity limit and
+      still need to make additional calls to body.read() to fully read it?  I
+      don't particularly like the semantics of size=None in the standard Python
+      file-like API.  It would be better for consumers to be expected to always
+      make successive calls to body.read() till an empty b'' is returned; in
+      other words, size=None is no longer means "read it all" but instead means
+      "read up to a generously large but still sane internal limit and I'll keep
+      calling body.read() till I get a b''", ofter which I know all has been
+      read
+
+
+Likely, but not 100% certain
+----------------------------
+
+    * RGI is currently ambiguous when it comes to "no query" (ie, URI does not
+      contain a '?') vs "an empty query" (ie, the final character in the URI is
+      a '?'); currently both of these scenarios result in the same empty ''
+      query string, which means we can't do a lossless round-trip between the
+      URI and the (script, path, query) components; when reconstructing the URI,
+      the "empty query" case will lose its final '?' on the way out; similar to
+      how RGI handles the request and response bodies, perhaps "no query" should
+      be expressed with {'query': None}, and an "empty query" should be
+      {'query': ''}
+
+    * `Server()` and `SSLServer()` should (probably) take an optional *config*
+      kwarg through which one can provide a dictionary with certain run-time
+      tunable items; I really want to avoid letting this config get too complex
+      (as I feel we could quickly get into stuff so specific that it would be
+      better handled by a middleware component... say, for authentication and
+      authorization); however, there are at least three tunable items I want to
+      expose from the start:
+
+        1. max_connections
+        2. max_requests_per_connection
+        3. timeout
+
+    * `SSLServer()` and `SSLClient()` should probably allow an ssl config dict
+      to be supplied as the *sslctx* argument, in which case an actual sslctx
+      would automatically be built by calling `build_server_sslctx()` or
+      `build_client_sslctx()`, respectively; in production applications I kinda
+      feel you should probably still always explicitly build your sslctx first;
+      however, when it comes to the friendliness and brevity of the API,
+      building the *sslctx* currently feels a bit too high-friction and verbose;
+      even if just for instructional purposes, it would be nice to be able to do
+      this:
+
+        >>> sslclient = SSLClient({}, ('www.example.com', 80))
+
+
+Potentially controversial, and perhaps unlikely
+-----------------------------------------------
+
+    * Should we drop the 'rgi.' prefix from session['rgi.Body'] and friends?
+      WSGI is layered atop CGI, so using a common 'wsgi.' prefix for the
+      non-standard items added by WSGI feels pretty right; on the other hand,
+      RGI isn't layered atop CGI or anything else, so in some ways the 'rgi.'
+      prefix seems weird because, well, there ain't none but RGI here; also, in
+      WSGI everything must be in the environ, so the wsgi.* name-spacing helps
+      these items stand out in the crowd; on the other hand, in RGI things are
+      less overloaded because these items are split between the session and
+      request; session['Body'] doesn't feel particularly ambiguous becaues it
+      can't be confused with, say, request['body']
+
+    * Or more radically, should all the rgi.* items be moved out of the session
+      and into a 3rd argument, perhaps a namedtuple?  rgi.Body and friends are
+      in fact logically out of place in the session (and clearly the rgi.* items
+      would be even *more* out of place in the request).  The namedtuple idea
+      gets more interesting when you think about the Degu client as well.  In
+      the tutorial, we mention that one place where server agnostic RGI
+      applications aren't currently possible is our exact reverse-proxy example;
+      the Degu client and the 3rd-party RGI server need to be in agreement about
+      what specific Body, BodyIter, ChunkedBody, and ChunkedBodyIter classes are
+      to be used; some sort of *rgi* namedtuple providing these 4 classes could
+      be just a way to provide these details to the Degu client
+
+    * Body, BodyIter, ChunkedBody, and ChunkedBodyIter are quite generic and
+      have good composability; they suck up data from a file-like object or
+      iterable, ensure correct framing using either a content-length or chunked
+      encoding, and spit data out the other end for iteration or writing to an
+      outgoing file-like object; they can stream data from file to socket,
+      or from socket to file, or from client to proxy server to upstream server
+      for a request, and the same all the way back for the response
+

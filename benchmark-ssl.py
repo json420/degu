@@ -40,7 +40,6 @@ import io
 import math
 
 from degu import IPv6_LOOPBACK
-from degu.base import Body
 from degu.misc import TempPKI, TempSSLServer
 from degu.client import build_client_sslctx, SSLClient
 
@@ -92,8 +91,8 @@ chunks = b''.join(chunk for i in range(chunk_count))
 content_length = len(chunks)
 
 
-def file_app(connection, request):
-    body = Body(io.BytesIO(chunks), content_length)
+def file_app(session, request, bodies):
+    body = bodies.Body(io.BytesIO(chunks), content_length)
     headers = {
         'content-length': content_length,
         'content-type': 'video/quicktime',

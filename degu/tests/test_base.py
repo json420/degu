@@ -164,6 +164,25 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
+    def test_default_bodies(self):
+        self.assertTrue(issubclass(base.Bodies, tuple))
+        self.assertIsInstance(base.default_bodies, tuple)
+        self.assertIsInstance(base.default_bodies, base.Bodies)
+
+        self.assertIs(base.default_bodies.Body, base.Body)
+        self.assertIs(base.default_bodies.BodyIter, base.BodyIter)
+        self.assertIs(base.default_bodies.ChunkedBody, base.ChunkedBody)
+        self.assertIs(base.default_bodies.ChunkedBodyIter, base.ChunkedBodyIter)
+
+        self.assertIs(base.default_bodies[0], base.Body)
+        self.assertIs(base.default_bodies[1], base.BodyIter)
+        self.assertIs(base.default_bodies[2], base.ChunkedBody)
+        self.assertIs(base.default_bodies[3], base.ChunkedBodyIter)
+
+        self.assertEqual(base.default_bodies,
+            (base.Body, base.BodyIter, base.ChunkedBody, base.ChunkedBodyIter)
+        )
+
 
 class TestEmptyPreambleError(TestCase):
     def test_init(self):

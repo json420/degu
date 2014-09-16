@@ -34,6 +34,7 @@ from .base import (
     BodyIter,
     ChunkedBody,
     ChunkedBodyIter,
+    default_bodies,
     makefiles,
     read_preamble,
 )
@@ -298,35 +299,21 @@ def write_response(wfile, status, reason, headers, body):
     total += write(b'\r\n')
 
     # Write the body:
-    if isinstance(body, (bytes, bytearray)):
+    if body is None:
+        pass
+    elif isinstance(body, (bytes, bytearray)):
         total += write(body)
-    elif isinstance(body, (Body, BodyIter)):
-        for data in body:
-            total += write(data)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        for (data, extension) in body:
-            if extension:
-                (key, value) = extension
-                size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-            else:
-                size_line = '{:x}\r\n'.format(len(data))
-            total += write(size_line.encode())
-            total += write(data)
-            total += write(b'\r\n')
-            flush()            
-    elif body is not None:
-        raise TypeError(
-            'invalid body type: {!r}: {!r}'.format(type(body), body)
-        )
+    else:
+        total += body.write_to(wfile)          
     flush()
     return total
 
 
-def handle_requests(app, sock, session):
+def handle_requests(app, sock, bodies, session):
     (rfile, wfile) = makefiles(sock)
     requests = session['requests']
     assert requests == 0
-    while handle_one(app, rfile, wfile, session) is True:
+    while handle_one(app, rfile, wfile, bodies, session) is True:
         requests += 1
         session['requests'] = requests
         if requests >= 5000:
@@ -335,14 +322,14 @@ def handle_requests(app, sock, session):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, session):
+def handle_one(app, rfile, wfile, bodies, session):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
     request_body = request['body']
 
     # Call the application:
-    (status, reason, headers, body) = app(session, request)
+    (status, reason, headers, body) = app(session, request, bodies)
 
     # Make sure application fully consumed request body:
     if request_body and not request_body.closed:
@@ -438,10 +425,6 @@ class Server:
         """
         return {
             'rgi.version': (0, 1),
-            'rgi.Body': Body,
-            'rgi.BodyIter': BodyIter,
-            'rgi.ChunkedBody': ChunkedBody,
-            'rgi.ChunkedBodyIter': ChunkedBodyIter,
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
@@ -493,7 +476,7 @@ class Server:
 
     def handler(self, sock, session):
         if self.on_connect is None or self.on_connect(sock, session) is True:
-            handle_requests(self.app, sock, session)
+            handle_requests(self.app, sock, default_bodies, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 

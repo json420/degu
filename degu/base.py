@@ -23,6 +23,7 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
+from collections import namedtuple
 try:
     from ._base import (
         MAX_LINE_BYTES,
@@ -175,7 +176,13 @@ def write_body(wfile, body):
     return total
 
 
-class Body:
+class _Body:
+    def write_to(self, wfile):
+        write = wfile.write
+        return sum(write(data) for data in self)
+
+
+class Body(_Body):
     def __init__(self, rfile, content_length):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
@@ -237,7 +244,54 @@ class Body:
             yield self.read(FILE_BUFFER_BYTES)
 
 
-class ChunkedBody:
+class BodyIter(_Body):
+    def __init__(self, source, content_length):
+        if not isinstance(content_length, int):
+            raise TypeError(TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
+            )
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
+        self.source = source
+        self.content_length = content_length
+        self.closed = False
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        self.closed = True
+        content_length = self.content_length
+        total = 0
+        for data in self.source:
+            total += len(data)
+            if total > content_length:
+                raise OverFlowError(total, content_length)
+            yield data
+        if total != content_length:
+            raise UnderFlowError(total, content_length)
+
+
+class _ChunkedBody:
+    def write_to(self, wfile):
+        write = wfile.write
+        flush = wfile.flush
+        total = 0
+        for (data, extension) in self:
+            if extension:
+                (key, value) = extension
+                size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
+            else:
+                size_line = '{:x}\r\n'.format(len(data))
+            total += write(size_line.encode())
+            total += write(data)
+            total += write(b'\r\n')
+            flush()
+        return total
+
+
+class ChunkedBody(_ChunkedBody):
     def __init__(self, rfile):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
@@ -278,36 +332,7 @@ class ChunkedBody:
             yield self.readchunk()
 
 
-class BodyIter:
-    def __init__(self, source, content_length):
-        if not isinstance(content_length, int):
-            raise TypeError(TYPE_ERROR.format(
-                'content_length', int, type(content_length), content_length)
-            )
-        if content_length < 0:
-            raise ValueError(
-                'content_length must be >= 0, got: {!r}'.format(content_length)
-            )
-        self.source = source
-        self.content_length = content_length
-        self.closed = False
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        self.closed = True
-        content_length = self.content_length
-        total = 0
-        for data in self.source:
-            total += len(data)
-            if total > content_length:
-                raise OverFlowError(total, content_length)
-            yield data
-        if total != content_length:
-            raise UnderFlowError(total, content_length)
-
-
-class ChunkedBodyIter:
+class ChunkedBodyIter(_ChunkedBody):
     def __init__(self, source):
         self.source = source
         self.closed = False
@@ -326,3 +351,7 @@ class ChunkedBodyIter:
         if not empty:
             raise ChunkError('final chunk data was not empty')
 
+
+# Used to expose the RGI IO wrappers:
+Bodies = namedtuple('Bodies', 'Body BodyIter ChunkedBody ChunkedBodyIter')
+default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

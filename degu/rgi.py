@@ -269,18 +269,6 @@ def _validate_session(session):
         if value < 0:
             raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
-    # Make sure Body, BodyIter, ChunkedBody, ChunkedBodyIter are classes:
-    keys = (
-        'rgi.Body',
-        'rgi.BodyIter',
-        'rgi.ChunkedBody',
-        'rgi.ChunkedBodyIter',
-    )
-    for key in keys:
-        (label, value) = _get_path('session', session, key)
-        if not issubclass(value, object):
-            raise Exception('Internal error, should not be reached')
-
     # scheme:
     (label, value) = _get_path('session', session, 'scheme')
     if value not in SESSION_SCHEMES:
@@ -313,7 +301,7 @@ def _validate_session(session):
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
-def _validate_request(session, request):
+def _validate_request(bodies, request):
     """
     Validate the *request* argument.
     """
@@ -381,35 +369,35 @@ def _validate_request(session, request):
 
     # request['body'] is not None:
     assert value is not None
-    if isinstance(value, session['rgi.Body']):
+    if isinstance(value, bodies.Body):
         _ensure_attr_is(label, value, 'chunked', False)
         if ENCODING in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body' with {!r} header".format(label, ENCODING)
+                "{}: bodies.Body with {!r} header".format(label, ENCODING)
             )
         (l1, v1) = _getattr(label, value, 'content_length')
         if LENGTH not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.Body', but missing {!r} header".format(label, LENGTH)
+                "{}: bodies.Body, but missing {!r} header".format(label, LENGTH)
             )
         (l2, v2) = _get_path('request', request, 'headers', LENGTH)
         if v1 != v2:
             raise ValueError(
                 '{} != {}: {!r} != {!r}'.format(l1, l2, v1, v2)
             )
-    elif isinstance(value, session['rgi.ChunkedBody']):
+    elif isinstance(value, bodies.ChunkedBody):
         _ensure_attr_is(label, value, 'chunked', True)
         if LENGTH in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody' with {!r} header".format(label, LENGTH)
+                "{}: bodies.ChunkedBody with {!r} header".format(label, LENGTH)
             )
         if ENCODING not in request['headers']:
             raise ValueError(
-                "{}: 'rgi.ChunkedBody', but missing {!r} header".format(label, ENCODING)
+                "{}: bodies.ChunkedBody, but missing {!r} header".format(label, ENCODING)
             )
         assert request['headers'][ENCODING] == 'chunked'
     else:
-        body_types = (session['rgi.Body'], session['rgi.ChunkedBody'])
+        body_types = (bodies.Body, bodies.ChunkedBody)
         raise TypeError(
             TYPE_ERROR.format(label, body_types, type(value), value) 
         )
@@ -418,7 +406,7 @@ def _validate_request(session, request):
     _ensure_attr_is(label, value, 'closed', False)
 
 
-def _validate_response(session, request, response):
+def _validate_response(bodies, request, response):
     """
     Validate the *response* tuple returned by the application.
     """
@@ -486,17 +474,9 @@ def _validate_response(session, request, response):
                     '{}: response body is None, but {!r} header is included'.format(label, key)
                 )
         return  # Skip remaning tests
-    bodies = (
-        bytes,
-        bytearray,
-        session['rgi.Body'],
-        session['rgi.BodyIter'],
-    )
-    chunked_bodies = (
-        session['rgi.ChunkedBody'],
-        session['rgi.ChunkedBodyIter'],
-    )
-    if isinstance(value, bodies):
+    length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
+    chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
+    if isinstance(value, length_types):
         # Cannot include a 'transfer-encoding' header with a length-encoded
         # response body:
         if ENCODING in response[2]:
@@ -519,7 +499,7 @@ def _validate_response(session, request, response):
                     label, _repr, length, LENGTH, response[2][LENGTH]
                 )
             )
-    elif isinstance(value, chunked_bodies):
+    elif isinstance(value, chunked_types):
         # Cannot include a 'content-length' header with a chunk-encoded response
         # body:
         if LENGTH in response[2]:
@@ -560,17 +540,17 @@ class Validator:
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.app)
 
-    def __call__(self, session, request):
+    def __call__(self, session, request, bodies):
         orig_session = session.copy()
         orig_request = request.copy()
         for key in ('script', 'path', 'headers'):
             orig_request[key] = request[key].copy()
         _validate_session(session)
-        _validate_request(session, request)
+        _validate_request(bodies, request)
         assert session == orig_session
         assert request == orig_request
         request_body = orig_request['body']
-        response = self.app(session, request)
+        response = self.app(session, request, bodies)
         if request_body is not None and request_body.closed is not True:
             # request body was not fully consumed:
             raise ValueError(
@@ -578,7 +558,7 @@ class Validator:
                     "request['body'].closed", request_body.closed
                 )
             )
-        _validate_response(orig_session, orig_request, response)
+        _validate_response(bodies, orig_request, response)
         return response
 
     def on_connect(self, sock, session):
