@@ -91,7 +91,7 @@ chunks = b''.join(chunk for i in range(chunk_count))
 content_length = len(chunks)
 
 
-def file_app(bodies, session, request):
+def file_app(session, request, bodies):
     body = bodies.Body(io.BytesIO(chunks), content_length)
     headers = {
         'content-length': content_length,
