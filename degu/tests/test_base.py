@@ -164,15 +164,6 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
 
-    def test_RGI_VERSION(self):
-        self.assertIsInstance(base.RGI_VERSION, tuple)
-        self.assertEqual(len(base.RGI_VERSION), 2)
-        self.assertIsInstance(base.RGI_VERSION[0], int)
-        self.assertGreaterEqual(base.RGI_VERSION[0], 0)
-        self.assertIsInstance(base.RGI_VERSION[1], int)
-        self.assertGreaterEqual(base.RGI_VERSION[1], 0)
-        self.assertGreater(base.RGI_VERSION, (0, 0))
-
     def test_default_bodies(self):
         self.assertTrue(issubclass(base.Bodies, tuple))
         self.assertIsInstance(base.default_bodies, tuple)
