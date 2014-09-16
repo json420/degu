@@ -424,7 +424,7 @@ class Server:
         Each new *session* argument starts out as a copy of this.
         """
         return {
-            'rgi.version': (0, 1),
+            #'rgi.version': (0, 1),
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
