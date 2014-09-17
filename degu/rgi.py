@@ -170,16 +170,15 @@ def _check_address(label, address):
     """
     Validate a socket address.
 
-    `_validate_session()` uses this to validate the ``session['server']`` and
-    ``session['client']`` socket address values.
+    `_validate_session()` uses this to validate ``session['client']``.
 
     For example:
 
-    >>> _check_address("session['server']", ('::1', 1234, 0, 0))
-    >>> _check_address("session['server']", ('::1', 1234, 0))
+    >>> _check_address("session['client']", ('::1', 1234, 0, 0))
+    >>> _check_address("session['client']", ('::1', 1234, 0))
     Traceback (most recent call last):
       ...
-    ValueError: session['server']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
+    ValueError: session['client']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
 
     """
     if isinstance(address, tuple):
@@ -217,10 +216,10 @@ def _get_path(label, value, *path):
 
     Or when first path item is missing:
 
-    >>> _get_path('session', session, 'server')
+    >>> _get_path('session', session, 'foo')
     Traceback (most recent call last):
       ...
-    ValueError: session['server'] does not exist
+    ValueError: session['foo'] does not exist
 
     Or when the 2nd path item is missing:
 
@@ -256,10 +255,6 @@ def _validate_session(session):
         raise ValueError(
             "{}: value {!r} not in {!r}".format(label, value, SESSION_SCHEMES)
         )
-
-    # server:
-    (label, value) = _get_path('session', session, 'server')
-    _check_address(label, value)
 
     # client:
     (label, value) = _get_path('session', session, 'client')

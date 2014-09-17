@@ -82,7 +82,6 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 def build_session(**kw):
     session = {
         'scheme': 'http',
-        'server': ('127.0.0.1', 60111),
         'client': ('127.0.0.1', 52521),
         'requests': 0,
     }
@@ -414,7 +413,6 @@ class TestFunctions(TestCase):
         # Missing required keys:
         good = {
             'scheme': 'http',
-            'server': ('127.0.0.1', 60111),
             'client': ('127.0.0.1', 52521),
             'requests': 0,
         }
@@ -435,26 +433,6 @@ class TestFunctions(TestCase):
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),
             "session['scheme']: value 'ftp' not in ('http', 'https')"
-        )
-
-        # Bad session['server'] type:
-        address = bytearray(b'\x0000022')
-        bad = deepcopy(good)
-        bad['server'] = address
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            rgi.TYPE_ERROR.format("session['server']", (tuple, str, bytes), bytearray, address)
-        )
-
-        # session['server'] tuple is wrong length:
-        address = ('127.0.0.1', 1234, 0)
-        bad = deepcopy(good)
-        bad['server'] = address
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['server']: tuple must have 2 or 4 items; got ('127.0.0.1', 1234, 0)"
         )
 
         # Bad session['client'] type:
