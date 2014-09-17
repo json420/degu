@@ -81,7 +81,6 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 def build_session(**kw):
     session = {
-        'scheme': 'http',
         'client': ('127.0.0.1', 52521),
         'requests': 0,
     }
@@ -412,7 +411,6 @@ class TestFunctions(TestCase):
 
         # Missing required keys:
         good = {
-            'scheme': 'http',
             'client': ('127.0.0.1', 52521),
             'requests': 0,
         }
@@ -425,15 +423,6 @@ class TestFunctions(TestCase):
             self.assertEqual(str(cm.exception),
                 'session[{!r}] does not exist'.format(key)
             )
-
-        # Bad session['scheme'] value:
-        bad = deepcopy(good)
-        bad['scheme'] = 'ftp'
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['scheme']: value 'ftp' not in ('http', 'https')"
-        )
 
         # Bad session['client'] type:
         address = ['127.0.0.1', 12345]

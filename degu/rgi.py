@@ -249,13 +249,6 @@ def _validate_session(session):
     """
     _check_dict('session', session)
 
-    # scheme:
-    (label, value) = _get_path('session', session, 'scheme')
-    if value not in SESSION_SCHEMES:
-        raise ValueError(
-            "{}: value {!r} not in {!r}".format(label, value, SESSION_SCHEMES)
-        )
-
     # client:
     (label, value) = _get_path('session', session, 'client')
     _check_address(label, value)
