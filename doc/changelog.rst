@@ -7,35 +7,94 @@ Changelog
 
 Security fixes:
 
-    * :func:`degu.base.read_preamble()` now carefully restricts what bytes are
-      allowed to exist in the first line, header keys, and header values; in
-      particular this function now prevents NUL bytes (``b'\x00'``) from being
-      included in any decoded ``str`` objects; for details, please see
-      :doc:`security`
+    *   :func:`degu.base.read_preamble()` now carefully restricts what bytes are
+        allowed to exist in the first line, header keys, and header values; in
+        particular this function now prevents NUL bytes (``b'\x00'``) from being
+        included in any decoded ``str`` objects; for details, please see
+        :doc:`security`
 
-    * :class:`degu.server.Server` now limits itself to 100 active threads (ie,
-      100 concurrent connections) to prevent unbounded resource usage; this is
-      hard-coded in 0.9 but will be configurable in 1.0
+    *   :class:`degu.server.Server` now limits itself to 100 active threads (ie,
+        100 concurrent connections) to prevent unbounded resource usage; this is
+        hard-coded in 0.9 but will be configurable in 1.0
+
+
+Breaking API changes:
+
+    *   The RGI request signature is now ``app(session, request, bodies)``, and
+        wrapper classes like ``session['rgi.Body']`` have moved to
+        ``bodies.Body``, etc.
+
+        For example, this Degu 0.8 RGI application::
+
+            def my_file_app(session, request):
+                myfile = open('/my/file', 'rb')
+                body = session['rgi.Body'](myfile, 42)
+                return (200, 'OK', {}, body)
+
+        Is implemented like this in Degu 0.9::
+
+            def my_file_app(session, request, bodies):
+                myfile = open('/my/file', 'rb')
+                body = bodies.Body(myfile, 42)
+                return (200, 'OK', {}, body)
+
+        The four HTTP body wrapper classes are now exposed as:
+
+            ==========================  ==================================
+            Exposed via                 Degu implementation
+            ==========================  ==================================
+            ``bodies.Body``             :class:`degu.base.Body`
+            ``bodies.BodyIter``         :class:`degu.base.BodyIter`
+            ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+            ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+            ==========================  ==================================
+
+    *   The following four items have been dropped from the RGI *session*
+        argument::
+
+            session['rgi.version']  # eg, (0, 1)
+            session['scheme']       # eg, 'https'
+            session['protocol']     # eg, 'HTTP/1.1'
+            session['server']       # eg, ('0.0.0.0', 12345)
+
+        Although inspired by equivalent information in the WSGI *environ*, they
+        don't seem particularly useful for the P2P REST API use case that Degu
+        is focused on; in order to minimize the stable API commitments we're
+        making for Degu 1.0, we're removing them for now, but we're open to
+        adding any of them back post 1.0, assuming there is a good
+        justification.
+
+
+Other changes:
+
+    *   Move ``_degu`` module to ``degu._base`` (the C extension)
+
+    *   Rename ``degu.fallback`` module to ``degu._basepy`` (the pure-Python
+        reference implementation)
+
+    *   To keep memory usage flatter over time, :class:`degu.server.Server()`
+        now unconditionally closes a connection after 5,000 requests have been
+        handled; this is hard-coded in 0.9 but will be configurable in 1.0
 
 
 Performance improvements:
 
-    * The C implementation of :func:`degu.base.read_preamble()` is now around
-      42% faster; this speed-up is thanks to decoding and case-folding the
-      header keys in a single pass rather than using ``str.casefold()``, plus
-      thanks to calling ``rfile.readline()`` using ``PyObject_Call()`` with
-      pre-build argument tuples instead of ``PyObject_CallFunctionObjArgs()``
-      with pre-built ``int`` objects
+    *   The C implementation of :func:`degu.base.read_preamble()` is now around
+        42% faster; this speed-up is thanks to decoding and case-folding the
+        header keys in a single pass rather than using ``str.casefold()``, plus
+        thanks to calling ``rfile.readline()`` using ``PyObject_Call()`` with
+        pre-build argument tuples instead of ``PyObject_CallFunctionObjArgs()``
+        with pre-built ``int`` objects
 
-    * :func:`degu.server.write_response()` is now around 8% faster, thanks to
-      using a list comprehension for the headers, using a local variable for
-      ``wfile.write``, and inlining the body writing
+    *   :func:`degu.server.write_response()` is now around 8% faster, thanks to
+        using a list comprehension for the headers, using a local variable for
+        ``wfile.write``, and inlining the body writing
 
-    * Likewise, :func:`degu.client.write_request()` is also now around 8%
-      faster, thanks to the same optimizations
+    *   Likewise, :func:`degu.client.write_request()` is also now around 8%
+        faster, thanks to the same optimizations
 
-    * ``benchmark.py`` is now around 6% faster for ``AF_INET6`` and around 7%
-      faster for ``AF_UNIX``
+    *   ``benchmark.py`` is now around 6% faster for ``AF_INET6`` and around 7%
+        faster for ``AF_UNIX``
 
 .. note::
 
@@ -46,18 +105,6 @@ Performance improvements:
     To reproduce these results, you'll need to copy the ``benchmark.py`` and
     ``benchmark-parsing.py`` scripts from the Degu 0.9 source tree to the Degu
     0.8 source tree.
-
-
-Other changes:
-
-    * Move ``_degu`` module to ``degu._base`` (the C extension)
-
-    * Rename ``degu.fallback`` module to ``degu._basepy`` (the pure-Python
-      reference implementation)
-
-    * To keep memory usage flatter over time, :class:`degu.server.Server()` now
-      unconditionally closes a connection after 5,000 requests have been
-      handled; this is hard-coded in 0.9 but will be configurable in 1.0
 
 
 

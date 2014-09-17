@@ -81,10 +81,6 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 def build_session(**kw):
     session = {
-        'rgi.version': (0, 1),
-        'scheme': 'http',
-        'protocol': 'HTTP/1.1',
-        'server': ('127.0.0.1', 60111),
         'client': ('127.0.0.1', 52521),
         'requests': 0,
     }
@@ -415,10 +411,6 @@ class TestFunctions(TestCase):
 
         # Missing required keys:
         good = {
-            'rgi.version': (0, 1),
-            'scheme': 'http',
-            'protocol': 'HTTP/1.1',
-            'server': ('127.0.0.1', 60111),
             'client': ('127.0.0.1', 52521),
             'requests': 0,
         }
@@ -431,110 +423,6 @@ class TestFunctions(TestCase):
             self.assertEqual(str(cm.exception),
                 'session[{!r}] does not exist'.format(key)
             )
-
-        # session['rgi.version'] isn't a tuple:
-        bad = deepcopy(good)
-        bad['rgi.version'] = '0.1'
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['rgi.version']: need a <class 'tuple'>; got a <class 'str'>: '0.1'"
-        )
-
-        # session['rgi.version'] tuple doesn't have exactly 2 items:
-        bad = deepcopy(good)
-        bad['rgi.version'] = tuple()
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "len(session['rgi.version']) must be 2; got 0: ()"
-        )
-        bad['rgi.version'] = (0,)
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "len(session['rgi.version']) must be 2; got 1: (0,)"
-        )
-        bad['rgi.version'] = (0, 1, 2)
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "len(session['rgi.version']) must be 2; got 3: (0, 1, 2)"
-        )
-
-        # session['rgi.version'][0] isn't an `int`:
-        bad = deepcopy(good)
-        bad['rgi.version'] = ('0', 1)
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['rgi.version'][0]: need a <class 'int'>; got a <class 'str'>: '0'"
-        )
-
-        # session['rgi.version'][1] isn't an `int`:
-        bad = deepcopy(good)
-        bad['rgi.version'] = (0, 1.0)
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['rgi.version'][1]: need a <class 'int'>; got a <class 'float'>: 1.0"
-        )
-
-        # session['rgi.version'][0] is negative:
-        bad = deepcopy(good)
-        bad['rgi.version'] = (-1, 0)
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['rgi.version'][0] must be >= 0; got -1"
-        )
-
-        # session['rgi.version'][1] is negative:
-        bad = deepcopy(good)
-        bad['rgi.version'] = (0, -1)
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['rgi.version'][1] must be >= 0; got -1"
-        )
-
-        # Bad session['scheme'] value:
-        bad = deepcopy(good)
-        bad['scheme'] = 'ftp'
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['scheme']: value 'ftp' not in ('http', 'https')"
-        )
-
-        # Bad session['protocol'] value:
-        bad = deepcopy(good)
-        bad['protocol'] = 'HTTP/1.0'
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['protocol']: value 'HTTP/1.0' not in ('HTTP/1.1',)"
-        )
-
-        # Bad session['server'] type:
-        address = bytearray(b'\x0000022')
-        bad = deepcopy(good)
-        bad['server'] = address
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            rgi.TYPE_ERROR.format("session['server']", (tuple, str, bytes), bytearray, address)
-        )
-
-        # session['server'] tuple is wrong length:
-        address = ('127.0.0.1', 1234, 0)
-        bad = deepcopy(good)
-        bad['server'] = address
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['server']: tuple must have 2 or 4 items; got ('127.0.0.1', 1234, 0)"
-        )
 
         # Bad session['client'] type:
         address = ['127.0.0.1', 12345]

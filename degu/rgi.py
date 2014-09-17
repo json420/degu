@@ -42,12 +42,6 @@ can better act as an independent RGI validation tool.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Allowed values for session['scheme']:
-SESSION_SCHEMES = ('http', 'https')
-
-# Allowed values for session['protocol']:
-SESSION_PROTOCOLS = ('HTTP/1.1',)
-
 # Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
@@ -170,16 +164,15 @@ def _check_address(label, address):
     """
     Validate a socket address.
 
-    `_validate_session()` uses this to validate the ``session['server']`` and
-    ``session['client']`` socket address values.
+    `_validate_session()` uses this to validate ``session['client']``.
 
     For example:
 
-    >>> _check_address("session['server']", ('::1', 1234, 0, 0))
-    >>> _check_address("session['server']", ('::1', 1234, 0))
+    >>> _check_address("session['client']", ('::1', 1234, 0, 0))
+    >>> _check_address("session['client']", ('::1', 1234, 0))
     Traceback (most recent call last):
       ...
-    ValueError: session['server']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
+    ValueError: session['client']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
 
     """
     if isinstance(address, tuple):
@@ -217,10 +210,10 @@ def _get_path(label, value, *path):
 
     Or when first path item is missing:
 
-    >>> _get_path('session', session, 'server')
+    >>> _get_path('session', session, 'foo')
     Traceback (most recent call last):
       ...
-    ValueError: session['server'] does not exist
+    ValueError: session['foo'] does not exist
 
     Or when the 2nd path item is missing:
 
@@ -249,43 +242,6 @@ def _validate_session(session):
     Validate the *session* argument.
     """
     _check_dict('session', session)
-
-    # rgi.version:
-    (label, value) = _get_path('session', session, 'rgi.version')
-    if not isinstance(value, tuple):
-        raise TypeError(
-            TYPE_ERROR.format(label, tuple, type(value), value) 
-        )
-    if len(value) != 2:
-        raise ValueError(
-            'len({}) must be 2; got {}: {!r}'.format(label, len(value), value)
-        )
-    for i in range(len(value)):
-        (label, value) = _get_path('session', session, 'rgi.version', i)
-        if not isinstance(value, int):
-            raise TypeError(
-                TYPE_ERROR.format(label, int, type(value), value) 
-            )
-        if value < 0:
-            raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
-
-    # scheme:
-    (label, value) = _get_path('session', session, 'scheme')
-    if value not in SESSION_SCHEMES:
-        raise ValueError(
-            "{}: value {!r} not in {!r}".format(label, value, SESSION_SCHEMES)
-        )
-
-    # protocol:
-    (label, value) = _get_path('session', session, 'protocol')
-    if value not in SESSION_PROTOCOLS:
-        raise ValueError(
-            "{}: value {!r} not in {!r}".format(label, value, SESSION_PROTOCOLS)
-        )
-
-    # server:
-    (label, value) = _get_path('session', session, 'server')
-    _check_address(label, value)
 
     # client:
     (label, value) = _get_path('session', session, 'client')

@@ -424,7 +424,7 @@ class Server:
         Each new *session* argument starts out as a copy of this.
         """
         return {
-            'rgi.version': (0, 1),
+            #'rgi.version': (0, 1),
             'scheme': self.scheme,
             'protocol': 'HTTP/1.1',
             'server': self.address,
@@ -432,7 +432,6 @@ class Server:
         }
 
     def serve_forever(self):
-        base_session = self.build_base_session()
         while True:
             (sock, address) = self.sock.accept()
             count = threading.active_count()
@@ -448,11 +447,9 @@ class Server:
                     pass
                 return
             log.info('Connection from %r; active threads: %d', address, count)
-            session = base_session.copy()
-            session['client'] = address
             thread = threading.Thread(
                 target=self.worker,
-                args=(sock, session),
+                args=(sock, {'client': address, 'requests': 0}),
                 daemon=True
             )
             thread.start()
