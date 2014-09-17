@@ -42,12 +42,6 @@ can better act as an independent RGI validation tool.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Allowed values for session['scheme']:
-SESSION_SCHEMES = ('http', 'https')
-
-# Allowed values for session['protocol']:
-SESSION_PROTOCOLS = ('HTTP/1.1',)
-
 # Allowed values for request['method']:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
