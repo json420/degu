@@ -5,6 +5,49 @@ Changelog
 0.9 (unreleased)
 ----------------
 
+Breaking API changes:
+   
+    *   The RGI request sinature is now ``app(session, request, bodies)``, and
+        wrapper classes like ``session['rgi.Body']`` have moved to
+        ``bodies.Body``, etc::
+
+            def my_file_app(session, request, bodies):
+                myfile = open('/my/file', 'rb')
+                body = bodies.Body(myfile)
+                return (200, 'OK', {}, body)
+
+        Whereas in Degu 0.8 you'd do this::
+
+            def my_file_app(session, request, bodies):
+                myfile = open('/my/file', 'rb')
+                body = bodies.Body(myfile)
+                return (200, 'OK', {}, body)
+
+        The four HTTP body wrapper classes are now:
+
+            ==========================  ==================================
+            Exposed via                 Degu implementation
+            ==========================  ==================================
+            ``bodies.Body``             :class:`degu.base.Body`
+            ``bodies.BodyIter``         :class:`degu.base.BodyIter`
+            ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+            ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+            ==========================  ==================================
+
+    *   The following four items have been dropped from the RGI *session*
+        argument::
+
+            session['rgi.version']  # eg, (0, 1)
+            session['scheme']       # eg, 'https'
+            session['protocol']     # eg, 'HTTP/1.1'
+            session['server']       # eg, ('0.0.0.0', 12345)
+
+        Although inspired by equivalent information in the WSGI *environ*, they
+        seem of rather limited use for the use cases Degu (and RGI) are aimed
+        at; in order to minimize the commitments we're making for the Degu 1.0
+        API stable release, we're removing them for now, and might consider
+        adding them back in the future.
+
 Security fixes:
 
     * :func:`degu.base.read_preamble()` now carefully restricts what bytes are
