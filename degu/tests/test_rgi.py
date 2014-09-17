@@ -81,7 +81,6 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 def build_session(**kw):
     session = {
-        'rgi.version': (0, 1),
         'scheme': 'http',
         'server': ('127.0.0.1', 60111),
         'client': ('127.0.0.1', 52521),
