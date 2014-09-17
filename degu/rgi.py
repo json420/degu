@@ -257,13 +257,6 @@ def _validate_session(session):
             "{}: value {!r} not in {!r}".format(label, value, SESSION_SCHEMES)
         )
 
-    # protocol:
-    (label, value) = _get_path('session', session, 'protocol')
-    if value not in SESSION_PROTOCOLS:
-        raise ValueError(
-            "{}: value {!r} not in {!r}".format(label, value, SESSION_PROTOCOLS)
-        )
-
     # server:
     (label, value) = _get_path('session', session, 'server')
     _check_address(label, value)

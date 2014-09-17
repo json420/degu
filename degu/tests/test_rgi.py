@@ -83,7 +83,6 @@ def build_session(**kw):
     session = {
         'rgi.version': (0, 1),
         'scheme': 'http',
-        'protocol': 'HTTP/1.1',
         'server': ('127.0.0.1', 60111),
         'client': ('127.0.0.1', 52521),
         'requests': 0,
@@ -416,7 +415,6 @@ class TestFunctions(TestCase):
         # Missing required keys:
         good = {
             'scheme': 'http',
-            'protocol': 'HTTP/1.1',
             'server': ('127.0.0.1', 60111),
             'client': ('127.0.0.1', 52521),
             'requests': 0,
@@ -438,15 +436,6 @@ class TestFunctions(TestCase):
             rgi._validate_session(bad)
         self.assertEqual(str(cm.exception),
             "session['scheme']: value 'ftp' not in ('http', 'https')"
-        )
-
-        # Bad session['protocol'] value:
-        bad = deepcopy(good)
-        bad['protocol'] = 'HTTP/1.0'
-        with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
-        self.assertEqual(str(cm.exception),
-            "session['protocol']: value 'HTTP/1.0' not in ('HTTP/1.1',)"
         )
 
         # Bad session['server'] type:
