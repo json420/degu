@@ -8,9 +8,9 @@ Changelog
 Security fixes:
 
     *   :func:`degu.base.read_preamble()` now carefully restricts what bytes are
-        allowed to exist in the first line, header keys, and header values; in
-        particular this function now prevents NUL bytes (``b'\x00'``) from being
-        included in any decoded ``str`` objects; for details, please see
+        allowed to exist in the first line, header names, and header values; in
+        particular, this function now prevents the NUL byte (``b'\x00'``) from
+        being included in any decoded ``str`` objects; for details, please see
         :doc:`security`
 
     *   :class:`degu.server.Server` now limits itself to 100 active threads (ie,
