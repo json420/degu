@@ -83,7 +83,7 @@ Performance improvements:
         42% faster; this speed-up is thanks to decoding and case-folding the
         header keys in a single pass rather than using ``str.casefold()``, plus
         thanks to calling ``rfile.readline()`` using ``PyObject_Call()`` with
-        pre-build argument tuples instead of ``PyObject_CallFunctionObjArgs()``
+        pre-built argument tuples instead of ``PyObject_CallFunctionObjArgs()``
         with pre-built ``int`` objects
 
     *   :func:`degu.server.write_response()` is now around 8% faster, thanks to
