@@ -12,20 +12,32 @@ local network.
 
 Degu includes:
 
-    * **A lightweight HTTP server** that's easy to embed in desktop and mobile
-      applications
+    *   **A fast, lightweight HTTP server** that's easy to embed within
+        applications
 
-    * **A low-level HTTP client** comparable to the `http.client`_ module in the
-      Python3 standard library
+    *   **A matching HTTP client** carefully designed to harmonize with the
+        server API
 
-    * **IO abstractions and a common parser** used by both the server and client
+    *   **IO abstractions** used by the server and client to represent HTTP
+        request and response bodies
 
-    * **Test fixtures** that make it easy to create throw-away Degu server
-      instances for unit testing
+    *   **Test fixtures** that make it easy to create throw-away Degu server
+        instances for unit testing
 
 Degu server applications are implemented according to the :doc:`rgi`, which is
 very much in the spirit of `WSGI`_ but does not attempt to be compatible with
-`CGI`_, nor to be compatible with any existing HTTP servers.
+`CGI`_, nor necessarily to be compatible with any existing HTTP servers.
+
+Some noteworthy Degu features:
+
+    *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
+        the optional per-chunk *extension*
+
+    *   Degu provides access to full IPv6 address semantics, including the
+        *scopeid* needed for IPv6 link-local addresses
+
+    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
+        all through the single *address* argument 
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut
@@ -35,9 +47,6 @@ If you have questions or need help getting started with Degu, please stop by the
 `#novacut`_ IRC channel on freenode.
 
 Degu is licensed `LGPLv3+`_, and requires `Python 3.4`_ or newer.
-
-`Microfiber`_ now uses Degu as its underlying HTTP client, and `Dmedia`_ now
-uses Degu as its underlying HTTP server.
 
 Contents:
 
@@ -71,5 +80,4 @@ Contents:
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
 .. _`Python 3.4`: https://docs.python.org/3/
-.. _`Microfiber`: https://launchpad.net/microfiber
-.. _`Dmedia`: https://launchpad.net/dmedia
+

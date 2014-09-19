@@ -24,7 +24,7 @@ You can create a :class:`Server` instance like this:
 And then start the server by calling :meth:`Server.serve_forever()`.
 
 However, note that :meth:`Server.serve_forever()` will block the calling thread
-forever.  When embedding Degu in desktop and mobile applications, it's best to
+forever.  When embedding Degu within another application, it's generally best to
 run your server in its own `multiprocessing.Process`_, which you can easily do
 using the :func:`degu.start_server()` helper function, for example:
 
@@ -219,7 +219,7 @@ Functions
           ``True``; this is to prevent accidentally allowing anonymous clients
           by merely omitting the ``'ca_file'`` and ``'ca_path'``
 
-    For example, typical Degu P2P use will use a *config* something like this:
+    For example, typical Degu P2P usage will use a *config* something like this:
 
     >>> from degu.server import build_server_sslctx
     >>> config = {

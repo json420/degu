@@ -17,7 +17,7 @@ For example:
 
 >>> from degu.rgi import Validator
 >>> from degu.server import Server
->>> def my_app(session, request):
+>>> def my_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 >>> app = Validator(my_app)
@@ -35,8 +35,8 @@ Which in code would look like:
 ...     def __init__(self, app):
 ...         self.app = app
 ...
-...     def __call__(self, session, request):
-...         return self.app(session, request)
+...     def __call__(self, session, request, bodies):
+...         return self.app(session, request, bodies)
 ...
 ...     def on_connect(self, sock, session):
 ...         if getattr(self.app, 'on_connect', None) is None:
@@ -60,7 +60,7 @@ Which in code would look like:
 
         The *app.on_connect* attribute, or ``None`` if it lacks this attribute.
 
-    .. method:: __call__(session, request)
+    .. method:: __call__(session, request, bodies)
 
         Request handler.
 
