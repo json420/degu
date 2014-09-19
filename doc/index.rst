@@ -37,9 +37,6 @@ If you have questions or need help getting started with Degu, please stop by the
 
 Degu is licensed `LGPLv3+`_, and requires `Python 3.4`_ or newer.
 
-`Microfiber`_ now uses Degu as its underlying HTTP client, and `Dmedia`_ now
-uses Degu as its underlying HTTP server.
-
 Contents:
 
 .. toctree::
@@ -72,5 +69,4 @@ Contents:
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
 .. _`Python 3.4`: https://docs.python.org/3/
-.. _`Microfiber`: https://launchpad.net/microfiber
-.. _`Dmedia`: https://launchpad.net/dmedia
+

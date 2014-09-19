@@ -220,7 +220,7 @@ Helper functions
           respectively; you can omit ``'key_file'`` if the private key is
           included in the client certificate file
 
-    For example, typical Degu P2P use will use a *config* something like this:
+    For example, typical Degu P2P usage will use a *config* something like this:
 
     >>> from degu.client import build_client_sslctx
     >>> config = {
