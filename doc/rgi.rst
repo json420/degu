@@ -7,7 +7,7 @@ fronts, WSGI is an exceedingly good design.
 
 *RGI* (REST Gateway Interface) is largely a thought experiment in what you could
 do with something WSGI-like assuming you didn't need `CGI`_ compatibility, and
-likewise didn't need to be compatible with any existing HTTP servers.
+didn't necessarily need to be compatible with any existing HTTP servers.
 
 RGI focuses on improvement in a number of areas:
 

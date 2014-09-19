@@ -12,20 +12,21 @@ local network.
 
 Degu includes:
 
-    * **A lightweight HTTP server** that's easy to embed in desktop and mobile
-      applications
+    * **A lightweight HTTP server** that's easy to embed within applications
 
-    * **A low-level HTTP client** comparable to the `http.client`_ module in the
-      Python3 standard library
+    * **A matching HTTP client** carefully designed to harmonize with the server
+      API
 
-    * **IO abstractions and a common parser** used by both the server and client
+    * **IO abstractions** used by the server and client to represent HTTP
+      request and response bodies, with a particular focus on event streaming
+      using chunked transfer-encoding
 
     * **Test fixtures** that make it easy to create throw-away Degu server
       instances for unit testing
 
 Degu server applications are implemented according to the :doc:`rgi`, which is
 very much in the spirit of `WSGI`_ but does not attempt to be compatible with
-`CGI`_, nor to be compatible with any existing HTTP servers.
+`CGI`_, nor necessarily to be compatible with any existing HTTP servers.
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut
