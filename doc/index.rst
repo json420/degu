@@ -37,7 +37,8 @@ Some noteworthy Degu features:
         *scopeid* needed for IPv6 link-local addresses
 
     *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
-        all through the single *address* argument 
+        all through a single *address* argument that is used uniformly in both
+        the server and client APIs
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut
