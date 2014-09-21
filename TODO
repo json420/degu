@@ -77,38 +77,3 @@ Likely, but not 100% certain
 
         >>> sslclient = SSLClient({}, ('www.example.com', 80))
 
-
-Potentially controversial, and perhaps unlikely
------------------------------------------------
-
-    * Should we drop the 'rgi.' prefix from session['rgi.Body'] and friends?
-      WSGI is layered atop CGI, so using a common 'wsgi.' prefix for the
-      non-standard items added by WSGI feels pretty right; on the other hand,
-      RGI isn't layered atop CGI or anything else, so in some ways the 'rgi.'
-      prefix seems weird because, well, there ain't none but RGI here; also, in
-      WSGI everything must be in the environ, so the wsgi.* name-spacing helps
-      these items stand out in the crowd; on the other hand, in RGI things are
-      less overloaded because these items are split between the session and
-      request; session['Body'] doesn't feel particularly ambiguous becaues it
-      can't be confused with, say, request['body']
-
-    * Or more radically, should all the rgi.* items be moved out of the session
-      and into a 3rd argument, perhaps a namedtuple?  rgi.Body and friends are
-      in fact logically out of place in the session (and clearly the rgi.* items
-      would be even *more* out of place in the request).  The namedtuple idea
-      gets more interesting when you think about the Degu client as well.  In
-      the tutorial, we mention that one place where server agnostic RGI
-      applications aren't currently possible is our exact reverse-proxy example;
-      the Degu client and the 3rd-party RGI server need to be in agreement about
-      what specific Body, BodyIter, ChunkedBody, and ChunkedBodyIter classes are
-      to be used; some sort of *rgi* namedtuple providing these 4 classes could
-      be just a way to provide these details to the Degu client
-
-    * Body, BodyIter, ChunkedBody, and ChunkedBodyIter are quite generic and
-      have good composability; they suck up data from a file-like object or
-      iterable, ensure correct framing using either a content-length or chunked
-      encoding, and spit data out the other end for iteration or writing to an
-      outgoing file-like object; they can stream data from file to socket,
-      or from socket to file, or from client to proxy server to upstream server
-      for a request, and the same all the way back for the response
-
