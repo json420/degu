@@ -13,6 +13,9 @@ Security fixes:
         being included in any decoded ``str`` objects; for details, please see
         :doc:`security`
 
+    *   :func:`degu.base.read_chunk()` likewise prevents the NUL byte
+        (``b'\x00'``) from being included in the optional per-chunk extension
+
     *   :class:`degu.server.Server` now limits itself to 100 active threads (ie,
         100 concurrent connections) to prevent unbounded resource usage; this is
         hard-coded in 0.9 but will be configurable in 1.0
