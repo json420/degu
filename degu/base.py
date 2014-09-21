@@ -185,7 +185,9 @@ def write_body(wfile, body):
 class _Body:
     def write_to(self, wfile):
         write = wfile.write
-        return sum(write(data) for data in self)
+        total = sum(write(data) for data in self)
+        wfile.flush()
+        return total
 
 
 class Body(_Body):
@@ -283,6 +285,7 @@ class _ChunkedBody:
     def write_to(self, wfile):
         write = wfile.write
         flush = wfile.flush
+        flush()  # Flush preamble before writting first chunk
         total = 0
         for (data, extension) in self:
             if extension:
