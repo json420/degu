@@ -1272,6 +1272,24 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
         self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
 
+        # Bad bytes in extension:
+        linestart = b'6f0;'
+        for bad in helpers.iter_bad_values(8):
+            line = linestart + bad + b'\r\n'
+            rfile = io.BytesIO(line)
+            with self.assertRaises(ValueError) as cm:
+                base.read_chunk(rfile)
+            if b';' in bad:
+                self.assertEqual(str(cm.exception),
+                    'bad chunk size line: {!r}'.format(line)
+                )
+            else:
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in chunk extension: {!r}'.format(bad)
+                )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            self.assertEqual(rfile.tell(), 14)
+
     def test_write_chunk(self):
         # len(data) > MAX_CHUNK_BYTES:
         data = b'D' * (base.MAX_CHUNK_BYTES + 1)

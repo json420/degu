@@ -117,7 +117,16 @@ def read_chunk(rfile):
             'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_BYTES, size)
         )
     if len(parts) == 2:
-        (key, value) = parts[1].decode('latin_1').split('=')
+        text = None
+        try:
+            text = parts[1].decode('ascii')  # Disallow the high-bit
+        except ValueError:
+            pass
+        if text is None or not text.isprintable():
+            raise ValueError(
+                'bad bytes in chunk extension: {!r}'.format(parts[1])
+            )
+        (key, value) = text.split('=')
         extension = (key, value)
     else:
         extension = None
