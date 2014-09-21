@@ -158,11 +158,11 @@ class TestConstants(TestCase):
         self.assertEqual(base.STREAM_BUFFER_BYTES % 4096, 0)
         self.assertGreaterEqual(base.STREAM_BUFFER_BYTES, 4096)
 
-    def test_FILE_BUFFER_BYTES(self):
-        self.assertIsInstance(base.FILE_BUFFER_BYTES, int)
+    def test_FILE_IO_BYTES(self):
+        self.assertIsInstance(base.FILE_IO_BYTES, int)
         MiB = 1024 * 1024
-        self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
-        self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
+        self.assertEqual(base.FILE_IO_BYTES % MiB, 0)
+        self.assertGreaterEqual(base.FILE_IO_BYTES, MiB)
 
     def test_default_bodies(self):
         self.assertTrue(issubclass(base.Bodies, tuple))
@@ -1794,10 +1794,10 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
-        # Make sure data is read in FILE_BUFFER_BYTES chunks:
-        data1 = os.urandom(base.FILE_BUFFER_BYTES)
-        data2 = os.urandom(base.FILE_BUFFER_BYTES)
-        length = base.FILE_BUFFER_BYTES * 2
+        # Make sure data is read in FILE_IO_BYTES chunks:
+        data1 = os.urandom(base.FILE_IO_BYTES)
+        data2 = os.urandom(base.FILE_IO_BYTES)
+        length = base.FILE_IO_BYTES * 2
         rfile = io.BytesIO(data1 + data2)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, b''])
@@ -1813,7 +1813,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with smaller final chunk:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data)
+        length = base.FILE_IO_BYTES * 2 + len(data)
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data, b''])
@@ -1829,7 +1829,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with length 1 byte less than available:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data) - 1
+        length = base.FILE_IO_BYTES * 2 + len(data) - 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1], b''])
@@ -1845,7 +1845,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), data[-1:])
 
         # Again, with length 1 byte *more* than available:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data) + 1
+        length = base.FILE_IO_BYTES * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         with self.assertRaises(base.UnderFlowError) as cm:

@@ -50,7 +50,7 @@ __all__ = (
 
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
-FILE_BUFFER_BYTES = 1048576  # 1 MiB
+FILE_IO_BYTES = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -249,7 +249,7 @@ class Body(_Body):
         if self.closed:
             raise BodyClosedError(self)
         while not self.closed:
-            yield self.read(FILE_BUFFER_BYTES)
+            yield self.read(FILE_IO_BYTES)
 
 
 class BodyIter(_Body):
