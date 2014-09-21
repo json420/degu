@@ -5,6 +5,8 @@ Changelog
 0.9 (unreleased)
 ----------------
 
+`Download Degu 0.9`_
+
 Security fixes:
 
     *   :func:`degu.base.read_preamble()` now carefully restricts what bytes are
@@ -114,6 +116,8 @@ Performance improvements:
 0.8 (August 2014)
 -----------------
 
+`Download Degu 0.8`_
+
 Changes:
 
     * Add new :mod:`degu.rgi` module with :class:`degu.rgi.Validator` middleware
@@ -128,6 +132,8 @@ Changes:
 
 0.7 (July 2014)
 ---------------
+
+`Download Degu 0.7`_
 
 Changes:
 
@@ -155,6 +161,8 @@ Changes:
 
 0.6 (June 2014)
 ---------------
+
+`Download Degu 0.6`_
 
 Although Degu 0.6 brings a large number of breaking API changes, the high-level
 server and client APIs are now (more or less) feature complete and can be (at
@@ -309,6 +317,8 @@ For more details, please see the :doc:`rgi` specification.
 0.5 (May 2014)
 --------------
 
+`Download Degu 0.5`_
+
 Changes:
 
     * Greatly expand and enhance documentation for the :mod:`degu.client` module
@@ -377,4 +387,12 @@ Two things motivated these breaking API changes:
       whether such an ``on_connect()`` handler is in use (as most code can
       merely create connections using the provided client, rather than
       themselves creating clients)
+
+
+
+.. _`Download Degu 0.9`: https://launchpad.net/degu/+milestone/0.9
+.. _`Download Degu 0.8`: https://launchpad.net/degu/+milestone/0.8
+.. _`Download Degu 0.7`: https://launchpad.net/degu/+milestone/0.7
+.. _`Download Degu 0.6`: https://launchpad.net/degu/+milestone/0.6
+.. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
 
