@@ -191,7 +191,7 @@ class _Body:
 
 
 class Body(_Body):
-    def __init__(self, rfile, content_length):
+    def __init__(self, rfile, content_length, iosize=None):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
         if not isinstance(content_length, int):
@@ -207,6 +207,7 @@ class Body(_Body):
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
+        self.iosize = (FILE_IO_BYTES if iosize is None else iosize)
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -248,8 +249,22 @@ class Body(_Body):
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
-        while not self.closed:
-            yield self.read(FILE_IO_BYTES)
+        remaining = self.remaining
+        if remaining != self.content_length:
+            raise Exception('cannot mix Body.read() with Body.__iter__()')
+        self.remaining = 0
+        iosize = self.iosize
+        read = self.rfile.read
+        while remaining > 0:
+            readsize = min(remaining, iosize)
+            remaining -= readsize
+            assert remaining >= 0
+            data = read(readsize)
+            if len(data) != readsize:
+                self.rfile.close()
+                raise UnderFlowError(len(data), readsize)
+            yield data
+        self.closed = True
 
 
 class BodyIter(_Body):
