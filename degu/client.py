@@ -225,12 +225,12 @@ def write_request(wfile, method, uri, headers, body):
 
     # Write the body:
     if body is None:
-        pass
+        flush()
     elif isinstance(body, (bytes, bytearray)):
         total += write(body)
+        flush()
     else:
         total += body.write_to(wfile)
-    flush()
     return total
 
 

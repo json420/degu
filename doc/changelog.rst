@@ -81,6 +81,14 @@ Other changes:
         now unconditionally closes a connection after 5,000 requests have been
         handled; this is hard-coded in 0.9 but will be configurable in 1.0
 
+    *   :class:`degu.base.Body()` now takes optional *iosize* kwarg; which
+        defaults to :data:`degu.base.FILE_IO_BYTES`
+
+    *   Add :meth:`degu.base.Body.write_to()` method to :class:`degu.base.Body`
+        and its friends; this gives the HTTP body wrapper API greater
+        composability, particularly useful should a Degu client or server use
+        the *bodies* implementation from a other independent project
+
 
 Performance improvements:
 

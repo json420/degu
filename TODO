@@ -13,13 +13,6 @@ Definite
       you should always be able to reconstruct the original URI from
       (script, path, query), even if items have been shifted from path to script
 
-    * `Body()` should take an optional *iosize* argument to allow both client
-      and server applications to specify the size of data chunks that will be
-      read from the source rfile and written to the outgoing wfile; for example,
-      the Dmedia FilesApp will perform best using an 8 MiB *iosize* as that's
-      the same *iosize* the client will be using when reading the body on the
-      receiving end
-
     * `ChunkedBody.read()` should take a size argument and should have the same
       semantics as `Body.read()`; likewise, `ChunkedBody.read()` should return
       bytes instead of a bytearray (in order to match standard Python file-like

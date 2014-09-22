@@ -31,7 +31,7 @@ from random import SystemRandom
 import itertools
 
 from . import helpers
-from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
+from .helpers import DummySocket, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base, _basepy
@@ -158,11 +158,11 @@ class TestConstants(TestCase):
         self.assertEqual(base.STREAM_BUFFER_BYTES % 4096, 0)
         self.assertGreaterEqual(base.STREAM_BUFFER_BYTES, 4096)
 
-    def test_FILE_BUFFER_BYTES(self):
-        self.assertIsInstance(base.FILE_BUFFER_BYTES, int)
+    def test_FILE_IO_BYTES(self):
+        self.assertIsInstance(base.FILE_IO_BYTES, int)
         MiB = 1024 * 1024
-        self.assertEqual(base.FILE_BUFFER_BYTES % MiB, 0)
-        self.assertGreaterEqual(base.FILE_BUFFER_BYTES, MiB)
+        self.assertEqual(base.FILE_IO_BYTES % MiB, 0)
+        self.assertGreaterEqual(base.FILE_IO_BYTES, MiB)
 
     def test_default_bodies(self):
         self.assertTrue(issubclass(base.Bodies, tuple))
@@ -1379,96 +1379,6 @@ class TestFunctions(AlternatesTestCase):
         fp.seek(0)
         self.assertEqual(base.read_chunk(fp), (data, (key, value)))
 
-    def test_write_body(self):
-        # body is bytes:
-        body = random_data()
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(body))
-        self.assertEqual(wfile.tell(), len(body))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), body)
-
-        # body is bytearray:
-        body = bytearray(body)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(body))
-        self.assertEqual(wfile.tell(), len(body))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), body)
-
-        # body is base.Body:
-        data = random_data()
-        extra = random_data()
-        rfile = io.BytesIO(data + extra)
-        body = base.Body(rfile, len(data))
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(data))
-        self.assertEqual(rfile.tell(), len(data))
-        self.assertEqual(wfile.tell(), len(data))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), data)
-
-        # body is base.BodyIter:
-        source = tuple(random_data() for i in range(4))
-        content_length = sum(len(data) for data in source)
-        body = base.BodyIter(source, content_length)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), content_length)
-        self.assertEqual(wfile.tell(), content_length)
-        self.assertEqual(wfile.getvalue(), b''.join(source))
-
-        # body is base.ChunkedBody:
-        chunks = random_chunks()
-        rfile = io.BytesIO()
-        total = sum(base.write_chunk(rfile, data) for data in chunks)
-        rfile.write(extra)
-        rfile.seek(0)
-        body = base.ChunkedBody(rfile)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), total)
-        self.assertEqual(rfile.tell(), total)
-        self.assertEqual(wfile.tell(), total)
-        wfile.seek(0)
-        gotchunks = []
-        while True:
-            (data, extension) = base.read_chunk(wfile)
-            gotchunks.append(data)
-            if not data:
-                break
-        self.assertEqual(gotchunks, chunks)
-
-        # body is base.ChunkedBodyIter:
-        source = [
-            (random_data(), (random_id(), random_id())) for i in range(5)
-        ]
-        source.append((b'', (random_id(), random_id())))
-        body = base.ChunkedBodyIter(tuple(source))
-        wfile = io.BytesIO()
-        total = base.write_body(wfile, body)
-        self.assertEqual(wfile.tell(), total)
-        wfile.seek(0)
-        gotchunks = []
-        while True:
-            (data, extension) = base.read_chunk(wfile)
-            gotchunks.append((data, extension))
-            if not data:
-                break
-        self.assertEqual(gotchunks, source)
-
-        # body is None:
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, None), 0)
-        self.assertEqual(wfile.tell(), 0)
-        self.assertEqual(wfile.read(), b'')
-
-        # bad body type:
-        wfile = io.BytesIO()
-        with self.assertRaises(TypeError) as cm:
-            base.write_body(wfile, 'hello')
-        self.assertEqual(str(cm.exception),
-            "invalid body type: <class 'str'>: 'hello'"
-        )
-
 
 class TestBody(TestCase):
     def test_init(self):
@@ -1533,6 +1443,7 @@ class TestBody(TestCase):
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 69)
         self.assertEqual(body.remaining, 69)
+        self.assertIs(body.iosize, base.FILE_IO_BYTES)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(), data)
         self.assertEqual(repr(body), 'Body(<rfile>, 69)')
@@ -1739,7 +1650,7 @@ class TestBody(TestCase):
         # content_length=0
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 0)
-        self.assertEqual(list(body), [b''])
+        self.assertEqual(list(body), [])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1754,7 +1665,7 @@ class TestBody(TestCase):
         # content_length=69
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 69)
-        self.assertEqual(list(body), [data[:69], b''])
+        self.assertEqual(list(body), [data[:69]])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1769,7 +1680,7 @@ class TestBody(TestCase):
         # content_length=1776
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 1776)
-        self.assertEqual(list(body), [data, b''])
+        self.assertEqual(list(body), [data])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1794,13 +1705,13 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
-        # Make sure data is read in FILE_BUFFER_BYTES chunks:
-        data1 = os.urandom(base.FILE_BUFFER_BYTES)
-        data2 = os.urandom(base.FILE_BUFFER_BYTES)
-        length = base.FILE_BUFFER_BYTES * 2
+        # Make sure data is read in FILE_IO_BYTES chunks:
+        data1 = os.urandom(base.FILE_IO_BYTES)
+        data2 = os.urandom(base.FILE_IO_BYTES)
+        length = base.FILE_IO_BYTES * 2
         rfile = io.BytesIO(data1 + data2)
         body = base.Body(rfile, length)
-        self.assertEqual(list(body), [data1, data2, b''])
+        self.assertEqual(list(body), [data1, data2])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1813,10 +1724,10 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with smaller final chunk:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data)
+        length = base.FILE_IO_BYTES * 2 + len(data)
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
-        self.assertEqual(list(body), [data1, data2, data, b''])
+        self.assertEqual(list(body), [data1, data2, data])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1829,10 +1740,10 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with length 1 byte less than available:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data) - 1
+        length = base.FILE_IO_BYTES * 2 + len(data) - 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
-        self.assertEqual(list(body), [data1, data2, data[:-1], b''])
+        self.assertEqual(list(body), [data1, data2, data[:-1]])
         self.assertEqual(body.remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
@@ -1845,7 +1756,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), data[-1:])
 
         # Again, with length 1 byte *more* than available:
-        length = base.FILE_BUFFER_BYTES * 2 + len(data) + 1
+        length = base.FILE_IO_BYTES * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         with self.assertRaises(base.UnderFlowError) as cm:

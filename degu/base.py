@@ -50,7 +50,7 @@ __all__ = (
 
 MAX_CHUNK_BYTES = 16777216  # 16 MiB
 STREAM_BUFFER_BYTES = 65536  # 64 KiB
-FILE_BUFFER_BYTES = 1048576  # 1 MiB
+FILE_IO_BYTES = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -164,32 +164,17 @@ def write_chunk(wfile, data, extension=None):
     return total
 
 
-def write_body(wfile, body):
-    total = 0
-    if isinstance(body, (bytes, bytearray)):
-        total += wfile.write(body)
-    elif isinstance(body, (Body, BodyIter)):
-        for data in body:
-            total += wfile.write(data)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        for (data, extension) in body:
-            total += write_chunk(wfile, data, extension)
-    elif body is not None:
-        raise TypeError(
-            'invalid body type: {!r}: {!r}'.format(type(body), body)
-        )
-    wfile.flush()
-    return total
-
-
 class _Body:
     def write_to(self, wfile):
         write = wfile.write
-        return sum(write(data) for data in self)
+        total = sum(write(data) for data in self)
+        assert total == self.content_length
+        wfile.flush()
+        return total
 
 
 class Body(_Body):
-    def __init__(self, rfile, content_length):
+    def __init__(self, rfile, content_length, iosize=None):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
         if not isinstance(content_length, int):
@@ -205,6 +190,9 @@ class Body(_Body):
         self.rfile = rfile
         self.content_length = content_length
         self.remaining = content_length
+        self.iosize = (FILE_IO_BYTES if iosize is None else iosize)
+        assert isinstance(self.iosize, int)
+        assert self.iosize >= 4096 and self.iosize % 4096 == 0
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -246,8 +234,22 @@ class Body(_Body):
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
-        while not self.closed:
-            yield self.read(FILE_BUFFER_BYTES)
+        remaining = self.remaining
+        if remaining != self.content_length:
+            raise Exception('cannot mix Body.read() with Body.__iter__()')
+        self.remaining = 0
+        iosize = self.iosize
+        read = self.rfile.read
+        while remaining > 0:
+            readsize = min(remaining, iosize)
+            remaining -= readsize
+            assert remaining >= 0
+            data = read(readsize)
+            if len(data) != readsize:
+                self.rfile.close()
+                raise UnderFlowError(len(data), readsize)
+            yield data
+        self.closed = True
 
 
 class BodyIter(_Body):
@@ -283,6 +285,7 @@ class _ChunkedBody:
     def write_to(self, wfile):
         write = wfile.write
         flush = wfile.flush
+        flush()  # Flush preamble before writting first chunk
         total = 0
         for (data, extension) in self:
             if extension:
