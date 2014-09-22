@@ -282,6 +282,15 @@ Parsing functions
 
         Initially ``False``, will be ``True`` after entire body has been read.
 
+    .. method:: __iter__()
+
+        Iterate through all the data in the HTTP body.
+
+        This method will yield the entire HTTP body as a series of ``bytes``
+        instances each up to :attr:`Body.iosize` bytes in size.
+
+        Note that you can only iterate through an :class:`Body` instance once.
+
     .. method:: read(size=None)
 
         Read part (or all) of the HTTP body.
@@ -292,16 +301,12 @@ Parsing functions
         If the *size* argument is provided, up to that many bytes will be read
         and returned from the HTTP body.
 
-    .. method:: __iter__()
+    .. method:: write_to(wfile)
 
-        Iterate through all the data in the HTTP body.
+        Write this entire HTTP body to *wfile*.
 
-        This method will yield the entire HTTP body as a series of ``bytes``
-        instances each up to :attr:`Body.iosize` bytes in size.
-
-        The final item yielded will always be an empty ``b''``.
-
-        Note that you can only iterate through an :class:`Body` instance once.
+        *wfile* must be a Python file-like object with at least
+        ``wfile.write()`` and ``wfile.flush()`` methods.
 
 
 
