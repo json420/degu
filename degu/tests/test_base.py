@@ -31,7 +31,7 @@ from random import SystemRandom
 import itertools
 
 from . import helpers
-from .helpers import DummySocket, random_data, random_chunks, FuzzTestCase
+from .helpers import DummySocket, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
 from degu.base import MAX_LINE_BYTES
 from degu import base, _basepy
@@ -1378,96 +1378,6 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
         fp.seek(0)
         self.assertEqual(base.read_chunk(fp), (data, (key, value)))
-
-    def test_write_body(self):
-        # body is bytes:
-        body = random_data()
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(body))
-        self.assertEqual(wfile.tell(), len(body))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), body)
-
-        # body is bytearray:
-        body = bytearray(body)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(body))
-        self.assertEqual(wfile.tell(), len(body))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), body)
-
-        # body is base.Body:
-        data = random_data()
-        extra = random_data()
-        rfile = io.BytesIO(data + extra)
-        body = base.Body(rfile, len(data))
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), len(data))
-        self.assertEqual(rfile.tell(), len(data))
-        self.assertEqual(wfile.tell(), len(data))
-        wfile.seek(0)
-        self.assertEqual(wfile.read(), data)
-
-        # body is base.BodyIter:
-        source = tuple(random_data() for i in range(4))
-        content_length = sum(len(data) for data in source)
-        body = base.BodyIter(source, content_length)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), content_length)
-        self.assertEqual(wfile.tell(), content_length)
-        self.assertEqual(wfile.getvalue(), b''.join(source))
-
-        # body is base.ChunkedBody:
-        chunks = random_chunks()
-        rfile = io.BytesIO()
-        total = sum(base.write_chunk(rfile, data) for data in chunks)
-        rfile.write(extra)
-        rfile.seek(0)
-        body = base.ChunkedBody(rfile)
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, body), total)
-        self.assertEqual(rfile.tell(), total)
-        self.assertEqual(wfile.tell(), total)
-        wfile.seek(0)
-        gotchunks = []
-        while True:
-            (data, extension) = base.read_chunk(wfile)
-            gotchunks.append(data)
-            if not data:
-                break
-        self.assertEqual(gotchunks, chunks)
-
-        # body is base.ChunkedBodyIter:
-        source = [
-            (random_data(), (random_id(), random_id())) for i in range(5)
-        ]
-        source.append((b'', (random_id(), random_id())))
-        body = base.ChunkedBodyIter(tuple(source))
-        wfile = io.BytesIO()
-        total = base.write_body(wfile, body)
-        self.assertEqual(wfile.tell(), total)
-        wfile.seek(0)
-        gotchunks = []
-        while True:
-            (data, extension) = base.read_chunk(wfile)
-            gotchunks.append((data, extension))
-            if not data:
-                break
-        self.assertEqual(gotchunks, source)
-
-        # body is None:
-        wfile = io.BytesIO()
-        self.assertEqual(base.write_body(wfile, None), 0)
-        self.assertEqual(wfile.tell(), 0)
-        self.assertEqual(wfile.read(), b'')
-
-        # bad body type:
-        wfile = io.BytesIO()
-        with self.assertRaises(TypeError) as cm:
-            base.write_body(wfile, 'hello')
-        self.assertEqual(str(cm.exception),
-            "invalid body type: <class 'str'>: 'hello'"
-        )
 
 
 class TestBody(TestCase):

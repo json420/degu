@@ -164,24 +164,6 @@ def write_chunk(wfile, data, extension=None):
     return total
 
 
-def write_body(wfile, body):
-    total = 0
-    if isinstance(body, (bytes, bytearray)):
-        total += wfile.write(body)
-    elif isinstance(body, (Body, BodyIter)):
-        for data in body:
-            total += wfile.write(data)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        for (data, extension) in body:
-            total += write_chunk(wfile, data, extension)
-    elif body is not None:
-        raise TypeError(
-            'invalid body type: {!r}: {!r}'.format(type(body), body)
-        )
-    wfile.flush()
-    return total
-
-
 class _Body:
     def write_to(self, wfile):
         write = wfile.write
