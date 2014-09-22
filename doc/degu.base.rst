@@ -23,6 +23,17 @@ design and validate the correctness of the C implementation.
 
 
 
+Constants
+---------
+
+.. data:: FILE_IO_BYTES
+
+    An ``int`` containing the default read size used by :class:`Body.__iter__()`.
+
+    >>> import degu.base
+    >>> assert degu.base.FILE_IO_BYTES == 1048576  # 1 MiB
+
+
 
 Exceptions
 ----------
@@ -212,7 +223,7 @@ Parsing functions
 :class:`Body` class
 -------------------
 
-.. class:: Body(rfile, content_length)
+.. class:: Body(rfile, content_length, iosize=FILE_IO_BYTES)
 
     Represents an HTTP request or response body with a content-length.
 
@@ -233,6 +244,28 @@ Parsing functions
     a file-object returned by `socket.socket.makefile()`_, or any other similar
     object implementing the needed API.
 
+    .. attribute:: rfile
+
+        The *rfile* passed to the constructor
+
+    .. attribute:: content_length
+
+        The *content_length* passed to the constructor.
+
+    .. attribute:: iosize
+
+        Value of optional *iosize* argument passed to the constructor.
+
+        If *iosize* was not provided, it defaults to :data:`FILE_IO_BYTES` (1
+        MiB).
+
+    .. attribute:: remaining
+
+        Remaining bytes available for reading in the HTTP body.
+
+        This attribute is initially set to :attr:`Body.content_length`.  Once
+        the entire HTTP body has been read, this attribute will be ``0``.
+
     .. attribute:: chunked
 
         Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.
@@ -249,21 +282,6 @@ Parsing functions
 
         Initially ``False``, will be ``True`` after entire body has been read.
 
-    .. attribute:: rfile
-    
-        The *rfile* passed to the constructor
-
-    .. attribute:: content_length
-
-        The *content_length* passed to the constructor.
-
-    .. attribute:: remaining
-
-        Remaining bytes available for reading in the HTTP body.
-
-        This attribute is initially set to :attr:`Body.content_length`.  Once
-        the entire HTTP body has been read, this attribute will be ``0``.
-
     .. method:: read(size=None)
 
         Read part (or all) of the HTTP body.
@@ -279,7 +297,7 @@ Parsing functions
         Iterate through all the data in the HTTP body.
 
         This method will yield the entire HTTP body as a series of ``bytes``
-        instances each up to 1 MiB in size.
+        instances each up to :attr:`Body.iosize` bytes in size.
 
         The final item yielded will always be an empty ``b''``.
 

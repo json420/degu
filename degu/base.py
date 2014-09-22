@@ -191,6 +191,8 @@ class Body(_Body):
         self.content_length = content_length
         self.remaining = content_length
         self.iosize = (FILE_IO_BYTES if iosize is None else iosize)
+        assert isinstance(self.iosize, int)
+        assert self.iosize >= 4096 and self.iosize % 4096 == 0
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
