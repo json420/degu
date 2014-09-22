@@ -186,6 +186,7 @@ class _Body:
     def write_to(self, wfile):
         write = wfile.write
         total = sum(write(data) for data in self)
+        assert total == self.content_length
         wfile.flush()
         return total
 
