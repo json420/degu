@@ -2,6 +2,13 @@ Changelog
 =========
 
 
+0.10 (unreleased)
+-----------------
+
+This *may* end up being the API stable Degu 1.0 release ``:D``
+
+
+
 0.9 (September 2014)
 --------------------
 
