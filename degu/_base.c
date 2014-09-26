@@ -299,13 +299,14 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     if (crlf != NULL) {
         line_len = crlf - line_buf;
     }
-    
+
     _SET(first_line,
         _decode(line_len, line_buf, _VALUES, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
-    while (0 || crlf != NULL) {
+    _SET(headers, PyDict_New())
+    while (crlf != NULL) {
         line_buf = crlf + 2;
         line_len = preamble_len - (line_buf - preamble_buf);
         crlf = memmem(line_buf, line_len, "\r\n", 2);
@@ -315,17 +316,17 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 
         /* We require both the header key and header value to each be at least
          * one byte in length.  This means that the shortest valid header line
-         * (including the CRLF) is six bytes in length:
+         * (minus the CRLF) is four bytes in length:
          *
-         *      line| k: vRN  <-- "RN" means "\r\n", the CRLF terminator
-         *    offset| 012345
-         *      size| 123456
+         *      line| k: v
+         *    offset| 0123
+         *      size| 1234
          *
-         * So when (line_len < 6), there's no reason to proceed.  This
+         * So when (line_len < 4), there's no reason to proceed.  This
          * short-circuiting is also a bit safer just in case a given `memmem()`
          * implementation isn't well behaved when (haystacklen < needlelen).
          */
-        if (line_len < 6) {
+        if (line_len < 4) {
             _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
             PyErr_Format(PyExc_ValueError, "header line too short: %R", line);
             goto error;
