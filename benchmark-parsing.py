@@ -83,6 +83,8 @@ run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 
 print('\nHigh-level parsers:')
 run('parse_preamble(preamble)')
+run("parse_preamble(b'hello\\r\\ncontent-length: 17')")
+run("parse_preamble(b'hello\\r\\ntransfer-encoding: chunked')")
 run('read_preamble(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")

@@ -289,9 +289,11 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     PyObject *headers = NULL;
     PyObject *key = NULL;
     PyObject *value = NULL;
-    PyObject *borrowed = NULL;
     PyObject *line = NULL;
     PyObject *ret = NULL;
+
+    uint8_t has_content_length = 0;
+    uint8_t has_transfer_encoding = 0;
 
     line_buf = preamble_buf;
     line_len = preamble_len;
@@ -345,11 +347,32 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
         _RESET(key,
             _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
         )
-
-        /* Decode the header value */
         _RESET(value,
             _decode(value_len, sep + 2, _VALUES, "bad bytes in header value: %R")
         )
+        if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
+            has_content_length = 1;
+            _RESET(key, str_content_length);
+            Py_INCREF(key);
+            PyObject *tmp = NULL;
+            _SET(tmp, PyLong_FromUnicodeObject(value, 10))
+            _RESET(value, tmp)
+            if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
+                PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
+                goto error;
+            }
+        }
+        else if (key_len == 17 && memcmp(PyUnicode_1BYTE_DATA(key), "transfer-encoding", 17) == 0) {
+            has_transfer_encoding = 1;
+            _RESET(key, str_transfer_encoding);
+            Py_INCREF(key);
+            if (value_len != 7 || memcmp(PyUnicode_1BYTE_DATA(value), "chunked", 7) != 0) {
+                PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+                goto error;
+            }
+            _RESET(value, str_chunked);
+            Py_INCREF(value);
+        }
 
         /* Store in headers dict, make sure it's not a duplicate key */
         if (PyDict_SetDefault(headers, key, value) != value) {
@@ -357,32 +380,13 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
             PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
             goto error;
         }
-
     }
 
-    if (PyDict_Contains(headers, str_content_length)) {
-        if (PyDict_Contains(headers, str_transfer_encoding)) {
-            PyErr_SetString(PyExc_ValueError, 
-                "cannot have both content-length and transfer-encoding headers"
-            );
-            goto error;
-        }
-        _SET(borrowed, PyDict_GetItemWithError(headers, str_content_length))
-        _RESET(value, PyLong_FromUnicodeObject(borrowed, 10))
-        if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
-            PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
-            goto error;
-        }
-        if (PyDict_SetItem(headers, str_content_length, value) != 0) {
-            goto error;
-        }
-    }
-    else if (PyDict_Contains(headers, str_transfer_encoding)) {
-        _SET(borrowed, PyDict_GetItemWithError(headers, str_transfer_encoding))
-        if (PyUnicode_Compare(borrowed, str_chunked) != 0) {
-            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
-            goto error;
-        }
+    if (has_content_length && has_transfer_encoding) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error; 
     }
     ret = PyTuple_Pack(2, first_line, headers);
     goto cleanup;
