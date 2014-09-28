@@ -225,6 +225,10 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         goto error; \
     }
 
+#define _REPLACE(pyobj, source) \
+    _RESET(pyobj, source) \
+    Py_INCREF(pyobj);
+
 
 /*
  * _READLINE() macro: read the next line in the preamble using rfile.readline().
@@ -268,16 +272,6 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         Py_CLEAR(_crlf); \
         goto error; \
     }
-
-
-/*
-
-    |-- line ------------------------------------------------------------------|
-    |-- line1 ------|
-                      |-- line -------------------------------------------------|
-
-
- */
 
 
 static PyObject *
@@ -352,8 +346,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
         )
         if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
             has_content_length = 1;
-            _RESET(key, str_content_length);
-            Py_INCREF(key);
+            _REPLACE(key, str_content_length)
             PyObject *tmp = NULL;
             _SET(tmp, PyLong_FromUnicodeObject(value, 10))
             _RESET(value, tmp)
@@ -364,14 +357,12 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
         }
         else if (key_len == 17 && memcmp(PyUnicode_1BYTE_DATA(key), "transfer-encoding", 17) == 0) {
             has_transfer_encoding = 1;
-            _RESET(key, str_transfer_encoding);
-            Py_INCREF(key);
+            _REPLACE(key, str_transfer_encoding)
             if (value_len != 7 || memcmp(PyUnicode_1BYTE_DATA(value), "chunked", 7) != 0) {
                 PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
                 goto error;
             }
-            _RESET(value, str_chunked);
-            Py_INCREF(value);
+            _REPLACE(value, str_chunked)
         }
 
         /* Store in headers dict, make sure it's not a duplicate key */
@@ -400,8 +391,7 @@ cleanup:
     Py_CLEAR(key);
     Py_CLEAR(value);
     Py_CLEAR(line);
-    return ret;  
-
+    return ret;
 }
 
 
