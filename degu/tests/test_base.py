@@ -257,6 +257,47 @@ class TestFunctions(AlternatesTestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
         ])
 
+    def check_parse_preamble(self, backend):
+        self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
+        self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),
+            ('Foo', {'bar': 'Baz'})
+        )
+        self.assertEqual(backend.parse_preamble(b'Foo\r\nContent-Length: 42'),
+            ('Foo', {'content-length': 42})
+        )
+        self.assertEqual(
+            backend.parse_preamble(b'Foo\r\nTransfer-Encoding: chunked'),
+            ('Foo', {'transfer-encoding': 'chunked'})
+        )
+
+        # Bad bytes in first line:
+        with self.assertRaises(ValueError) as cm:
+            backend.parse_preamble(b'Foo\x00\r\nBar: Baz')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in first line: b'Foo\\x00'"
+        )
+
+        # Bad bytes in header name:
+        with self.assertRaises(ValueError) as cm:
+            backend.parse_preamble(b'Foo\r\nBar\x00: Baz')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in header name: b'Bar\\x00'"
+        )
+
+        # Bad bytes in header value:
+        with self.assertRaises(ValueError) as cm:
+            backend.parse_preamble(b'Foo\r\nBar: Baz\x00')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in header value: b'Baz\\x00'"
+        )
+
+    def test_parse_preamble_p(self):
+        self.check_parse_preamble(_basepy)
+
+    def test_parse_preamble_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_preamble(_base)
+
     def check_read_preamble(self, backend):
         self.assertIn(backend, (_basepy, _base))
 
