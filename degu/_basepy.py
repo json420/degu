@@ -140,6 +140,36 @@ def _READLINE(readline, maxsize):
     return line
 
 
+def parse_preamble(preamble):
+    (first_line, *header_lines) = preamble.split(b'\r\n')
+    first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')
+    headers = {}
+    for line in header_lines:
+        (key, value) = line.split(b': ')
+        key = _decode_key(key, 'bad bytes in header name: {!r}')
+        value = _decode_value(value, 'bad bytes in header value: {!r}')
+        if headers.setdefault(key, value) is not value:
+            raise ValueError(
+                'duplicate header: {!r}'.format(line)
+            )
+    if 'content-length' in headers:
+        headers['content-length'] = int(headers['content-length'])
+        if headers['content-length'] < 0:
+            raise ValueError(
+                'negative content-length: {!r}'.format(headers['content-length'])
+            ) 
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                'cannot have both content-length and transfer-encoding headers'
+            )
+    elif 'transfer-encoding' in headers:
+        if headers['transfer-encoding'] != 'chunked':
+            raise ValueError(
+                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+            )
+    return (first_line, headers)
+
+
 def _read_preamble(rfile):
     readline = rfile.readline
     if not callable(readline):
