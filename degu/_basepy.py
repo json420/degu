@@ -75,6 +75,8 @@ __all__ = (
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
 MAX_HEADER_COUNT = 15
 
+MAX_PREAMBLE_BYTES = 65536  # 64 KiB
+
 _RE_KEYS = re.compile('^[-1-9a-z]+$')
 
 
@@ -140,6 +142,36 @@ def _READLINE(readline, maxsize):
     return line
 
 
+def parse_preamble(preamble):
+    (first_line, *header_lines) = preamble.split(b'\r\n')
+    first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')
+    headers = {}
+    for line in header_lines:
+        (key, value) = line.split(b': ')
+        key = _decode_key(key, 'bad bytes in header name: {!r}')
+        value = _decode_value(value, 'bad bytes in header value: {!r}')
+        if headers.setdefault(key, value) is not value:
+            raise ValueError(
+                'duplicate header: {!r}'.format(line)
+            )
+    if 'content-length' in headers:
+        headers['content-length'] = int(headers['content-length'])
+        if headers['content-length'] < 0:
+            raise ValueError(
+                'negative content-length: {!r}'.format(headers['content-length'])
+            ) 
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                'cannot have both content-length and transfer-encoding headers'
+            )
+    elif 'transfer-encoding' in headers:
+        if headers['transfer-encoding'] != 'chunked':
+            raise ValueError(
+                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+            )
+    return (first_line, headers)
+
+
 def _read_preamble(rfile):
     readline = rfile.readline
     if not callable(readline):
@@ -199,4 +231,40 @@ def read_preamble(rfile):
                 'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
             )
     return (first_line, headers)
+
+
+class Reader:
+    def __init__(self, raw):
+        self.raw = raw
+        self._buf = bytearray(MAX_PREAMBLE_BYTES)
+        self._view = memoryview(self._buf)
+        self._tell = 0
+        self._size = 0
+
+    def tell(self):
+        return self._tell
+
+    def _consume_buffer(self, size):
+        """
+        Consume first *size* bytes in buffer.
+        """
+        assert 0 < size <= self._size <= MAX_PREAMBLE_BYTES
+        ret = self.view[:size].tobytes()
+        self._tell += size
+        remaining = self._size - size
+        self.view[:remaining] = self.view[self._size:self._size+remaining]
+        return ret
+
+    def _fill_buffer(self):
+        assert self.start == 0
+        assert 0 < self.stop < MAX_PREAMBLE_BYTES
+        size = self.raw.readinto(self.view[self.stop:])
+        self.stop = self.start + size
+
+    def read_preamble(self):
+        self._fill_buffer()
+        index = self.buf.find(b'\r\n\r\n')
+        if 0 < index < self.stop:
+            pass
+        
 

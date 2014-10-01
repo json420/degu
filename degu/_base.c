@@ -225,6 +225,10 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         goto error; \
     }
 
+#define _REPLACE(pyobj, source) \
+    _RESET(pyobj, source) \
+    Py_INCREF(pyobj);
+
 
 /*
  * _READLINE() macro: read the next line in the preamble using rfile.readline().
@@ -268,6 +272,141 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         Py_CLEAR(_crlf); \
         goto error; \
     }
+
+
+static PyObject *
+_parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
+{
+    const uint8_t *line_buf, *crlf, *sep;
+    size_t line_len, key_len, value_len;
+    PyObject *first_line = NULL;
+    PyObject *headers = NULL;
+    PyObject *key = NULL;
+    PyObject *value = NULL;
+    PyObject *line = NULL;
+    PyObject *ret = NULL;
+
+    uint8_t has_content_length = 0;
+    uint8_t has_transfer_encoding = 0;
+
+    line_buf = preamble_buf;
+    line_len = preamble_len;
+    crlf = memmem(line_buf, line_len, "\r\n", 2);
+    if (crlf != NULL) {
+        line_len = crlf - line_buf;
+    }
+
+    _SET(first_line,
+        _decode(line_len, line_buf, _VALUES, "bad bytes in first line: %R")
+    )
+
+    /* Read, parse, and decode the header lines */
+    _SET(headers, PyDict_New())
+    while (crlf != NULL) {
+        line_buf = crlf + 2;
+        line_len = preamble_len - (line_buf - preamble_buf);
+        crlf = memmem(line_buf, line_len, "\r\n", 2);
+        if (crlf != NULL) {
+            line_len = crlf - line_buf;
+        }
+
+        /* We require both the header key and header value to each be at least
+         * one byte in length.  This means that the shortest valid header line
+         * (minus the CRLF) is four bytes in length:
+         *
+         *      line| k: v
+         *    offset| 0123
+         *      size| 1234
+         *
+         * So when (line_len < 4), there's no reason to proceed.  This
+         * short-circuiting is also a bit safer just in case a given `memmem()`
+         * implementation isn't well behaved when (haystacklen < needlelen).
+         */
+        if (line_len < 4) {
+            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
+            PyErr_Format(PyExc_ValueError, "header line too short: %R", line);
+            goto error;
+        }
+
+        sep = memmem(line_buf, line_len, ": ", 2);
+        if (sep == NULL || sep < line_buf + 1 || sep > line_buf + line_len - 3) {
+            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
+            PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
+            goto error;
+        }
+        key_len = sep - line_buf;
+        value_len = line_len - key_len - 2;
+
+        /* Decode & case-fold the header name */
+        _RESET(key,
+            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
+        )
+        _RESET(value,
+            _decode(value_len, sep + 2, _VALUES, "bad bytes in header value: %R")
+        )
+        if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
+            has_content_length = 1;
+            _REPLACE(key, str_content_length)
+            PyObject *tmp = NULL;
+            _SET(tmp, PyLong_FromUnicodeObject(value, 10))
+            _RESET(value, tmp)
+            if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
+                PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
+                goto error;
+            }
+        }
+        else if (key_len == 17 && memcmp(PyUnicode_1BYTE_DATA(key), "transfer-encoding", 17) == 0) {
+            has_transfer_encoding = 1;
+            _REPLACE(key, str_transfer_encoding)
+            if (value_len != 7 || memcmp(PyUnicode_1BYTE_DATA(value), "chunked", 7) != 0) {
+                PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
+                goto error;
+            }
+            _REPLACE(value, str_chunked)
+        }
+
+        /* Store in headers dict, make sure it's not a duplicate key */
+        if (PyDict_SetDefault(headers, key, value) != value) {
+            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
+            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
+            goto error;
+        }
+    }
+
+    if (has_content_length && has_transfer_encoding) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error; 
+    }
+    ret = PyTuple_Pack(2, first_line, headers);
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(headers);
+    Py_CLEAR(key);
+    Py_CLEAR(value);
+    Py_CLEAR(line);
+    return ret;
+}
+
+
+static PyObject *
+degu_parse_preamble(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_preamble", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_preamble(buf, len);   
+}
+
 
 
 /*
@@ -440,8 +579,10 @@ cleanup:
 }
 
 
+
 /* module init */
 static struct PyMethodDef degu_functions[] = {
+    {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
     {NULL, NULL, 0, NULL}
 };

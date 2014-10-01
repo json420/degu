@@ -7,6 +7,7 @@ gc.enable()
 
 from io import BytesIO
 
+from degu._base import parse_preamble
 from degu.base import read_preamble, write_chunk
 from degu.client import parse_status, write_request
 from degu.server import parse_request, read_request, write_response
@@ -28,8 +29,10 @@ headers = {
 }
 
 fp = BytesIO()
-write_request(fp, 'POST', '/foo/bar?stuff=junk', headers, b'hello')
+write_request(fp, 'POST', '/foo/bar?stuff=junk', headers, None)
 request_preamble = fp.getvalue()
+assert request_preamble.endswith(b'\\r\\n\\r\\n'), request_preamble
+preamble = request_preamble[:-4]
 del fp
 
 data = b'D' * 1776
@@ -79,6 +82,9 @@ run("'{}: {}\\r\\n'.format('content-length', 1234567)")
 run("'GET /foo/bar?stuff=junk HTTP/1.1\\r\\n'.encode('latin_1')")
 
 print('\nHigh-level parsers:')
+run('parse_preamble(preamble)')
+run("parse_preamble(b'hello\\r\\ncontent-length: 17')")
+run("parse_preamble(b'hello\\r\\ntransfer-encoding: chunked')")
 run('read_preamble(BytesIO(request_preamble))')
 run('read_request(BytesIO(request_preamble))')
 run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
