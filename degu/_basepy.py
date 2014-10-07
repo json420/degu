@@ -258,10 +258,10 @@ class Reader:
         return ret
 
     def _fill_buffer(self):
-        assert self.start == 0
-        assert 0 < self.stop < MAX_PREAMBLE_BYTES
-        size = self.raw.readinto(self.view[self.stop:])
-        self.stop = self.start + size
+        assert 0 <= self._size <= len(self._buf)
+        added = self.raw.readinto(self._view[self._size:])
+        self._size += added
+        return added
 
     def read_preamble(self):
         self._fill_buffer()
