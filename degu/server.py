@@ -266,15 +266,17 @@ def read_request(rfile):
         raise ValueError('bad request path: {!r}'.format(path_str))
     path_list = ([] if path_str == '/' else path_str[1:].split('/'))
 
-    # Hack for compatibility with the CouchDB replicator, which annoyingly
-    # sends a {'content-length': 0} header with all GET and HEAD requests:
-    if method in {'GET', 'HEAD'} and 'content-length' in headers:
-        if headers['content-length'] == 0:
-            del headers['content-length']
+    # Only one dictionary lookup for content-length:
+    content_length = headers.get('content-length')
 
     # Build request body:
-    if 'content-length' in headers:
-        body = Body(rfile, headers['content-length'])
+    if content_length is not None:
+        # Hack for compatibility with the CouchDB replicator, which annoyingly
+        # sends a {'content-length': 0} header with all GET and HEAD requests:
+        if method in {'GET', 'HEAD'} and content_length == 0:
+            del headers['content-length']
+        else:
+            body = Body(rfile, content_length)
     elif 'transfer-encoding' in headers:
         body = ChunkedBody(rfile)
     else:
