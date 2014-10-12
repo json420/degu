@@ -229,11 +229,6 @@ class TestFunctions(TestCase):
             client.validate_request('get', None, None, None)
         self.assertEqual(str(cm.exception), "invalid method: 'get'")
 
-        # Bad uri:
-        with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', 'foo', None, None)
-        self.assertEqual(str(cm.exception), "bad uri: 'foo'")
-
         # Non-casefolded header name:
         H = {'Content-Type': 'text/plain'}
         with self.assertRaises(ValueError) as cm:
