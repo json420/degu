@@ -158,30 +158,53 @@ def validate_client_sslctx(sslctx):
 
 
 def validate_request(method, uri, headers, body):
+    # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
     if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
         raise ValueError('invalid method: {!r}'.format(method))
-    if not uri.startswith('/'):
-        raise ValueError('bad uri: {!r}'.format(uri))
-    for key in headers:
-        if key.casefold() != key:
-            raise ValueError('non-casefolded header name: {!r}'.format(key))
+
+    # Ensure all header keys are lowercase:
+    if not all([key.islower() for key in headers]):
+        for key in sorted(headers):  # Sorted for deterministic unit testing
+            if not key.islower():
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        raise Exception('should not be reached')
+
+    # A body of None is the most common, so check this case first:
+    if body is None:
+        if 'content-length' in headers:
+            raise ValueError(
+                "cannot include 'content-length' when body is None"
+            )
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                "cannot include 'transfer-encoding' when body is None"
+            )
+        return
+
+    # Check body type, set content-length or transfer-encoding header as needed:
     if isinstance(body, (bytes, bytearray)): 
         headers['content-length'] = len(body)
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                "cannot include 'transfer-encoding' with length-encoded body"
+            )
     elif isinstance(body, (Body, BodyIter)):
         headers['content-length'] = body.content_length
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                "cannot include 'transfer-encoding' with length-encoded body"
+            )
     elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
         headers['transfer-encoding'] = 'chunked'
-    elif body is not None:
+        if 'content-length' in headers:
+            raise ValueError(
+                "cannot include 'content-length' with chunk-encoded body"
+            )
+    else:
         raise TypeError('bad request body type: {!r}'.format(type(body)))
-    if {'content-length', 'transfer-encoding'}.issubset(headers):
-        raise ValueError('content-length with transfer-encoding')
-    if body is None:
-        for key in ('content-length', 'transfer-encoding'):
-            if key in headers:
-                raise ValueError(
-                    'cannot include {!r} when body is None'.format(key)
-                )
-    elif method not in {'PUT', 'POST'}:
+
+    # A body is only allowed when the request method is PUT or POST:
+    if method not in {'PUT', 'POST'}:
         raise ValueError('cannot include body in a {} request'.format(method))
 
 

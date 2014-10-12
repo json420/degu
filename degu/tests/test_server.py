@@ -502,6 +502,7 @@ class TestFunctions(TestCase):
         self.assertEqual(server.read_request(rfile),
             {
                 'method': 'GET',
+                'uri': '/foo',
                 'script': [],
                 'path': ['foo'],
                 'query': '',
@@ -567,6 +568,7 @@ class TestFunctions(TestCase):
         self.assertEqual(server.read_request(rfile),
             {
                 'method': 'GET',
+                'uri': '/',
                 'script': [],
                 'path': [],
                 'query': '',
@@ -582,6 +584,7 @@ class TestFunctions(TestCase):
         self.assertEqual(server.read_request(rfile),
             {
                 'method': 'HEAD',
+                'uri': '/foo?nonpair',
                 'script': [],
                 'path': ['foo'],
                 'query': 'nonpair',
@@ -599,6 +602,7 @@ class TestFunctions(TestCase):
         self.assertEqual(server.read_request(rfile),
             {
                 'method': 'DELETE',
+                'uri': '/foo/Bar/?keY=vAl',
                 'script': [],
                 'path': ['foo', 'Bar', ''],
                 'query': 'keY=vAl',

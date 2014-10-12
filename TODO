@@ -5,13 +5,12 @@ Road to 1.0 (or something like that)
 Definite
 --------
 
-    * Add 'uri' to the RGI request; this will be the raw, unparsed URI from the
-      request line; by having access to the raw URI, `degu.rgi.Validator` (or
-      similar RGI middleware) can check that the server correctly parsed the URI
-      into the (script, path, query) components, and can likewise check that any
-      path shifting done by middleware or applications was done correctly... ie,
-      you should always be able to reconstruct the original URI from
-      (script, path, query), even if items have been shifted from path to script
+    * Now that request['uri'] has been added, `degu.rgi.Validator` should check
+      that the server correctly parsed the URI into the (script, path, query)
+      components, and should likewise check that any path shifting done by
+      middleware or applications was done correctly... ie, you should always be
+      able to reconstruct the original URI from (script, path, query), even if
+      items have been shifted from path to script
 
     * `ChunkedBody.read()` should take a size argument and should have the same
       semantics as `Body.read()`; likewise, `ChunkedBody.read()` should return
