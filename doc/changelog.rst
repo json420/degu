@@ -7,6 +7,25 @@ Changelog
 
 This *may* end up being the API stable Degu 1.0 release ``:D``
 
+Changes:
+
+    *   The RGI *request* argument now includes a ``uri`` item, which will be
+        the complete, unparsed URI from the request line, for example::
+
+            request = {
+                'method': 'GET',
+                'uri': '/foo/bar/baz?stuff=junk',
+                'script': ['foo'],
+                'path': ['bar', 'baz'],
+                'query': 'stuff=junk',
+                'headers': {},
+                'body': None,
+            }
+
+        ``request['uri']`` was added so that RGI validation middleware can check
+        that the URI was properly parsed and that any path shifting was done
+        correctly.  It's also handy for logging.
+
 
 
 0.9 (September 2014)
