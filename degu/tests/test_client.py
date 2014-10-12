@@ -224,83 +224,116 @@ class TestFunctions(TestCase):
         self.assertIs(sslctx.check_hostname, True)
 
     def test_validate_request(self):
+        # Pre-build all valid types of length-encoded bodies:
+        data = os.urandom(17)
+        length_bodies = (
+            data,
+            bytearray(data),
+            base.Body(io.BytesIO(data), 17),
+            base.BodyIter([data], 17),
+        )
+
+        # Pre-build all valid types of chunk-encoded bodies:
+        chunked_bodies = (
+            base.ChunkedBody(io.BytesIO()),
+            base.ChunkedBodyIter([])
+        )
+
         # Bad method:
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('get', None, None, None)
+            client.validate_request('get', '/foo', {}, None)
         self.assertEqual(str(cm.exception), "invalid method: 'get'")
 
         # Non-casefolded header name:
-        H = {'Content-Type': 'text/plain'}
+        headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', '/foo', H, None)
+            client.validate_request('GET', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "non-casefolded header name: 'Content-Type'"
         )
 
-        # Bad body type:
-        H = {'content-type': 'text/plain'}
-        with self.assertRaises(TypeError) as cm:
-            client.validate_request('GET', '/foo', H, 'hello')
-        self.assertEqual(str(cm.exception),
-            "bad request body type: <class 'str'>"
-        )
-
-        # Both content-length and transfer-encoding present:
-        H = {'content-length': 17, 'transfer-encoding': 'chunked'}
+        # Body is None but content-length header included:
+        headers = {'content-length': 17}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', '/foo', H, None)
-        self.assertEqual(str(cm.exception),
-            'content-length with transfer-encoding'
-        )
-
-        # content-length with a None body:
-        H = {'content-length': 17}
-        with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', '/foo', H, None)
+            client.validate_request('POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "cannot include 'content-length' when body is None"
         )
 
-        # transfer-encoding with a None body:
-        H = {'transfer-encoding': 'chunked'}
+        # Body is None but transfer-encoding header included:
+        headers = {'transfer-encoding': 'chunked'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', '/foo', H, None)
+            client.validate_request('POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "cannot include 'transfer-encoding' when body is None"
         )
 
-        # Cannot include body in GET, HEAD, DELETE:
-        for M in ('GET', 'HEAD', 'DELETE'):
+        # Bad body type:
+        headers = {'content-type': 'text/plain'}
+        with self.assertRaises(TypeError) as cm:
+            client.validate_request('GET', '/foo', headers, 'hello')
+        self.assertEqual(str(cm.exception),
+            "bad request body type: <class 'str'>"
+        )
+
+        # 'transfer-encoding' header with a length-encoded body:
+        for body in length_bodies:
+            headers = {'transfer-encoding': 'chunked'}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request(M, '/foo', {}, b'hello')
+                client.validate_request('POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
-                'cannot include body in a {} request'.format(M)
+                "cannot include 'transfer-encoding' with length-encoded body"
+            )
+            self.assertEqual(headers,
+                {'content-length': 17, 'transfer-encoding': 'chunked'}
             )
 
-        # No in-place header modification should happen with GET, HEAD, DELETE:
-        for M in ('GET', 'HEAD', 'DELETE'):
-            H = {}
-            self.assertIsNone(client.validate_request(M, '/foo', H, None))
-            self.assertEqual(H, {})
+        # 'content-length' header with a chunk-encoded body:
+        for body in chunked_bodies:
+            headers = {'content-length': 5}
+            with self.assertRaises(ValueError) as cm:
+                client.validate_request('POST', '/foo', headers, body)
+            self.assertEqual(str(cm.exception),
+                "cannot include 'content-length' with chunk-encoded body"
+            )
+            self.assertEqual(headers,
+                {'content-length': 5, 'transfer-encoding': 'chunked'}
+            )
 
-        # Test with all the non-chunked body types:
-        bodies = (
-            os.urandom(17),
-            bytearray(os.urandom(17)),
-            base.Body(io.BytesIO(), 17)
-        )
-        for M in ('PUT', 'POST'):
-            for B in bodies:
-                H = {}
-                self.assertIsNone(client.validate_request(M, '/foo', H, B))
-                self.assertEqual(H, {'content-length': 17})
+        # Cannot include body when method is GET, HEAD, or DELETE:
+        for body in (length_bodies + chunked_bodies):
+            for method in ('GET', 'HEAD', 'DELETE'):
+                with self.assertRaises(ValueError) as cm:
+                    client.validate_request(method, '/foo', {}, body)
+                self.assertEqual(str(cm.exception),
+                    'cannot include body in a {} request'.format(method)
+                )
 
-        # Finally test with base.ChunkedOutput:
-        B = base.ChunkedBody(io.BytesIO())
-        for M in ('PUT', 'POST'):
-            H = {}
-            self.assertIsNone(client.validate_request(M, '/foo', H, B))
-            self.assertEqual(H, {'transfer-encoding': 'chunked'})
+        # No in-place header modification should happen when body is None:
+        for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
+            headers = {}
+            self.assertIsNone(
+                client.validate_request(method, '/foo', headers, None)
+            )
+            self.assertEqual(headers, {})
+
+        # Test with all the length-encoded body types:
+        for method in ('PUT', 'POST'):
+            for body in length_bodies:
+                headers = {}
+                self.assertIsNone(
+                    client.validate_request(method, '/foo', headers, body)
+                )
+                self.assertEqual(headers, {'content-length': 17})
+
+        # Test with all the chunk-encoded body types:
+        for method in ('PUT', 'POST'):
+            for body in chunked_bodies:
+                headers = {}
+                self.assertIsNone(
+                    client.validate_request(method, '/foo', headers, body)
+                )
+                self.assertEqual(headers, {'transfer-encoding': 'chunked'})
 
     def test_parse_status(self):
         # Not enough spaces:
