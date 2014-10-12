@@ -162,9 +162,11 @@ def validate_request(method, uri, headers, body):
         raise ValueError('invalid method: {!r}'.format(method))
     if not uri.startswith('/'):
         raise ValueError('bad uri: {!r}'.format(uri))
-    for key in headers:
-        if key.casefold() != key:
-            raise ValueError('non-casefolded header name: {!r}'.format(key))
+    if not all([key.islower() for key in headers]):
+        for key in sorted(headers):  # Sorted for deterministic unit testing
+            if not key.islower():
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        raise Exception('should not be reached')
     if isinstance(body, (bytes, bytearray)): 
         headers['content-length'] = len(body)
     elif isinstance(body, (Body, BodyIter)):
