@@ -242,24 +242,26 @@ class Reader:
         self._size = 0
 
     def tell(self):
+        assert isinstance(self._tell, int) and self._tell >= 0
         return self._tell
 
     def _consume_buffer(self, size):
         """
         Consume first *size* bytes in buffer.
         """
-        assert 0 < size <= self._size <= MAX_PREAMBLE_BYTES
-        ret = self.view[:size].tobytes()
+        assert 0 <= size <= self._size <= MAX_PREAMBLE_BYTES
+        ret = self._view[:size].tobytes()
         self._tell += size
         remaining = self._size - size
-        self.view[:remaining] = self.view[self._size:self._size+remaining]
+        self._view[:remaining] = self._view[size:size+remaining]
+        self._size = remaining
         return ret
 
     def _fill_buffer(self):
-        assert self.start == 0
-        assert 0 < self.stop < MAX_PREAMBLE_BYTES
-        size = self.raw.readinto(self.view[self.stop:])
-        self.stop = self.start + size
+        assert 0 <= self._size <= len(self._buf)
+        added = self.raw.readinto(self._view[self._size:])
+        self._size += added
+        return added
 
     def read_preamble(self):
         self._fill_buffer()
