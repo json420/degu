@@ -5,7 +5,7 @@
    :synopsis: Embedded HTTP Server
 
 
-As a quick example, say you have this simple RGI application:
+As a quick example, say you have this :doc:`rgi` application:
 
 >>> def hello_world_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
@@ -51,8 +51,156 @@ example, to kill the server process we just created:
 >>> process.join()
 
 
-Bind *address*
---------------
+
+:class:`Server` class
+---------------------
+
+.. class:: Server(address, app, **options)
+
+    A Degu HTTP server instance.
+
+    The *address* argument specifies the socket address upon which the server
+    will listen.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
+    ``AF_INET`` (IPv4), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
+    See :ref:`server-bind-address` for details.
+
+    The *app* argument must be a callable that implements the :doc:`rgi`.  For a
+    quick primer, see :ref:`server-app-callable`.
+
+    Finally, you can provide keyword-only *options* to override the defaults for
+    a number of tunable runtime parameters.  See :ref:`server-config-options`
+    for details.
+
+    .. attribute:: address
+
+        The bound server address as returned by `socket.socket.getsockname()`_.
+
+        Note that this wont necessarily match the *address* provided when the
+        :class:`Server` instance was created.  As Degu is designed for per-user
+        server instances running on dynamic ports, you typically specify port
+        ``0`` in an ``AF_INET6`` or ``AF_INET`` *address* argument, using
+        something like this::
+
+            ('::1', 0, 0, 0)
+
+        In which case the :attr:`Server.address` argument will contain the port
+        assigned by the operating system, something like this::
+
+            ('::1', 40505, 0, 0)
+
+    .. attribute:: app
+
+        The RGI application callable provided when the :class:`Server` instance
+        was created.
+
+    .. attribute:: options
+
+        A ``dict`` containing the configuration options.
+
+        This will contain the values of any keyword-only *options* provided when
+        the :class:`Server` instance was created, and will otherwise contain the
+        default values for all other *options* that weren't explicitly provided.
+
+    .. attribute:: sock
+
+        The `socket.socket`_ instance upon which the server is listening.
+
+    .. method:: serve_forever()
+
+        Start the server in multi-threaded mode.
+
+        The caller will block forever.
+
+
+
+:class:`SSLServer` subclass
+---------------------------
+
+.. class:: SSLServer(sslctx, address, app, **options)
+
+    A Degu HTTP server instance secured using TLS 1.2.
+
+    This subclass inherits all attributes and methods from :class:`Server`.
+
+    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
+    configured for server-side use.
+
+    Alternatively, if the *sslctx* is a ``dict`` instance, it is interpreted as
+    the server *sslconfig* and the actual `ssl.SSLContext`_ instance will be
+    built automatically by calling :func:`build_server_sslctx()`.
+
+    The *address* and *app* arguments, along with any keyword-only *options*,
+    are passed unchanged to :class:`Server()`.
+
+
+:func:`build_server_sslctx()`
+-----------------------------
+
+.. function:: build_server_sslctx(sslconfig)
+
+    Build an `ssl.SSLContext`_ appropriately configured for server-side use.
+
+    This function complements the client-side setup built with
+    :func:`degu.client.build_client_sslctx()`.
+
+    The *sslconfig* must be a ``dict`` instance, which must include at least two
+    keys:
+
+        * ``'cert_file'`` --- an ``str`` providing the path of the server
+          certificate file
+
+        * ``'key_file'`` --- an ``str`` providing the path of the server key
+          file
+
+    And can optionally include either of the keys:
+
+        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
+          of the file or directory, respectively, containing the trusted CA
+          certificates used to verify client certificates on incoming client
+          connections
+
+        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
+          ``'ca_path'`` are provided, this must be provided and must be
+          ``True``; this is to prevent accidentally allowing anonymous clients
+          by merely omitting the ``'ca_file'`` and ``'ca_path'``
+
+    For example, typical Degu P2P usage will use an *sslconfig* something like
+    this:
+
+    >>> from degu.server import build_server_sslctx
+    >>> sslconfig = {
+    ...     'cert_file': '/my/server.cert',
+    ...     'key_file': '/my/server.key',
+    ...     'ca_file': '/my/client.ca',
+    ... }
+    >>> sslctx = build_server_sslctx(sslconfig)  #doctest: +SKIP
+
+    Although you can directly build your own server-side `ssl.SSLContext`_, use
+    of this function eliminates many potential security gotchas that can occur
+    through misconfiguration.
+
+    Opinionated security decisions this function makes:
+
+        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
+
+        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
+          ``'allow_unauthenticated_clients'`` is provided in the *sslconfig*
+          (and is ``True``), in which case the *verify_mode* is set to
+          ``ssl.CERT_NONE``
+
+        * The *sslconfig* unconditionally include ``ssl.OP_NO_COMPRESSION``,
+          thereby preventing `CRIME-like attacks`_, and also allowing lower
+          CPU usage and higher throughput on non-compressible payloads like
+          media files
+
+        * The *cipher* is unconditionally set to
+          ``'ECDHE-RSA-AES256-GCM-SHA384'``
+
+
+.. _server-bind-address:
+
+Server bind *address*
+---------------------
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 can be:
@@ -97,13 +245,13 @@ Likewise, you'll typically bind your ``AF_INET`` or ``AF_INET6`` Degu server to
 either the special loopback-IP or the special any-IP addresses.
 
 For example, these are the two most common ``AF_INET`` 2-tuple *address*
-values, for the looback-IP and the any-IP, respectively::
+values, for the loopback-IP and the any-IP, respectively::
 
     ('127.0.0.1', 0)
     ('0.0.0.0', 0)
 
 And these are the two most common ``AF_INET6`` 4-tuple *address* values, for the
-looback-IP and the any-IP, respectively::
+loopback-IP and the any-IP, respectively::
 
     ('::1', 0, 0, 0)
     ('::', 0, 0, 0)
@@ -139,116 +287,237 @@ Linux abstract socket name assigned by the kernel, something like::
 
 
 
-:class:`Server` class
+.. _server-app-callable:
+
+Server *app* callable
 ---------------------
 
-.. class:: Server(address, app)
+Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
+provide your HTTP request handler, and optionally provide a TCP connection
+handler.
 
-    As discussed above, the *address* argument must be a 4-tuple for IPv6 and a
-    2-tuple for IPv4.
-
-    The *app* argument must be a callable that implements the :doc:`rgi`.
-
-    .. attribute:: sock
-
-        The `socket.socket`_ instance upon which the server is listening.
-
-    .. attribute:: address
-
-        The address as returned by `socket.socket.getsockname()`_.
-
-        Note this wont necessarily match the *address* provided when the server
-        instance was created.  As Degu is designed for per-user server instances
-        on dynamic ports, you typically specify port ``0`` in the *address*,
-        using something like this::
-
-            ('::1', 0, 0, 0)
-
-        In which case this address attribute will contain the random port
-        assigned by the operating system, something like this::
-
-            ('::1', 40505, 0, 0)
-
-    .. attribute:: app
-
-        The RGI application callable provided when the instance was created.
-
-    .. method:: serve_forever()
-
-        Start the server in multi-threaded mode.
-
-        The caller will block forever.
+Here is a quick primer on implementing Degu server applications, but for full
+details, please see the :doc:`rgi` specification.
 
 
+**HTTP request handler:**
 
-:class:`SSLServer` subclass
----------------------------
+Your *app* must be a callable that accepts three arguments::
 
-.. class:: SSLServer(sslctx, addresss, app)
+    (session, request, bodies)
+
+And your ``app()`` callable must return a 4-tuple providing the HTTP response
+status, response reason, response headers, and response body::
+
+    (status, reason, headers, body)
+
+For example:
+
+>>> def my_rgi_app(session, request, bodies):
+...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+
+The *session* argument will be a ``dict`` instance something like this::
+
+    session = {
+        'client': ('127.0.0.1', 12345),
+    }
+
+The *request* argument will be a ``dict`` instance something like this::
+
+    request = {
+        'method': 'GET',
+        'uri': '/foo/bar/baz?stuff=junk',
+        'script': ['foo'],
+        'path': ['bar', 'baz'],
+        'query': 'stuff=junk',
+        'headers': {'accept': 'text/plain'},
+        'body': None,
+    }
+
+Finally, the *bodies* argument will be a namedtuple exposing four wrapper
+classes used to specify HTTP request and response bodies:
+
+==========================  ==================================
+Exposed via                 Degu implementation
+==========================  ==================================
+``bodies.Body``             :class:`degu.base.Body`
+``bodies.BodyIter``         :class:`degu.base.BodyIter`
+``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+==========================  ==================================
+
+
+**TCP connection handler:**
+
+If your *app* argument itself has a callable ``on_connect`` attribute, it must
+accept two arguments::
+
+    (sock, session)
+
+And your ``app.on_connect()`` callable must return ``True`` when the connection
+should be accepted, or return ``False`` when the connection should be rejected.
+
+For example:
+
+>>> class MyRGIApp:
+...     def __call__(self, session, request, bodies):
+...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+... 
+...     def on_connect(self, sock, session):
+...         return True
+
+The *sock* argument will be a ``socket.socket`` instance, an ``ssl.SSLSocket``
+instance, or in the case of an RGI-compatible server other than Degu, possibly
+an instance of some other object implementing an equivalent API.
+
+Finally, the *session* argument will be same ``dict`` instance passed to your
+``app()`` HTTP request handler, something like this::
+
+    session = {
+        'client': ('127.0.0.1', 12345),
+    }
+
+If your *app* has an ``on_connect`` attribute that is *not* callable, it must be
+``None``.  This allows you to disable the ``app.on_connect()`` handler in a
+subclass, for example:
+
+>>> class MyRGIAppSubclass(MyRGIApp):
+...     on_connect = None
+
+
+**Persistent per-connection session:**
+
+The exact same *session* instance will be used for all HTTP requests made
+through a specific TCP connection.
+
+This means that your ``app()`` HTTP request handler can use the *session*
+argument to store, for example, per-connection resources that will likely be
+used again when handling subsequent HTTP requests made through that same TCP
+connection.
+
+Likewise, this means that your optional ``app.on_connect()`` TCP connection
+handler can use the *session* argument to store, for example,
+application-specific per-connection authentication information.
+
+If your ``app()`` HTTP request handler adds anything to the *session*, it should
+prefix the key with ``'__'`` (double underscore).  For example:
+
+>>> def my_rgi_app(session, request, bodies):
+...     body = session.get('__body')
+...     if body is None:
+...         body = b'hello, world'
+...         session['__body'] = body
+...     return (200, 'OK', {'content-type': 'text/plain'}, body)
+
+Likewise, if your ``app.on_connect()`` TCP connection handler adds anything to
+the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
+
+>>> class MyRGIApp:
+...     def __call__(self, session, request, bodies):
+...         if session.get('_user') != 'admin':
+...             return (403, 'Forbidden', {}, None)
+...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+...
+...     def on_connect(self, sock, session):
+...         # Somehow authenticate the user who made the connection:
+...         session['_user'] = 'admin'
+...         return True
+
+
+**Name-spacing session keys:**
+
+Sometimes it's useful to keep individual RGI application components ignorant
+of where exactly they might be mounted within the URI hierarchy (especially when
+RGI routing middleware is used), and also ignorant of what other components
+might be mounted and where.  In this case, care must be taken to use a key that
+will be unique even though an individual component wont know the full RGI
+application setup in advance.
+
+When needed, the recommended approach for an ``app()`` HTTP request handler is
+to namespace its session keys using ``request['script']``, something like this:
+
+>>> def session_request_key(request, key):
+...     return '/'.join(['__'] + request['script'] + [key])
+...
+>>> def my_rgi_app(session, request, bodies):
+...     key = session_request_key(request, 'body')
+...     body = session.get(key)
+...     if body is None:
+...         body = b'hello, world'
+...         session[key] = body
+...     return (200, 'OK', {'content-type': 'text/plain'}, body)
+...
+>>> session_request_key({'script': ['foo', 'bar']}, 'body')
+'__/foo/bar/body'
+
+Likewise, the RGI specification allows middleware components to cascade calls
+down through multiple ``app.on_connect()`` TCP connection handlers.  Again, care
+must be taken to use a key that will be unique even though an individual
+component wont know the full RGI application setup in advance.
+
+When needed, the recommended approach for an ``app().on_connect()`` TCP
+connection handler is to namespace its session keys using its class module and
+class name, something like this:
+
+>>> def session_connection_key(cls, key):
+...     return '.'.join(['_', cls.__module__, cls.__name__, key])
+...
+>>> class MyRGIApp:
+...     def __init__(self):
+...         self._key = session_connection_key(self.__class__, 'user')
+...
+...     def __call__(self, session, request, bodies):
+...         if session.get(self._key) != 'admin':
+...             return (403, 'Forbidden', {}, None)
+...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+...
+...     def on_connect(self, sock, session):
+...         # Somehow authenticate the user who made the connection:
+...         session[self._key] = 'admin'
+...         return True
+...
+>>> session_connection_key(MyRGIApp, 'user')
+'_.builtins.MyRGIApp.user'
 
 
 
-Functions
----------
+.. _server-config-options:
 
-.. function:: build_server_sslctx(config)
+Server config *options*
+-----------------------
 
-    Build an `ssl.SSLContext`_ appropriately configured for server-side use.
+Both :class:`Server` and :class:`SSLServer` accept configuration *options* via
+keyword-only arguments, by which you can override the defaults for certain
+tunable runtime parameters.
 
-    This function complements the client-side setup built with
-    :func:`degu.client.build_client_sslctx()`.
+The following server configuration *options* are supported:
 
-    The *config* must be a ``dict`` instance, which must include at least two
-    keys:
+    *   ``timeout`` --- server socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance; the default is a ``15`` second server
+        socket timeout
 
-        * ``'cert_file'`` --- an ``str`` providing the path of the server
-          certificate file
+    *   ``max_connections`` --- maximum number of concurrent TCP connections the
+        server will accept; once this maximum has been reached, subsequent
+        connections will be rejected till one or more existing connections are
+        closed; this option directly effects the maximum amount of memory Degu
+        can consume for in-flight per-connection and per-request data; it must
+        be a positive ``int``; the default is a maximum of ``25`` concurrent
+        connections
 
-        * ``'key_file'`` --- an ``str`` providing the path of the server key
-          file
+    *   ``max_requests_per_connection`` --- maximum number of HTTP requests that
+        can be handled through a single TCP connection before that connection
+        is forcibly closed by the server; a lower value will minimize the impact
+        of heap fragmentation and will keep the memory usage flatter over time;
+        a higher value can provide better throughput when a large number of
+        small requests and responses need to travel in quick succession through
+        the same TCP connection (typical for CouchDB-style structured data
+        sync); it must be a positive ``int``; the default is a maximum of
+        ``100`` requests per connection
 
-    And can optionally include either of the keys:
+    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies; the default is
+        :data:`degu.base.DEFAULT_BODIES`
 
-        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
-          of the file or directory, respectively, containing the trusted CA
-          certificates used to verify client certificates on incoming client
-          connections
-
-        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
-          ``'ca_path'`` are provided, this must be provided and must be
-          ``True``; this is to prevent accidentally allowing anonymous clients
-          by merely omitting the ``'ca_file'`` and ``'ca_path'``
-
-    For example, typical Degu P2P usage will use a *config* something like this:
-
-    >>> from degu.server import build_server_sslctx
-    >>> config = {
-    ...     'cert_file': '/my/server.cert',
-    ...     'key_file': '/my/server.key',
-    ...     'ca_file': '/my/client.ca',
-    ... }
-    >>> sslctx = build_server_sslctx(config)  #doctest: +SKIP
-
-    Although you can directly build your own server-side `ssl.SSLContext`_, use
-    of this function eliminates many potential security gotchas that can occur
-    through misconfiguration.
-
-    Opinionated security decisions this function makes:
-
-        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
-
-        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
-          ``'allow_unauthenticated_clients'`` is provided in the *config* (and
-          is ``True``), in which case the *verify_mode* is set to
-          ``ssl.CERT_NONE``
-
-        * The *options* unconditionally include ``ssl.OP_NO_COMPRESSION``,
-          thereby preventing `CRIME-like attacks`_, and also allowing lower
-          CPU usage and higher throughput on non-compressible payloads like
-          media files
-
-        * The *cipher* is unconditionally set to
-          ``'ECDHE-RSA-AES256-GCM-SHA384'``
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process

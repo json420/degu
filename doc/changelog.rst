@@ -18,7 +18,7 @@ Changes:
                 'script': ['foo'],
                 'path': ['bar', 'baz'],
                 'query': 'stuff=junk',
-                'headers': {},
+                'headers': {'accept': 'text/plain'},
                 'body': None,
             }
 

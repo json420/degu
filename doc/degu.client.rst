@@ -55,8 +55,8 @@ convenience functions, especially when connecting to Apache servers.
 
 
 
-Connection *address*
---------------------
+Client connection *address*
+---------------------------
 
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:
@@ -99,8 +99,35 @@ both valid ``AF_UNIX`` *address* values::
 
 
 
-HTTP 'host' header
-------------------
+.. _client-config-options:
+
+Client config *options*
+-----------------------
+
+Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
+keyword-only arguments, by which you can override the defaults for certain
+tunable runtime parameters.
+
+The following client configuration *options* are supported:
+
+    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
+        added to the request headers for each request, overriding values with
+        the same key when present; must be a ``dict`` instance, or ``None`` to
+        indicate no base-headers; cannot include ``'content-length'`` nor
+        ``'transfer-encoding'`` headers
+
+    *   ``timeout`` --- client socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
+        default is a ``90`` second client socket timeout
+
+    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies; the default is
+        :data:`degu.base.DEFAULT_BODIES`
+
+
+
+Note on HTTP 'host' header
+--------------------------
 
 Considering the highly specialized P2P use case that Degu is aimed at, sending
 an HTTP ``'host'`` header along with *every* request isn't particularly
@@ -271,7 +298,7 @@ Helper functions
 :class:`Client` class
 ---------------------
 
-.. class:: Client(address, base_headers=None)
+.. class:: Client(address, **options)
 
     Represents an HTTP server to which Degu can make client connections.
 
@@ -306,7 +333,7 @@ Helper functions
 :class:`SSLClient` subclass
 ---------------------------
 
-.. class:: SSLClient(sslctx, address, base_headers=None)
+.. class:: SSLClient(sslctx, address, **options)
 
     Represents an HTTPS server to which Degu can make client connections.
 
