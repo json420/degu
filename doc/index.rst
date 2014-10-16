@@ -52,7 +52,7 @@ Degu is licensed `LGPLv3+`_, and requires `Python 3.4`_ or newer.
 Contents:
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 3
 
     install
     tutorial

@@ -60,52 +60,50 @@ example, to kill the server process we just created:
 
 .. class:: Server(address, app, **options)
 
-    A Degu HTTP server instance.
+    An HTTP server instance.
 
     The *address* argument specifies the socket address upon which the server
     will listen.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
     ``AF_INET`` (IPv4), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
-    See :ref:`server-bind-address` for details.
+    See :ref:`server-address` for details.
 
     The *app* argument provides your :doc:`rgi` (RGI) server application.  It
     must be a callable object (called to handle each HTTP request), and can
     optionally have a callable ``app.on_connect()`` attribute (called to handle
-    each new TCP connection).  For a quick primer on implementing RGI server
-    applications, see :ref:`server-app-callable`.
+    each TCP connection).  See :ref:`server-app-callable` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable runtime parameters.  See :ref:`server-config-options`
+    a number of tunable server runtime parameters.  See :ref:`server-options`
     for details.
 
     .. attribute:: address
 
         The bound server address as returned by `socket.socket.getsockname()`_.
 
-        Note that this wont necessarily match the *address* provided when the
-        :class:`Server` instance was created.  As Degu is designed for per-user
-        server instances running on dynamic ports, you typically specify port
-        ``0`` in an ``AF_INET6`` or ``AF_INET`` *address* argument, using
-        something like this::
+        Note that this wont necessarily match the *address* argument provided to
+        the constructor.  As Degu is designed for per-user server instances
+        running on dynamic ports, you typically specify port ``0`` in an
+        ``AF_INET6`` or ``AF_INET`` *address* argument, eg., using something
+        like this for ``AF_INET6``::
 
             ('::1', 0, 0, 0)
 
-        In which case the :attr:`Server.address` argument will contain the port
+        In which case the :attr:`Server.address` attribute will contain the port
         assigned by the operating system, something like this::
 
             ('::1', 40505, 0, 0)
 
     .. attribute:: app
 
-        The :doc:`rgi` application provided when the :class:`Server` instance
-        was created.
+        The *app* argument provided to the constructor.
 
     .. attribute:: options
 
-        A ``dict`` containing the configuration options.
+        A ``dict`` containing the server configuration options.
 
-        This will contain the values of any keyword-only *options* provided when
-        the :class:`Server` instance was created, and will otherwise contain the
-        default values for all other *options* that weren't explicitly provided.
+        This will contain the values of any keyword-only *options* provided to
+        the constructor, and will otherwise contain the default values for all
+        other *options* that weren't explicitly provided.
 
     .. attribute:: sock
 
@@ -116,44 +114,13 @@ example, to kill the server process we just created:
         Start the server in multi-threaded mode.
 
         The caller will block forever.
-        
-
-:class:`SSLServer` subclass
----------------------------
-
-.. class:: SSLServer(sslctx, address, app, **options)
-
-    A Degu HTTPS server instance (secured using TLS 1.2).
-
-    This subclass inherits all attributes and methods from :class:`Server`.
-
-    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
-    configured for server-side use.
-
-    Alternatively, if the *sslctx* argument is a ``dict`` instance, it is
-    interpreted as the server *sslconfig* and the actual `ssl.SSLContext`_
-    instance will be built automatically by calling
-    :func:`build_server_sslctx()`.
-
-    The *address* and *app* arguments, along with any keyword-only *options*,
-    are passed unchanged to :class:`Server()`.
-
-    .. attribute:: sslctx
-
-        The `ssl.SSLContext`_ provided when the :class:`SSLServer` instance
-        was created.
 
 
-.. _server-sslctx:
 
-*sslctx*
---------
-
-
-.. _server-bind-address:
+.. _server-address:
 
 *address*
----------
+'''''''''
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 can be:
@@ -243,7 +210,7 @@ Linux abstract socket name assigned by the kernel, something like::
 .. _server-app-callable:
 
 *app*
------
+'''''
 
 Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
 provide your HTTP request handler, and optionally provide a TCP connection
@@ -377,10 +344,11 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 ...         return True
 
 
-.. _server-config-options:
+
+.. _server-options:
 
 *options*
----------
+'''''''''
 
 Both :class:`Server` and :class:`SSLServer` accept configuration *options* via
 keyword-only arguments, by which you can override the defaults for certain
@@ -413,6 +381,39 @@ The following server configuration *options* are supported:
     *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
         construct HTTP request and response bodies; the default is
         :data:`degu.base.DEFAULT_BODIES`
+
+
+
+:class:`SSLServer` subclass
+---------------------------
+
+.. class:: SSLServer(sslctx, address, app, **options)
+
+    An HTTPS server instance (secured using TLSv1.2).
+
+    This subclass inherits all attributes and methods from :class:`Server`.
+
+    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
+    configured for server-side use.
+
+    Alternatively, if the *sslctx* argument is a ``dict`` instance, it is
+    interpreted as the server *sslconfig* and the actual `ssl.SSLContext`_
+    instance will be built automatically by calling
+    :func:`build_server_sslctx()`.
+
+    The *address* and *app* arguments, along with any keyword-only *options*,
+    are passed unchanged to :class:`Server()`.
+
+    .. attribute:: sslctx
+
+        The *sslctx* argument provided to the contructor.
+
+
+
+.. _server-sslctx:
+
+*sslctx*
+''''''''
 
 
 :func:`build_server_sslctx()`

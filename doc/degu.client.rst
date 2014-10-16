@@ -47,7 +47,7 @@ automatically when the connection instance is garbage collected:
 
 >>> conn.close()
 
-For SSL (ie., TLS 1.2), you'll need to create an :class:`SSLClient` instance.
+For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance.
 You'll likely want to build the needed `ssl.SSLContext`_ using
 :func:`build_client_sslctx()`.
 
@@ -57,34 +57,37 @@ supply a ``'host'`` in the request headers for every request, see the
 
 
 
-
 :class:`Client` class
 ---------------------
 
 .. class:: Client(address, **options)
 
-    Represents an HTTP server to which Degu can make client connections.
+    An HTTP server to which client connections can be made.
 
-    The *address* argument specifies the socket address to which TCP connections
-    will be made.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
-    ``AF_INET6`` or ``AF_INET`` (IPv6 or IPv4), or an ``str`` or ``bytes``
-    instance for ``AF_UNIX``.  See :ref:`client-address` for details.
+    The *address* argument specifies the server socket address to which TCP
+    connections will be made.  It can be a 4-tuple for ``AF_INET6`` (IPv6),
+    a 2-tuple for ``AF_INET`` (IPv4) or ``AF_INET6`` (IPv6), or an ``str`` or
+    ``bytes`` instance for ``AF_UNIX``.  See :ref:`client-address` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable runtime parameters. See :ref:`client-options` for
-    details.
+    a number of tunable client runtime parameters.  See :ref:`client-options`
+    for details.
 
-    A :class:`Client` instance is stateless and thread-safe.  It contains the
-    information needed to create actual :class:`Connection` instances, but does
-    not itself reference any socket resources.
+    A :class:`Client` is stateless and thread-safe.  It contains the information
+    needed to create actual :class:`Connection` instances, but does not itself
+    reference any socket resources.
 
     .. attribute:: address
 
-        The *address* passed to the constructor.
+        The *address* argument provided to the constructor.
 
-    .. attribute:: base_headers
+    .. attribute:: options
 
-        The *base_headers* passed to the constructor.
+        A ``dict`` containing the client configuration options.
+
+        This will contain the values of any keyword-only *options* provided to
+        the constructor, and will otherwise contain the default values for all
+        other *options* that weren't explicitly provided.
 
     .. method:: connect()
 
@@ -92,49 +95,10 @@ supply a ``'host'`` in the request headers for every request, see the
 
 
 
-:class:`SSLClient` subclass
----------------------------
-
-.. class:: SSLClient(sslctx, address, **options)
-
-    Represents an HTTPS server to which Degu can make client connections.
-
-    This subclass inherits all attributes and methods from :class:`Client`.
-
-    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
-    configured for client-side use.
-
-    Alternatively, if the *sslctx* argument is a ``dict`` instance, it's
-    interpreted as the client *sslconfig* and the actual `ssl.SSLContext`_
-    instance will be built automatically using :func:`build_client_sslctx()`.
-
-    The *address* argument, along with any keyword-only *options*, are passed
-    unchanged to the :class:`Client` constructor.
-
-    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
-    the information needed to create actual :class:`Connection` instances, but
-    does not itself reference any socket resources.
-
-    .. attribute:: sslctx
-
-        The *sslctx* passed to the constructor.
-
-
-
-
-
-
-
-.. _client-sslctx:
-
-*sslctx*
---------
-
-
 .. _client-address:
 
 *address*
----------
+'''''''''
 
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:
@@ -179,7 +143,7 @@ both valid ``AF_UNIX`` *address* values::
 .. _client-options:
 
 *options*
----------
+'''''''''
 
 Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
 keyword-only arguments, by which you can override the defaults for certain
@@ -200,6 +164,47 @@ The following client configuration *options* are supported:
     *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
         construct HTTP request and response bodies; the default is
         :data:`degu.base.DEFAULT_BODIES`
+
+
+
+:class:`SSLClient` subclass
+---------------------------
+
+.. class:: SSLClient(sslctx, address, **options)
+
+    An HTTPS server to which TLSv1.2 client connections can be made.
+
+    This subclass inherits all attributes and methods from :class:`Client`.
+
+    The *sslctx* argument must be an `ssl.SSLContext`_ appropriately configured
+    for client-side TLSv1.2 use.
+
+    Alternately, if the *sslctx* argument is a ``dict``, it's interpreted as the
+    client *sslconfig* and the actual `ssl.SSLContext`_ will be implicitly built
+    by calling :func:`build_client_sslctx()`.
+
+    The *address* argument, along with any keyword-only *options*, are passed
+    unchanged to the :class:`Client` constructor.
+
+    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
+    the information needed to create actual :class:`Connection` instances, but
+    does not itself reference any socket resources.
+
+    .. attribute:: sslctx
+
+        The *sslctx* passed to the constructor.
+
+        Alternately, if an *sslconfig* ``dict`` was provided to the constructor,
+        this attribute will contain the *sslctx* returned by
+        :func:`build_server_sslctx()`.
+
+
+
+.. _client-sslctx:
+
+*sslctx*
+''''''''
+
 
 
 :func:`build_client_sslctx()`
@@ -281,7 +286,7 @@ The following client configuration *options* are supported:
 :class:`Connection` class
 -------------------------
 
-.. class:: Connection(sock, base_headers)
+.. class:: Connection(sock, default_headers, bodies)
 
     Represents a specific connection to an HTTP (or HTTPS) server.
 
@@ -298,15 +303,19 @@ The following client configuration *options* are supported:
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
-    .. attribute :: sock
+    .. attribute:: sock
 
-        The *sock* passed to the constructor.
+        The *sock* argument passed to the constructor.
 
-    .. attribute :: base_headers
+    .. attribute:: default_headers
 
-        The *base_headers* passed to the constructor.
+        The *default_headers* argument passed to the constructor.
 
-    .. attribute :: closed
+    .. attribute:: bodies
+
+        The *bodies* argument passed to the constructor.
+
+    .. attribute:: closed
 
         Will be ``True`` if the connection has been closed, otherwise ``False``.
 
