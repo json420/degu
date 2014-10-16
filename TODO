@@ -31,6 +31,74 @@ Definite
       calling body.read() till I get a b''", ofter which I know all has been
       read
 
+    *   Change Connection.request() signature from:
+
+            Connection.request(method, uri, headers=None, body=None)
+
+        To:
+
+            Connection.request(method, uri, headers, body)
+
+        This means that from a single example, anyone can be reminded what the
+        API is, and it also better harmonizes with the RGI application API as
+        app() can't ommit the response headers or response body; eg., this is
+        always clear:
+
+            conn.request('GET', '/', {}, None)
+
+        Where as this leaves a bit much to the imagination, especially as the
+        order of the headers and body are flipped in `http.client` vs Degu:
+
+            conn.request('GET', '/')
+
+    *   Client/SSLClient/Connection should replace `base_headers` with
+        `default_headers` and these keys should only fill in a default value for
+        headers that weren't otherwise provided to Connection.request()
+
+    *   TempServer/TempSSLServer __init__() API should match Server/SSLServer
+        API; when it comes to illustrative examples, the `build_func()`
+        complexity is very confusing, so it's very unclear that this:
+
+            TempServer(address, None, app)
+
+        Is the same as this, just started in a new multiprocessing.Process:
+
+            Server(address, app)
+
+        The biggest reason we used the `build_func()` for these throw-away
+        instances aimed at unit testing was so that we didn't encounter any
+        weirdness when pickling/unpickling an ssl.SSLContext an its way to a new
+        multiprocessing.Process; however, if we change SSLServer to accept a
+        sslconfig dict in place of the actual sslctx, there is no problem here
+
+    *   Replace start_server()/TempServer, start_sslserver()/TempSSLServer with:
+
+            EmbeddedServer(address, app, **options)
+
+            EmbeddedSSLServer(sslconfig, address, app, **options)
+
+        (Or possibly keep the Temp* name.)  Whatever embedding heplers Degu
+        provides should really keep a reference to the process, and should
+        terminate the process automatially should this reference be deleted;
+        otherwise an application doesn't have an easy way to terminate the
+        process, a sort of "process leak"
+
+    *   The pattern that the `build_func()` stuff aimed to address is important
+        and is something that Degu should probably provide a high-level solution
+        for, but if we can solidify a solution for 1.0, best just to drop it and
+        add it later
+
+    *   Thus far Degu has focused on "embedding" within applications by running
+        the Degu server in a multiprocessing.Process; however, Dmedia will soon
+        be running Degu totally in stand-alone script launched via
+        subprocess.Popen(); this allows for the Degu server that accepts outside
+        connections to be carefully issolated with apparmor and to not share any
+        memory space with the main Dmedia process; this is likewise a pattern
+        for which Degu should provide a high-level solution for, especially for
+        security reasons; however, how to capture this in a generic way is a bit
+        less clear at this point
+
+
 
 Likely, but not 100% certain
 ----------------------------
