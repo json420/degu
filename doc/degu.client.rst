@@ -52,8 +52,12 @@ You'll likely want to build the needed `ssl.SSLContext`_ using
 :func:`build_client_sslctx()`.
 
 If you're connecting to an HTTP server (like Apache) that requires you always to
-supply a ``'host'`` in the request headers for every request, see the
+supply a ``'host'`` in the request headers for each request, consider using the
 :func:`create_client()` and :func:`create_sslclient()` convenience functions.
+
+By default, the Degu HTTP client includes no request headers other than those
+supplied to :meth:`Connection.request()`.  For details, see
+:ref:`request-headers`.
 
 
 
@@ -70,8 +74,7 @@ supply a ``'host'`` in the request headers for every request, see the
     ``bytes`` instance for ``AF_UNIX``.  See :ref:`client-address` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable client runtime parameters.  See :ref:`client-options`
-    for details.
+    certain client configuration values.  See :ref:`client-options` for details.
 
     A :class:`Client` is stateless and thread-safe.  It contains the information
     needed to create actual :class:`Connection` instances, but does not itself
@@ -81,17 +84,21 @@ supply a ``'host'`` in the request headers for every request, see the
 
         The *address* argument provided to the constructor.
 
+        See :ref:`client-address` for details.
+
     .. attribute:: options
 
         A ``dict`` containing the client configuration options.
 
-        This will contain the values of any keyword-only *options* provided to
-        the constructor, and will otherwise contain the default values for all
-        other *options* that weren't explicitly provided.
+        This will contain the values of any keyword *options* provided to the
+        constructor, and will otherwise contain the default values for the
+        remaining configuration.
+
+        See :ref:`client-options` for details.
 
     .. method:: connect()
 
-        Create a new :class:`Connection` instance.
+        Create and return a new :class:`Connection` instance.
 
 
 
@@ -145,25 +152,55 @@ both valid ``AF_UNIX`` *address* values::
 *options*
 '''''''''
 
-Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
-keyword-only arguments, by which you can override the defaults for certain
-tunable runtime parameters.
+Both :class:`Client` and :class:`SSLClient` accept keyword *options* by which
+you can override certain configuration defaults.
 
 The following client configuration *options* are supported:
 
-    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
-        added to the request headers for each request, overriding values with
-        the same key when present; must be a ``dict`` instance, or ``None`` to
-        indicate no base-headers; cannot include ``'content-length'`` or
-        ``'transfer-encoding'`` headers
+    *   **default_headers** --- a ``dict`` of headers that will be included in
+        each HTTP request; any default headers here are overriden by the same
+        header when provided to :meth:`Connection.request()`; must be a ``dict``
+        instance, or ``None`` to indicate no default headers; cannot include
+        ``'content-length'`` or ``'transfer-encoding'`` headers
 
-    *   ``timeout`` --- client socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
-        default is a ``90`` second client socket timeout
+    *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
+        used to construct HTTP request and response bodies
 
-    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies; the default is
-        :data:`degu.base.DEFAULT_BODIES`
+    *   **timeout** --- client socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance, or ``None`` to indicate no timeout
+
+    *   **Connection** --- :meth:`Client.connect()` will return an instance of
+        this class; this is a good way to provide domain-specific behavior in a
+        :class:`degu.client.Connection` subclass
+
+Unless you override any of them, the default client configuration *options*
+are::
+
+    default_client_options = {
+        'default_headers': None,
+        'bodies': degu.base.DEFAULT_BODIES,
+        'timeout': 90,
+        'Connection': degu.client.Connection,
+    }
+
+For example, you could override some of these options like this:
+
+>>> from degu.client import Client, Connection
+>>> class SuperSpecialConnection(Connection):
+...     def get(uri, headers, body):
+...         return self.request('GET', uri, headers, body)
+... 
+...     def put(uri, headers, body):
+...         return self.request('PUT', uri, headers, body)
+...
+>>> address = ('127.0.0.1', 12345)
+>>> client = Client(address,
+...     default_headers={'user-agent': 'SuperSpecial/1.0'},
+...     Connection=SuperSpecialConnection,
+...     timeout=17,
+... )
+
+Also see the server :ref:`server-options`.
 
 
 
@@ -172,7 +209,7 @@ The following client configuration *options* are supported:
 
 .. class:: SSLClient(sslctx, address, **options)
 
-    An HTTPS server to which TLSv1.2 client connections can be made.
+    An HTTPS server (TLSv1.2) to which client connections can be made.
 
     This subclass inherits all attributes and methods from :class:`Client`.
 
@@ -183,7 +220,7 @@ The following client configuration *options* are supported:
     client *sslconfig* and the actual `ssl.SSLContext`_ will be implicitly built
     by calling :func:`build_client_sslctx()`.
 
-    The *address* argument, along with any keyword-only *options*, are passed
+    The *address* argument, along with any keyword *options*, are passed
     unchanged to the :class:`Client` constructor.
 
     An :class:`SSLClient` instance is stateless and thread-safe.  It contains
@@ -192,11 +229,11 @@ The following client configuration *options* are supported:
 
     .. attribute:: sslctx
 
-        The *sslctx* passed to the constructor.
+        The *sslctx* argument provided to the constructor.
 
-        Alternately, if an *sslconfig* ``dict`` was provided to the constructor,
-        this attribute will contain the *sslctx* returned by
-        :func:`build_server_sslctx()`.
+        Alternately, if *sslctx* is a ``dict``, it's interpreted as the client
+        *sslconfig* and is passed to :func:`build_client_sslctx()` to build the
+        actual *sslctx*.
 
 
 
@@ -283,6 +320,7 @@ The following client configuration *options* are supported:
     >>> sslctx = build_client_sslctx(pki.get_client_config())
 
 
+
 :class:`Connection` class
 -------------------------
 
@@ -295,11 +333,8 @@ The following client configuration *options* are supported:
 
     The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
 
-    The *base_headers* will be the same *base_headers* passed to the
+    The *default_headers* and *bodies* will be the same as were passed to the
     :class:`Client` constructor.
-
-    Note that headers in *base_headers* will unconditionally override the same
-    headers should they be passed to :meth:`Connection.request()`.
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
@@ -337,7 +372,7 @@ The following client configuration *options* are supported:
         exception occurs in :meth:`Connection.request()`, and is likewise
         automatically closed when the connection instance is garbage collected.
 
-    .. method:: request(method, uri, headers=None, body=None)
+    .. method:: request(method, uri, headers, body)
 
         Make an HTTP request.
 
@@ -496,6 +531,7 @@ The following client configuration *options* are supported:
     Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
 
 
+.. _request-headers:
 
 Note on request headers
 -----------------------

@@ -46,8 +46,9 @@ Definite
 
             conn.request('GET', '/', {}, None)
 
-        Where as this leaves a bit much to the imagination, especially as the
-        order of the headers and body are flipped in `http.client` vs Degu:
+        Where as this leaves a bit too much to the imagination, especially as
+        the order of the headers and body are flipped in :mod:`degu.client` vs
+        `http.client`:
 
             conn.request('GET', '/')
 

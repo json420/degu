@@ -226,6 +226,7 @@ Your *app* must be a callable object that accepts three arguments, for example:
 
 >>> def my_rgi_app(session, request, bodies):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
+...
 
 The *session* argument will be a ``dict`` instance something like this::
 
@@ -269,16 +270,7 @@ Which in the case of our example was::
 **TCP connection handler:**
 
 If your *app* argument itself has a callable ``on_connect`` attribute, it must
-accept two arguments::
-
-    (sock, session)
-
-And your ``app.on_connect()`` callable must return ``True`` when the connection
-should be accepted, or return ``False`` when the connection should be rejected.
-It will be called after a new TCP connection has been accepted, but before any
-HTTP requests have been handled via that TCP connection.
-
-For example:
+accept two arguments, for example:
 
 >>> class MyRGIApp:
 ...     def __call__(self, session, request, bodies):
@@ -286,9 +278,11 @@ For example:
 ... 
 ...     def on_connect(self, sock, session):
 ...         return True
+...
 
 The *sock* argument will be a `socket.socket`_ when running your app in a
-:class:`Server`, or an `ssl.SSLSocket`_ if running in an :class:`SSLServer`.
+:class:`Server`, or an `ssl.SSLSocket`_ when running your app in an 
+:class:`SSLServer`.
 
 Finally, the *session* argument will be same ``dict`` instance passed to your
 ``app()`` HTTP request handler, something like this::
@@ -297,12 +291,20 @@ Finally, the *session* argument will be same ``dict`` instance passed to your
         'client': ('127.0.0.1', 12345),
     }
 
+Your ``app.on_connect()`` will be called after a new TCP connection has been
+accepted, but before any HTTP requests have been handled via that TCP
+connection.
+
+It must return ``True`` when the connection should be accepted, or return
+``False`` when the connection should be rejected.
+
 If your *app* has an ``on_connect`` attribute that is *not* callable, it must be
 ``None``.  This allows you to disable the ``app.on_connect()`` handler in a
 subclass, for example:
 
 >>> class MyRGIAppSubclass(MyRGIApp):
 ...     on_connect = None
+...
 
 
 **Persistent per-connection session:**
@@ -350,37 +352,44 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 *options*
 '''''''''
 
-Both :class:`Server` and :class:`SSLServer` accept configuration *options* via
-keyword-only arguments, by which you can override the defaults for certain
-tunable runtime parameters.
+Both :class:`Server` and :class:`SSLServer` accept keyword *options* by which
+you can override certain configuration defaults.
 
 The following server configuration *options* are supported:
 
-    *   ``timeout`` --- server socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance; the default is a ``15`` second server
-        socket timeout
+    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies
 
-    *   ``max_connections`` --- maximum number of concurrent TCP connections the
+    *   **timeout** --- server socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance
+
+    *   **max_connections** --- maximum number of concurrent TCP connections the
         server will accept; once this maximum has been reached, subsequent
         connections will be rejected till one or more existing connections are
         closed; this option directly effects the maximum amount of memory Degu
         can consume for in-flight per-connection and per-request data; it must
-        be a positive ``int``; the default is a maximum of ``25`` concurrent
-        connections
+        be a positive ``int``
 
-    *   ``max_requests_per_connection`` --- maximum number of HTTP requests that
+    *   **max_requests_per_connection** --- maximum number of HTTP requests that
         can be handled through a single TCP connection before that connection
         is forcibly closed by the server; a lower value will minimize the impact
         of heap fragmentation and will keep the memory usage flatter over time;
         a higher value can provide better throughput when a large number of
         small requests and responses need to travel in quick succession through
         the same TCP connection (typical for CouchDB-style structured data
-        sync); it must be a positive ``int``; the default is a maximum of
-        ``100`` requests per connection
+        sync); it must be a positive ``int``
 
-    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies; the default is
-        :data:`degu.base.DEFAULT_BODIES`
+Unless you override any of them, the default server configuration *options*
+are::
+
+    server_options = {
+        'bodies': degu.base.DEFAULT_BODIES,
+        'timeout': 15,
+        'max_connections': 25,
+        'max_requests_per_connection': 100,
+    }
+
+Also see the client :ref:`client-options`.
 
 
 
