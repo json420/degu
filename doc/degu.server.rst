@@ -19,7 +19,7 @@ As a quick example, say you have this :doc:`rgi` application:
 (For a short primer on implementing RGI server applications, please see
 :ref:`server-app-callable`.)
 
-You can create a :class:`Server` instance like this:
+You can create a :class:`Server` like this:
 
 >>> from degu.server import Server
 >>> server = Server(('::1', 0, 0, 0), hello_world_app)
@@ -34,7 +34,7 @@ using the :func:`degu.start_server()` helper function, for example:
 >>> from degu import start_server
 >>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
 
-You can create a suitable :class:`degu.client.Client` instance with the returned
+You can create a suitable :class:`degu.client.Client` with the returned
 *address* like this:
 
 >>> from degu.client import Client
@@ -116,8 +116,7 @@ example, to kill the server process we just created:
         Start the server in multi-threaded mode.
 
         The caller will block forever.
-
-
+        
 
 :class:`SSLServer` subclass
 ---------------------------
@@ -139,77 +138,22 @@ example, to kill the server process we just created:
     The *address* and *app* arguments, along with any keyword-only *options*,
     are passed unchanged to :class:`Server()`.
 
+    .. attribute:: sslctx
+
+        The `ssl.SSLContext`_ provided when the :class:`SSLServer` instance
+        was created.
 
 
-:func:`build_server_sslctx()`
------------------------------
+.. _server-sslctx:
 
-.. function:: build_server_sslctx(sslconfig)
-
-    Build an `ssl.SSLContext`_ appropriately configured for server-side use.
-
-    This function complements the client-side setup built with
-    :func:`degu.client.build_client_sslctx()`.
-
-    The *sslconfig* must be a ``dict`` instance, which must include at least two
-    keys:
-
-        * ``'cert_file'`` --- an ``str`` providing the path of the server
-          certificate file
-
-        * ``'key_file'`` --- an ``str`` providing the path of the server key
-          file
-
-    And can optionally include either of the keys:
-
-        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
-          of the file or directory, respectively, containing the trusted CA
-          certificates used to verify client certificates on incoming client
-          connections
-
-        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
-          ``'ca_path'`` are provided, this must be provided and must be
-          ``True``; this is to prevent accidentally allowing anonymous clients
-          by merely omitting the ``'ca_file'`` and ``'ca_path'``
-
-    For example, typical Degu P2P usage will use an *sslconfig* something like
-    this:
-
-    >>> from degu.server import build_server_sslctx
-    >>> sslconfig = {
-    ...     'cert_file': '/my/server.cert',
-    ...     'key_file': '/my/server.key',
-    ...     'ca_file': '/my/client.ca',
-    ... }
-    >>> sslctx = build_server_sslctx(sslconfig)  #doctest: +SKIP
-
-    Although you can directly build your own server-side `ssl.SSLContext`_, use
-    of this function eliminates many potential security gotchas that can occur
-    through misconfiguration.
-
-    Opinionated security decisions this function makes:
-
-        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
-
-        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
-          ``'allow_unauthenticated_clients'`` is provided in the *sslconfig*
-          (and is ``True``), in which case the *verify_mode* is set to
-          ``ssl.CERT_NONE``
-
-        * The *sslconfig* unconditionally include ``ssl.OP_NO_COMPRESSION``,
-          thereby preventing `CRIME-like attacks`_, and also allowing lower
-          CPU usage and higher throughput on non-compressible payloads like
-          media files
-
-        * The *cipher* is unconditionally set to
-          ``'ECDHE-RSA-AES256-GCM-SHA384'``
-
+*sslctx*
+--------
 
 
 .. _server-bind-address:
 
-Server bind *address*
----------------------
+*address*
+---------
 
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 can be:
@@ -298,8 +242,8 @@ Linux abstract socket name assigned by the kernel, something like::
 
 .. _server-app-callable:
 
-Server *app* callable
----------------------
+*app*
+-----
 
 Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
 provide your HTTP request handler, and optionally provide a TCP connection
@@ -334,7 +278,7 @@ The *request* argument will be a ``dict`` instance something like this::
         'body': None,
     }
 
-Finally, the *bodies* argument will be a namedtuple exposing four wrapper
+Finally, the *bodies* argument will be a ``namedtuple`` exposing four wrapper
 classes that can be used to specify the HTTP response body:
 
 ==========================  ==================================
@@ -346,11 +290,13 @@ Exposed via                 Degu implementation
 ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
 ==========================  ==================================
 
-
-Your ``app()`` specifies its HTTP response via this following 4-tuple return
-value::
+Your ``app()`` must return a 4-tuple containing the HTTP response::
 
     (status, reason, headers, body)
+
+Which in the case of our example was::
+
+    (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 
 
 **TCP connection handler:**
@@ -433,8 +379,8 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 
 .. _server-config-options:
 
-Server config *options*
------------------------
+*options*
+---------
 
 Both :class:`Server` and :class:`SSLServer` accept configuration *options* via
 keyword-only arguments, by which you can override the defaults for certain
@@ -467,6 +413,72 @@ The following server configuration *options* are supported:
     *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
         construct HTTP request and response bodies; the default is
         :data:`degu.base.DEFAULT_BODIES`
+
+
+:func:`build_server_sslctx()`
+-----------------------------
+
+.. function:: build_server_sslctx(sslconfig)
+
+    Build an `ssl.SSLContext`_ appropriately configured for server-side use.
+
+    This function complements the client-side setup built with
+    :func:`degu.client.build_client_sslctx()`.
+
+    The *sslconfig* must be a ``dict`` instance, which must include at least two
+    keys:
+
+        * ``'cert_file'`` --- an ``str`` providing the path of the server
+          certificate file
+
+        * ``'key_file'`` --- an ``str`` providing the path of the server key
+          file
+
+    And can optionally include either of the keys:
+
+        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
+          of the file or directory, respectively, containing the trusted CA
+          certificates used to verify client certificates on incoming client
+          connections
+
+        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
+          ``'ca_path'`` are provided, this must be provided and must be
+          ``True``; this is to prevent accidentally allowing anonymous clients
+          by merely omitting the ``'ca_file'`` and ``'ca_path'``
+
+    For example, typical Degu P2P usage will use an *sslconfig* something like
+    this:
+
+    >>> from degu.server import build_server_sslctx
+    >>> sslconfig = {
+    ...     'cert_file': '/my/server.cert',
+    ...     'key_file': '/my/server.key',
+    ...     'ca_file': '/my/client.ca',
+    ... }
+    >>> sslctx = build_server_sslctx(sslconfig)  #doctest: +SKIP
+
+    Although you can directly build your own server-side `ssl.SSLContext`_, use
+    of this function eliminates many potential security gotchas that can occur
+    through misconfiguration.
+
+    Opinionated security decisions this function makes:
+
+        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
+
+        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
+          ``'allow_unauthenticated_clients'`` is provided in the *sslconfig*
+          (and is ``True``), in which case the *verify_mode* is set to
+          ``ssl.CERT_NONE``
+
+        * The *sslconfig* unconditionally include ``ssl.OP_NO_COMPRESSION``,
+          thereby preventing `CRIME-like attacks`_, and also allowing lower
+          CPU usage and higher throughput on non-compressible payloads like
+          media files
+
+        * The *cipher* is unconditionally set to
+          ``'ECDHE-RSA-AES256-GCM-SHA384'``
+
+
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process

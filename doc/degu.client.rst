@@ -68,10 +68,10 @@ supply a ``'host'`` in the request headers for every request, see the
     The *address* argument specifies the socket address to which TCP connections
     will be made.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
     ``AF_INET6`` or ``AF_INET`` (IPv6 or IPv4), or an ``str`` or ``bytes``
-    instance for ``AF_UNIX``.  See :ref:`client-connection-address` for details.
+    instance for ``AF_UNIX``.  See :ref:`client-address` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable runtime parameters. See :ref:`client-config-options` for
+    a number of tunable runtime parameters. See :ref:`client-options` for
     details.
 
     A :class:`Client` instance is stateless and thread-safe.  It contains the
@@ -120,6 +120,86 @@ supply a ``'host'`` in the request headers for every request, see the
         The *sslctx* passed to the constructor.
 
 
+
+
+
+
+
+.. _client-sslctx:
+
+*sslctx*
+--------
+
+
+.. _client-address:
+
+*address*
+---------
+
+Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
+can be:
+
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
+      IPv6 IP
+
+    * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
+      a DNS name
+
+    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+
+    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
+      socket
+
+If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
+passed directly to `socket.socket.connect()`_ when creating a connection,
+thereby giving you access to full IPv6 semantics, including the *scopeid* needed
+for `link-local addresses`_.  For example, this 4-tuple *address* would connect
+to a hypothetical server listening on an IPv6 link-local address::
+
+    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
+ 
+If your *address* is a 2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  For example, all
+three of these are valid 2-tuple *address* values::
+
+    ('8.8.8.8', 80)
+    ('2001:4860:4860::8888', 80)
+    ('www.example.com', 80)
+
+Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
+assumed and again your *address* is passed directly to
+`socket.socket.connect()`_ when creating a connection.  For example, these are
+both valid ``AF_UNIX`` *address* values::
+
+    '/tmp/my.socket'
+    b'\x0000022'
+
+
+
+.. _client-options:
+
+*options*
+---------
+
+Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
+keyword-only arguments, by which you can override the defaults for certain
+tunable runtime parameters.
+
+The following client configuration *options* are supported:
+
+    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
+        added to the request headers for each request, overriding values with
+        the same key when present; must be a ``dict`` instance, or ``None`` to
+        indicate no base-headers; cannot include ``'content-length'`` or
+        ``'transfer-encoding'`` headers
+
+    *   ``timeout`` --- client socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
+        default is a ``90`` second client socket timeout
+
+    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies; the default is
+        :data:`degu.base.DEFAULT_BODIES`
 
 
 :func:`build_client_sslctx()`
@@ -196,79 +276,6 @@ supply a ``'host'`` in the request headers for every request, see the
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
     >>> sslctx = build_client_sslctx(pki.get_client_config())
-
-
-
-.. _client-connection-address:
-
-Client connection *address*
----------------------------
-
-Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
-can be:
-
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
-      IPv6 IP
-
-    * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
-      a DNS name
-
-    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
-
-    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
-      socket
-
-If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
-passed directly to `socket.socket.connect()`_ when creating a connection,
-thereby giving you access to full IPv6 semantics, including the *scopeid* needed
-for `link-local addresses`_.  For example, this 4-tuple *address* would connect
-to a hypothetical server listening on an IPv6 link-local address::
-
-    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
- 
-If your *address* is a 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  For example, all
-three of these are valid 2-tuple *address* values::
-
-    ('8.8.8.8', 80)
-    ('2001:4860:4860::8888', 80)
-    ('www.example.com', 80)
-
-Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
-assumed and again your *address* is passed directly to
-`socket.socket.connect()`_ when creating a connection.  For example, these are
-both valid ``AF_UNIX`` *address* values::
-
-    '/tmp/my.socket'
-    b'\x0000022'
-
-
-
-.. _client-config-options:
-
-Client config *options*
------------------------
-
-Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
-keyword-only arguments, by which you can override the defaults for certain
-tunable runtime parameters.
-
-The following client configuration *options* are supported:
-
-    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
-        added to the request headers for each request, overriding values with
-        the same key when present; must be a ``dict`` instance, or ``None`` to
-        indicate no base-headers; cannot include ``'content-length'`` or
-        ``'transfer-encoding'`` headers
-
-    *   ``timeout`` --- client socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
-        default is a ``90`` second client socket timeout
-
-    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies; the default is
-        :data:`degu.base.DEFAULT_BODIES`
-
 
 
 :class:`Connection` class
@@ -423,47 +430,6 @@ The following client configuration *options* are supported:
 
 
 
-Note on ``'host'`` header
--------------------------
-
-Considering the highly specialized P2P use case that Degu is aimed at, sending
-an HTTP ``'host'`` header along with *every* request isn't particularly
-meaningful.
-
-For one, the Degu server itself doesn't support named-based virtual hosts, and
-will typically be reached via an IP address alone, not via a DNS name.  For
-another, Degu supports HTTP over ``AF_UNIX``, a scenario where the ``'host'``
-request header tends to be *extra* meaningless.
-
-A strait-forward way to minimize the overhead of the HTTP protocol is to simply
-send fewer headers along with each request and response, and the Degu client
-aggressively pursues this optimization path.  By default, :class:`Client` and
-:class:`SSLClient` don't include *any* extra request headers that weren't
-provided to :meth:`Connection.request()`.
-
-Of particular note, in addition to the ``'host'`` request header, the Degu
-client doesn't by default include a ``{'connection': 'keep-alive'}`` request
-header, which is only needed for backward compatibly with HTTP/1.0 servers (in
-HTTP/1.1, connection-reuse is assumed).  Likewise, the Degu client doesn't by
-default include a ``'user-agent'`` request header.
-
-If you need to include specific request headers in every request, just provide
-them via the ``base_headers`` kwarg when creating your :class:`Client` or
-:class:`SSLClient` instance.
-
-However, note that when the Degu client does *not* include a ``'host'`` header
-with every request, it's not operating in a strictly `HTTP/1.1`_ compliant
-fashion, and that this is incompatible with at least one of the HTTP servers
-that the Degu client aims to support (`Apache 2.4`_).
-
-When making requests to Apache, or to other servers with similar requirements,
-consider using the :func:`create_client()` or :func:`create_sslclient()`
-convenience function, which will automatically add an appropriate ``'host'``
-header in the *base_headers* for the resulting :class:`Client` or
-:class:`SSLClient`, respectively.
-
-
-
 :func:`create_client()`
 -----------------------
 
@@ -521,6 +487,45 @@ header in the *base_headers* for the resulting :class:`Client` or
     Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
 
 
+
+Note on request headers
+-----------------------
+
+Considering the highly specialized P2P use case that Degu is aimed at, sending
+an HTTP ``'host'`` header along with *every* request isn't particularly
+meaningful.
+
+For one, the Degu server itself doesn't support named-based virtual hosts, and
+will typically be reached via an IP address alone, not via a DNS name.  For
+another, Degu supports HTTP over ``AF_UNIX``, a scenario where the ``'host'``
+request header tends to be *extra* meaningless.
+
+A strait-forward way to minimize the overhead of the HTTP protocol is to simply
+send fewer headers along with each request and response, and the Degu client
+aggressively pursues this optimization path.  By default, :class:`Client` and
+:class:`SSLClient` don't include *any* extra request headers that weren't
+provided to :meth:`Connection.request()`.
+
+Of particular note, in addition to the ``'host'`` request header, the Degu
+client doesn't by default include a ``{'connection': 'keep-alive'}`` request
+header, which is only needed for backward compatibly with HTTP/1.0 servers (in
+HTTP/1.1, connection-reuse is assumed).  Likewise, the Degu client doesn't by
+default include a ``'user-agent'`` request header.
+
+If you need to include specific request headers in every request, just provide
+them via the ``base_headers`` kwarg when creating your :class:`Client` or
+:class:`SSLClient` instance.
+
+However, note that when the Degu client does *not* include a ``'host'`` header
+with every request, it's not operating in a strictly `HTTP/1.1`_ compliant
+fashion, and that this is incompatible with at least one of the HTTP servers
+that the Degu client aims to support (`Apache 2.4`_).
+
+When making requests to Apache, or to other servers with similar requirements,
+consider using the :func:`create_client()` or :func:`create_sslclient()`
+convenience function, which will automatically add an appropriate ``'host'``
+header in the *base_headers* for the resulting :class:`Client` or
+:class:`SSLClient`, respectively.
 
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
