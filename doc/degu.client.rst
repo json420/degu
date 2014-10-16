@@ -11,7 +11,7 @@ in the Python3 standard library, and has an API that overall should feel
 familiar to those experienced with `http.client`_ (although there are some major
 differences).
 
-For example, say we define a simple RGI application and create a
+As a quick example, say we define this :doc:`rgi` application and create a
 :class:`degu.misc.TempServer` instance:
 
 >>> def example_app(session, request, bodies):
@@ -47,179 +47,83 @@ automatically when the connection instance is garbage collected:
 
 >>> conn.close()
 
-For SSL (specifically, for TLS 1.2), you'll need to create an :class:`SSLClient`
-instance.
+For SSL (ie., TLS 1.2), you'll need to create an :class:`SSLClient` instance.
+You'll likely want to build the needed `ssl.SSLContext`_ using
+:func:`build_client_sslctx()`.
 
-Also, see the :func:`create_client()` and :func:`create_sslclient()`
-convenience functions, especially when connecting to Apache servers.
+If you're connecting to an HTTP server (like Apache) that requires you always to
+supply a ``'host'`` in the request headers for every request, see the
+:func:`create_client()` and :func:`create_sslclient()` convenience functions.
 
 
 
-Client connection *address*
+
+:class:`Client` class
+---------------------
+
+.. class:: Client(address, **options)
+
+    Represents an HTTP server to which Degu can make client connections.
+
+    The *address* argument specifies the socket address to which TCP connections
+    will be made.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
+    ``AF_INET6`` or ``AF_INET`` (IPv6 or IPv4), or an ``str`` or ``bytes``
+    instance for ``AF_UNIX``.  See :ref:`client-connection-address` for details.
+
+    Finally, you can provide keyword-only *options* to override the defaults for
+    a number of tunable runtime parameters. See :ref:`client-config-options` for
+    details.
+
+    A :class:`Client` instance is stateless and thread-safe.  It contains the
+    information needed to create actual :class:`Connection` instances, but does
+    not itself reference any socket resources.
+
+    .. attribute:: address
+
+        The *address* passed to the constructor.
+
+    .. attribute:: base_headers
+
+        The *base_headers* passed to the constructor.
+
+    .. method:: connect()
+
+        Create a new :class:`Connection` instance.
+
+
+
+:class:`SSLClient` subclass
 ---------------------------
 
-Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
-can be:
+.. class:: SSLClient(sslctx, address, **options)
 
-    * A ``(host, port)`` 2-tuple where the *host* is an IPv4 IP, an IPv6 IP, or
-      a DNS name
+    Represents an HTTPS server to which Degu can make client connections.
 
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
-      IPv6 IP
+    This subclass inherits all attributes and methods from :class:`Client`.
 
-    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
+    configured for client-side use.
 
-    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
-      socket
- 
+    Alternatively, if the *sslctx* argument is a ``dict`` instance, it's
+    interpreted as the client *sslconfig* and the actual `ssl.SSLContext`_
+    instance will be built automatically using :func:`build_client_sslctx()`.
 
-If your *address* is a 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  For example, all
-three of these are valid 2-tuple *address* values::
+    The *address* argument, along with any keyword-only *options*, are passed
+    unchanged to the :class:`Client` constructor.
 
-    ('8.8.8.8', 80)
-    ('2001:4860:4860::8888', 80)
-    ('www.example.com', 80)
+    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
+    the information needed to create actual :class:`Connection` instances, but
+    does not itself reference any socket resources.
 
-If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
-passed directly to `socket.socket.connect()`_ when creating a connection,
-thereby giving you access to full IPv6 semantics, including the *scopeid* needed
-for `link-local addresses`_.  For example, this 4-tuple *address* would connect
-to a hypothetical server listening on an IPv6 link-local address::
+    .. attribute:: sslctx
 
-    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
-
-Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
-assumed and again your *address* is passed directly to
-`socket.socket.connect()`_ when creating a connection.  For example, these are
-both valid ``AF_UNIX`` *address* values::
-
-    '/tmp/my.socket'
-    b'\x0000022'
+        The *sslctx* passed to the constructor.
 
 
 
-.. _client-config-options:
 
-Client config *options*
------------------------
-
-Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
-keyword-only arguments, by which you can override the defaults for certain
-tunable runtime parameters.
-
-The following client configuration *options* are supported:
-
-    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
-        added to the request headers for each request, overriding values with
-        the same key when present; must be a ``dict`` instance, or ``None`` to
-        indicate no base-headers; cannot include ``'content-length'`` nor
-        ``'transfer-encoding'`` headers
-
-    *   ``timeout`` --- client socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
-        default is a ``90`` second client socket timeout
-
-    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies; the default is
-        :data:`degu.base.DEFAULT_BODIES`
-
-
-
-Note on HTTP 'host' header
---------------------------
-
-Considering the highly specialized P2P use case that Degu is aimed at, sending
-an HTTP ``'host'`` header along with *every* request isn't particularly
-meaningful.
-
-For one, the Degu server itself doesn't support named-based virtual hosts, and
-will typically be reached via an IP address alone, not via a DNS name.  For
-another, Degu supports HTTP over ``AF_UNIX``, a scenario where the HTTP
-``'host'`` header tends to be *extra* meaningless.
-
-A strait-forward way to minimize the overhead of the HTTP protocol is to simply
-send fewer headers along with each request and response, and the Degu client
-aggressively pursues this optimization path.  By default, :class:`Client` and
-:class:`SSLClient` don't include *any* extra headers in their requests that
-weren't provided to :meth:`Connection.request()`.
-
-Of particular note, in addition to the ``'host'`` header, the Degu client
-doesn't by default include an HTTP ``{'connection': 'keep-alive'}`` header,
-which is only needed for backward compatibly with HTTP/1.0 servers (in HTTP/1.1,
-connection-reuse is assumed).  Likewise, the Degu client doesn't by default
-include an HTTP ``'user-agent'`` header.
-
-If you need to include specific HTTP headers in every request, just provide them
-in the *base_headers* when creating a :class:`Client` or an :class:`SSLClient`
-instance.
-
-However, note that when the Degu client does *not* include an HTTP ``'host'``
-header with every request, it's not operating in a strictly `HTTP/1.1`_
-compliant fashion, and that this is incompatible with at least one of the HTTP
-servers that the Degu client aims to support (`Apache 2.4`_).
-
-When making requests to Apache, or to other servers with similar requirements,
-consider using the :func:`create_client()` or :func:`create_sslclient()`
-convenience function, which will automatically add an appropriate ``'host'``
-header in the *base_headers* for the resulting :class:`Client` or
-:class:`SSLClient`, respectively.
-
-
-
-Helper functions
-----------------
-
-.. function:: create_client(url, base_headers=None)
-
-    Convenience function to create a :class:`Client` from a *url*.
-
-    For example:
-
-    >>> from degu.client import create_client
-    >>> client = create_client('http://example.com')
-    >>> client.address
-    ('example.com', 80)
-    >>> client.base_headers
-    {'host': 'example.com'}
-
-    Unlike when directly creating a :class:`Client` instance, this function will
-    automatically include an appropriate ``'host'`` header in *base_headers*.
-    Note that this is needed for compatibility with Apache, even when connecting
-    to Apache via an IP address alone.
-
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
-
-    If the *url* doesn't include a port, the port will default to ``80``.
-
-
-.. function:: create_sslclient(sslctx, url, base_headers=None)
-
-    Convenience function to create an :class:`SSLClient` from a *url*.
-
-    For example:
-
-    >>> from degu.client import create_sslclient, build_client_sslctx
-    >>> from degu.misc import TempPKI
-    >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.get_client_config())
-    >>> sslclient = create_sslclient(sslctx, 'https://example.com')
-    >>> sslclient.address
-    ('example.com', 443)
-    >>> sslclient.base_headers
-    {'host': 'example.com'}
-
-    Unlike when directly creating an :class:`SSLClient` instance, this function
-    will automatically include an appropriate ``'host'`` header in
-    *base_headers*.  Note that this is needed for compatibility with Apache,
-    even when connecting to Apache via an IP address alone.
-
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
-
-    If the *url* doesn't include a port, the port will default to ``443``.
-
-    Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
-
+:func:`build_client_sslctx()`
+-----------------------------
 
 .. function:: build_client_sslctx(config)
 
@@ -295,64 +199,75 @@ Helper functions
 
 
 
-:class:`Client` class
----------------------
+.. _client-connection-address:
 
-.. class:: Client(address, **options)
-
-    Represents an HTTP server to which Degu can make client connections.
-
-    The *address* must be a 2-tuple, a 4-tuple, an ``str``, or ``bytes``.
-
-    The *base_headers*, if provided, must be a ``dict``.  All header names
-    (keys) must be lowercase as produced by ``str.casefold()``, and
-    *base_headers* cannot include a ``'content-length'`` or a
-    ``'transfer-encoding'``.
-
-    Note that headers in *base_headers* will unconditionally override the same
-    headers should they be passed to :meth:`Connection.request()`.
-
-    A :class:`Client` instance is stateless and thread-safe.  It contains the
-    information needed to create actual :class:`Connection` instances, but does
-    not itself reference any socket resources.
-
-    .. attribute:: address
-
-        The *address* passed to the constructor.
-
-    .. attribute:: base_headers
-
-        The *base_headers* passed to the constructor.
-
-    .. method:: connect()
-
-        Create a new :class:`Connection` instance.
-
-
-
-:class:`SSLClient` subclass
+Client connection *address*
 ---------------------------
 
-.. class:: SSLClient(sslctx, address, **options)
+Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
+can be:
 
-    Represents an HTTPS server to which Degu can make client connections.
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
+      IPv6 IP
 
-    This subclass inherits all attributes and methods from :class:`Client`.
+    * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
+      a DNS name
 
-    The *sslctx* must be an ``ssl.SSLContext`` instance configured for
-    ``ssl.PROTOCOL_TLSv1_2``.  It's best to build *sslctx* using
-    :func:`build_client_sslctx()`.
+    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
-    The *address* and *base_headers* arguments are passed unchanged to the
-    :class:`Client` constructor.
+    * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
+      socket
 
-    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
-    the information needed to create actual :class:`Connection` instances, but
-    does not itself reference any socket resources.
+If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
+passed directly to `socket.socket.connect()`_ when creating a connection,
+thereby giving you access to full IPv6 semantics, including the *scopeid* needed
+for `link-local addresses`_.  For example, this 4-tuple *address* would connect
+to a hypothetical server listening on an IPv6 link-local address::
 
-    .. attribute:: sslctx
+    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
+ 
+If your *address* is a 2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  For example, all
+three of these are valid 2-tuple *address* values::
 
-        The *sslctx* passed to the constructor.
+    ('8.8.8.8', 80)
+    ('2001:4860:4860::8888', 80)
+    ('www.example.com', 80)
+
+Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
+assumed and again your *address* is passed directly to
+`socket.socket.connect()`_ when creating a connection.  For example, these are
+both valid ``AF_UNIX`` *address* values::
+
+    '/tmp/my.socket'
+    b'\x0000022'
+
+
+
+.. _client-config-options:
+
+Client config *options*
+-----------------------
+
+Both :class:`Client` and :class:`SSLClient` accept configuration *options* via
+keyword-only arguments, by which you can override the defaults for certain
+tunable runtime parameters.
+
+The following client configuration *options* are supported:
+
+    *   ``base_headers`` --- a ``dict`` of headers that will unconditionally be
+        added to the request headers for each request, overriding values with
+        the same key when present; must be a ``dict`` instance, or ``None`` to
+        indicate no base-headers; cannot include ``'content-length'`` or
+        ``'transfer-encoding'`` headers
+
+    *   ``timeout`` --- client socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance, or ``None`` to indicate no timeout; the
+        default is a ``90`` second client socket timeout
+
+    *   ``bodies`` --- namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies; the default is
+        :data:`degu.base.DEFAULT_BODIES`
 
 
 
@@ -505,6 +420,107 @@ Helper functions
         If no response body was returned, this will be ``None``.  Otherwise,
         this will be either a :class:`degu.base.Body` or
         :class:`degu.base.ChunkedBody` instance.
+
+
+
+Note on ``'host'`` header
+-------------------------
+
+Considering the highly specialized P2P use case that Degu is aimed at, sending
+an HTTP ``'host'`` header along with *every* request isn't particularly
+meaningful.
+
+For one, the Degu server itself doesn't support named-based virtual hosts, and
+will typically be reached via an IP address alone, not via a DNS name.  For
+another, Degu supports HTTP over ``AF_UNIX``, a scenario where the ``'host'``
+request header tends to be *extra* meaningless.
+
+A strait-forward way to minimize the overhead of the HTTP protocol is to simply
+send fewer headers along with each request and response, and the Degu client
+aggressively pursues this optimization path.  By default, :class:`Client` and
+:class:`SSLClient` don't include *any* extra request headers that weren't
+provided to :meth:`Connection.request()`.
+
+Of particular note, in addition to the ``'host'`` request header, the Degu
+client doesn't by default include a ``{'connection': 'keep-alive'}`` request
+header, which is only needed for backward compatibly with HTTP/1.0 servers (in
+HTTP/1.1, connection-reuse is assumed).  Likewise, the Degu client doesn't by
+default include a ``'user-agent'`` request header.
+
+If you need to include specific request headers in every request, just provide
+them via the ``base_headers`` kwarg when creating your :class:`Client` or
+:class:`SSLClient` instance.
+
+However, note that when the Degu client does *not* include a ``'host'`` header
+with every request, it's not operating in a strictly `HTTP/1.1`_ compliant
+fashion, and that this is incompatible with at least one of the HTTP servers
+that the Degu client aims to support (`Apache 2.4`_).
+
+When making requests to Apache, or to other servers with similar requirements,
+consider using the :func:`create_client()` or :func:`create_sslclient()`
+convenience function, which will automatically add an appropriate ``'host'``
+header in the *base_headers* for the resulting :class:`Client` or
+:class:`SSLClient`, respectively.
+
+
+
+:func:`create_client()`
+-----------------------
+
+.. function:: create_client(url, base_headers=None)
+
+    Convenience function to create a :class:`Client` from a *url*.
+
+    For example:
+
+    >>> from degu.client import create_client
+    >>> client = create_client('http://example.com')
+    >>> client.address
+    ('example.com', 80)
+    >>> client.base_headers
+    {'host': 'example.com'}
+
+    Unlike when directly creating a :class:`Client` instance, this function will
+    automatically include an appropriate ``'host'`` header in *base_headers*.
+    Note that this is needed for compatibility with Apache, even when connecting
+    to Apache via an IP address alone.
+
+    A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
+
+    If the *url* doesn't include a port, the port will default to ``80``.
+
+
+:func:`create_sslclient()`
+--------------------------
+
+.. function:: create_sslclient(sslctx, url, base_headers=None)
+
+    Convenience function to create an :class:`SSLClient` from a *url*.
+
+    For example:
+
+    >>> from degu.client import create_sslclient, build_client_sslctx
+    >>> from degu.misc import TempPKI
+    >>> pki = TempPKI()
+    >>> sslctx = build_client_sslctx(pki.get_client_config())
+    >>> sslclient = create_sslclient(sslctx, 'https://example.com')
+    >>> sslclient.address
+    ('example.com', 443)
+    >>> sslclient.base_headers
+    {'host': 'example.com'}
+
+    Unlike when directly creating an :class:`SSLClient` instance, this function
+    will automatically include an appropriate ``'host'`` header in
+    *base_headers*.  Note that this is needed for compatibility with Apache,
+    even when connecting to Apache via an IP address alone.
+
+    A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
+
+    If the *url* doesn't include a port, the port will default to ``443``.
+
+    Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
+
+
 
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html

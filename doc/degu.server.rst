@@ -16,6 +16,9 @@ As a quick example, say you have this :doc:`rgi` application:
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 
+(For a short primer on implementing RGI server applications, please see
+:ref:`server-app-callable`.)
+
 You can create a :class:`Server` instance like this:
 
 >>> from degu.server import Server
@@ -64,8 +67,11 @@ example, to kill the server process we just created:
     ``AF_INET`` (IPv4), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
     See :ref:`server-bind-address` for details.
 
-    The *app* argument must be a callable that implements the :doc:`rgi`.  For a
-    quick primer, see :ref:`server-app-callable`.
+    The *app* argument provides your :doc:`rgi` (RGI) server application.  It
+    must be a callable object (called to handle each HTTP request), and can
+    optionally have a callable ``app.on_connect()`` attribute (called to handle
+    each new TCP connection).  For a quick primer on implementing RGI server
+    applications, see :ref:`server-app-callable`.
 
     Finally, you can provide keyword-only *options* to override the defaults for
     a number of tunable runtime parameters.  See :ref:`server-config-options`
@@ -90,7 +96,7 @@ example, to kill the server process we just created:
 
     .. attribute:: app
 
-        The RGI application callable provided when the :class:`Server` instance
+        The :doc:`rgi` application provided when the :class:`Server` instance
         was created.
 
     .. attribute:: options
@@ -118,19 +124,21 @@ example, to kill the server process we just created:
 
 .. class:: SSLServer(sslctx, address, app, **options)
 
-    A Degu HTTP server instance secured using TLS 1.2.
+    A Degu HTTPS server instance (secured using TLS 1.2).
 
     This subclass inherits all attributes and methods from :class:`Server`.
 
     The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
     configured for server-side use.
 
-    Alternatively, if the *sslctx* is a ``dict`` instance, it is interpreted as
-    the server *sslconfig* and the actual `ssl.SSLContext`_ instance will be
-    built automatically by calling :func:`build_server_sslctx()`.
+    Alternatively, if the *sslctx* argument is a ``dict`` instance, it is
+    interpreted as the server *sslconfig* and the actual `ssl.SSLContext`_
+    instance will be built automatically by calling
+    :func:`build_server_sslctx()`.
 
     The *address* and *app* arguments, along with any keyword-only *options*,
     are passed unchanged to :class:`Server()`.
+
 
 
 :func:`build_server_sslctx()`
@@ -197,6 +205,7 @@ example, to kill the server process we just created:
           ``'ECDHE-RSA-AES256-GCM-SHA384'``
 
 
+
 .. _server-bind-address:
 
 Server bind *address*
@@ -205,10 +214,10 @@ Server bind *address*
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 can be:
 
-    * A ``(host, port)`` 2-tuple for ``AF_INET``, where the *host* is an IPv4 IP
-
     * A ``(host, port, flowinfo, scopeid)`` 4-tuple for ``AF_INET6``, where the
       *host* is an IPv6 IP
+
+    * A ``(host, port)`` 2-tuple for ``AF_INET``, where the *host* is an IPv4 IP
 
     * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
@@ -296,22 +305,13 @@ Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
 provide your HTTP request handler, and optionally provide a TCP connection
 handler.
 
-Here is a quick primer on implementing Degu server applications, but for full
+Here's a quick primer on implementing Degu server applications, but for full
 details, please see the :doc:`rgi` specification.
 
 
 **HTTP request handler:**
 
-Your *app* must be a callable that accepts three arguments::
-
-    (session, request, bodies)
-
-And your ``app()`` callable must return a 4-tuple providing the HTTP response
-status, response reason, response headers, and response body::
-
-    (status, reason, headers, body)
-
-For example:
+Your *app* must be a callable object that accepts three arguments, for example:
 
 >>> def my_rgi_app(session, request, bodies):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
@@ -335,7 +335,7 @@ The *request* argument will be a ``dict`` instance something like this::
     }
 
 Finally, the *bodies* argument will be a namedtuple exposing four wrapper
-classes used to specify HTTP request and response bodies:
+classes that can be used to specify the HTTP response body:
 
 ==========================  ==================================
 Exposed via                 Degu implementation
@@ -347,6 +347,12 @@ Exposed via                 Degu implementation
 ==========================  ==================================
 
 
+Your ``app()`` specifies its HTTP response via this following 4-tuple return
+value::
+
+    (status, reason, headers, body)
+
+
 **TCP connection handler:**
 
 If your *app* argument itself has a callable ``on_connect`` attribute, it must
@@ -356,6 +362,8 @@ accept two arguments::
 
 And your ``app.on_connect()`` callable must return ``True`` when the connection
 should be accepted, or return ``False`` when the connection should be rejected.
+It will be called after a new TCP connection has been accepted, but before any
+HTTP requests have been handled via that TCP connection.
 
 For example:
 
@@ -366,9 +374,8 @@ For example:
 ...     def on_connect(self, sock, session):
 ...         return True
 
-The *sock* argument will be a ``socket.socket`` instance, an ``ssl.SSLSocket``
-instance, or in the case of an RGI-compatible server other than Degu, possibly
-an instance of some other object implementing an equivalent API.
+The *sock* argument will be a `socket.socket`_ when running your app in a
+:class:`Server`, or an `ssl.SSLSocket`_ if running in an :class:`SSLServer`.
 
 Finally, the *session* argument will be same ``dict`` instance passed to your
 ``app()`` HTTP request handler, something like this::
@@ -424,63 +431,6 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 ...         return True
 
 
-**Name-spacing session keys:**
-
-Sometimes it's useful to keep individual RGI application components ignorant
-of where exactly they might be mounted within the URI hierarchy (especially when
-RGI routing middleware is used), and also ignorant of what other components
-might be mounted and where.  In this case, care must be taken to use a key that
-will be unique even though an individual component wont know the full RGI
-application setup in advance.
-
-When needed, the recommended approach for an ``app()`` HTTP request handler is
-to namespace its session keys using ``request['script']``, something like this:
-
->>> def session_request_key(request, key):
-...     return '/'.join(['__'] + request['script'] + [key])
-...
->>> def my_rgi_app(session, request, bodies):
-...     key = session_request_key(request, 'body')
-...     body = session.get(key)
-...     if body is None:
-...         body = b'hello, world'
-...         session[key] = body
-...     return (200, 'OK', {'content-type': 'text/plain'}, body)
-...
->>> session_request_key({'script': ['foo', 'bar']}, 'body')
-'__/foo/bar/body'
-
-Likewise, the RGI specification allows middleware components to cascade calls
-down through multiple ``app.on_connect()`` TCP connection handlers.  Again, care
-must be taken to use a key that will be unique even though an individual
-component wont know the full RGI application setup in advance.
-
-When needed, the recommended approach for an ``app().on_connect()`` TCP
-connection handler is to namespace its session keys using its class module and
-class name, something like this:
-
->>> def session_connection_key(cls, key):
-...     return '.'.join(['_', cls.__module__, cls.__name__, key])
-...
->>> class MyRGIApp:
-...     def __init__(self):
-...         self._key = session_connection_key(self.__class__, 'user')
-...
-...     def __call__(self, session, request, bodies):
-...         if session.get(self._key) != 'admin':
-...             return (403, 'Forbidden', {}, None)
-...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
-...
-...     def on_connect(self, sock, session):
-...         # Somehow authenticate the user who made the connection:
-...         session[self._key] = 'admin'
-...         return True
-...
->>> session_connection_key(MyRGIApp, 'user')
-'_.builtins.MyRGIApp.user'
-
-
-
 .. _server-config-options:
 
 Server config *options*
@@ -519,11 +469,11 @@ The following server configuration *options* are supported:
         :data:`degu.base.DEFAULT_BODIES`
 
 
-
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket.socket.bind()`: https://docs.python.org/3/library/socket.html#socket.socket.bind
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl.SSLSocket
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
