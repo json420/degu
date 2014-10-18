@@ -99,6 +99,8 @@ Definite
         security reasons; however, how to capture this in a generic way is a bit
         less clear at this point
 
+    *   Possibly flip connection handler args to app.on_connect(session, sock)
+
 
 
 Likely, but not 100% certain

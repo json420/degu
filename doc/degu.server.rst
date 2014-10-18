@@ -10,8 +10,8 @@ As a quick example, say you have this :doc:`rgi` application:
 >>> def hello_world_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
-...     body = b'Hello, world!'
-...     headers = {'content-length': len(body)}
+...     body = b'hello, world'
+...     headers = {'content-length': len(body), 'content-type': 'text/plain'}
 ...     if request['method'] == 'GET':
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
@@ -42,7 +42,7 @@ You can create a suitable :class:`degu.client.Client` with the returned
 >>> conn = client.connect()
 >>> response = conn.request('GET', '/')
 >>> response.body.read()
-b'Hello, world!'
+b'hello, world'
 
 Running your Degu server in its own process has many advantages.  It means there
 will be no thread contention between the Degu server process and your main
@@ -125,12 +125,12 @@ example, to kill the server process we just created:
 Both :class:`Server` and :class:`SSLServer` take an *address* argument, which
 can be:
 
+    * A ``(host, port)`` 2-tuple for ``AF_INET``, where the *host* is an IPv4 IP
+
     * A ``(host, port, flowinfo, scopeid)`` 4-tuple for ``AF_INET6``, where the
       *host* is an IPv6 IP
 
-    * A ``(host, port)`` 2-tuple for ``AF_INET``, where the *host* is an IPv4 IP
-
-    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+    * An ``str`` providing the filename of an ``AF_UNIX`` socket
 
     * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
       socket (typically an empty ``b''`` so that the abstract name is assigned
@@ -142,22 +142,24 @@ IPv6 address semantics when using an ``AF_INET6`` 4-tuple, including the
 *scopeid* needed for `link-local addresses`_.
 
 Typically you'll run your ``AF_INET`` or ``AF_INET6`` Degu server on a random,
-unprivileged port, so if your *address* is a 2-tuple or 4-tuple, you'll
-typically supply ``0`` for the *port*, in which case a random port will be
-assigned by the kernel.
+unprivileged port, so if your *address* is a 4-tuple or 2-tuple, you'll
+typically supply ``0`` for the *port*, in which case a port will be assigned by
+the kernel.
 
-However, after you create your :class:`Server` or :class:`SSLServer` instance,
-you'll need to know what random port was assigned by the kernel (for example, so
-you can advertise this port to peers on the local network).
+However, after you create your :class:`Server` or :class:`SSLServer`, you'll
+need to know what port was assigned (for example, so you can advertise this port
+to peers on the local network).
 
-The :attr:`Server.address` instance attribute will be the value returned by
+:attr:`Server.address` will contain the value returned by
 `socket.socket.getsockname()`_ for the socket upon which your server is
-listening.  For example, assuming port ``54321`` was assigned, the
-:attr:`Server.address` would be something like this for ``AF_INET``::
+listening.
+
+For example, assuming port ``54321`` was assigned, :attr:`Server.address` would
+be something like this for ``AF_INET`` (IPv4)::
 
     ('127.0.0.1', 54321)
 
-Or something like this for ``AF_INET6``::
+Or something like this for ``AF_INET6`` (IPv6)::
 
     ('::1', 54321, 0, 0)
 
@@ -200,8 +202,8 @@ value::
 
     b''
 
-The :attr:`Server.address` instance attribute would then contain the ``AF_UNIX``
-Linux abstract socket name assigned by the kernel, something like::
+:attr:`Server.address` will contain the assigned abstract socket name, something
+like::
 
     b'\x0000022'
 
