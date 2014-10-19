@@ -135,7 +135,7 @@
      inkscape:cx="800"
      inkscape:cy="450"
      inkscape:document-units="px"
-     inkscape:current-layer="g3855"
+     inkscape:current-layer="layer1"
      showgrid="false"
      inkscape:window-width="1920"
      inkscape:window-height="1056"
@@ -343,15 +343,15 @@
     <text
        xml:space="preserve"
        style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono"
-       x="387.9028"
+       x="408.53625"
        y="205.82753"
        id="text3150"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan3152"
-         x="387.9028"
+         x="408.53625"
          y="205.82753"
-         style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Lato;-inkscape-font-specification:Lato;fill:#000000">Degu embedded HTTP client and server library</tspan></text>
+         style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;font-family:Lato;-inkscape-font-specification:Lato">Degu HTTP client and server API, at a glance</tspan></text>
     <g
        id="g3855"
        transform="translate(142.57426,29.70297)">

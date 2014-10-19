@@ -7,6 +7,30 @@ Changelog
 
 This *may* end up being the API stable Degu 1.0 release ``:D``
 
+
+Breaking API changes:
+
+    *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
+        accept generic and easily extensible keyword-only *options*::
+
+            Client(address, **options)
+            SSLClient(sslctx, address, **options)
+
+        This means that you can no longer supply the *base_headers* as a
+        positonal argument, only as a keyword argument.  See the client
+        :ref:`client-options` for details.
+
+    *   Likewise, :func:`degu.client.create_client()` and
+        :func:`degu.client.create_sslclient()` now accept the same keyword-only
+        *options*::
+
+            create_client(url, **options)
+            create_sslclient(sslctx, url, **options)
+
+        Again, this means that you can no longer supply the *base_headers* as a
+        positional argument, only as a keyword argument.
+
+
 Changes:
 
     *   The RGI *request* argument now includes a ``uri`` item, which will be
@@ -26,14 +50,13 @@ Changes:
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
 
-    *   :class:`degu.client.Client` now accepts generic and easily extensible
-        keyword-only *options*::
+    *   :class:`degu.server.Server` and :class:`degu.server.SSLServer` now also
+        accepts generic and easily extensible keyword-only *options*::
 
-            Client(address, **options)
-            SSLClient(sslctx, address, **options)
+            Server(address, app, **options)
+            SSLServer(sslctx, address, app, **options)
 
-    *   As such, the :class:`degu.client.Client` *base_headers* is now a
-        keyword-only argument
+        See the server :ref:`server-options` for details.
 
 
 

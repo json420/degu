@@ -63,8 +63,8 @@ example, to kill the server process we just created:
     An HTTP server instance.
 
     The *address* argument specifies the socket address upon which the server
-    will listen.  It can be a 4-tuple for ``AF_INET6`` (IPv6), a 2-tuple for
-    ``AF_INET`` (IPv4), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
+    will listen.  It can be a 2-tuple for ``AF_INET`` (IPv4), a 4-tuple for
+    ``AF_INET6`` (IPv6), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
     See :ref:`server-address` for details.
 
     The *app* argument provides your :doc:`rgi` (RGI) server application.  It
@@ -83,15 +83,17 @@ example, to kill the server process we just created:
         Note that this wont necessarily match the *address* argument provided to
         the constructor.  As Degu is designed for per-user server instances
         running on dynamic ports, you typically specify port ``0`` in an
-        ``AF_INET6`` or ``AF_INET`` *address* argument, eg., using something
-        like this for ``AF_INET6``::
+        ``AF_INET`` or ``AF_INET6`` *address* argument::
 
-            ('::1', 0, 0, 0)
+            ('127.0.0.1', 0)  # AF_INET (IPv4)
+            ('::1', 0, 0, 0)  # AF_INET6 (IPv6)
 
         In which case the :attr:`Server.address` attribute will contain the port
-        assigned by the operating system, something like this::
+        assigned by the operating system.  For example, assuming port ``12345``
+        assigned::
 
-            ('::1', 40505, 0, 0)
+            ('127.0.0.1', 12345)  # AF_INET (IPv4)
+            ('::1', 12345, 0, 0)  # AF_INET6 (IPv6)
 
     .. attribute:: app
 
