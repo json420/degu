@@ -92,7 +92,11 @@ supplied to :meth:`Connection.request()`.  For details, see
 
         This will contain the values of any keyword *options* provided to the
         constructor, and will otherwise contain the default values for the
-        remaining configuration.
+        remaining options.
+
+        Note that this property returns a copy of the *options* ``dict``, as
+        currently modifying these options after a :class:`Client` has been
+        created is not supported.
 
         See :ref:`client-options` for details.
 

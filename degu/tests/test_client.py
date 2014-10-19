@@ -990,6 +990,9 @@ class TestClient(TestCase):
         self.assertIs(inst.address, filename)
         self.assertIs(inst.family, socket.AF_UNIX)
         self.assertEqual(inst._base_headers, None)
+        options = inst.options
+        self.assertEqual(options, client.build_default_client_options())
+        self.assertIsNone(options, inst._options)  # Should be a copy
 
         # `bytes` (AF_UNIX):
         address = b'\x0000022'
@@ -997,6 +1000,9 @@ class TestClient(TestCase):
         self.assertIs(inst.address, address)
         self.assertIs(inst.family, socket.AF_UNIX)
         self.assertEqual(inst._base_headers, None)
+        options = inst.options
+        self.assertEqual(options, client.build_default_client_options())
+        self.assertIsNone(options, inst._options)  # Should be a copy
 
         # A number of good address permutations:
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
@@ -1004,6 +1010,9 @@ class TestClient(TestCase):
             self.assertIsInstance(inst, client.Client)
             self.assertIs(inst.address, address)
             self.assertEqual(inst._base_headers, None)
+            options = inst.options
+            self.assertEqual(options, client.build_default_client_options())
+            self.assertIsNone(options, inst._options)  # Should be a copy
 
     def test_repr(self):
         class Custom(client.Client):
