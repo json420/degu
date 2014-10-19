@@ -488,7 +488,7 @@ class Server:
                 pass
 
     def handler(self, sock, session):
-        if self.on_connect is None or self.on_connect(sock, session) is True:
+        if self.on_connect is None or self.on_connect(session, sock) is True:
             handle_requests(self.app, sock, default_bodies, session)
         else:
             log.warning('rejecting connection: %r', session['client'])

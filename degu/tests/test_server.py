@@ -720,7 +720,7 @@ class GoodConnectionHandler:
     def __call__(self, session, request, bodies):
         pass
 
-    def on_connect(self, sock, session):
+    def on_connect(self, session, sock):
         pass
 
 
@@ -1116,7 +1116,8 @@ class AppWithConnectionHandler:
     def __call__(self, session, request, bodies):
         return (200, 'OK', {}, self.marker)
 
-    def on_connect(self, sock, session):
+    def on_connect(self, session, sock):
+        assert isinstance(session, dict)
         return self.accept
 
 
