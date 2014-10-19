@@ -216,7 +216,9 @@
          y="553.39819"
          id="tspan3007"><tspan
    style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
-   id="tspan3041">           conn</tspan> = client.connect()                              app.on_connect(<tspan
+   id="tspan3041">           conn</tspan> = client.connect()   <tspan
+   style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3061">-----------------------&gt; </tspan>  app.on_connect(<tspan
    style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
    id="tspan3045">session</tspan>, sock) --&gt; True/False</tspan><tspan
          sodipodi:role="line"
@@ -279,7 +281,9 @@
      style="font-weight:normal;-inkscape-font-specification:Ubuntu Mono"
      id="tspan3096">.</tspan><tspan
      style="fill:#301438"
-     id="tspan3092">request('GET', '/foo/bar?key=val', {}, None)</tspan></tspan>               app(<tspan
+     id="tspan3092">request('GET', '/foo/bar?key=val', {}, None)   <tspan
+   style="font-weight:bold;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3071">--------&gt; </tspan></tspan></tspan>  app(<tspan
    style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
    id="tspan3047">session</tspan>, <tspan
    style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold"
@@ -343,91 +347,87 @@
     <text
        xml:space="preserve"
        style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono"
-       x="408.53625"
+       x="463.96594"
        y="205.82753"
        id="text3150"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan3152"
-         x="408.53625"
+         x="463.96594"
          y="205.82753"
-         style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;font-family:Lato;-inkscape-font-specification:Lato">Degu HTTP client and server API, at a glance</tspan></text>
+         style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;font-family:Lato;-inkscape-font-specification:Lato">Degu client and server API, at a glance</tspan></text>
     <g
-       id="g3855"
-       transform="translate(142.57426,29.70297)">
-      <g
-         id="g3924"
-         transform="translate(-112,-20)">
-        <text
-           xml:space="preserve"
-           style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
-           x="342.57425"
+       transform="translate(44.57426,7.70297)"
+       id="g3924">
+      <text
+         transform="translate(0,152.36218)"
+         sodipodi:linespacing="125%"
+         id="text3025"
+         y="505.94058"
+         x="342.57425"
+         style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+         xml:space="preserve"><tspan
+           id="tspan3030"
            y="505.94058"
-           id="text3025"
-           sodipodi:linespacing="125%"
-           transform="translate(0,152.36218)"><tspan
-             sodipodi:role="line"
-             x="342.57425"
-             y="505.94058"
-             id="tspan3030">The same <tspan
-   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#e81f3b;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
-   id="tspan3038">session</tspan> argument is persistent</tspan><tspan
-             sodipodi:role="line"
-             x="342.57425"
-             y="533.44055"
-             id="tspan3034">throughout all HTTP requests handled</tspan><tspan
-             sodipodi:role="line"
-             x="342.57425"
-             y="560.94055"
-             id="tspan3036">through a single TCP connection.</tspan></text>
-        <g
-           transform="matrix(1.0197574,0,0,1,-6.4015317,0)"
-           id="g3852">
-          <rect
-             transform="matrix(0.97632554,0,0,0.98321501,0.17650036,160.18963)"
-             y="466.33664"
-             x="331.68317"
-             height="114.85149"
-             width="423.76239"
-             id="rect3050"
-             style="fill:none;stroke:#e81f3b;stroke-opacity:1;filter:url(#filter3842)" />
-        </g>
-      </g>
+           x="342.57425"
+           sodipodi:role="line">The same <tspan
+   id="tspan3038"
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#e81f3b;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">session</tspan> argument is persistent</tspan><tspan
+           id="tspan3034"
+           y="533.44055"
+           x="342.57425"
+           sodipodi:role="line">throughout all HTTP requests handled</tspan><tspan
+           id="tspan3036"
+           y="560.94055"
+           x="342.57425"
+           sodipodi:role="line">through a single TCP connection.</tspan></text>
       <g
-         id="g3914"
-         transform="translate(25.64356,-12.831683)">
-        <text
-           sodipodi:linespacing="125%"
-           id="text3864"
-           y="930.58002"
+         id="g3852"
+         transform="matrix(1.0197574,0,0,1,-6.4015317,0)">
+        <rect
+           style="fill:none;stroke:#e81f3b;stroke-opacity:1;filter:url(#filter3842)"
+           id="rect3050"
+           width="423.76239"
+           height="114.85149"
+           x="331.68317"
+           y="466.33664"
+           transform="matrix(0.97632554,0,0,0.98321501,0.17650036,160.18963)" />
+      </g>
+    </g>
+    <g
+       transform="translate(176.21782,12.871287)"
+       id="g3914">
+      <text
+         xml:space="preserve"
+         style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+         x="513.86133"
+         y="930.58002"
+         id="text3864"
+         sodipodi:linespacing="125%"><tspan
+           sodipodi:role="line"
            x="513.86133"
-           style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
-           xml:space="preserve"><tspan
-             id="tspan3868"
-             y="930.58002"
-             x="513.86133"
-             sodipodi:role="line">The <tspan
-   id="tspan3874"
-   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">request</tspan> and <tspan
-   id="tspan3886"
-   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">response</tspan> are faithful to the HTTP wire format.</tspan><tspan
-             id="tspan3872"
-             y="958.08002"
-             x="513.86133"
-             sodipodi:role="line">Arguments are in always in the order that they are serialized.</tspan></text>
+           y="930.58002"
+           id="tspan3868">The <tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3874">request</tspan> and <tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3886">response</tspan> are faithful to the HTTP wire format.</tspan><tspan
+           sodipodi:role="line"
+           x="513.86133"
+           y="958.08002"
+           id="tspan3872">Arguments are in always in the order that they are serialized.</tspan></text>
+      <g
+         id="g3908">
         <g
-           id="g3908">
-          <g
-             id="g3911">
-            <rect
-               transform="matrix(1.0200885,0,0,1.2100598,-168.25168,-50.043399)"
-               y="782.17822"
-               x="647.52478"
-               height="63.366337"
-               width="630.69305"
-               id="rect3892"
-               style="fill:none;stroke:#301438;stroke-opacity:1;filter:url(#filter3894)" />
-          </g>
+           id="g3911">
+          <rect
+             style="fill:none;stroke:#301438;stroke-opacity:1;filter:url(#filter3894)"
+             id="rect3892"
+             width="630.69305"
+             height="63.366337"
+             x="647.52478"
+             y="782.17822"
+             transform="matrix(1.0200885,0,0,1.2100598,-168.25168,-50.043399)" />
         </g>
       </g>
     </g>

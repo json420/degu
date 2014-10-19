@@ -280,20 +280,20 @@ accept two arguments, for example:
 ...     def __call__(self, session, request, bodies):
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
-...     def on_connect(self, sock, session):
+...     def on_connect(self, session, sock):
 ...         return True
 ...
 
-The *sock* argument will be a `socket.socket`_ when running your app in a
-:class:`Server`, or an `ssl.SSLSocket`_ when running your app in an 
-:class:`SSLServer`.
-
-Finally, the *session* argument will be same ``dict`` instance passed to your
+The *session* argument will be same ``dict`` instance passed to your
 ``app()`` HTTP request handler, something like this::
 
     session = {
         'client': ('127.0.0.1', 12345),
     }
+
+Finally, the *sock* argument will be a `socket.socket`_ when running your app in
+a :class:`Server`, or an `ssl.SSLSocket`_ when running your app in an
+:class:`SSLServer`.
 
 Your ``app.on_connect()`` will be called after a new TCP connection has been
 accepted, but before any HTTP requests have been handled via that TCP

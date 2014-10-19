@@ -95,10 +95,9 @@ Notice that the :class:`degu.client.Response` namedtuple returned above is the
 exact same tuple returned by our ``example_app``.  The Degu client API and the
 RGI application API have been carefully designed to complement each other.
 
-For example, here's an RGI application that implements a `reverse-proxy`_, which
-will use the :func:`degu.util.relative_uri()` helper function:
+For example, here's an RGI application that implements a `reverse-proxy`_:
 
->>> from degu.util import relative_uri
+>>> import ssl
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -109,11 +108,18 @@ will use the :func:`degu.util.relative_uri()` helper function:
 ...         conn = session['__conn']
 ...         return conn.request(
 ...             request['method'],
-...             relative_uri(request),
+...             request['uri'],
 ...             request['headers'],
 ...             request['body']
 ...         )
-...
+... 
+...     def on_connect(self, session, sock):
+...         if not isinstance(sock, ssl.SSLSocket):
+...             return False
+...         if sock.context.verify_mode != ssl.CERT_REQUIRED:
+...             return False
+...         return True
+... 
 
 The important thing to note above is that Degu server applications can
 *directly* use the incoming HTTP request body object in their forwarded HTTP

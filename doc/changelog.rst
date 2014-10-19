@@ -10,6 +10,18 @@ This *may* end up being the API stable Degu 1.0 release ``:D``
 
 Breaking API changes:
 
+    *   Change order of RGI ``app.on_connect()`` arguments from::
+
+            app.on_connect(sock, session)
+
+        To::
+
+            app.on_connect(session, sock)
+
+        Especially when you look at the overall API structurally, this change
+        clearly makes sense.  See the new ``Degu-API.svg`` diagram in the Degu
+        source tree for details.
+
     *   :meth:`degu.client.Connection.request()` now requires the *headers* and
         *body* arguments always to be provided; ie., the method signature has
         changed from::
