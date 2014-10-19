@@ -323,7 +323,8 @@ class Connection:
                 body = Body(body, content_length)
             validate_request(method, uri, headers, body)
             if self.default_headers:
-                headers.update(self.default_headers)
+                for (key, value) in self.default_headers.items():
+                    headers.setdefault(key, value)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body

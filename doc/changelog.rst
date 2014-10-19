@@ -26,6 +26,13 @@ Changes:
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
 
+    *   Rename :class:`degu.client.Client` *base_headers* argument to
+        *default_headers*, which is now a keyword-only argument and now only
+        overrides headers *not* provided to
+        :meth:`degu.client.Connection.request()`, rather than uncoditionally
+        overriding these headers, which feels more generally useful; this way
+        higher level code can override any *default_headers* when needed
+
 
 
 0.9 (September 2014)
