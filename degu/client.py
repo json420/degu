@@ -277,9 +277,9 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, base_headers):
+    def __init__(self, sock, default_headers):
         self.sock = sock
-        self.base_headers = base_headers
+        self.default_headers = default_headers
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Body or ChunkedBody
 
@@ -322,7 +322,8 @@ class Connection:
                     content_length = os.stat(body.fileno()).st_size
                 body = Body(body, content_length)
             validate_request(method, uri, headers, body)
-            headers.update(self.base_headers)
+            if self.default_headers:
+                headers.update(self.default_headers)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -398,7 +399,7 @@ class Client:
     A `Client` instance is stateless and thread-safe.
     """
 
-    def __init__(self, address, base_headers=None):
+    def __init__(self, address, **options):
         if isinstance(address, tuple):  
             if len(address) == 4:
                 self.family = socket.AF_INET6
@@ -421,18 +422,17 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        self.base_headers = ({} if base_headers is None else base_headers)
-        assert isinstance(self.base_headers, dict)
-        for key in self.base_headers:
-            assert isinstance(key, str)
-            if key.casefold() != key:
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        for key in ('content-length', 'transfer-encoding'):
-            if key in self.base_headers:
-                raise ValueError('base_headers cannot include {!r}'.format(key))
+        options = validate_client_options(**options)
+        self._Connection = options['Connection']
+        self._default_headers = options['default_headers']
+        self._options = options
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
+
+    @property
+    def options(self):
+        return self._options.copy()
 
     def create_socket(self):
         if self.family is None:
@@ -442,7 +442,9 @@ class Client:
         return sock
 
     def connect(self):
-        return Connection(self.create_socket(), self.base_headers)
+        return self._Connection(self.create_socket(),
+            self._default_headers,
+        )
 
 
 class SSLClient(Client):
@@ -452,9 +454,9 @@ class SSLClient(Client):
     An `SSLClient` instance is stateless and thread-safe.
     """
 
-    def __init__(self, sslctx, address, default_headers=None):
+    def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
-        super().__init__(address, default_headers)
+        super().__init__(address, **options)
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -468,7 +470,7 @@ class SSLClient(Client):
         )
 
 
-def create_client(url, base_headers=None):
+def create_client(url, **options):
     """
     Convenience function to create a `Client` from a URL.
 
@@ -482,13 +484,15 @@ def create_client(url, base_headers=None):
     if t.scheme != 'http':
         raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
     port = (80 if t.port is None else t.port)
-    if not base_headers:
-        base_headers = {}
-    base_headers['host'] = t.netloc
-    return Client((t.hostname, port), base_headers)
+    default_headers = options.get('default_headers')
+    if default_headers is None:
+        default_headers = {}
+        options['default_headers'] = default_headers
+    default_headers['host'] = t.netloc
+    return Client((t.hostname, port), **options)
 
 
-def create_sslclient(sslctx, url, base_headers=None):
+def create_sslclient(sslctx, url, **options):
     """
     Convenience function to create an `SSLClient` from a URL.
     """
@@ -496,8 +500,10 @@ def create_sslclient(sslctx, url, base_headers=None):
     if t.scheme != 'https':
         raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
     port = (443 if t.port is None else t.port)
-    if not base_headers:
-        base_headers = {}
-    base_headers['host'] = t.netloc
-    return SSLClient(sslctx, (t.hostname, port), base_headers)
+    default_headers = options.get('default_headers')
+    if default_headers is None:
+        default_headers = {}
+        options['default_headers'] = default_headers
+    default_headers['host'] = t.netloc
+    return SSLClient(sslctx, (t.hostname, port), **options)
 
