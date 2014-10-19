@@ -1258,10 +1258,10 @@ class TestValidator(TestCase):
             def __init__(self, allow):
                 self.__allow = allow
 
-            def __call__(self, session, request):
+            def __call__(self, session, request, bodies):
                 raise Exception('should not be called')
 
-            def on_connect(self, sock, session):
+            def on_connect(self, session, sock):
                 if isinstance(self.__allow, Exception):
                     raise self.__allow
                 return self.__allow
@@ -1270,14 +1270,14 @@ class TestValidator(TestCase):
         inst = rgi.Validator(App(1))
         session = build_session()
         with self.assertRaises(TypeError) as cm:
-            inst.on_connect(None, session)
+            inst.on_connect(session, None)
         self.assertEqual(str(cm.exception),
             "app.on_connect() must return a <class 'bool'>; got a <class 'int'>: 1"
         )
         inst = rgi.Validator(App('true'))
         session = build_session()
         with self.assertRaises(TypeError) as cm:
-            inst.on_connect(None, session)
+            inst.on_connect(session, None)
         self.assertEqual(str(cm.exception),
             "app.on_connect() must return a <class 'bool'>; got a <class 'str'>: 'true'"
         )
@@ -1287,19 +1287,19 @@ class TestValidator(TestCase):
         inst = rgi.Validator(App(ValueError(marker)))
         session = build_session()
         with self.assertRaises(ValueError) as cm:
-            inst.on_connect(None, session)
+            inst.on_connect(session, None)
         self.assertEqual(str(cm.exception), marker)
 
         # app.on_connect() returns True:
         inst = rgi.Validator(App(True))
         session = build_session()
-        self.assertIs(inst.on_connect(None, session), True)
+        self.assertIs(inst.on_connect(session, None), True)
 
         # app.on_connect() returns True, but session['requests'] != 0:
         inst = rgi.Validator(App(True))
         session = build_session(requests=1)
         with self.assertRaises(ValueError) as cm:
-            inst.on_connect(None, session)
+            inst.on_connect(session, None)
         self.assertEqual(str(cm.exception), 
             "session['requests'] must be 0 when app.on_connect() is called; got 1"
         )
@@ -1307,13 +1307,13 @@ class TestValidator(TestCase):
         # app.on_connect() returns False:
         inst = rgi.Validator(App(False))
         session = build_session()
-        self.assertIs(inst.on_connect(None, session), False)
+        self.assertIs(inst.on_connect(session, None), False)
 
         # app.on_connect() returns False, but session['requests'] != 0:
         inst = rgi.Validator(App(False))
         session = build_session(requests=3)
         with self.assertRaises(ValueError) as cm:
-            inst.on_connect(None, session)
+            inst.on_connect(session, None)
         self.assertEqual(str(cm.exception), 
             "session['requests'] must be 0 when app.on_connect() is called; got 3"
         )
@@ -1324,11 +1324,11 @@ class TestValidator(TestCase):
 
         inst = rgi.Validator(my_app)
         session = build_session()
-        self.assertIs(inst.on_connect(None, session), True)
+        self.assertIs(inst.on_connect(session, None), True)
 
         # app.on_connect is None:
         my_app.on_connect = None
         inst = rgi.Validator(my_app)
         session = build_session()
-        self.assertIs(inst.on_connect(None, session), True)
+        self.assertIs(inst.on_connect(session, None), True)
 

@@ -34,6 +34,9 @@ Constants
     >>> assert degu.base.FILE_IO_BYTES == 1048576  # 1 MiB
 
 
+.. data:: default_options
+
+
 
 Exceptions
 ----------

@@ -70,7 +70,7 @@ create a :class:`degu.client.Connection`, with with we can make one or more
 requests:
 
 >>> conn = client.connect()
->>> conn.request('GET', '/')
+>>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 In contrast to the client, a :class:`degu.client.Connection` is statefull and is
@@ -80,7 +80,7 @@ As both the Degu client and server are built for HTTP/1.1 only, connection
 reuse is assumed.  We can make another request to our ``server`` using the same
 connection:
 
->>> conn.request('PUT', '/foo')
+>>> conn.request('PUT', '/foo', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 After you're done using a connection, it's a good idea to explicitly close it,
@@ -95,10 +95,9 @@ Notice that the :class:`degu.client.Response` namedtuple returned above is the
 exact same tuple returned by our ``example_app``.  The Degu client API and the
 RGI application API have been carefully designed to complement each other.
 
-For example, here's an RGI application that implements a `reverse-proxy`_, which
-will use the :func:`degu.util.relative_uri()` helper function:
+For example, here's an RGI application that implements a `reverse-proxy`_:
 
->>> from degu.util import relative_uri
+>>> import ssl
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -109,11 +108,18 @@ will use the :func:`degu.util.relative_uri()` helper function:
 ...         conn = session['__conn']
 ...         return conn.request(
 ...             request['method'],
-...             relative_uri(request),
+...             request['uri'],
 ...             request['headers'],
 ...             request['body']
 ...         )
-...
+... 
+...     def on_connect(self, session, sock):
+...         if not isinstance(sock, ssl.SSLSocket):
+...             return False
+...         if sock.context.verify_mode != ssl.CERT_REQUIRED:
+...             return False
+...         return True
+... 
 
 The important thing to note above is that Degu server applications can
 *directly* use the incoming HTTP request body object in their forwarded HTTP
@@ -160,7 +166,7 @@ We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 >>> sslctx = build_client_sslctx(pki.get_client_config())
 >>> proxy_client = SSLClient(sslctx, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
->>> proxy_conn.request('GET', '/')
+>>> proxy_conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
@@ -218,7 +224,7 @@ And then, as in our previous example, we can create a
 
 >>> conn = client.connect()
 >>> conn = client.connect()
->>> conn.request('GET', '/')
+>>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
@@ -265,7 +271,7 @@ Before we dive into the details, here's a quick example:
 >>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
 >>> client = Client(server.address)
 >>> conn = client.connect()
->>> response = conn.request('GET', '/')
+>>> response = conn.request('GET', '/', {}, None)
 
 Notice that this time the response body is a :class:`degu.base.Body` instance,
 rather than ``None``:

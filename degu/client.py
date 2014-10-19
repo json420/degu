@@ -33,6 +33,7 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
+    default_bodies,
     Body,
     BodyIter,
     ChunkedBody,
@@ -276,11 +277,13 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, base_headers):
+    def __init__(self, sock, base_headers, bodies):
+        assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
         self.base_headers = base_headers
+        self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Body or ChunkedBody
+        self.response_body = None  # Previous Body or ChunkedBody or None
 
     def __del__(self):
         self.close()
@@ -306,14 +309,13 @@ class Connection:
                 pass
             self.sock = None
 
-    def request(self, method, uri, headers=None, body=None):
+    def request(self, method, uri, headers, body):
+        assert isinstance(headers, dict)
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-            if headers is None:
-                headers = {}
             if isinstance(body, io.BufferedReader):
                 if 'content-length' in headers:
                     content_length = headers['content-length']
@@ -321,7 +323,8 @@ class Connection:
                     content_length = os.stat(body.fileno()).st_size
                 body = Body(body, content_length)
             validate_request(method, uri, headers, body)
-            headers.update(self.base_headers)
+            if self.base_headers:
+                headers.update(self.base_headers)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -331,6 +334,65 @@ class Connection:
             raise
 
 
+def build_default_client_options():
+    return {
+        'base_headers': None,
+        'bodies': default_bodies,
+        'timeout': 90,
+        'Connection': Connection,
+    }
+
+
+def validate_client_options(**options):
+    result = build_default_client_options()
+    result.update(options)
+
+    # base_headers:
+    base_headers = result['base_headers']
+    if base_headers is not None:
+        if not isinstance(base_headers, dict):
+            raise TypeError(TYPE_ERROR.format(
+                'base_headers', dict, type(base_headers), base_headers
+            ))
+        for key in base_headers:
+            assert isinstance(key, str)
+            if not key.islower():
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        for key in ('content-length', 'transfer-encoding'):
+            if key in base_headers:
+                raise ValueError('base_headers cannot include {!r}'.format(key))
+
+    # bodies:
+    bodies = result['bodies']
+    for name in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter'):
+        if not hasattr(bodies, name):
+            raise TypeError('bodies is missing {!r} attribute'.format(name))
+        attr = getattr(bodies, name)
+        if not callable(attr):
+            raise TypeError('bodies.{} is not callable: {!r}'.format(name, attr))
+
+    # timeout:
+    timeout = result['timeout']
+    if timeout is not None:
+        if not isinstance(timeout, (int, float)):
+            raise TypeError(
+                TYPE_ERROR.format('timeout', (int, float), type(timeout), timeout)
+            )
+        if not (timeout > 0):
+            raise ValueError(
+                'timeout must be > 0; got {!r}'.format(timeout)
+            )
+
+    # Connection:
+    Connection = result['Connection']
+    if not callable(Connection):
+        raise TypeError(
+            'Connection is not callable: {!r}'.format(Connection)
+        )
+
+    return result
+
+
 class Client:
     """
     Represents an HTTP server to which Degu can make client connections.
@@ -338,7 +400,7 @@ class Client:
     A `Client` instance is stateless and thread-safe.
     """
 
-    def __init__(self, address, base_headers=None):
+    def __init__(self, address, **options):
         if isinstance(address, tuple):  
             if len(address) == 4:
                 self.family = socket.AF_INET6
@@ -361,18 +423,18 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        self.base_headers = ({} if base_headers is None else base_headers)
-        assert isinstance(self.base_headers, dict)
-        for key in self.base_headers:
-            assert isinstance(key, str)
-            if key.casefold() != key:
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        for key in ('content-length', 'transfer-encoding'):
-            if key in self.base_headers:
-                raise ValueError('base_headers cannot include {!r}'.format(key))
+        options = validate_client_options(**options)
+        self._Connection = options['Connection']
+        self._base_headers = options['base_headers']
+        self._bodies = options['bodies']
+        self._options = options
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
+
+    @property
+    def options(self):
+        return self._options.copy()
 
     def create_socket(self):
         if self.family is None:
@@ -382,7 +444,9 @@ class Client:
         return sock
 
     def connect(self):
-        return Connection(self.create_socket(), self.base_headers)
+        return self._Connection(self.create_socket(),
+            self._base_headers, self._bodies
+        )
 
 
 class SSLClient(Client):
@@ -392,9 +456,9 @@ class SSLClient(Client):
     An `SSLClient` instance is stateless and thread-safe.
     """
 
-    def __init__(self, sslctx, address, default_headers=None):
+    def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
-        super().__init__(address, default_headers)
+        super().__init__(address, **options)
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -408,7 +472,7 @@ class SSLClient(Client):
         )
 
 
-def create_client(url, base_headers=None):
+def create_client(url, **options):
     """
     Convenience function to create a `Client` from a URL.
 
@@ -422,13 +486,15 @@ def create_client(url, base_headers=None):
     if t.scheme != 'http':
         raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
     port = (80 if t.port is None else t.port)
-    if not base_headers:
+    base_headers = options.get('base_headers')
+    if base_headers is None:
         base_headers = {}
+        options['base_headers'] = base_headers
     base_headers['host'] = t.netloc
-    return Client((t.hostname, port), base_headers)
+    return Client((t.hostname, port), **options)
 
 
-def create_sslclient(sslctx, url, base_headers=None):
+def create_sslclient(sslctx, url, **options):
     """
     Convenience function to create an `SSLClient` from a URL.
     """
@@ -436,8 +502,10 @@ def create_sslclient(sslctx, url, base_headers=None):
     if t.scheme != 'https':
         raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
     port = (443 if t.port is None else t.port)
-    if not base_headers:
+    base_headers = options.get('base_headers')
+    if base_headers is None:
         base_headers = {}
+        options['base_headers'] = base_headers
     base_headers['host'] = t.netloc
-    return SSLClient(sslctx, (t.hostname, port), base_headers)
+    return SSLClient(sslctx, (t.hostname, port), **options)
 

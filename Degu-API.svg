@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="1600"
+   height="900"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.5 r10040"
+   sodipodi:docname="Degu-API.svg"
+   inkscape:export-filename="/home/jderose/Degu-API.png"
+   inkscape:export-xdpi="108"
+   inkscape:export-ydpi="108">
+  <defs
+     id="defs4">
+    <inkscape:path-effect
+       is_visible="true"
+       id="path-effect5868"
+       effect="spiro" />
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3820">
+      <feGaussianBlur
+         stdDeviation="5"
+         result="result91"
+         id="feGaussianBlur3822" />
+      <feComposite
+         in="SourceGraphic"
+         operator="over"
+         in2="result91"
+         id="feComposite3824"
+         result="fbSourceGraphic" />
+      <feColorMatrix
+         result="fbSourceGraphicAlpha"
+         in="fbSourceGraphic"
+         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
+         id="feColorMatrix3826" />
+      <feOffset
+         id="feOffset3828"
+         dx="4"
+         dy="4"
+         result="result11"
+         in="fbSourceGraphic" />
+      <feGaussianBlur
+         id="feGaussianBlur3830"
+         stdDeviation="4"
+         result="result8" />
+      <feComposite
+         id="feComposite3832"
+         in2="result8"
+         result="result9"
+         in="fbSourceGraphic"
+         operator="in" />
+      <feBlend
+         id="feBlend3834"
+         in2="result8"
+         in="result9"
+         mode="darken" />
+    </filter>
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3842">
+      <feOffset
+         dx="4"
+         dy="4"
+         result="result11"
+         in="SourceGraphic"
+         id="feOffset3844" />
+      <feGaussianBlur
+         stdDeviation="4"
+         result="result8"
+         id="feGaussianBlur3846" />
+      <feComposite
+         result="result9"
+         in="SourceGraphic"
+         operator="in"
+         in2="result8"
+         id="feComposite3848" />
+      <feBlend
+         in="result9"
+         in2="result8"
+         mode="darken"
+         id="feBlend3850" />
+    </filter>
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3894">
+      <feOffset
+         dx="4"
+         dy="4"
+         result="result11"
+         in="SourceGraphic"
+         id="feOffset3896" />
+      <feGaussianBlur
+         stdDeviation="4"
+         result="result8"
+         id="feGaussianBlur3898" />
+      <feComposite
+         result="result9"
+         in="SourceGraphic"
+         operator="in"
+         in2="result8"
+         id="feComposite3900" />
+      <feBlend
+         in="result9"
+         in2="result8"
+         mode="darken"
+         id="feBlend3902" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="1"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.01"
+     inkscape:cx="800"
+     inkscape:cy="450"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1056"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-152.36218)">
+    <text
+       xml:space="preserve"
+       style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono"
+       x="53.254002"
+       y="278.39819"
+       id="text2985"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         id="tspan2987"
+         x="53.254002"
+         y="278.39819"
+         style="font-style:italic;font-weight:bold;-inkscape-font-specification:Ubuntu Mono Bold Italic">degu.client                                                     degu.server</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="305.89819"
+         id="tspan3123"
+         style="font-style:italic;-inkscape-font-specification:Ubuntu Mono Bold Italic" /><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="333.39819"
+         id="tspan3125">           Client(address, **options)                                      Server(address, app, **options)</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="360.89819"
+         id="tspan2989">SSLClient(sslctx, address, **options)                           SSLServer(sslctx, address, app, **options)</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="388.39819"
+         id="tspan2993" /><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="415.89819"
+         id="tspan2995">  client = Client(('127.0.0.1', 12345))                           server = Server(('127.0.0.1', 12345), app)</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="443.39819"
+         id="tspan2999" /><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="470.89819"
+         id="tspan3001"
+         style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold">                                                                               session = {</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="498.39819"
+         id="tspan3003"
+         style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                   'client': ('127.0.0.1', 23456),</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="525.89819"
+         id="tspan3005"
+         style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold">                                                                               }</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="553.39819"
+         id="tspan3007"><tspan
+   style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3041">           conn</tspan> = client.connect()   <tspan
+   style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3061">-----------------------&gt; </tspan>  app.on_connect(<tspan
+   style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3045">session</tspan>, sock) --&gt; True/False</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="580.89819"
+         id="tspan3011" /><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="608.39819"
+         id="tspan3013"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                        request = {</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="635.89819"
+         id="tspan3015"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'method': 'GET',</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="663.39819"
+         id="tspan3017"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'uri': '/foo/bar?key=val',</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="690.89819"
+         id="tspan3019"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'script': [],</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="718.39819"
+         id="tspan3021"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'path': ['foo', 'bar'],</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="745.89819"
+         id="tspan3023"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'query': 'key=val',</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="773.39819"
+         id="tspan3025"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'headers': {},</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="800.89819"
+         id="tspan3027"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                            'body': None,</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="828.39819"
+         id="tspan3029"
+         style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold">                                                                                        }</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="855.89819"
+         id="tspan3031">response = <tspan
+   style="font-weight:bold;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3088"><tspan
+     style="fill:#e81f3b"
+     id="tspan3090">conn</tspan><tspan
+     style="font-weight:normal;-inkscape-font-specification:Ubuntu Mono"
+     id="tspan3096">.</tspan><tspan
+     style="fill:#301438"
+     id="tspan3092">request('GET', '/foo/bar?key=val', {}, None)   <tspan
+   style="font-weight:bold;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3071">--------&gt; </tspan></tspan></tspan>  app(<tspan
+   style="font-weight:bold;fill:#e81f3b;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3047">session</tspan>, <tspan
+   style="font-weight:bold;fill:#301438;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3082">request</tspan>, bodies) --&gt; (200, 'OK', {}, b'Novacut')</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="883.39819"
+         id="tspan3033">     response.status --&gt; 200</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="910.89819"
+         id="tspan3035">     response.reason --&gt; 'OK'</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="938.39819"
+         id="tspan3037">    response.headers --&gt; {'content-length': 7}</tspan><tspan
+         sodipodi:role="line"
+         x="53.254002"
+         y="965.89819"
+         id="tspan3039">response.body.read() --&gt; b'Novacut'</tspan></text>
+    <g
+       transform="matrix(0.24917494,0,0,0.24917494,1425.3201,894.56679)"
+       inkscape:label="Layer 1"
+       id="layer1-6">
+      <path
+         sodipodi:type="arc"
+         style="fill:#e81f3b;fill-opacity:1;stroke:none"
+         id="path5924"
+         sodipodi:cx="320"
+         sodipodi:cy="240"
+         sodipodi:rx="225"
+         sodipodi:ry="225"
+         d="M 545,240 C 545,364.26407 444.26407,465 320,465 195.73593,465 95,364.26407 95,240 95,115.73593 195.73593,15 320,15 444.26407,15 545,115.73593 545,240 z"
+         transform="matrix(1.0666667,0,0,1.0666667,-85.333334,-32.000001)" />
+      <path
+         inkscape:connector-curvature="0"
+         style="font-size:144px;font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;text-align:start;line-height:125%;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#ffffff;fill-opacity:1;stroke:none;font-family:Helvetica Neue LT Com;-inkscape-font-specification:Helvetica Neue LT Com Bold"
+         d="m 157.74011,106.26326 0,233.73017 48.11687,0 0,-156.48267 0.68543,0 37.83549,60.93432 0,-81.0173 -35.57359,-57.16452 -51.0642,0 z m 149.28569,0 0,156.82539 -0.68543,0 -37.8355,-60.86578 0,81.0173 35.23088,56.75326 51.40692,0 0,-233.73017 -48.11687,0 z"
+         id="path4023" />
+      <path
+         transform="matrix(2.193362,0,0,2.193362,-1651.9421,-440.84345)"
+         d="m 849.94235,230.95239 c 0,7.41996 -6.01506,13.43503 -13.43503,13.43503 -7.41996,0 -13.43502,-6.01507 -13.43502,-13.43503 0,-7.41996 6.01506,-13.43503 13.43502,-13.43503 7.41997,0 13.43503,6.01507 13.43503,13.43503 z"
+         sodipodi:ry="13.435029"
+         sodipodi:rx="13.435029"
+         sodipodi:cy="230.95239"
+         sodipodi:cx="836.50732"
+         id="path4025"
+         style="fill:#ffffff;fill-opacity:1;stroke:none"
+         sodipodi:type="arc" />
+      <path
+         sodipodi:type="arc"
+         style="fill:#ffffff;fill-opacity:1;stroke:none"
+         id="path4027"
+         sodipodi:cx="836.50732"
+         sodipodi:cy="230.95239"
+         sodipodi:rx="13.435029"
+         sodipodi:ry="13.435029"
+         d="m 849.94235,230.95239 c 0,7.41996 -6.01506,13.43503 -13.43503,13.43503 -7.41996,0 -13.43502,-6.01507 -13.43502,-13.43503 0,-7.41996 6.01506,-13.43503 13.43502,-13.43503 7.41997,0 13.43503,6.01507 13.43503,13.43503 z"
+         transform="matrix(2.193362,0,0,2.193362,-1505.7305,-124.45147)" />
+    </g>
+    <text
+       xml:space="preserve"
+       style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono"
+       x="463.96594"
+       y="205.82753"
+       id="text3150"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         id="tspan3152"
+         x="463.96594"
+         y="205.82753"
+         style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;font-family:Lato;-inkscape-font-specification:Lato">Degu client and server API, at a glance</tspan></text>
+    <g
+       transform="translate(44.57426,7.70297)"
+       id="g3924">
+      <text
+         transform="translate(0,152.36218)"
+         sodipodi:linespacing="125%"
+         id="text3025"
+         y="505.94058"
+         x="342.57425"
+         style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+         xml:space="preserve"><tspan
+           id="tspan3030"
+           y="505.94058"
+           x="342.57425"
+           sodipodi:role="line">The same <tspan
+   id="tspan3038"
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#e81f3b;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">session</tspan> argument is persistent</tspan><tspan
+           id="tspan3034"
+           y="533.44055"
+           x="342.57425"
+           sodipodi:role="line">throughout all HTTP requests handled</tspan><tspan
+           id="tspan3036"
+           y="560.94055"
+           x="342.57425"
+           sodipodi:role="line">through a single TCP connection.</tspan></text>
+      <g
+         id="g3852"
+         transform="matrix(1.0197574,0,0,1,-6.4015317,0)">
+        <rect
+           style="fill:none;stroke:#e81f3b;stroke-opacity:1;filter:url(#filter3842)"
+           id="rect3050"
+           width="423.76239"
+           height="114.85149"
+           x="331.68317"
+           y="466.33664"
+           transform="matrix(0.97632554,0,0,0.98321501,0.17650036,160.18963)" />
+      </g>
+    </g>
+    <g
+       transform="translate(176.21782,12.871287)"
+       id="g3914">
+      <text
+         xml:space="preserve"
+         style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+         x="513.86133"
+         y="930.58002"
+         id="text3864"
+         sodipodi:linespacing="125%"><tspan
+           sodipodi:role="line"
+           x="513.86133"
+           y="930.58002"
+           id="tspan3868">The <tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3874">request</tspan> and <tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3886">response</tspan> are faithful to the HTTP wire format.</tspan><tspan
+           sodipodi:role="line"
+           x="513.86133"
+           y="958.08002"
+           id="tspan3872">Arguments are in always in the order that they are serialized.</tspan></text>
+      <g
+         id="g3908">
+        <g
+           id="g3911">
+          <rect
+             style="fill:none;stroke:#301438;stroke-opacity:1;filter:url(#filter3894)"
+             id="rect3892"
+             width="630.69305"
+             height="63.366337"
+             x="647.52478"
+             y="782.17822"
+             transform="matrix(1.0200885,0,0,1.2100598,-168.25168,-50.043399)" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -517,7 +517,7 @@ class Validator:
         _validate_response(bodies, orig_request, response)
         return response
 
-    def on_connect(self, sock, session):
+    def on_connect(self, session, sock):
         orig_session = session.copy()
         _validate_session(session)
         assert session == orig_session
@@ -529,7 +529,7 @@ class Validator:
             )
         if self._on_connect is None:
             return True
-        allow = self._on_connect(sock, orig_session)
+        allow = self._on_connect(orig_session, sock)
         if not isinstance(allow, bool):
             raise TypeError(
                 'app.on_connect() must return a {!r}; got a {!r}: {!r}'.format(

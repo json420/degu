@@ -31,6 +31,7 @@ import tempfile
 import shutil
 from random import SystemRandom
 from unittest import TestCase
+import string
 
 from degu import tables
 from degu.sslhelpers import random_id
@@ -62,6 +63,10 @@ def random_chunks():
     chunks = [random_data() for i in range(count)]
     chunks.append(b'')
     return chunks
+
+
+def random_identifier():
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
 
 
 def _iter_good(size, allowed):
@@ -190,4 +195,36 @@ class FuzzTestCase(TestCase):
             # Make sure refcount is still correct (especially important for
             # testing C extensions):
             self.assertEqual(sys.getrefcount(rfile), 2)
+
+
+class MockBodies:
+    def __init__(self, **kw):
+        for (key, value) in kw.items():
+            assert key in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
+            setattr(self, key, value)
+
+
+def iter_bodies_with_missing_object():
+    names = ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
+
+    def dummy_body():
+        pass
+
+    for name in names:
+        kw = dict((key, dummy_body) for key in names)
+        del kw[name]
+        yield (MockBodies(**kw), name)
+
+
+def iter_bodies_with_non_callable_object():
+    names = ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
+
+    def dummy_body():
+        pass
+
+    for name in names:
+        kw = dict((key, dummy_body) for key in names)
+        attr = random_identifier()
+        kw[name] = attr
+        yield (MockBodies(**kw), name, attr)
 

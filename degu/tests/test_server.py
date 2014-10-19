@@ -720,7 +720,7 @@ class GoodConnectionHandler:
     def __call__(self, session, request, bodies):
         pass
 
-    def on_connect(self, sock, session):
+    def on_connect(self, session, sock):
         pass
 
 
@@ -1116,7 +1116,8 @@ class AppWithConnectionHandler:
     def __call__(self, session, request, bodies):
         return (200, 'OK', {}, self.marker)
 
-    def on_connect(self, sock, session):
+    def on_connect(self, session, sock):
+        assert isinstance(session, dict)
         return self.accept
 
 
@@ -1158,22 +1159,28 @@ class TestLiveServer(TestCase):
         conn = client.connect()
 
         # Make an inital request:
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        self.assertEqual(conn.request('POST', '/foo', {}, None), 
+            (200, 'OK', {}, None)
+        )
 
         # Wait till 1 second *before* the timeout should happen, to make sure
         # connection is still open:
         time.sleep(server.SERVER_SOCKET_TIMEOUT - 1)
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        self.assertEqual(conn.request('POST', '/foo', {}, None),
+            (200, 'OK', {}, None)
+        )
 
         # Now tait till 1 second *after* the timeout should have happened, to
         # make sure the connection was closed by the server:
         time.sleep(server.SERVER_SOCKET_TIMEOUT + 1)
         with self.assertRaises(ConnectionError):
-            conn.request('POST', '/foo')
+            conn.request('POST', '/foo', {}, None)
         self.assertIs(conn.closed, True)
         self.assertIsNone(conn.sock)
         conn = client.connect()
-        self.assertEqual(conn.request('POST', '/foo'), (200, 'OK', {}, None))
+        self.assertEqual(conn.request('POST', '/foo', {}, None),
+            (200, 'OK', {}, None)
+        )
         httpd.terminate()
 
     def test_chunked_request(self):
@@ -1210,7 +1217,7 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(chunked_response_app)
         conn = client.connect()
 
-        response = conn.request('GET', '/foo')
+        response = conn.request('GET', '/foo', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
@@ -1219,20 +1226,20 @@ class TestLiveServer(TestCase):
             tuple((data, None) for data in CHUNKS)
         )
 
-        response = conn.request('GET', '/bar')
+        response = conn.request('GET', '/bar', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
         self.assertIsInstance(response.body, base.ChunkedBody)
         self.assertEqual(list(response.body), [(b'', None)])
 
-        response = conn.request('GET', '/baz')
+        response = conn.request('GET', '/baz', {}, None)
         self.assertEqual(response.status, 404)
         self.assertEqual(response.reason, 'Not Found')
         self.assertEqual(response.headers, {})
         self.assertIsNone(response.body)
 
-        response = conn.request('GET', '/foo')
+        response = conn.request('GET', '/foo', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
@@ -1246,27 +1253,27 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(response_app)
         conn = client.connect()
 
-        response = conn.request('GET', '/foo')
+        response = conn.request('GET', '/foo', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
         self.assertIsInstance(response.body, base.Body)
         self.assertEqual(response.body.read(), DATA)
 
-        response = conn.request('GET', '/bar')
+        response = conn.request('GET', '/bar', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': 0})
         self.assertIsInstance(response.body, base.Body)
         self.assertEqual(response.body.read(), b'')
 
-        response = conn.request('GET', '/baz')
+        response = conn.request('GET', '/baz', {}, None)
         self.assertEqual(response.status, 404)
         self.assertEqual(response.reason, 'Not Found')
         self.assertEqual(response.headers, {})
         self.assertIsNone(response.body)
 
-        response = conn.request('GET', '/foo')
+        response = conn.request('GET', '/foo', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
@@ -1281,7 +1288,7 @@ class TestLiveServer(TestCase):
         for i in range(17):
             conn = client.connect()
             for j in range(69):
-                response = conn.request('GET', '/')
+                response = conn.request('GET', '/', {}, None)
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
                 self.assertEqual(response.headers, {'content-length': 16})
@@ -1297,7 +1304,7 @@ class TestLiveServer(TestCase):
         for i in range(17):
             conn = client.connect()
             with self.assertRaises(ConnectionError):
-                conn.request('GET', '/')
+                conn.request('GET', '/', {}, None)
             self.assertIs(conn.closed, True)
             self.assertIsNone(conn.sock)
         httpd.terminate()
@@ -1309,7 +1316,7 @@ class TestLiveServer(TestCase):
         for status in range(100, 400):
             reason = random_id()
             uri = '/status/{}/{}'.format(status, reason)
-            response = conn.request('GET', uri)
+            response = conn.request('GET', uri, {}, None)
             self.assertEqual(response.status, status)
             self.assertEqual(response.reason, reason)
             self.assertEqual(response.headers, {})
@@ -1317,7 +1324,7 @@ class TestLiveServer(TestCase):
             # Again with a 2nd random reason string:
             reason = random_id()
             uri = '/status/{}/{}'.format(status, reason)
-            response = conn.request('GET', uri)
+            response = conn.request('GET', uri, {}, None)
             self.assertEqual(response.status, status)
             self.assertEqual(response.reason, reason)
             self.assertEqual(response.headers, {})
@@ -1331,14 +1338,14 @@ class TestLiveServer(TestCase):
             reason = random_id()
             uri = '/status/{}/{}'.format(status, reason)
             conn = client.connect()
-            response = conn.request('GET', uri)
+            response = conn.request('GET', uri, {}, None)
             self.assertEqual(response.status, status)
             self.assertEqual(response.reason, reason)
             self.assertEqual(response.headers, {})
             self.assertIsNone(response.body)
             if status in {404, 409, 412}:
                 # Connection should not be closed for 404, 409, 412:
-                response = conn.request('GET', uri)
+                response = conn.request('GET', uri, {}, None)
                 self.assertEqual(response.status, status)
                 self.assertEqual(response.reason, reason)
                 self.assertEqual(response.headers, {})
@@ -1347,7 +1354,7 @@ class TestLiveServer(TestCase):
             else:
                 # But connection should be closed for all other status >= 400:
                 with self.assertRaises(ConnectionError):
-                    conn.request('GET', uri)
+                    conn.request('GET', uri, {}, None)
                 self.assertIs(conn.closed, True)
                 self.assertIsNone(conn.sock)
         httpd.terminate()
@@ -1359,7 +1366,7 @@ class TestLiveServer(TestCase):
         for i in range(95):
             conn = client.connect()
             allconns.append(conn)
-            response = conn.request('GET', uri)
+            response = conn.request('GET', uri, {}, None)
             self.assertEqual(response.status, 404)
             self.assertEqual(response.reason, 'Nope')
             self.assertEqual(response.headers, {})
@@ -1368,7 +1375,7 @@ class TestLiveServer(TestCase):
             for i in range(10):
                 conn = client.connect()
                 allconns.append(conn)
-                response = conn.request('GET', uri)
+                response = conn.request('GET', uri, {}, None)
                 self.assertEqual(response.status, 404)
                 self.assertEqual(response.reason, 'Nope')
                 self.assertEqual(response.headers, {})
@@ -1382,13 +1389,13 @@ class TestLiveServer(TestCase):
         uri = '/status/404/Nope'
         conn = client.connect()
         for i in range(5000):
-            response = conn.request('GET', uri)
+            response = conn.request('GET', uri, {}, None)
             self.assertEqual(response.status, 404)
             self.assertEqual(response.reason, 'Nope')
             self.assertEqual(response.headers, {})
             self.assertIsNone(response.body)
         with self.assertRaises(ConnectionError):
-            conn.request('GET', uri)
+            conn.request('GET', uri, {}, None)
         self.assertIs(conn.closed, True)
         conn.close()
         httpd.terminate()
@@ -1438,7 +1445,7 @@ class TestLiveSSLServer(TestLiveServer):
         client = Client(httpd.address)
         conn = client.connect()
         with self.assertRaises(ConnectionResetError) as cm:
-            conn.request('GET', '/')
+            conn.request('GET', '/', {}, None)
         self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
         self.assertIs(conn.closed, True)
         self.assertIsNone(conn.response_body)
@@ -1473,7 +1480,7 @@ class TestLiveSSLServer(TestLiveServer):
         sslctx = build_client_sslctx(client_config)
         client = SSLClient(sslctx, httpd.address)
         conn = client.connect()
-        response = conn.request('GET', '/')
+        response = conn.request('GET', '/', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertIsNone(response.body)
