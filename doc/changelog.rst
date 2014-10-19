@@ -52,7 +52,7 @@ Breaking API changes:
 
         The reason Degu flips the order is so that its API faithfully reflects
         the HTTP wire format... Degu arguments are always in the order that they
-        are serialized in the TCP stream.  A goal as always been that if you
+        are serialized in the TCP stream.  A goal has always been that if you
         know the HTTP wire format, it should be extremely easy to map that
         understanding into the Degu API.
 
