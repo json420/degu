@@ -33,6 +33,7 @@ from urllib.parse import urlparse, ParseResult
 
 from .base import (
     TYPE_ERROR,
+    default_bodies,
     Body,
     BodyIter,
     ChunkedBody,
@@ -329,6 +330,65 @@ class Connection:
         except Exception:
             self.close()
             raise
+
+
+def build_default_client_options():
+    return {
+        'default_headers': None,
+        'bodies': default_bodies,
+        'timeout': 90,
+        'Connection': Connection,
+    }
+
+
+def validate_client_options(**options):
+    result = build_default_client_options()
+    result.update(options)
+
+    # default_headers:
+    default_headers = result['default_headers']
+    if default_headers is not None:
+        if not isinstance(default_headers, dict):
+            raise TypeError(TYPE_ERROR.format(
+                'default_headers', dict, type(default_headers), default_headers
+            ))
+        for key in default_headers:
+            assert isinstance(key, str)
+            if not key.islower():
+                raise ValueError('non-casefolded header name: {!r}'.format(key))
+        for key in ('content-length', 'transfer-encoding'):
+            if key in default_headers:
+                raise ValueError('default_headers cannot include {!r}'.format(key))
+
+    # bodies:
+    bodies = result['bodies']
+    for name in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter'):
+        if not hasattr(bodies, name):
+            raise TypeError('bodies is missing {!r} attribute'.format(name))
+        attr = getattr(bodies, name)
+        if not callable(attr):
+            raise TypeError('bodies.{} is not callable: {!r}'.format(name, attr))
+
+    # timeout:
+    timeout = result['timeout']
+    if timeout is not None:
+        if not isinstance(timeout, (int, float)):
+            raise TypeError(
+                TYPE_ERROR.format('timeout', (int, float), type(timeout), timeout)
+            )
+        if not (timeout > 0):
+            raise ValueError(
+                'timeout must be > 0; got {!r}'.format(timeout)
+            )
+
+    # Connection:
+    Connection = result['Connection']
+    if not callable(Connection):
+        raise TypeError(
+            'Connection is not callable: {!r}'.format(Connection)
+        )
+
+    return result
 
 
 class Client:
