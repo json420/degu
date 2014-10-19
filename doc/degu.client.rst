@@ -69,9 +69,9 @@ supplied to :meth:`Connection.request()`.  For details, see
     An HTTP server to which client connections can be made.
 
     The *address* argument specifies the server socket address to which TCP
-    connections will be made.  It can be a 4-tuple for ``AF_INET6`` (IPv6),
-    a 2-tuple for ``AF_INET`` (IPv4) or ``AF_INET6`` (IPv6), or an ``str`` or
-    ``bytes`` instance for ``AF_UNIX``.  See :ref:`client-address` for details.
+    connections will be made.  It can be a 2-tuple for ``AF_INIT`` or
+    ``AF_INET6``, a 4-tuple for ``AF_INET``, or an ``str`` or ``bytes`` instance
+    for ``AF_UNIX``.  See :ref:`client-address` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
     certain client configuration values.  See :ref:`client-options` for details.
@@ -114,16 +114,25 @@ supplied to :meth:`Connection.request()`.  For details, see
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:
 
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
-      IPv6 IP
-
     * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
-      a DNS name
+      a DNS name; the socket family will be ``AF_INET`` or ``AF_INET6`` as
+      appropriate for the *host*
+
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
+      IPv6 IP; the socket family will always be ``AF_INET6``
 
     * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
     * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
       socket
+
+If your *address* is a 2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  For example, all
+three of these are valid 2-tuple *address* values::
+
+    ('8.8.8.8', 80)
+    ('2001:4860:4860::8888', 80)
+    ('www.example.com', 80)
 
 If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
 passed directly to `socket.socket.connect()`_ when creating a connection,
@@ -132,14 +141,6 @@ for `link-local addresses`_.  For example, this 4-tuple *address* would connect
 to a hypothetical server listening on an IPv6 link-local address::
 
     ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
- 
-If your *address* is a 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  For example, all
-three of these are valid 2-tuple *address* values::
-
-    ('8.8.8.8', 80)
-    ('2001:4860:4860::8888', 80)
-    ('www.example.com', 80)
 
 Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
 assumed and again your *address* is passed directly to
