@@ -277,12 +277,13 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, base_headers):
+    def __init__(self, sock, base_headers, bodies):
         assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
         self.base_headers = base_headers
+        self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Body or ChunkedBody
+        self.response_body = None  # Previous Body or ChunkedBody or None
 
     def __del__(self):
         self.close()
@@ -426,6 +427,7 @@ class Client:
         options = validate_client_options(**options)
         self._Connection = options['Connection']
         self._base_headers = options['base_headers']
+        self._bodies = options['bodies']
         self._options = options
 
     def __repr__(self):
@@ -444,7 +446,7 @@ class Client:
 
     def connect(self):
         return self._Connection(self.create_socket(),
-            self._base_headers,
+            self._base_headers, self._bodies
         )
 
 

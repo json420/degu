@@ -839,11 +839,12 @@ class TestConnection(TestCase):
         key = random_id().lower()
         value = random_id()
         base_headers = {key: value}
-        inst = client.Connection(sock, base_headers)
+        inst = client.Connection(sock, base_headers, base.default_bodies)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
         self.assertIs(inst.base_headers, base_headers)
         self.assertEqual(inst.base_headers, {key: value})
+        self.assertIs(inst.bodies, base.default_bodies)
         self.assertIs(inst.rfile, sock._rfile)
         self.assertIs(inst.wfile, sock._wfile)
         self.assertIsNone(inst.response_body)
@@ -870,7 +871,7 @@ class TestConnection(TestCase):
 
     def test_close(self):
         sock = DummySocket()
-        inst = client.Connection(sock, None)
+        inst = client.Connection(sock, None, base.default_bodies)
         sock._calls.clear()
 
         # When Connection.closed is False:
@@ -890,7 +891,7 @@ class TestConnection(TestCase):
     def test_request(self):
         # Test when the connection has already been closed:
         sock = DummySocket()
-        conn = client.Connection(sock, None)
+        conn = client.Connection(sock, None, base.default_bodies)
         sock._calls.clear()
         conn.sock = None
         with self.assertRaises(client.ClosedConnectionError) as cm:
@@ -909,7 +910,7 @@ class TestConnection(TestCase):
             closed = False
 
         sock = DummySocket()
-        conn = client.Connection(sock, None)
+        conn = client.Connection(sock, None, base.default_bodies)
         sock._calls.clear()
         conn.response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
@@ -1033,7 +1034,8 @@ class TestClient(TestCase):
                 self._sock = sock
                 self._options = client.validate_client_options(**options)
                 self._Connection = self._options['Connection']
-                self._base_headers = options['base_headers']
+                self._base_headers = self._options['base_headers']
+                self._bodies = self._options['bodies']
 
             def create_socket(self):
                 return self._sock
