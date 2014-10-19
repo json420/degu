@@ -24,6 +24,105 @@
        is_visible="true"
        id="path-effect5868"
        effect="spiro" />
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3820">
+      <feGaussianBlur
+         stdDeviation="5"
+         result="result91"
+         id="feGaussianBlur3822" />
+      <feComposite
+         in="SourceGraphic"
+         operator="over"
+         in2="result91"
+         id="feComposite3824"
+         result="fbSourceGraphic" />
+      <feColorMatrix
+         result="fbSourceGraphicAlpha"
+         in="fbSourceGraphic"
+         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
+         id="feColorMatrix3826" />
+      <feOffset
+         id="feOffset3828"
+         dx="4"
+         dy="4"
+         result="result11"
+         in="fbSourceGraphic" />
+      <feGaussianBlur
+         id="feGaussianBlur3830"
+         stdDeviation="4"
+         result="result8" />
+      <feComposite
+         id="feComposite3832"
+         in2="result8"
+         result="result9"
+         in="fbSourceGraphic"
+         operator="in" />
+      <feBlend
+         id="feBlend3834"
+         in2="result8"
+         in="result9"
+         mode="darken" />
+    </filter>
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3842">
+      <feOffset
+         dx="4"
+         dy="4"
+         result="result11"
+         in="SourceGraphic"
+         id="feOffset3844" />
+      <feGaussianBlur
+         stdDeviation="4"
+         result="result8"
+         id="feGaussianBlur3846" />
+      <feComposite
+         result="result9"
+         in="SourceGraphic"
+         operator="in"
+         in2="result8"
+         id="feComposite3848" />
+      <feBlend
+         in="result9"
+         in2="result8"
+         mode="darken"
+         id="feBlend3850" />
+    </filter>
+    <filter
+       inkscape:label="Fuzzy Glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:menu-tooltip="Overlays a semi-transparent shifted copy to a blurred one"
+       color-interpolation-filters="sRGB"
+       id="filter3894">
+      <feOffset
+         dx="4"
+         dy="4"
+         result="result11"
+         in="SourceGraphic"
+         id="feOffset3896" />
+      <feGaussianBlur
+         stdDeviation="4"
+         result="result8"
+         id="feGaussianBlur3898" />
+      <feComposite
+         result="result9"
+         in="SourceGraphic"
+         operator="in"
+         in2="result8"
+         id="feComposite3900" />
+      <feBlend
+         in="result9"
+         in2="result8"
+         mode="darken"
+         id="feBlend3902" />
+    </filter>
   </defs>
   <sodipodi:namedview
      id="base"
@@ -36,7 +135,7 @@
      inkscape:cx="800"
      inkscape:cy="450"
      inkscape:document-units="px"
-     inkscape:current-layer="layer1"
+     inkscape:current-layer="g3855"
      showgrid="false"
      inkscape:window-width="1920"
      inkscape:window-height="1056"
@@ -51,7 +150,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -253,5 +352,84 @@
          x="387.9028"
          y="205.82753"
          style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Lato;-inkscape-font-specification:Lato;fill:#000000">Degu embedded HTTP client and server library</tspan></text>
+    <g
+       id="g3855"
+       transform="translate(142.57426,29.70297)">
+      <g
+         id="g3924"
+         transform="translate(-112,-20)">
+        <text
+           xml:space="preserve"
+           style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+           x="342.57425"
+           y="505.94058"
+           id="text3025"
+           sodipodi:linespacing="125%"
+           transform="translate(0,152.36218)"><tspan
+             sodipodi:role="line"
+             x="342.57425"
+             y="505.94058"
+             id="tspan3030">The same <tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#e81f3b;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold"
+   id="tspan3038">session</tspan> argument is persistent</tspan><tspan
+             sodipodi:role="line"
+             x="342.57425"
+             y="533.44055"
+             id="tspan3034">throughout all HTTP requests handled</tspan><tspan
+             sodipodi:role="line"
+             x="342.57425"
+             y="560.94055"
+             id="tspan3036">through a single TCP connection.</tspan></text>
+        <g
+           transform="matrix(1.0197574,0,0,1,-6.4015317,0)"
+           id="g3852">
+          <rect
+             transform="matrix(0.97632554,0,0,0.98321501,0.17650036,160.18963)"
+             y="466.33664"
+             x="331.68317"
+             height="114.85149"
+             width="423.76239"
+             id="rect3050"
+             style="fill:none;stroke:#e81f3b;stroke-opacity:1;filter:url(#filter3842)" />
+        </g>
+      </g>
+      <g
+         id="g3914"
+         transform="translate(25.64356,-12.831683)">
+        <text
+           sodipodi:linespacing="125%"
+           id="text3864"
+           y="930.58002"
+           x="513.86133"
+           style="font-size:22px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Lato;-inkscape-font-specification:Lato"
+           xml:space="preserve"><tspan
+             id="tspan3868"
+             y="930.58002"
+             x="513.86133"
+             sodipodi:role="line">The <tspan
+   id="tspan3874"
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">request</tspan> and <tspan
+   id="tspan3886"
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;fill:#301438;font-family:Ubuntu Mono;-inkscape-font-specification:Ubuntu Mono Bold">response</tspan> are faithful to the HTTP wire format.</tspan><tspan
+             id="tspan3872"
+             y="958.08002"
+             x="513.86133"
+             sodipodi:role="line">Arguments are in always in the order that they are serialized.</tspan></text>
+        <g
+           id="g3908">
+          <g
+             id="g3911">
+            <rect
+               transform="matrix(1.0200885,0,0,1.2100598,-168.25168,-50.043399)"
+               y="782.17822"
+               x="647.52478"
+               height="63.366337"
+               width="630.69305"
+               id="rect3892"
+               style="fill:none;stroke:#301438;stroke-opacity:1;filter:url(#filter3894)" />
+          </g>
+        </g>
+      </g>
+    </g>
   </g>
 </svg>
