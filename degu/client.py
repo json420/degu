@@ -278,6 +278,7 @@ class Connection:
     """
 
     def __init__(self, sock, base_headers):
+        assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
         self.base_headers = base_headers
         (self.rfile, self.wfile) = makefiles(sock)

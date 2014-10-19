@@ -152,16 +152,18 @@ both valid ``AF_UNIX`` *address* values::
 *options*
 '''''''''
 
-Both :class:`Client` and :class:`SSLClient` accept keyword *options* by which
-you can override certain configuration defaults.
+Both :class:`Client` and :class:`SSLClient` accept keyword-only *options* by
+which you can override certain configuration defaults.
 
-The following client configuration *options* are supported:
+The following client *options* are supported:
 
-    *   **default_headers** --- a ``dict`` of headers that will be included in
-        each HTTP request; any default headers here are overriden by the same
-        header when provided to :meth:`Connection.request()`; must be a ``dict``
-        instance, or ``None`` to indicate no default headers; cannot include
-        ``'content-length'`` or ``'transfer-encoding'`` headers
+    *   **base_headers** --- a ``dict`` of headers that will always be
+        included in each HTTP request; some care must be taken here as these
+        headers always override the same header if provided to
+        :meth:`Connection.request()`; must be a ``dict``
+        instance, or ``None`` to indicate no base headers; cannot include
+        ``'content-length'`` or ``'transfer-encoding'`` headers; default is
+        ``None``
 
     *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
         used to construct HTTP request and response bodies
@@ -177,7 +179,7 @@ Unless you override any of them, the default client configuration *options*
 are::
 
     default_client_options = {
-        'default_headers': None,
+        'base_headers': None,
         'bodies': degu.base.DEFAULT_BODIES,
         'timeout': 90,
         'Connection': degu.client.Connection,
@@ -195,7 +197,7 @@ For example, you could override some of these options like this:
 ...
 >>> address = ('127.0.0.1', 12345)
 >>> client = Client(address,
-...     default_headers={'user-agent': 'SuperSpecial/1.0'},
+...     base_headers={'user-agent': 'SuperSpecial/1.0'},
 ...     Connection=SuperSpecialConnection,
 ...     timeout=17,
 ... )
@@ -324,7 +326,7 @@ Also see the server :ref:`server-options`.
 :class:`Connection` class
 -------------------------
 
-.. class:: Connection(sock, default_headers, bodies)
+.. class:: Connection(sock, base_headers, bodies)
 
     Represents a specific connection to an HTTP (or HTTPS) server.
 
@@ -333,8 +335,9 @@ Also see the server :ref:`server-options`.
 
     The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
 
-    The *default_headers* and *bodies* will be the same as were passed to the
-    :class:`Client` constructor.
+    The *base_headers* and *bodies* will be the same as were passed to the
+    :class:`Client` constructor via keyword-only :ref:`client-options`, or
+    wise will be the internal Degu default values for each.
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
@@ -342,9 +345,9 @@ Also see the server :ref:`server-options`.
 
         The *sock* argument passed to the constructor.
 
-    .. attribute:: default_headers
+    .. attribute:: base_headers
 
-        The *default_headers* argument passed to the constructor.
+        The *base_headers* argument passed to the constructor.
 
     .. attribute:: bodies
 
@@ -477,7 +480,7 @@ Also see the server :ref:`server-options`.
 :func:`create_client()`
 -----------------------
 
-.. function:: create_client(url, base_headers=None)
+.. function:: create_client(url, **options)
 
     Convenience function to create a :class:`Client` from a *url*.
 
@@ -487,23 +490,24 @@ Also see the server :ref:`server-options`.
     >>> client = create_client('http://example.com')
     >>> client.address
     ('example.com', 80)
-    >>> client.base_headers
+    >>> client.options['base_headers']
     {'host': 'example.com'}
 
     Unlike when directly creating a :class:`Client` instance, this function will
-    automatically include an appropriate ``'host'`` header in *base_headers*.
-    Note that this is needed for compatibility with Apache, even when connecting
-    to Apache via an IP address alone.
+    automatically include an appropriate ``'host'`` header in the *base_headers*
+    option.  Note that this is needed for compatibility with Apache, even when
+    connecting to Apache via an IP address alone.
 
     A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
 
     If the *url* doesn't include a port, the port will default to ``80``.
 
 
+
 :func:`create_sslclient()`
 --------------------------
 
-.. function:: create_sslclient(sslctx, url, base_headers=None)
+.. function:: create_sslclient(sslctx, url, **options)
 
     Convenience function to create an :class:`SSLClient` from a *url*.
 
@@ -516,13 +520,13 @@ Also see the server :ref:`server-options`.
     >>> sslclient = create_sslclient(sslctx, 'https://example.com')
     >>> sslclient.address
     ('example.com', 443)
-    >>> sslclient.base_headers
+    >>> sslclient.options['base_headers']
     {'host': 'example.com'}
 
     Unlike when directly creating an :class:`SSLClient` instance, this function
-    will automatically include an appropriate ``'host'`` header in
-    *base_headers*.  Note that this is needed for compatibility with Apache,
-    even when connecting to Apache via an IP address alone.
+    will automatically include an appropriate ``'host'`` header in the
+    *base_headers* option.  Note that this is needed for compatibility with
+    Apache, even when connecting to Apache via an IP address alone.
 
     A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
 

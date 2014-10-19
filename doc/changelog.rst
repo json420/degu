@@ -26,8 +26,14 @@ Changes:
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
 
-    *   :class:`degu.client.Client` *base_headers* is now a keyword-only
-        argument
+    *   :class:`degu.client.Client` now accepts generic and easily extensible
+        keyword-only *options*::
+
+            Client(address, **options)
+            SSLClient(sslctx, address, **options)
+
+    *   As such, the :class:`degu.client.Client` *base_headers* is now a
+        keyword-only argument
 
 
 
