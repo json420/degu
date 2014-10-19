@@ -70,7 +70,7 @@ create a :class:`degu.client.Connection`, with with we can make one or more
 requests:
 
 >>> conn = client.connect()
->>> conn.request('GET', '/')
+>>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 In contrast to the client, a :class:`degu.client.Connection` is statefull and is
@@ -80,7 +80,7 @@ As both the Degu client and server are built for HTTP/1.1 only, connection
 reuse is assumed.  We can make another request to our ``server`` using the same
 connection:
 
->>> conn.request('PUT', '/foo')
+>>> conn.request('PUT', '/foo', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 After you're done using a connection, it's a good idea to explicitly close it,
@@ -160,7 +160,7 @@ We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 >>> sslctx = build_client_sslctx(pki.get_client_config())
 >>> proxy_client = SSLClient(sslctx, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
->>> proxy_conn.request('GET', '/')
+>>> proxy_conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
@@ -218,7 +218,7 @@ And then, as in our previous example, we can create a
 
 >>> conn = client.connect()
 >>> conn = client.connect()
->>> conn.request('GET', '/')
+>>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
@@ -265,7 +265,7 @@ Before we dive into the details, here's a quick example:
 >>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
 >>> client = Client(server.address)
 >>> conn = client.connect()
->>> response = conn.request('GET', '/')
+>>> response = conn.request('GET', '/', {}, None)
 
 Notice that this time the response body is a :class:`degu.base.Body` instance,
 rather than ``None``:

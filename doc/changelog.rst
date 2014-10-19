@@ -10,6 +10,45 @@ This *may* end up being the API stable Degu 1.0 release ``:D``
 
 Breaking API changes:
 
+    *   :meth:`degu.client.Connection.request()` now requires the *headers* and
+        *body* arguments always to be provided; ie., the method signature has
+        changed from::
+
+            Connection.request(method, uri, headers=None, body=None)
+
+        To::
+
+            Connection.request(method, uri, headers, body)
+
+        Although this means some code is a bit more verbose, it forces people to
+        practice the full API and means that any given example someone
+        encounters illustrates the full client request API; ie., this is always
+        clear::
+
+            conn.request('GET', '/', {}, None)
+
+        Whereas this leaves a bit too much to the imagination when trying to
+        figure out how to specify the request headers and request body::
+
+            conn.request('GET', '/')
+
+        This seems especially important as the order of the *headers* and *body*
+        are flipped in Degu compared to `HTTPConnection.request()`_ in the
+        Python standard library::
+
+            HTTPConnection.request(method, url, body=None, headers={})
+
+        The reason Degu flips the order is so that its API faithfully reflects
+        the HTTP wire format... Degu arguments are always in the order that they
+        are serialized in the TCP stream.  A goal as always been that if you
+        know the HTTP wire format, it should be extremely easy to map that
+        understanding into the Degu API.
+
+        Post Degu 1.0, we could always again make the *headers* and *body*
+        optional without breaking backword compatibility, but the reverse isn't
+        true.  So we'll let this experiment run for a while, and then
+        reevaluate.
+
     *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
         accept generic and easily extensible keyword-only *options*::
 
@@ -31,7 +70,7 @@ Breaking API changes:
         positional argument, only as a keyword argument.
 
 
-Changes:
+Other changes:
 
     *   The RGI *request* argument now includes a ``uri`` item, which will be
         the complete, unparsed URI from the request line, for example::
@@ -455,10 +494,11 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
-
 .. _`Download Degu 0.9`: https://launchpad.net/degu/+milestone/0.9
 .. _`Download Degu 0.8`: https://launchpad.net/degu/+milestone/0.8
 .. _`Download Degu 0.7`: https://launchpad.net/degu/+milestone/0.7
 .. _`Download Degu 0.6`: https://launchpad.net/degu/+milestone/0.6
 .. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
+
+.. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 

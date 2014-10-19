@@ -33,12 +33,12 @@ And then create a :class:`Connection` using :meth:`Client.connect()` like this:
 And finally make a request to our server using :meth:`Connection.request()` like
 this, which will return a :class:`Response` namedtuple:
 
->>> conn.request('GET', '/')
+>>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 As per HTTP/1.1, multiple requests can be made using the same connection:
 
->>> conn.request('PUT', '/foo/bar')
+>>> conn.request('PUT', '/foo/bar', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 If you're truly done using it, it's a good idea to explicitly close a connection

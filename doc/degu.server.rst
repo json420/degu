@@ -40,7 +40,7 @@ You can create a suitable :class:`degu.client.Client` with the returned
 >>> from degu.client import Client
 >>> client = Client(address)
 >>> conn = client.connect()
->>> response = conn.request('GET', '/')
+>>> response = conn.request('GET', '/', {}, None)
 >>> response.body.read()
 b'hello, world'
 

@@ -895,7 +895,7 @@ class TestConnection(TestCase):
         sock._calls.clear()
         conn.sock = None
         with self.assertRaises(client.ClosedConnectionError) as cm:
-            conn.request(None, None)
+            conn.request('GET', '/', {}, None)
         self.assertIs(cm.exception.conn, conn)
         self.assertEqual(str(cm.exception),
             'cannot use request() when connection is closed: {!r}'.format(conn)
@@ -914,7 +914,7 @@ class TestConnection(TestCase):
         sock._calls.clear()
         conn.response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
-            conn.request(None, None)
+            conn.request('GET', '/', {}, None)
         self.assertIs(cm.exception.body, DummyBody)
         self.assertEqual(str(cm.exception),
             'previous response body not consumed: {!r}'.format(DummyBody)

@@ -309,14 +309,13 @@ class Connection:
                 pass
             self.sock = None
 
-    def request(self, method, uri, headers=None, body=None):
+    def request(self, method, uri, headers, body):
+        assert isinstance(headers, dict)
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-            if headers is None:
-                headers = {}
             if isinstance(body, io.BufferedReader):
                 if 'content-length' in headers:
                     content_length = headers['content-length']
