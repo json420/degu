@@ -277,9 +277,9 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, default_headers):
+    def __init__(self, sock, base_headers):
         self.sock = sock
-        self.default_headers = default_headers
+        self.base_headers = base_headers
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Body or ChunkedBody
 
@@ -322,9 +322,8 @@ class Connection:
                     content_length = os.stat(body.fileno()).st_size
                 body = Body(body, content_length)
             validate_request(method, uri, headers, body)
-            if self.default_headers:
-                for (key, value) in self.default_headers.items():
-                    headers.setdefault(key, value)
+            if self.base_headers:
+                headers.update(self.base_headers)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -336,7 +335,7 @@ class Connection:
 
 def build_default_client_options():
     return {
-        'default_headers': None,
+        'base_headers': None,
         'bodies': default_bodies,
         'timeout': 90,
         'Connection': Connection,
@@ -347,20 +346,20 @@ def validate_client_options(**options):
     result = build_default_client_options()
     result.update(options)
 
-    # default_headers:
-    default_headers = result['default_headers']
-    if default_headers is not None:
-        if not isinstance(default_headers, dict):
+    # base_headers:
+    base_headers = result['base_headers']
+    if base_headers is not None:
+        if not isinstance(base_headers, dict):
             raise TypeError(TYPE_ERROR.format(
-                'default_headers', dict, type(default_headers), default_headers
+                'base_headers', dict, type(base_headers), base_headers
             ))
-        for key in default_headers:
+        for key in base_headers:
             assert isinstance(key, str)
             if not key.islower():
                 raise ValueError('non-casefolded header name: {!r}'.format(key))
         for key in ('content-length', 'transfer-encoding'):
-            if key in default_headers:
-                raise ValueError('default_headers cannot include {!r}'.format(key))
+            if key in base_headers:
+                raise ValueError('base_headers cannot include {!r}'.format(key))
 
     # bodies:
     bodies = result['bodies']
@@ -425,7 +424,7 @@ class Client:
         self.address = address
         options = validate_client_options(**options)
         self._Connection = options['Connection']
-        self._default_headers = options['default_headers']
+        self._base_headers = options['base_headers']
         self._options = options
 
     def __repr__(self):
@@ -444,7 +443,7 @@ class Client:
 
     def connect(self):
         return self._Connection(self.create_socket(),
-            self._default_headers,
+            self._base_headers,
         )
 
 
@@ -485,11 +484,11 @@ def create_client(url, **options):
     if t.scheme != 'http':
         raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
     port = (80 if t.port is None else t.port)
-    default_headers = options.get('default_headers')
-    if default_headers is None:
-        default_headers = {}
-        options['default_headers'] = default_headers
-    default_headers['host'] = t.netloc
+    base_headers = options.get('base_headers')
+    if base_headers is None:
+        base_headers = {}
+        options['base_headers'] = base_headers
+    base_headers['host'] = t.netloc
     return Client((t.hostname, port), **options)
 
 
@@ -501,10 +500,10 @@ def create_sslclient(sslctx, url, **options):
     if t.scheme != 'https':
         raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
     port = (443 if t.port is None else t.port)
-    default_headers = options.get('default_headers')
-    if default_headers is None:
-        default_headers = {}
-        options['default_headers'] = default_headers
-    default_headers['host'] = t.netloc
+    base_headers = options.get('base_headers')
+    if base_headers is None:
+        base_headers = {}
+        options['base_headers'] = base_headers
+    base_headers['host'] = t.netloc
     return SSLClient(sslctx, (t.hostname, port), **options)
 
