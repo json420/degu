@@ -147,6 +147,9 @@ def validate_client_sslctx(sslctx):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
+    if isinstance(sslctx, dict):
+        sslctx = build_client_sslctx(sslctx)
+
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
     if sslctx.protocol != ssl.PROTOCOL_TLSv1_2:
