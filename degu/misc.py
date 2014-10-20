@@ -126,6 +126,22 @@ class TempPKI(PKI):
     def get_anonymous_client_config(self):
         return super().get_anonymous_client_config(self.server_ca_id)
 
+    @property
+    def server_config(self):
+        return super().get_server_config(self.server_id, self.client_ca_id)
+
+    @property
+    def client_config(self):
+        return super().get_client_config(self.server_ca_id, self.client_id)
+
+    @property
+    def anonymous_server_config(self):
+        return super().get_anonymous_server_config(self.server_id)
+
+    @property
+    def anonymous_client_config(self):
+        return super().get_anonymous_client_config(self.server_ca_id)
+
 
 class _TempProcess:
     def __del__(self):

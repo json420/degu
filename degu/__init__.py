@@ -113,3 +113,94 @@ def start_sslserver(sslconfig, address, build_func, *build_args):
         raise item
     return (process, item)
 
+
+class _TempProcess:
+    def __del__(self):
+        self.terminate()
+
+    def terminate(self):
+        if getattr(self, 'process', None) is not None:
+            self.process.terminate()
+            self.process.join()
+            self.process = None
+
+
+def _run_server2(queue, address, app, **options):
+    try:
+        from .server import Server
+        httpd = Server(address, app, **options)
+        queue.put(httpd.address)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+        raise e
+
+
+def _start_server(address, app, **options):
+    import multiprocessing
+    queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_server2,
+        args=(queue, address, app),
+        kwargs=options,
+        daemon=True,
+    )
+    process.start()
+    address = queue.get()
+    if isinstance(address, Exception):
+        process.terminate()
+        process.join()
+        raise address
+    return (process, address)
+
+
+class TempServer(_TempProcess):
+    def __init__(self, address, app, **options):
+        (self.process, self.address) = _start_server(address, app, **options)
+        self.app = app
+        self.options = options
+
+
+def _run_sslserver2(queue, sslconfig, address, app, **options):
+    try:
+        from .server import SSLServer
+        httpd = SSLServer(sslconfig, address, app, **options)
+        queue.put(httpd.address)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+        raise e
+
+
+def _start_sslserver(sslconfig, address, app, **options):
+    import multiprocessing
+    queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_sslserver2,
+        args=(queue, sslconfig, address, app),
+        kwargs=options,
+        daemon=True,
+    )
+    process.start()
+    address = queue.get()
+    if isinstance(address, Exception):
+        process.terminate()
+        process.join()
+        raise address
+    return (process, address)
+
+
+class TempSSLServer(_TempProcess):
+    def __init__(self, sslconfig, address, app, **options):
+        self.sslconfig = sslconfig
+        (self.process, self.address) = _start_sslserver(
+            sslconfig, address, app, **options
+        )
+        self.app = app
+        self.options = options
+
+    def __repr__(self):
+        return '{}(<sslconfig>, {!r}, <app>)'.format(
+            self.__class__.__name__, self.address
+        )
+

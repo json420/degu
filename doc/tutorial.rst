@@ -51,8 +51,8 @@ It's fun and easy to create a throw-away HTTP server on which to run our
 ``example_app``.  We'll create a server that only accepts connections from the
 IPv4 looback device:
 
->>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), None, example_app)
+>>> from degu import TempServer
+>>> server = TempServer(('127.0.0.1', 0), example_app)
 
 That just spun-up a :class:`degu.server.Server` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
@@ -131,27 +131,16 @@ commit to memory, as it is used both server-side and client-side::
 
     (status, reason, headers, body)
 
-This case is slightly more complicated as the RGI callable will be a
-``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
-problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
-structures to a new process.  This approach also avoids importing unnecessary
-modules and consuming unnecessary resources in your main application process.
-
-So in this case, it's best to specify a *build_func*:
-
->>> def build_proxy_app(address):
-...     return ProxyApp(address)
-...
-
 It's likewise fun and easy to create throw-away SSL certificate chains, and a
 throw-away HTTPS server on which to run our ``ProxyApp``.  We'll create a server
 that accepts connections on any IPv6 address (but only from clients with a
 client certificate signed by the correct client certificate authority):
 
->>> from degu.misc import TempPKI, TempSSLServer
+>>> from degu.misc import TempPKI
+>>> from degu import TempSSLServer
 >>> pki = TempPKI()
 >>> proxy_server = TempSSLServer(
-...     pki.get_server_config(), ('::', 0, 0, 0), build_proxy_app, server.address
+...     pki.server_config, ('::', 0, 0, 0), ProxyApp(server.address)
 ... )
 ... 
 
@@ -162,9 +151,8 @@ That just spun-up a :class:`degu.server.SSLServer` in a new
 We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 ``proxy_server``:
 
->>> from degu.client import SSLClient, build_client_sslctx
->>> sslctx = build_client_sslctx(pki.get_client_config())
->>> proxy_client = SSLClient(sslctx, proxy_server.address)
+>>> from degu.client import SSLClient
+>>> proxy_client = SSLClient(pki.client_config, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
 >>> proxy_conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
