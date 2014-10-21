@@ -188,7 +188,7 @@ RGI applications specify the connection handler via a callable
 ...         body = session['__hello']
 ...         return (200, 'OK', {'content-length': len(body)}, body)
 ...
-...     def on_connect(self, sock, session):
+...     def on_connect(self, session, sock):
 ...         session['_user'] = '<special per-connection authentication result>'
 ...         return True
 ... 
@@ -253,10 +253,10 @@ example middleware application:
 ...     def __call__(self, session, request, bodies):
 ...         return self.app(session, request, bodies)
 ... 
-...     def on_connect(self, sock, session):
+...     def on_connect(self, session, sock):
 ...         if self._on_connect is None:
 ...             return True
-...         return self._on_connect(sock, session)
+...         return self._on_connect(session, sock)
 ... 
 
 When an application has an ``on_connect()`` callable attribute, it must
@@ -317,7 +317,7 @@ For example:
 ...     def __call__(self, session, request, bodies):
 ...         return (200, 'OK', {'content-length': 12}, b'hello, world')
 ... 
-...     def on_connect(self, sock, session):
+...     def on_connect(self, session, sock):
 ...         if not isinstance(sock, ssl.SSLSocket):  # Require SSL 
 ...             return False
 ...         session['_user'] = '<User public key hash>'
