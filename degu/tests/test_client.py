@@ -111,20 +111,29 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('config', dict, str, 'bad')
         )
+ 
+        # The remaining test both build_client_sslctx() directly, and the
+        # pass-through from validate_client_sslctx():
+        client_sslctx_funcs = (
+            client.build_client_sslctx,
+            client.validate_client_sslctx,
+        )
 
         # Bad config['check_hostname'] type:
-        with self.assertRaises(TypeError) as cm:
-            client.build_client_sslctx({'check_hostname': 0})
-        self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format("config['check_hostname']", bool, int, 0)
-        )
+        for func in client_sslctx_funcs:
+            with self.assertRaises(TypeError) as cm:
+                func({'check_hostname': 0})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format("config['check_hostname']", bool, int, 0)
+            )
 
         # config['key_file'] without config['cert_file']:
-        with self.assertRaises(ValueError) as cm:
-            client.build_client_sslctx({'key_file': '/my/client.key'})
-        self.assertEqual(str(cm.exception), 
-            "config['key_file'] provided without config['cert_file']"
-        )
+        for func in client_sslctx_funcs:
+            with self.assertRaises(ValueError) as cm:
+                func({'key_file': '/my/client.key'})
+            self.assertEqual(str(cm.exception), 
+                "config['key_file'] provided without config['cert_file']"
+            )
 
         # Non absulute, non normalized paths:
         good = {
@@ -135,55 +144,63 @@ class TestFunctions(TestCase):
         }
         for key in good.keys():
             # Relative path:
-            bad = good.copy()
-            value = 'relative/path'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                client.build_client_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
+            for func in client_sslctx_funcs:
+                bad = good.copy()
+                value = 'relative/path'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
+
             # Non-normalized path with directory traversal:
-            bad = good.copy()
-            value = '/my/../secret/path'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                client.build_client_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
+            for func in client_sslctx_funcs:
+                bad = good.copy()
+                value = '/my/../secret/path'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
+
             # Non-normalized path with trailing slash:
-            bad = good.copy()
-            value = '/sorry/very/strict/'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                client.build_client_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
+            for func in client_sslctx_funcs:
+                bad = good.copy()
+                value = '/sorry/very/strict/'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
 
         # Empty config, will verify against system-wide CAs, and check_hostname
         # should default to True:
-        sslctx = client.build_client_sslctx({})
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, True)
+        for func in client_sslctx_funcs:
+            sslctx = func({})
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, True)
 
         # We don't not allow check_hostname to be False when verifying against
         # the system-wide CAs:
-        with self.assertRaises(ValueError) as cm:
-            client.build_client_sslctx({'check_hostname': False})
-        self.assertEqual(str(cm.exception),
-            'check_hostname must be True when using default verify paths'
-        )
+        for func in client_sslctx_funcs:
+            with self.assertRaises(ValueError) as cm:
+                func({'check_hostname': False})
+            self.assertEqual(str(cm.exception),
+                'check_hostname must be True when using default verify paths'
+            )
 
         # Should work fine when explicitly providing {'check_hostname': True}:
-        sslctx = client.build_client_sslctx({'check_hostname': True})
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, True)
+        for func in client_sslctx_funcs:
+            sslctx = func({'check_hostname': True})
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, True)
 
         # Authenticated client config:
         pki = TempPKI()
@@ -192,37 +209,41 @@ class TestFunctions(TestCase):
             {'ca_file', 'cert_file', 'key_file', 'check_hostname'}
         )
         self.assertIs(config['check_hostname'], False)
-        sslctx = client.build_client_sslctx(config)
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, False)
+        for func in client_sslctx_funcs:
+            sslctx = func(config)
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, False)
 
         # check_hostname should default to True:
         del config['check_hostname']
-        sslctx = client.build_client_sslctx(config)
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, True)
+        for func in client_sslctx_funcs:
+            sslctx = func(config)
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, True)
 
         # Anonymous client config:
         config = pki.get_anonymous_client_config()
         self.assertEqual(set(config), {'ca_file', 'check_hostname'})
         self.assertIs(config['check_hostname'], False)
-        sslctx = client.build_client_sslctx(config)
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, False)
+        for func in client_sslctx_funcs:
+            sslctx = func(config)
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, False)
 
         # check_hostname should default to True:
         del config['check_hostname']
-        sslctx = client.build_client_sslctx(config)
-        self.assertIsInstance(sslctx, ssl.SSLContext)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertIs(sslctx.check_hostname, True)
+        for func in client_sslctx_funcs:
+            sslctx = func(config)
+            self.assertIsInstance(sslctx, ssl.SSLContext)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertIs(sslctx.check_hostname, True)
 
     def test_validate_request(self):
         # Pre-build all valid types of length-encoded bodies:
