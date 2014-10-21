@@ -18,7 +18,7 @@ As a quick example, say we define this :doc:`rgi` application and create a
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 >>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), None, example_app)
+>>> server = TempServer(('127.0.0.1', 0), example_app)
 
 
 We can then create a :class:`Client` instance like this:

@@ -51,7 +51,7 @@ It's fun and easy to create a throw-away HTTP server on which to run our
 ``example_app``.  We'll create a server that only accepts connections from the
 IPv4 looback device:
 
->>> from degu import TempServer
+>>> from degu.misc import TempServer
 >>> server = TempServer(('127.0.0.1', 0), example_app)
 
 That just spun-up a :class:`degu.server.Server` in a new
@@ -136,8 +136,7 @@ throw-away HTTPS server on which to run our ``ProxyApp``.  We'll create a server
 that accepts connections on any IPv6 address (but only from clients with a
 client certificate signed by the correct client certificate authority):
 
->>> from degu.misc import TempPKI
->>> from degu import TempSSLServer
+>>> from degu.misc import TempSSLServer, TempPKI
 >>> pki = TempPKI()
 >>> proxy_server = TempSSLServer(
 ...     pki.server_config, ('::', 0, 0, 0), ProxyApp(server.address)
@@ -193,7 +192,7 @@ We'll then create a :class:`degu.server.Server`, which in this case we'll again
 do via creating a :class:`degu.misc.TempServer` instance:
 
 >>> from degu.misc import TempServer
->>> server = TempServer(address, None, example_app)
+>>> server = TempServer(address, example_app)
 
 Even though in this case the *address* we provide when creating a client will
 match the *address* we provided when creating a server, note that this wont
@@ -256,7 +255,7 @@ Before we dive into the details, here's a quick example:
 >>> def hello_response_body(session, request, bodies):
 ...     return (200, 'OK', {}, b'hello, world')
 ...
->>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
+>>> server = TempServer(('127.0.0.1', 0), hello_response_body)
 >>> client = Client(server.address)
 >>> conn = client.connect()
 >>> response = conn.request('GET', '/', {}, None)
@@ -441,7 +440,7 @@ with a content-length if we ``POST /length``:
 
 As usual, we'll start a throw-away server and create a client:
 
->>> server = TempServer(('127.0.0.1', 0), None, rgi_io_app)
+>>> server = TempServer(('127.0.0.1', 0), rgi_io_app)
 >>> client = Client(server.address)
 
 For now we'll just use a simple ``bytes`` instance for the client-side request

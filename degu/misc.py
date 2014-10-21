@@ -32,9 +32,10 @@ from os import path
 import shutil
 import json
 from hashlib import sha1
+import multiprocessing
 
+from .server import Server, SSLServer
 from .sslhelpers import PKI
-from . import start_server, start_sslserver
 
 
 JSON_TYPES = (dict, list, tuple, str, int, float, bool, type(None))
@@ -143,6 +144,61 @@ class TempPKI(PKI):
         return super().get_anonymous_client_config(self.server_ca_id)
 
 
+def _run_server(queue, address, app, **options):
+    try:
+        httpd = Server(address, app, **options)
+        queue.put(httpd.address)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+        raise e
+
+
+def _run_sslserver(queue, sslconfig, address, app, **options):
+    try:
+        httpd = SSLServer(sslconfig, address, app, **options)
+        queue.put(httpd.address)
+        httpd.serve_forever()
+    except Exception as e:
+        queue.put(e)
+        raise e
+
+
+def _start_server(address, app, **options):
+    import multiprocessing
+    queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_server,
+        args=(queue, address, app),
+        kwargs=options,
+        daemon=True,
+    )
+    process.start()
+    address = queue.get()
+    if isinstance(address, Exception):
+        process.terminate()
+        process.join()
+        raise address
+    return (process, address)
+
+
+def _start_sslserver(sslconfig, address, app, **options):
+    queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_sslserver,
+        args=(queue, sslconfig, address, app),
+        kwargs=options,
+        daemon=True,
+    )
+    process.start()
+    address = queue.get()
+    if isinstance(address, Exception):
+        process.terminate()
+        process.join()
+        raise address
+    return (process, address)
+
+
 class _TempProcess:
     def __del__(self):
         self.terminate()
@@ -155,17 +211,25 @@ class _TempProcess:
 
 
 class TempServer(_TempProcess):
-    def __init__(self, address, build_func, *build_args):
-        (self.process, self.address) = start_server(
-            address, build_func, *build_args
-        )
+    def __init__(self, address, app, **options):
+        (self.process, self.address) = _start_server(address, app, **options)
+        self.app = app
+        self.options = options
         self.url = address_to_url('http', self.address)
 
 
 class TempSSLServer(_TempProcess):
-    def __init__(self, sslconfig, address, build_func, *build_args):
-        (self.process, self.address) = start_sslserver(
-            sslconfig, address, build_func, *build_args
+    def __init__(self, sslconfig, address, app, **options):
+        self.sslconfig = sslconfig
+        (self.process, self.address) = _start_sslserver(
+            sslconfig, address, app, **options
         )
+        self.app = app
+        self.options = options
         self.url = address_to_url('https', self.address)
+
+    def __repr__(self):
+        return '{}(<sslconfig>, {!r}, <app>)'.format(
+            self.__class__.__name__, self.address
+        )
 

@@ -1145,7 +1145,7 @@ class TestLiveServer(TestCase):
     address = degu.IPv4_LOOPBACK
 
     def build_with_app(self, app):
-        httpd = TempServer(self.address, wrap_with_validator, app)
+        httpd = TempServer(self.address, wrap_with_validator(app))
         client = Client(httpd.address)
         return (httpd, client)
 
@@ -1425,7 +1425,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
     def build_with_app(self, app):
         tmp = TempDir()
         filename = tmp.join('my.socket')
-        httpd = TempServer(filename, wrap_with_validator, app)
+        httpd = TempServer(filename, wrap_with_validator(app))
         httpd.tmp = tmp
         return (httpd, Client(httpd.address))
 
@@ -1445,7 +1445,7 @@ class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, app):
         pki = TempPKI()
         httpd = TempSSLServer(
-            pki.get_server_config(), self.address, wrap_with_validator, app
+            pki.server_config, self.address, wrap_with_validator(app)
         )
         httpd.pki = pki
         sslctx = build_client_sslctx(pki.get_client_config())
@@ -1455,7 +1455,7 @@ class TestLiveSSLServer(TestLiveServer):
         pki = TempPKI(client_pki=True)
         server_config = pki.get_server_config()
         client_config = pki.get_client_config()
-        httpd = TempSSLServer(server_config, self.address, None, ssl_app)
+        httpd = TempSSLServer(server_config, self.address,  ssl_app)
 
         # Test from a non-SSL client:
         client = Client(httpd.address)
