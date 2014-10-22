@@ -12,17 +12,13 @@ local network.
 
 Degu includes:
 
-    *   **A fast, lightweight HTTP server** that's easy to embed within
-        applications
+    *   **A lightweight HTTP server** that's easy to embed within applications
 
     *   **A matching HTTP client** carefully designed to harmonize with the
         server API
 
-    *   **IO abstractions** used by the server and client to represent HTTP
-        request and response bodies
-
-    *   **Test fixtures** that make it easy to create throw-away Degu server
-        instances for unit testing
+    *   **Stream-friendly IO abstractions** used by the server and client for
+        HTTP request and response bodies
 
 Degu server applications are implemented according to the :doc:`rgi`, which is
 very much in the spirit of `WSGI`_ but does not attempt to be compatible with
@@ -36,9 +32,13 @@ Some noteworthy Degu features:
     *   Degu provides access to full IPv6 address semantics, including the
         *scopeid* needed for IPv6 link-local addresses
 
-    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
-        all through a single *address* argument that is used uniformly in both
-        the server and client APIs
+    *   Degu transparently supports ``AF_UNIX`` (and ``AF_INET``, ``AF_INET6``),
+        all via a single *address* argument used uniformly in both the server
+        and client API
+
+    *   Degu provides a safe and opinionated API for using TLSv1.2, with a
+        particular focus on using client certificates to authenticate incoming
+        TCP connections
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut

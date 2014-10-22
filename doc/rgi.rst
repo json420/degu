@@ -1,5 +1,5 @@
-REST Gateway Interface
-======================
+REST Gateway Interface (RGI)
+============================
 
 Note that this design is done out of deep respect for the `WSGI`_ standard.
 Considering the delicate balance needed for backward compatibility on multiple

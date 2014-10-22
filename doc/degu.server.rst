@@ -16,8 +16,8 @@ As a quick example, say you have this :doc:`rgi` application:
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 
-(For a short primer on implementing RGI server applications, please see
-:ref:`server-app-callable`.)
+(For a short primer on implementing RGI server applications, please read about
+the server :ref:`server-app` argument.)
 
 You can create a :class:`Server` like this:
 
@@ -67,10 +67,10 @@ example, to kill the server process we just created:
     ``AF_INET6`` (IPv6), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
     See :ref:`server-address` for details.
 
-    The *app* argument provides your :doc:`rgi` (RGI) server application.  It
-    must be a callable object (called to handle each HTTP request), and can
-    optionally have a callable ``app.on_connect()`` attribute (called to handle
-    each TCP connection).  See :ref:`server-app-callable` for details.
+    The *app* argument provides your :doc:`rgi` server application.  It must be
+    a callable object (called to handle each HTTP request), and can optionally
+    have a callable ``app.on_connect()`` attribute (called to handle each TCP
+    connection).  See :ref:`server-app` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
     a number of tunable server runtime parameters.  See :ref:`server-options`
@@ -89,15 +89,19 @@ example, to kill the server process we just created:
             ('::1', 0, 0, 0)  # AF_INET6 (IPv6)
 
         In which case the :attr:`Server.address` attribute will contain the port
-        assigned by the operating system.  For example, assuming port ``12345``
+        assigned by the kernel.  For example, assuming port ``12345`` was
         assigned::
 
             ('127.0.0.1', 12345)  # AF_INET (IPv4)
             ('::1', 12345, 0, 0)  # AF_INET6 (IPv6)
 
+        See :ref:`server-address` for details.
+
     .. attribute:: app
 
         The *app* argument provided to the constructor.
+
+        See :ref:`server-app` for details.
 
     .. attribute:: options
 
@@ -106,6 +110,8 @@ example, to kill the server process we just created:
         This will contain the values of any keyword-only *options* provided to
         the constructor, and will otherwise contain the default values for all
         other *options* that weren't explicitly provided.
+
+        See :ref:`server-options` for details.
 
     .. attribute:: sock
 
@@ -211,13 +217,13 @@ like::
 
 
 
-.. _server-app-callable:
+.. _server-app:
 
 *app*
 '''''
 
 Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
-provide your HTTP request handler, and optionally provide a TCP connection
+provide your HTTP request handler, and can optionally provide a TCP connection
 handler.
 
 Here's a quick primer on implementing Degu server applications, but for full
@@ -406,20 +412,23 @@ Also see the client :ref:`client-options`.
 
     This subclass inherits all attributes and methods from :class:`Server`.
 
-    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
-    configured for server-side use.
+    The *sslctx* argument must be an `ssl.SSLContext`_ appropriately configured
+    for server-side TLSv1.2 use.
 
-    Alternatively, if the *sslctx* argument is a ``dict`` instance, it is
-    interpreted as the server *sslconfig* and the actual `ssl.SSLContext`_
-    instance will be built automatically by calling
-    :func:`build_server_sslctx()`.
+    Alternately, if the *sslctx* argument is a ``dict``, it's treated as the
+    server *sslconfig* and the actual `ssl.SSLContext`_ will be built
+    automatically by calling :func:`build_server_sslctx()`.
 
     The *address* and *app* arguments, along with any keyword-only *options*,
-    are passed unchanged to :class:`Server()`.
+    are passed unchanged to the :class:`Server()` constructor.
 
     .. attribute:: sslctx
 
         The *sslctx* argument provided to the contructor.
+
+        Alternately, if the first argument provided to the constructor was an
+        *sslconfig* ``dict``, this attribute will contain the
+        `ssl.SSLContext`_ returned by :func:`build_server_sslctx()`.
 
 
 

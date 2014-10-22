@@ -5,13 +5,17 @@ Let's immediately clarify where Degu is *not* a good fit:
 
 .. warning::
 
-    Degu is *not* meant for production web-sites, public REST APIs, nor any
-    other public HTTP server reachable across the Internet.  The Degu server
-    only supports a subset of HTTP/1.1 features and is likely not compatible
-    with a broad range of HTTP clients.
+    Degu is absolutely *not* suitable for serving public websites!
 
-If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
-`modwsgi`_.
+    The Degu server is not designed to handle high concurency, and it lacks many
+    features expected by typical web browsers.
+
+If the Degu HTTP *server* isn't good fit for your problem, please check out
+`gunicorn`_ and `modwsgi`_.
+
+That said, the Degu HTTP *client* is more broadly useful, although still narrow
+in focus and features compared to many other client libraries, and so it may
+not be suitable for your problem.
 
 **So where is Degu a good fit?**
 
@@ -30,8 +34,17 @@ HTTP client.  In a nutshell, the typical Degu usage pattern is:
        `Avahi`_ or similar
 
     3. Peers use a :class:`degu.client.SSLClient` to make requests to this
-       server for structured data sync, file transfer, RPC, or whatever else the
+       server for structured data sync, file transfer, or whatever else the
        application REST API might expose
+
+Likewise, Degu is fundamentaly built for network-transparent software
+components, whether using HTTP over ``AF_INET`` or ``AF_INET6`` for
+communication between components running on different peers on the same
+localnet, or whether using HTTP over ``AF_UNIX`` for communication between
+components running on the same localhost.
+
+Within the modest concurrency envelope it's optimized for, Degu stands-out when
+it comes to low-latency and high-througput.
 
 
 
@@ -552,42 +565,6 @@ Well, that's all the time we have today for fancy!
 
 >>> conn.close()
 >>> server.terminate()
-
-
-
-Trade-offs
-----------
-
-Degu is focused on:
-
-    * **Security** - Degu is focused on security, even when at the expense of
-      compatibility; the more secure Degu can be, the more we can consider
-      exposing highly interesting platform features over HTTP
-
-    * **High-throughput at low-concurrency** - being able to handle 100k
-      concurrent connections doesn't necessarily mean you can keep a 10GbE local
-      network saturated with just a few concurrent connections; Degu is being
-      optimized for the latter, even when (possibly) at the expense of the
-      former
-
-    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
-      configure an `ssl.SSLContext`_; although this means being compatible with
-      fewer HTTP clients, Degu is built from the assumption that you have
-      control of both endpoints, and that the client is likely a
-      :class:`degu.client.SSLClient` 
-
-    * **Full IPv6 address semantics** - on both the server and client, you use
-      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
-      needed for `link-local addresses`_; on the other hand, the Degu server
-      doesn't support virtual hosts, SNI, or in general doing the right thing
-      when the "official" hostname is a DNS name... Degu servers are expected to
-      be reached be IP address alone (either an IPv6 or IPv4 address)
-
-.. note::
-
-    In contrast to the server, the Degu client does aim to support virtual hosts
-    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
-    `CouchDB`_ servers.
 
 
 
