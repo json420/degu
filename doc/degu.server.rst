@@ -457,7 +457,7 @@ Also see the client :ref:`client-options`.
         * ``'key_file'`` --- an ``str`` providing the path of the server key
           file
 
-    And can optionally include either of the keys:
+    And can optionally include any of:
 
         * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
           of the file or directory, respectively, containing the trusted CA

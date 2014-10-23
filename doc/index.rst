@@ -15,14 +15,15 @@ Degu includes:
     *   **A lightweight HTTP server** that's easy to embed within applications
 
     *   **A matching HTTP client** carefully designed to harmonize with the
-        server API
+        server
 
-    *   **Stream-friendly IO abstractions** used by the server and client for
-        HTTP request and response bodies
+    *   **Stream-friendly IO abstractions** used by both the server and client
+        for HTTP request and response bodies
 
-Degu server applications are implemented according to the :doc:`rgi`, which is
-very much in the spirit of `WSGI`_ but does not attempt to be compatible with
-`CGI`_, nor necessarily to be compatible with any existing HTTP servers.
+Degu server applications are implemented according to the :doc:`rgi` (RGI),
+which is very much in the spirit of `WSGI`_ but does not attempt to be
+compatible with `CGI`_, nor necessarily to be compatible with any existing HTTP
+servers.
 
 Some noteworthy Degu features:
 
@@ -32,9 +33,9 @@ Some noteworthy Degu features:
     *   Degu provides access to full IPv6 address semantics, including the
         *scopeid* needed for IPv6 link-local addresses
 
-    *   Degu transparently supports ``AF_UNIX`` (and ``AF_INET``, ``AF_INET6``),
-        all via a single *address* argument used uniformly in both the server
-        and client API
+    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
+        all via a single *address* argument used uniformly by the server and
+        client
 
     *   Degu provides a safe and opinionated API for using TLSv1.2, with a
         particular focus on using client certificates to authenticate incoming

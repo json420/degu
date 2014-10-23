@@ -113,3 +113,12 @@ def start_sslserver(sslconfig, address, build_func, *build_args):
         raise item
     return (process, item)
 
+
+class EmbeddedServer:
+    def __init__(self, address, build_func, *build_args, **options):
+        pass
+
+
+class EmbeddedSSLServer:
+    def __init__(self, sslconfig, address, build_func, *build_args, **options):
+        pass
