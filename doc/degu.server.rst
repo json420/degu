@@ -5,7 +5,7 @@
    :synopsis: Embedded HTTP Server
 
 
-As a quick example, say you have this :doc:`rgi` application:
+As a quick example, say you have this :doc:`rgi` (RGI) application:
 
 >>> def my_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
@@ -69,10 +69,10 @@ example, to kill the server process we just created:
     ``AF_INET6`` (IPv6), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
     See :ref:`server-address` for details.
 
-    The *app* argument provides your :doc:`rgi` server application.  It must be
-    a callable object (called to handle each HTTP request), and can optionally
-    have a callable ``app.on_connect()`` attribute (called to handle each TCP
-    connection).  See :ref:`server-app` for details.
+    The *app* argument provides your :doc:`rgi` (RGI) server application.  It
+    must be a callable object (called to handle each HTTP request), and can
+    optionally have a callable ``app.on_connect()`` attribute (called to handle
+    each TCP connection).  See :ref:`server-app` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
     a number of tunable server runtime parameters.  See :ref:`server-options`
@@ -229,7 +229,7 @@ provide your HTTP request handler, and can optionally provide a TCP connection
 handler.
 
 Here's a quick primer on implementing Degu server applications, but for full
-details, please see the :doc:`rgi` specification.
+details, please see the :doc:`rgi` (RGI) specification.
 
 
 **HTTP request handler:**
