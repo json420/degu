@@ -243,45 +243,57 @@ class TestPKI(TestCase):
             ])
         )
 
-    def test_get_server_config(self):
+    def test_get_server_sslconfig(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         server_id = random_id()
         ca_id = random_id()
-        self.assertEqual(pki.get_server_config(server_id, client_ca_id=ca_id), {
-            'cert_file': pki.path(server_id, 'cert'),
-            'key_file': pki.path(server_id, 'key'),
-            'ca_file': pki.path(ca_id, 'ca'),
-        })
+        self.assertEqual(
+            pki.get_server_sslconfig(server_id, ca_id),
+            {
+                'cert_file': pki.path(server_id, 'cert'),
+                'key_file': pki.path(server_id, 'key'),
+                'ca_file': pki.path(ca_id, 'ca'),
+            }
+        )
 
-    def test_get_anonymous_server_config(self):
+    def test_get_anonymous_server_sslconfig(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         server_id = random_id()
-        self.assertEqual(pki.get_anonymous_server_config(server_id), {
-            'cert_file': pki.path(server_id, 'cert'),
-            'key_file': pki.path(server_id, 'key'),
-            'allow_unauthenticated_clients': True,
-        })
+        self.assertEqual(
+            pki.get_anonymous_server_sslconfig(server_id),
+            {
+                'cert_file': pki.path(server_id, 'cert'),
+                'key_file': pki.path(server_id, 'key'),
+                'allow_unauthenticated_clients': True,
+            }
+        )
 
-    def test_get_client_config(self):
+    def test_get_client_sslconfig(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         ca_id = random_id()
         client_id = random_id()
-        self.assertEqual(pki.get_client_config(ca_id, client_id=client_id), {
-            'ca_file': pki.path(ca_id, 'ca'),
-            'check_hostname': False,
-            'cert_file': pki.path(client_id, 'cert'),
-            'key_file': pki.path(client_id, 'key'),
-        })
+        self.assertEqual(
+            pki.get_client_sslconfig(ca_id, client_id),
+            {
+                'ca_file': pki.path(ca_id, 'ca'),
+                'check_hostname': False,
+                'cert_file': pki.path(client_id, 'cert'),
+                'key_file': pki.path(client_id, 'key'),
+            }
+        )
 
-    def test_get_anonymous_client_config(self):
+    def test_get_anonymous_client_sslconfig(self):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         ca_id = random_id()
-        self.assertEqual(pki.get_anonymous_client_config(ca_id), {
-            'ca_file': pki.path(ca_id, 'ca'),
-            'check_hostname': False,
-        })
+        self.assertEqual(
+            pki.get_anonymous_client_sslconfig(ca_id),
+            {
+                'ca_file': pki.path(ca_id, 'ca'),
+                'check_hostname': False,
+            }
+        )
 

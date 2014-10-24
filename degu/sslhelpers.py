@@ -246,14 +246,14 @@ class PKI:
         os.rename(tmp_file, cert_file)
         return cert_file
 
-    def get_server_config(self, server_id, client_ca_id):
+    def get_server_sslconfig(self, server_id, client_ca_id):
         return {
             'cert_file': self.path(server_id, 'cert'),
             'key_file': self.path(server_id, 'key'),
             'ca_file': self.path(client_ca_id, 'ca'),
         }
 
-    def get_anonymous_server_config(self, server_id):
+    def get_anonymous_server_sslconfig(self, server_id):
         """
         Server will accept connections from unauthenticated client.
         """
@@ -263,7 +263,7 @@ class PKI:
             'allow_unauthenticated_clients': True,
         }
 
-    def get_client_config(self, server_ca_id, client_id):
+    def get_client_sslconfig(self, server_ca_id, client_id):
         return {
             'ca_file': self.path(server_ca_id, 'ca'),
             'check_hostname': False,
@@ -271,7 +271,7 @@ class PKI:
             'key_file': self.path(client_id, 'key'),
         }
 
-    def get_anonymous_client_config(self, server_ca_id):
+    def get_anonymous_client_sslconfig(self, server_ca_id):
         return {
             'ca_file': self.path(server_ca_id, 'ca'),
             'check_hostname': False,
