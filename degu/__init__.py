@@ -40,85 +40,103 @@ ADDRESS_CONSTANTS = (
     IPv4_ANY,
 )
 
-
-def _default_build_func(app):
-    return app
-
-
-def _validate_build_func(build_func, *build_args):
-    if build_func is None:
-        if len(build_args) != 1:
-            raise TypeError('build_func is None, but len(build_args) != 1')
-        if not callable(build_args[0]):
-            raise TypeError(
-                'build_func is None, but not callable(build_args[0])'
-            )
-        build_func = _default_build_func
-    if not callable(build_func):
-        raise TypeError('build_func: not callable: {!r}'.format(build_func))
-    return build_func
+# Provide very clear TypeError messages:
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-def _run_server(queue, address, build_func, *build_args):
+def _run_server(q, address, build_func, *build_args, **options):
     try:
         from .server import Server
         app = build_func(*build_args)
-        httpd = Server(address, app)
-        queue.put(httpd.address)
+        httpd = Server(address, app, **options)
+        q.put(httpd.address)
         httpd.serve_forever()
     except Exception as e:
-        queue.put(e)
+        q.put(e)
         raise e
 
 
-def _run_sslserver(queue, sslconfig, address, build_func, *build_args):
+def _run_sslserver(q, sslconfig, address, build_func, *build_args, **options):
     try:
-        from .server import SSLServer, build_server_sslctx
-        sslctx = build_server_sslctx(sslconfig)
+        from .server import SSLServer
         app = build_func(*build_args)
-        httpd = SSLServer(sslctx, address, app)
-        queue.put(httpd.address)
+        httpd = SSLServer(sslconfig, address, app, **options)
+        q.put(httpd.address)
         httpd.serve_forever()
     except Exception as e:
-        queue.put(e)
+        q.put(e)
         raise e
 
 
-def start_server(address, build_func, *build_args):
+def start_server(address, build_func, *build_args, **options):
     import multiprocessing
-    build_func = _validate_build_func(build_func, *build_args)
-    queue = multiprocessing.Queue()
-    args = (queue, address, build_func) + build_args
-    process = multiprocessing.Process(target=_run_server, args=args, daemon=True)
+    q = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_server,
+        args=(q, address, build_func) + build_args,
+        kwargs=options,
+        daemon=True,
+    )
     process.start()
-    item = queue.get()
-    if isinstance(item, Exception):
+    address = q.get()
+    if isinstance(address, Exception):
         process.terminate()
         process.join()
-        raise item
-    return (process, item)
+        raise address
+    return (process, address)
 
 
-def start_sslserver(sslconfig, address, build_func, *build_args):
+def start_sslserver(sslconfig, address, build_func, *build_args, **options):
     import multiprocessing
-    build_func = _validate_build_func(build_func, *build_args)
-    queue = multiprocessing.Queue()
-    args = (queue, sslconfig, address, build_func) + build_args
-    process = multiprocessing.Process(target=_run_sslserver, args=args, daemon=True)
+    if not isinstance(sslconfig, dict):
+        raise TypeError(
+            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+        )
+    q = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_sslserver,
+        args=(q, sslconfig, address, build_func) + build_args,
+        kwargs=options,
+        daemon=True,
+    )
     process.start()
-    item = queue.get()
-    if isinstance(item, Exception):
+    address = q.get()
+    if isinstance(address, Exception):
         process.terminate()
         process.join()
-        raise item
-    return (process, item)
+        raise address
+    return (process, address)
 
 
-class EmbeddedServer:
+class _EmbeddedProcess:
+    def __del__(self):
+        self.terminate()
+
+    def terminate(self):
+        if getattr(self, 'process', None) is not None:
+            self.process.terminate()
+            self.process.join()
+
+
+class EmbeddedServer(_EmbeddedProcess):
     def __init__(self, address, build_func, *build_args, **options):
-        pass
+        (self.process, self.address) = _start_server(address, app, **options)
+        self.app = app
+        self.options = options
 
 
-class EmbeddedSSLServer:
+class EmbeddedSSLServer(_EmbeddedProcess):
     def __init__(self, sslconfig, address, build_func, *build_args, **options):
-        pass
+        self.sslconfig = sslconfig
+        (self.process, self.address) = _start_sslserver(
+            sslconfig, address, app, **options
+        )
+        self.app = app
+        self.options = options
+        self.url = address_to_url('https', self.address)
+
+    def __repr__(self):
+        return '{}(<sslconfig>, {!r}, <app>)'.format(
+            self.__class__.__name__, self.address
+        )
+
