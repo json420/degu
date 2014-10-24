@@ -236,7 +236,7 @@ details, please see the :doc:`rgi` specification.
 
 Your *app* must be a callable object that accepts three arguments, for example:
 
->>> def my_rgi_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
@@ -284,7 +284,7 @@ Which in the case of our example was::
 If your *app* argument itself has a callable ``on_connect`` attribute, it must
 accept two arguments, for example:
 
->>> class MyRGIApp:
+>>> class MyApp:
 ...     def __call__(self, session, request, bodies):
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
@@ -314,7 +314,7 @@ If your *app* has an ``on_connect`` attribute that is *not* callable, it must be
 ``None``.  This allows you to disable the ``app.on_connect()`` handler in a
 subclass, for example:
 
->>> class MyRGIAppSubclass(MyRGIApp):
+>>> class MyAppSubclass(MyApp):
 ...     on_connect = None
 ...
 
@@ -336,17 +336,18 @@ application-specific per-connection authentication information.
 If your ``app()`` HTTP request handler adds anything to the *session*, it should
 prefix the key with ``'__'`` (double underscore).  For example:
 
->>> def my_rgi_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     body = session.get('__body')
 ...     if body is None:
 ...         body = b'hello, world'
 ...         session['__body'] = body
 ...     return (200, 'OK', {'content-type': 'text/plain'}, body)
+...
 
 Likewise, if your ``app.on_connect()`` TCP connection handler adds anything to
 the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 
->>> class MyRGIApp:
+>>> class MyApp:
 ...     def __call__(self, session, request, bodies):
 ...         if session.get('_user') != 'admin':
 ...             return (403, 'Forbidden', {}, None)
@@ -356,6 +357,7 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 ...         # Somehow authenticate the user who made the connection:
 ...         session['_user'] = 'admin'
 ...         return True
+...
 
 
 

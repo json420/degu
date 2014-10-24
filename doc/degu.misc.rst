@@ -5,9 +5,6 @@
    :synopsis: Test fixtures and other handy tidbits
 
 
-.. autoclass:: TempPKI
-
-
 
 :class:`TempServer` class
 -------------------------
@@ -115,6 +112,168 @@
     .. attribute:: sslconfig
 
         The exact *sslconfig* dict passed to the constructor.
+
+
+
+:class:`TempPKI` class
+-------------------------
+
+.. class:: TempPKI(client_pki=True, bits=1024)
+
+    Creates a throw-away SSL certificate chain.
+
+    For example, simply create a new :class:`TempPKI` instance, and it will
+    automatically create a server CA, a server certificate signed by that
+    server CA, a client CA, and a client certificate signed by that client CA:
+
+    >>> from degu.misc import TempPKI
+    >>> pki = TempPKI()
+
+    **Server sslconfig**
+
+    The :attr:`TempPKI.server_sslconfig` property will return a server-side
+    *sslconfig* ``dict``:
+
+    >>> sorted(pki.server_sslconfig)
+    ['ca_file', 'cert_file', 'key_file']
+
+    You can pass it to :func:`degu.server.build_server_sslctx()` to build your
+    server-side `ssl.SSLContext`_:
+
+    >>> from degu.server import build_server_sslctx
+    >>> import ssl
+    >>> sslctx = build_server_sslctx(pki.server_sslconfig)
+    >>> isinstance(sslctx, ssl.SSLContext)
+    True
+
+    You can also provide this *sslconfig* ``dict`` as the first argument when
+    creating a :class:`degu.server.SSLServer`, which will automatically call
+    :func:`degu.server.build_server_sslctx()` for you:
+
+    >>> from degu.server import SSLServer
+    >>> def my_app(session, request, bodies):
+    ...     return (200, 'OK', {}, None)
+    ... 
+    >>> server = SSLServer(pki.server_sslconfig, ('127.0.0.1', 0), my_app)
+    >>> isinstance(server.sslctx, ssl.SSLContext)
+    True
+
+    **Client sslconfig**
+
+    The :attr:`TempPKI.client_sslconfig` property will return a client-side
+    *sslconfig* ``dict``:
+
+    >>> sorted(pki.client_sslconfig)
+    ['ca_file', 'cert_file', 'check_hostname', 'key_file']
+
+    You can pass it to :func:`degu.client.build_client_sslctx()` to build your
+    client-side `ssl.SSLContext`_:
+
+    >>> from degu.client import build_client_sslctx
+    >>> sslctx = build_client_sslctx(pki.client_sslconfig)
+    >>> isinstance(sslctx, ssl.SSLContext)
+    True
+
+    You can also provide this *sslconfig* ``dict`` as the first argument when
+    creating a :class:`degu.client.SSLClient`, which will automatically call
+    :func:`degu.client.build_client_sslctx()` for you:
+
+    >>> from degu.client import SSLClient
+    >>> def my_app(session, request, bodies):
+    ...     return (200, 'OK', {}, None)
+    ... 
+    >>> client = SSLClient(pki.client_sslconfig, ('127.0.0.1', 12345))
+    >>> isinstance(client.sslctx, ssl.SSLContext)
+    True
+
+    **Anonymous server sslconfig**
+
+    The :attr:`TempPKI.anonymous_server_sslconfig` property returns a
+    server-side *sslconfig* that will allow connections from unauthenticated
+    clients.  Great care must be taken when using a configuration like this, and
+    this is not the typical way you'd configure your Degu server in a production
+    application.
+
+    Compared to :attr:`TempPKI.server_sslconfig`, the ``'ca_file'`` is removed,
+    and the special ``'allow_unauthenticated_clients'`` flag is added:
+
+    >>> sorted(pki.anonymous_server_sslconfig)
+    ['allow_unauthenticated_clients', 'cert_file', 'key_file']
+    >>> pki.anonymous_server_sslconfig['allow_unauthenticated_clients']
+    True
+
+    The ``'allow_unauthenticated_clients'`` flag is to make the API more
+    explicit, so that one can't accidentally allow unathenticated clients by
+    merely ommitting the ``'ca_file'``.
+
+    (See :func:`degu.server.build_server_sslctx()` for more details.)
+
+    **Anonymous client sslconfig**
+
+    The :attr:`TempPKI.anonymous_client_sslconfig` property will return a
+    client-side *sslconfig* ``dict`` that will still authenticate the server,
+    but will not provide a certificate by which the server can authenticate the
+    client.
+
+    Compared to :attr:`TempPKI.client_sslconfig`, the ``'cert_file'`` and
+    ``'key_file'`` are removed:
+
+    >>> sorted(pki.anonymous_client_sslconfig)
+    ['ca_file', 'check_hostname']
+
+
+    .. attribute:: server_sslconfig
+
+        This property returns a copy of the server *sslconfig*.
+
+        Example value::
+        
+            {
+                'ca_file': '/tmp/TempPKI.7m8pjsye/MDKJWRMDYNQVYS3HTUIDPKEUWIC6KVOHW4XU54IAISC6WLET.ca',
+                'cert_file': '/tmp/TempPKI.7m8pjsye/VXE7IRVLUZZIDKCFK6RF3DCRQ55GC6OI7Y2XRB2EQNQBLQYI.cert',
+                'key_file': '/tmp/TempPKI.7m8pjsye/VXE7IRVLUZZIDKCFK6RF3DCRQ55GC6OI7Y2XRB2EQNQBLQYI.key',
+            }
+
+
+    .. attribute:: client_sslconfig
+
+        This property returns a copy of the client *sslconfig*.
+
+        Example value::
+
+            client_sslconfig
+            {
+                'ca_file': '/tmp/TempPKI.7m8pjsye/ONF7MOFOPPTWFWYJLWR4MMR2PD472MU3MOZHFXLSYM7DCJ2A.ca',
+                'cert_file': '/tmp/TempPKI.7m8pjsye/QBOBCGIXQ3ZG555ZJD36TX4QUWRLFBM2RPKJJ2VHZHAAGTPH.cert',
+                'check_hostname': False,
+                'key_file': '/tmp/TempPKI.7m8pjsye/QBOBCGIXQ3ZG555ZJD36TX4QUWRLFBM2RPKJJ2VHZHAAGTPH.key',
+            }
+
+
+    .. attribute:: anonymous_server_sslconfig
+
+        This property returns a copy of the anonymous server *sslconfig*.
+
+        Example value::
+
+            {
+                'allow_unauthenticated_clients': True,
+                'cert_file': '/tmp/TempPKI.7m8pjsye/VXE7IRVLUZZIDKCFK6RF3DCRQ55GC6OI7Y2XRB2EQNQBLQYI.cert',
+                'key_file': '/tmp/TempPKI.7m8pjsye/VXE7IRVLUZZIDKCFK6RF3DCRQ55GC6OI7Y2XRB2EQNQBLQYI.key',
+            }
+
+
+    .. attribute:: anonymous_client_sslconfig
+
+        This property returns a copy of the anonymous client *sslconfig*.
+
+        Example value::
+
+            anonymous_client_sslconfig
+            {
+                'ca_file': '/tmp/TempPKI.7m8pjsye/ONF7MOFOPPTWFWYJLWR4MMR2PD472MU3MOZHFXLSYM7DCJ2A.ca',
+                'check_hostname': False,
+            }
 
 
 

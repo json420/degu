@@ -130,16 +130,15 @@ memory, as in Degu it's used uniformly on both the server and client ends::
 
 It's likewise fun and easy to create throw-away SSL certificate chains using
 :class:`degu.misc.TempPKI`, and to create a throw-away
-:class:`degu.server.SSLServer` on which to run our ``ProxyApp``.   We'll create
-a server that accepts connections on any IPv6 address (but only from clients
-with a client certificate signed by the correct client certificate authority):
+:class:`degu.misc.TempSSLServer` on which to run our ``ProxyApp``.   We'll
+create a server that accepts connections on any IPv6 address (but only from
+clients with a client certificate signed by the correct client certificate
+authority):
 
 >>> from degu.misc import TempPKI, TempSSLServer
 >>> pki = TempPKI()
->>> proxy_server = TempSSLServer(
-...     pki.server_sslconfig, ('::', 0, 0, 0), ProxyApp(server.address)
-... )
-... 
+>>> proxy_app = ProxyApp(server.address)
+>>> proxy_server = TempSSLServer(pki.server_sslconfig, ('::', 0, 0, 0), proxy_app)
 
 That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
