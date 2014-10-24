@@ -105,11 +105,11 @@ class FuzzTestFunctions(FuzzTestCase):
 
 class TestFunctions(TestCase):
     def test_build_client_sslctx(self):
-        # Bad config type:
+        # Bad sslconfig type:
         with self.assertRaises(TypeError) as cm:
             client.build_client_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('config', dict, str, 'bad')
+            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
         )
  
         # The remaining test both build_client_sslctx() directly, and the
@@ -119,20 +119,20 @@ class TestFunctions(TestCase):
             client.validate_client_sslctx,
         )
 
-        # Bad config['check_hostname'] type:
+        # Bad sslconfig['check_hostname'] type:
         for func in client_sslctx_funcs:
             with self.assertRaises(TypeError) as cm:
                 func({'check_hostname': 0})
             self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format("config['check_hostname']", bool, int, 0)
+                TYPE_ERROR.format("sslconfig['check_hostname']", bool, int, 0)
             )
 
-        # config['key_file'] without config['cert_file']:
+        # sslconfig['key_file'] without sslconfig['cert_file']:
         for func in client_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
                 func({'key_file': '/my/client.key'})
             self.assertEqual(str(cm.exception), 
-                "config['key_file'] provided without config['cert_file']"
+                "sslconfig['key_file'] provided without sslconfig['cert_file']"
             )
 
         # Non absulute, non normalized paths:
@@ -151,7 +151,7 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
             # Non-normalized path with directory traversal:
@@ -162,7 +162,7 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
             # Non-normalized path with trailing slash:
@@ -173,11 +173,11 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
-        # Empty config, will verify against system-wide CAs, and check_hostname
-        # should default to True:
+        # Empty sslconfig, will verify against system-wide CAs, and
+        # check_hostname should default to True:
         for func in client_sslctx_funcs:
             sslctx = func({})
             self.assertIsInstance(sslctx, ssl.SSLContext)
@@ -202,44 +202,44 @@ class TestFunctions(TestCase):
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, True)
 
-        # Authenticated client config:
+        # Authenticated client sslconfig:
         pki = TempPKI()
-        config = pki.get_client_config()
-        self.assertEqual(set(config),
+        sslconfig = pki.get_client_config()
+        self.assertEqual(set(sslconfig),
             {'ca_file', 'cert_file', 'key_file', 'check_hostname'}
         )
-        self.assertIs(config['check_hostname'], False)
+        self.assertIs(sslconfig['check_hostname'], False)
         for func in client_sslctx_funcs:
-            sslctx = func(config)
+            sslctx = func(sslconfig)
             self.assertIsInstance(sslctx, ssl.SSLContext)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, False)
 
         # check_hostname should default to True:
-        del config['check_hostname']
+        del sslconfig['check_hostname']
         for func in client_sslctx_funcs:
-            sslctx = func(config)
+            sslctx = func(sslconfig)
             self.assertIsInstance(sslctx, ssl.SSLContext)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, True)
 
-        # Anonymous client config:
-        config = pki.get_anonymous_client_config()
-        self.assertEqual(set(config), {'ca_file', 'check_hostname'})
-        self.assertIs(config['check_hostname'], False)
+        # Anonymous client sslconfig:
+        sslconfig = pki.get_anonymous_client_config()
+        self.assertEqual(set(sslconfig), {'ca_file', 'check_hostname'})
+        self.assertIs(sslconfig['check_hostname'], False)
         for func in client_sslctx_funcs:
-            sslctx = func(config)
+            sslctx = func(sslconfig)
             self.assertIsInstance(sslctx, ssl.SSLContext)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, False)
 
         # check_hostname should default to True:
-        del config['check_hostname']
+        del sslconfig['check_hostname']
         for func in client_sslctx_funcs:
-            sslctx = func(config)
+            sslctx = func(sslconfig)
             self.assertIsInstance(sslctx, ssl.SSLContext)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)

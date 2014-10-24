@@ -70,52 +70,52 @@ class UnconsumedResponseError(Exception):
         )
 
 
-def build_client_sslctx(config):
+def build_client_sslctx(sslconfig):
     """
     Build an ``ssl.SSLContext`` appropriately configured for client use.
 
     For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'check_hostname': False,
     ...     'ca_file': '/my/server.ca',
     ...     'cert_file': '/my/client.cert',
     ...     'key_file': '/my/client.key',
     ... }
-    >>> sslctx = build_client_sslctx(config)  #doctest: +SKIP
+    >>> sslctx = build_client_sslctx(sslconfig)  #doctest: +SKIP
 
     """
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
-    if not isinstance(config, dict):
+    if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('config', dict, type(config), config)
+            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # In typical Degu P2P usage, hostname checking is meaningless because we
     # wont be trusting centralized certificate authorities, and will typically
     # only connect to servers via their IP address; however, it's still prudent
     # to make *check_hostname* default to True:
-    check_hostname = config.get('check_hostname', True)
+    check_hostname = sslconfig.get('check_hostname', True)
     if not isinstance(check_hostname, bool):
         raise TypeError(TYPE_ERROR.format(
-            "config['check_hostname']", bool, type(check_hostname), check_hostname
+            "sslconfig['check_hostname']", bool, type(check_hostname), check_hostname
         ))
 
     # Don't allow 'key_file' to be provided without the 'cert_file':
-    if 'key_file' in config and 'cert_file' not in config:
+    if 'key_file' in sslconfig and 'cert_file' not in sslconfig:
         raise ValueError(
-            "config['key_file'] provided without config['cert_file']"
+            "sslconfig['key_file'] provided without sslconfig['cert_file']"
         )
 
     # For safety and clarity, force all paths to be absolute, normalized paths:
     for key in ('ca_file', 'ca_path', 'cert_file', 'key_file'):
-        if key in config:
-            value = config[key]
+        if key in sslconfig:
+            value = sslconfig[key]
             if value != path.abspath(value):
                 raise ValueError(
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
                     )
                 )
@@ -124,10 +124,10 @@ def build_client_sslctx(config):
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
     sslctx.options |= ssl.OP_NO_COMPRESSION
-    if 'ca_file' in config or 'ca_path' in config:
+    if 'ca_file' in sslconfig or 'ca_path' in sslconfig:
         sslctx.load_verify_locations(
-            cafile=config.get('ca_file'),
-            capath=config.get('ca_path'),
+            cafile=sslconfig.get('ca_file'),
+            capath=sslconfig.get('ca_path'),
         )
     else:
         if check_hostname is not True:
@@ -135,9 +135,9 @@ def build_client_sslctx(config):
                 'check_hostname must be True when using default verify paths'
             )
         sslctx.set_default_verify_paths()
-    if 'cert_file' in config:
-        sslctx.load_cert_chain(config['cert_file'],
-            keyfile=config.get('key_file')
+    if 'cert_file' in sslconfig:
+        sslctx.load_cert_chain(sslconfig['cert_file'],
+            keyfile=sslconfig.get('key_file')
         )
     sslctx.check_hostname = check_hostname
     return sslctx
