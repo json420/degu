@@ -120,23 +120,17 @@ class _EmbeddedProcess:
 
 class EmbeddedServer(_EmbeddedProcess):
     def __init__(self, address, build_func, *build_args, **options):
-        (self.process, self.address) = _start_server(address, app, **options)
-        self.app = app
+        (self.process, self.address) = start_server(
+            address, build_func, *build_args, **options
+        )
         self.options = options
 
 
 class EmbeddedSSLServer(_EmbeddedProcess):
     def __init__(self, sslconfig, address, build_func, *build_args, **options):
         self.sslconfig = sslconfig
-        (self.process, self.address) = _start_sslserver(
-            sslconfig, address, app, **options
+        (self.process, self.address) = start_sslserver(
+            sslconfig, address, build_func, *build_args, **options
         )
-        self.app = app
         self.options = options
-        self.url = address_to_url('https', self.address)
-
-    def __repr__(self):
-        return '{}(<sslconfig>, {!r}, <app>)'.format(
-            self.__class__.__name__, self.address
-        )
 

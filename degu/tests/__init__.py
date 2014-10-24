@@ -26,7 +26,6 @@ Unit tests for the `degu` package.
 from unittest import TestCase
 import os
 import multiprocessing
-import time
 
 import degu
 from degu.client import Client, SSLClient

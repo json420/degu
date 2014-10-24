@@ -22,14 +22,14 @@ server for a limited period of time after which the Degu server is shutdown.
 Functions
 ---------
 
-.. function:: start_server(address, build_func, *build_args)
+.. function:: start_server(address, build_func, *build_args, **options)
 
     Start a :class:`degu.server.Server` in a new process.
 
     The return value is a ``(process, address)`` tuple.
 
 
-.. function:: start_sslserver(sslconfig, address, build_func, *build_args)
+.. function:: start_sslserver(sslconfig, address, build_func, *build_args, **options)
 
     Start a :class:`degu.server.SSLServer` in a new process.
 

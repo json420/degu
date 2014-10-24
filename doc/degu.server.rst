@@ -7,7 +7,7 @@
 
 As a quick example, say you have this :doc:`rgi` application:
 
->>> def hello_world_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -22,7 +22,7 @@ the server :ref:`server-app` argument.)
 You can create a :class:`Server` like this:
 
 >>> from degu.server import Server
->>> server = Server(('::1', 0, 0, 0), hello_world_app)
+>>> server = Server(('::1', 0, 0, 0), my_app)
 
 And then start the server by calling :meth:`Server.serve_forever()`.
 
@@ -32,7 +32,9 @@ run your server in its own `multiprocessing.Process`_, which you can easily do
 using the :func:`degu.start_server()` helper function, for example:
 
 >>> from degu import start_server
->>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
+>>> def my_build_func():
+...     return my_app
+>>> (process, address) = start_server(('::1', 0, 0, 0), my_build_func)
 
 You can create a suitable :class:`degu.client.Client` with the returned
 *address* like this:
