@@ -61,11 +61,11 @@ class FuzzTestFunctions(FuzzTestCase):
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
-        # Bad config type:
+        # Bad sslconfig type:
         with self.assertRaises(TypeError) as cm:
             server.build_server_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('config', dict, str, 'bad')
+            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
         )
 
         # The remaining test both build_server_sslctx() directly, and the
@@ -91,7 +91,7 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
                 # Non-normalized path with directory traversal:
@@ -101,7 +101,7 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
                 # Non-normalized path with trailing slash:
@@ -111,14 +111,16 @@ class TestFunctions(TestCase):
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception),
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
                 )
 
 
         pki = TempPKI(client_pki=True)
 
-        # Typical config with client authentication:
-        self.assertEqual(set(pki.server_config), {'cert_file', 'key_file', 'ca_file'})
+        # Typical sslconfig with client authentication:
+        self.assertEqual(set(pki.server_config),
+            {'cert_file', 'key_file', 'ca_file'}
+        )
         for func in server_sslctx_funcs:
             sslctx = func(pki.server_config)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
@@ -129,19 +131,19 @@ class TestFunctions(TestCase):
 
         # New in Degu 0.3: should not be able to accept connections from
         # unauthenticated clients by merely omitting ca_file/ca_path:
-        config = pki.server_config
-        del config['ca_file']
+        sslconfig = pki.server_config
+        del sslconfig['ca_file']
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
-                func(config)
+                func(sslconfig)
             self.assertEqual(str(cm.exception),
                 'must include ca_file or ca_path (or allow_unauthenticated_clients)'
             )
 
         # Typical config allowing anonymous clients:
-        config['allow_unauthenticated_clients'] = True
+        sslconfig['allow_unauthenticated_clients'] = True
         for func in server_sslctx_funcs:
-            sslctx = func(config)
+            sslctx = func(sslconfig)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
             self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
@@ -149,28 +151,28 @@ class TestFunctions(TestCase):
             self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
-        config['ca_file'] = '/my/client.ca'
+        sslconfig['ca_file'] = '/my/client.ca'
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
-                func(config)
+                func(sslconfig)
             self.assertEqual(str(cm.exception),
                 'cannot include ca_file/ca_path allow_unauthenticated_clients'
             )
-        config['ca_path'] = config.pop('ca_file')
+        sslconfig['ca_path'] = sslconfig.pop('ca_file')
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
-                func(config)
+                func(sslconfig)
             self.assertEqual(str(cm.exception),
                 'cannot include ca_file/ca_path allow_unauthenticated_clients'
             )
 
         # True is only allowed value for allow_unauthenticated_clients:
-        config.pop('ca_path')
+        sslconfig.pop('ca_path')
         for bad in (1, 0, False, None):
-            config['allow_unauthenticated_clients'] = bad
+            sslconfig['allow_unauthenticated_clients'] = bad
             for func in server_sslctx_funcs:
                 with self.assertRaises(ValueError) as cm:
-                    func(config)
+                    func(sslconfig)
                 self.assertEqual(str(cm.exception),
                     'True is only allowed value for allow_unauthenticated_clients'
                 )

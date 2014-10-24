@@ -52,24 +52,24 @@ class UnconsumedRequestError(Exception):
         )
 
 
-def build_server_sslctx(config):
+def build_server_sslctx(sslconfig):
     """
     Build a strictly configured server-side SSLContext.
 
-    The *config* must be a ``dict`` that always contains at least a
+    The *sslconfig* must be a ``dict`` that always contains at least a
     ``'cert_file'`` and a ``'key_file'``.
 
     Degu is primarily aimed at P2P services that use client certificates for
-    authentication.  In this case, your *config* must also contain a
+    authentication.  In this case, your *sslconfig* must also contain a
     ``'ca_file'`` or a ``'ca_dir'`` (or both).  For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'cert_file': '/my/server.cert',
     ...     'key_file': '/my/server.key',
     ...     'ca_file': '/my/client.ca',
     ... }
     ...
-    >>> sslctx = build_server_sslctx(config)  # doctest: +SKIP
+    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
     >>> sslctx.verify_mode is ssl.CERT_REQUIRED  # doctest: +SKIP
     True
 
@@ -81,22 +81,22 @@ def build_server_sslctx(config):
 
     But the danger here is that we don't want developers to accidentally
     allow unauthenticated connections by accidentally omitting ``'ca_file'``
-    and ``'ca_dir'`` from their *config*.  This was the case in Degu 0.2 and
+    and ``'ca_dir'`` from their *sslconfig*.  This was the case in Degu 0.2 and
     earlier.
 
     This was fixed in Degu 0.3, which requires you to be more explicit by
-    including ``'allow_unauthenticated_clients'`` in your *config* (in
+    including ``'allow_unauthenticated_clients'`` in your *sslconfig* (in
     addition to omitting ``'ca_file'`` and ``'ca_dir'``).
 
     For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'cert_file': '/my/server.cert',
     ...     'key_file': '/my/server.key',
     ...     'allow_unauthenticated_clients': True,
     ... }
     ...
-    >>> sslctx = build_server_sslctx(config)  # doctest: +SKIP
+    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
     >>> sslctx.verify_mode is ssl.CERT_NONE  # doctest: +SKIP
     True
 
@@ -136,18 +136,18 @@ def build_server_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
-    if not isinstance(config, dict):
+    if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('config', dict, type(config), config)
+            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # For safety and clarity, force all paths to be absolute, normalized paths:
     for key in ('cert_file', 'key_file', 'ca_file', 'ca_path'):
-        if key in config:
-            value = config[key]
+        if key in sslconfig:
+            value = sslconfig[key]
             if value != path.abspath(value):
                 raise ValueError(
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
                     )
                 )
@@ -158,25 +158,25 @@ def build_server_sslctx(config):
     sslctx.options |= ssl.OP_NO_COMPRESSION
     sslctx.options |= ssl.OP_SINGLE_ECDH_USE
     sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
-    sslctx.load_cert_chain(config['cert_file'], config['key_file'])
-    if 'allow_unauthenticated_clients' in config:
-        if config['allow_unauthenticated_clients'] is not True:
+    sslctx.load_cert_chain(sslconfig['cert_file'], sslconfig['key_file'])
+    if 'allow_unauthenticated_clients' in sslconfig:
+        if sslconfig['allow_unauthenticated_clients'] is not True:
             raise ValueError(
                 'True is only allowed value for allow_unauthenticated_clients'
             )
-        if {'ca_file', 'ca_path'}.intersection(config):
+        if {'ca_file', 'ca_path'}.intersection(sslconfig):
             raise ValueError(
                 'cannot include ca_file/ca_path allow_unauthenticated_clients'
             )
         return sslctx
-    if not {'ca_file', 'ca_path'}.intersection(config):
+    if not {'ca_file', 'ca_path'}.intersection(sslconfig):
         raise ValueError(
             'must include ca_file or ca_path (or allow_unauthenticated_clients)'
         )
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.load_verify_locations(
-        cafile=config.get('ca_file'),
-        capath=config.get('ca_path'),
+        cafile=sslconfig.get('ca_file'),
+        capath=sslconfig.get('ca_path'),
     )
     return sslctx
 
