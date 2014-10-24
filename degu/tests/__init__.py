@@ -102,14 +102,14 @@ class TestFunctions(TestCase):
         pki = TempPKI()
         marker = os.urandom(16)
         (process, address) = degu.start_sslserver(
-            pki.server_config, ('127.0.0.1', 0), my_build_func, marker
+            pki.server_sslconfig, ('127.0.0.1', 0), my_build_func, marker
         )
         self.assertIsInstance(process, multiprocessing.Process)
         self.assertIsInstance(address, tuple)
         self.assertEqual(len(address), 2)
         self.assertEqual(address[0], '127.0.0.1')
         self.assertGreater(address[1], 0)
-        client = SSLClient(pki.client_config, address)
+        client = SSLClient(pki.client_sslconfig, address)
         conn = client.connect()
         response = conn.request('GET', '/', {}, None)
         self.assertEqual(response.status, 200)

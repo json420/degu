@@ -118,11 +118,11 @@ class TestFunctions(TestCase):
         pki = TempPKI(client_pki=True)
 
         # Typical sslconfig with client authentication:
-        self.assertEqual(set(pki.server_config),
+        self.assertEqual(set(pki.server_sslconfig),
             {'cert_file', 'key_file', 'ca_file'}
         )
         for func in server_sslctx_funcs:
-            sslctx = func(pki.server_config)
+            sslctx = func(pki.server_sslconfig)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
@@ -131,7 +131,7 @@ class TestFunctions(TestCase):
 
         # New in Degu 0.3: should not be able to accept connections from
         # unauthenticated clients by merely omitting ca_file/ca_path:
-        sslconfig = pki.server_config
+        sslconfig = pki.server_sslconfig
         del sslconfig['ca_file']
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
@@ -1020,7 +1020,7 @@ class TestSSLServer(TestCase):
 
     def test_repr(self):
         pki = TempPKI()
-        sslctx = server.build_server_sslctx(pki.server_config)
+        sslctx = server.build_server_sslctx(pki.server_sslconfig)
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
@@ -1447,16 +1447,16 @@ class TestLiveSSLServer(TestLiveServer):
     def build_with_app(self, app):
         pki = TempPKI()
         httpd = TempSSLServer(
-            pki.server_config, self.address, wrap_with_validator(app)
+            pki.server_sslconfig, self.address, wrap_with_validator(app)
         )
         httpd.pki = pki
-        sslctx = build_client_sslctx(pki.client_config)
+        sslctx = build_client_sslctx(pki.client_sslconfig)
         return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        server_config = pki.server_config
-        client_config = pki.client_config
+        server_config = pki.server_sslconfig
+        client_config = pki.client_sslconfig
         httpd = TempSSLServer(server_config, self.address,  ssl_app)
 
         # Test from a non-SSL client:

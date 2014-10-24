@@ -118,19 +118,19 @@ class TempPKI(PKI):
             shutil.rmtree(self.ssldir)
 
     @property
-    def server_config(self):
+    def server_sslconfig(self):
         return self.get_server_sslconfig(self.server_id, self.client_ca_id)
 
     @property
-    def client_config(self):
+    def client_sslconfig(self):
         return self.get_client_sslconfig(self.server_ca_id, self.client_id)
 
     @property
-    def anonymous_server_config(self):
+    def anonymous_server_sslconfig(self):
         return self.get_anonymous_server_sslconfig(self.server_id)
 
     @property
-    def anonymous_client_config(self):
+    def anonymous_client_sslconfig(self):
         return self.get_anonymous_client_sslconfig(self.server_ca_id)
 
 

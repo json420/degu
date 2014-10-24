@@ -137,7 +137,7 @@ with a client certificate signed by the correct client certificate authority):
 >>> from degu.misc import TempPKI, TempSSLServer
 >>> pki = TempPKI()
 >>> proxy_server = TempSSLServer(
-...     pki.server_config, ('::', 0, 0, 0), ProxyApp(server.address)
+...     pki.server_sslconfig, ('::', 0, 0, 0), ProxyApp(server.address)
 ... )
 ... 
 
@@ -149,7 +149,7 @@ We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 ``proxy_server``:
 
 >>> from degu.client import SSLClient
->>> proxy_client = SSLClient(pki.client_config, proxy_server.address)
+>>> proxy_client = SSLClient(pki.client_sslconfig, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
 >>> proxy_conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
