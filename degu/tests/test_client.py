@@ -204,7 +204,7 @@ class TestFunctions(TestCase):
 
         # Authenticated client sslconfig:
         pki = TempPKI()
-        sslconfig = pki.get_client_config()
+        sslconfig = pki.client_config
         self.assertEqual(set(sslconfig),
             {'ca_file', 'cert_file', 'key_file', 'check_hostname'}
         )
@@ -226,7 +226,7 @@ class TestFunctions(TestCase):
             self.assertIs(sslctx.check_hostname, True)
 
         # Anonymous client sslconfig:
-        sslconfig = pki.get_anonymous_client_config()
+        sslconfig = pki.anonymous_client_config
         self.assertEqual(set(sslconfig), {'ca_file', 'check_hostname'})
         self.assertIs(sslconfig['check_hostname'], False)
         for func in client_sslctx_funcs:
@@ -679,7 +679,7 @@ class TestFunctions(TestCase):
 
     def test_create_sslclient(self):
         pki = TempPKI()
-        sslctx = client.build_client_sslctx(pki.get_client_config())
+        sslctx = client.build_client_sslctx(pki.client_config)
 
         # IPv6, with port:
         url = 'https://[fe80::e8b:fdff:fe75:402c]:54321/'
@@ -1160,7 +1160,7 @@ class TestSSLClient(TestCase):
             pass
 
         pki = TempPKI()
-        sslctx = client.build_client_sslctx(pki.get_client_config())
+        sslctx = client.build_client_sslctx(pki.client_config)
 
         for address in GOOD_ADDRESSES:
             inst = client.SSLClient(sslctx, address)

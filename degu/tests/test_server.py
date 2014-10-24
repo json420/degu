@@ -1020,7 +1020,7 @@ class TestSSLServer(TestCase):
 
     def test_repr(self):
         pki = TempPKI()
-        sslctx = server.build_server_sslctx(pki.get_server_config())
+        sslctx = server.build_server_sslctx(pki.server_config)
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
@@ -1450,13 +1450,13 @@ class TestLiveSSLServer(TestLiveServer):
             pki.server_config, self.address, wrap_with_validator(app)
         )
         httpd.pki = pki
-        sslctx = build_client_sslctx(pki.get_client_config())
+        sslctx = build_client_sslctx(pki.client_config)
         return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        server_config = pki.get_server_config()
-        client_config = pki.get_client_config()
+        server_config = pki.server_config
+        client_config = pki.client_config
         httpd = TempSSLServer(server_config, self.address,  ssl_app)
 
         # Test from a non-SSL client:

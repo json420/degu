@@ -324,7 +324,7 @@ Also see the server :ref:`server-options`.
 
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.get_client_config())
+    >>> sslctx = build_client_sslctx(pki.client_config)
 
 
 
@@ -521,7 +521,7 @@ Also see the server :ref:`server-options`.
     >>> from degu.client import create_sslclient, build_client_sslctx
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.get_client_config())
+    >>> sslctx = build_client_sslctx(pki.client_config)
     >>> sslclient = create_sslclient(sslctx, 'https://example.com')
     >>> sslclient.address
     ('example.com', 443)
