@@ -28,8 +28,6 @@ from collections import namedtuple
 import io
 import os
 from os import path
-from urllib.parse import urlparse, ParseResult
-
 
 from .base import (
     TYPE_ERROR,
@@ -473,42 +471,4 @@ class SSLClient(Client):
         return self.sslctx.wrap_socket(sock,
             server_hostname=self.server_hostname,
         )
-
-
-def create_client(url, **options):
-    """
-    Convenience function to create a `Client` from a URL.
-
-    For example:
-
-    >>> create_client('http://www.example.com/')
-    Client(('www.example.com', 80))
-
-    """
-    t = (url if isinstance(url, ParseResult) else urlparse(url))
-    if t.scheme != 'http':
-        raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
-    port = (80 if t.port is None else t.port)
-    base_headers = options.get('base_headers')
-    if base_headers is None:
-        base_headers = {}
-        options['base_headers'] = base_headers
-    base_headers['host'] = t.netloc
-    return Client((t.hostname, port), **options)
-
-
-def create_sslclient(sslctx, url, **options):
-    """
-    Convenience function to create an `SSLClient` from a URL.
-    """
-    t = (url if isinstance(url, ParseResult) else urlparse(url))
-    if t.scheme != 'https':
-        raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
-    port = (443 if t.port is None else t.port)
-    base_headers = options.get('base_headers')
-    if base_headers is None:
-        base_headers = {}
-        options['base_headers'] = base_headers
-    base_headers['host'] = t.netloc
-    return SSLClient(sslctx, (t.hostname, port), **options)
 
