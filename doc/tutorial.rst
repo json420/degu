@@ -228,6 +228,7 @@ network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
 
+.. _io-abstractions:
 
 IO abstractions
 ---------------

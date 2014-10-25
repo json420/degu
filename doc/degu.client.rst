@@ -56,8 +56,7 @@ supply a ``'host'`` in the request headers for each request, consider using the
 :func:`create_client()` and :func:`create_sslclient()` convenience functions.
 
 By default, the Degu HTTP client includes no request headers other than those
-supplied to :meth:`Connection.request()`.  For details, see
-:ref:`request-headers`.
+supplied to :meth:`Connection.request()`, plus a ``'host'`` header.
 
 
 
@@ -331,18 +330,23 @@ Also see the server :ref:`server-options`.
 :class:`Connection` class
 -------------------------
 
-.. class:: Connection(sock, base_headers, bodies)
+.. class:: Connection(sock, host, bodies)
 
-    Represents a specific connection to an HTTP (or HTTPS) server.
+    Provides an HTTP client request API atop an arbitrary socket connection. 
 
-    Note that typically connections are created using :meth:`Client.connect()`
-    rather than by directly creating an instance of this class.
+    :meth:`Client.connect()` will return an instance of this class, but you can
+    likewise directly create one yourself.  For composability, the two are
+    completely decoupled.
 
-    The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
+    The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
+    anything else implementing the needed API.
 
-    The *base_headers* and *bodies* will be the same as were passed to the
-    :class:`Client` constructor via keyword-only :ref:`client-options`, or
-    wise will be the internal Degu default values for each.
+    The *host* argument can be a ``str`` providing the value for the ``'host'``
+    header, or it can be ``None``, in which case :meth:`Connection.request()`
+    will not automatically include a ``'host'`` header in each request.
+
+    The *bodies* argument should be a ``namedtuple`` exposing the four standard
+    wrapper classes used to construct HTTP request and response bodies.
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
@@ -350,9 +354,9 @@ Also see the server :ref:`server-options`.
 
         The *sock* argument passed to the constructor.
 
-    .. attribute:: base_headers
+    .. attribute:: host
 
-        The *base_headers* argument passed to the constructor.
+        The *host* argument passed to the constructor.
 
     .. attribute:: bodies
 
@@ -396,10 +400,10 @@ Also see the server :ref:`server-options`.
             /foo
             /foo/bar?stuff=junk
 
-        The *headers*, if provided, must be a ``dict``.  All header names (keys)
-        must be lowercase as produced by ``str.casefold()``.
+        The *headers* must be a ``dict``.  All header names (keys) must be
+        lowercase.
 
-        The *body*, if provided, can be:
+        The *body* can be:
 
             ==================================  ========  ================
             Type                                Encoding  Source object
@@ -482,105 +486,6 @@ Also see the server :ref:`server-options`.
 
 
 
-:func:`create_client()`
------------------------
-
-.. function:: create_client(url, **options)
-
-    Convenience function to create a :class:`Client` from a *url*.
-
-    For example:
-
-    >>> from degu.client import create_client
-    >>> client = create_client('http://example.com')
-    >>> client.address
-    ('example.com', 80)
-    >>> client.options['base_headers']
-    {'host': 'example.com'}
-
-    Unlike when directly creating a :class:`Client` instance, this function will
-    automatically include an appropriate ``'host'`` header in the *base_headers*
-    option.  Note that this is needed for compatibility with Apache, even when
-    connecting to Apache via an IP address alone.
-
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
-
-    If the *url* doesn't include a port, the port will default to ``80``.
-
-
-
-:func:`create_sslclient()`
---------------------------
-
-.. function:: create_sslclient(sslctx, url, **options)
-
-    Convenience function to create an :class:`SSLClient` from a *url*.
-
-    For example:
-
-    >>> from degu.client import create_sslclient, build_client_sslctx
-    >>> from degu.misc import TempPKI
-    >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.client_sslconfig)
-    >>> sslclient = create_sslclient(sslctx, 'https://example.com')
-    >>> sslclient.address
-    ('example.com', 443)
-    >>> sslclient.options['base_headers']
-    {'host': 'example.com'}
-
-    Unlike when directly creating an :class:`SSLClient` instance, this function
-    will automatically include an appropriate ``'host'`` header in the
-    *base_headers* option.  Note that this is needed for compatibility with
-    Apache, even when connecting to Apache via an IP address alone.
-
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
-
-    If the *url* doesn't include a port, the port will default to ``443``.
-
-    Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
-
-
-.. _request-headers:
-
-Note on request headers
------------------------
-
-Considering the highly specialized P2P use case that Degu is aimed at, sending
-an HTTP ``'host'`` header along with *every* request isn't particularly
-meaningful.
-
-For one, the Degu server itself doesn't support named-based virtual hosts, and
-will typically be reached via an IP address alone, not via a DNS name.  For
-another, Degu supports HTTP over ``AF_UNIX``, a scenario where the ``'host'``
-request header tends to be *extra* meaningless.
-
-A strait-forward way to minimize the overhead of the HTTP protocol is to simply
-send fewer headers along with each request and response, and the Degu client
-aggressively pursues this optimization path.  By default, :class:`Client` and
-:class:`SSLClient` don't include *any* extra request headers that weren't
-provided to :meth:`Connection.request()`.
-
-Of particular note, in addition to the ``'host'`` request header, the Degu
-client doesn't by default include a ``{'connection': 'keep-alive'}`` request
-header, which is only needed for backward compatibly with HTTP/1.0 servers (in
-HTTP/1.1, connection-reuse is assumed).  Likewise, the Degu client doesn't by
-default include a ``'user-agent'`` request header.
-
-If you need to include specific request headers in every request, just provide
-them via the ``base_headers`` kwarg when creating your :class:`Client` or
-:class:`SSLClient` instance.
-
-However, note that when the Degu client does *not* include a ``'host'`` header
-with every request, it's not operating in a strictly `HTTP/1.1`_ compliant
-fashion, and that this is incompatible with at least one of the HTTP servers
-that the Degu client aims to support (`Apache 2.4`_).
-
-When making requests to Apache, or to other servers with similar requirements,
-consider using the :func:`create_client()` or :func:`create_sslclient()`
-convenience function, which will automatically add an appropriate ``'host'``
-header in the *base_headers* for the resulting :class:`Client` or
-:class:`SSLClient`, respectively.
-
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
@@ -594,3 +499,5 @@ header in the *base_headers* for the resulting :class:`Client` or
 .. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 
+.. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
