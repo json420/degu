@@ -25,8 +25,6 @@ HTTP client.
 
 import socket
 from collections import namedtuple
-import io
-import os
 from os import path
 
 from .base import (
@@ -317,12 +315,6 @@ class Connection:
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-            if isinstance(body, io.BufferedReader):
-                if 'content-length' in headers:
-                    content_length = headers['content-length']
-                else:
-                    content_length = os.stat(body.fileno()).st_size
-                body = Body(body, content_length)
             validate_request(method, uri, headers, body)
             if self.base_headers:
                 headers.update(self.base_headers)
