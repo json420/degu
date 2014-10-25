@@ -116,12 +116,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:
 
-    * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
-      a DNS name; the socket family will be ``AF_INET`` or ``AF_INET6`` as
+    * A ``(host, port)`` 2-tuple where the *host* is a DNS name, an IPv4 IP, or
+      an IPv6 IP; the socket family will be ``AF_INET`` or ``AF_INET6`` as
       appropriate for the *host*
 
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
-      IPv6 IP; the socket family will always be ``AF_INET6``
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an IPv6
+      IP; the socket family will always be ``AF_INET6``
 
     * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
 
@@ -132,9 +132,9 @@ If your *address* is a 2-tuple, it's passed directly to
 `socket.create_connection()`_ when creating a connection.  For example, all
 three of these are valid 2-tuple *address* values::
 
-    ('8.8.8.8', 80)
-    ('2001:4860:4860::8888', 80)
-    ('www.example.com', 80)
+    ('www.wikipedia.org', 80)
+    ('208.80.154.224', 80)
+    ('2620:0:861:ed1a::1', 80)
 
 If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
 passed directly to `socket.socket.connect()`_ when creating a connection,

@@ -28,13 +28,13 @@ import logging
 import threading
 from os import path
 
+from .base import bodies as default_bodies
 from .base import (
     TYPE_ERROR,
     Body,
     BodyIter,
     ChunkedBody,
     ChunkedBodyIter,
-    default_bodies,
     makefiles,
     read_preamble,
 )

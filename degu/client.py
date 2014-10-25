@@ -27,9 +27,9 @@ import socket
 from collections import namedtuple
 from os import path
 
+from .base import bodies as default_bodies
 from .base import (
     TYPE_ERROR,
-    default_bodies,
     Body,
     BodyIter,
     ChunkedBody,
@@ -416,20 +416,30 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
+        self.options = options
         self.host = options.get('host', host)
+        self.timeout = options.get('timeout', 90)
+        self.bodies = options.get('bodies', default_bodies)
+        self.Connection = options.get('Connection', Connection)
+        assert self.host is None or isinstance(self.host, str)
+        assert self.timeout is None or isinstance(self.timeout, (int, float))
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
         if self.family is None:
-            return socket.create_connection(self.address)
-        sock = socket.socket(self.family, socket.SOCK_STREAM)
-        sock.connect(self.address)
+            sock = socket.create_connection(self.address)
+        else:
+            sock = socket.socket(self.family, socket.SOCK_STREAM)
+            sock.connect(self.address)
+        sock.settimeout(self.timeout)
         return sock
 
-    def connect(self):
-        return Connection(self.create_socket(), self.host, default_bodies)
+    def connect(self, bodies=None):
+        if bodies is None:
+            bodies = self.bodies
+        return self.Connection(self.create_socket(), self.host, bodies)
 
 
 class SSLClient(Client):

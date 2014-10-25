@@ -37,32 +37,34 @@ from degu.misc import TempPKI
 from degu import base, client
 
 
+# Good type and value permutations for the CLient *address*:
+GOOD_ADDRESSES = (
+
+    # 2-tuple for AF_INET or AF_INET6:
+    ('www.wikipedia.org', 80),
+    ('208.80.154.224', 80),
+    ('2620:0:861:ed1a::1', 80),
+
+    # 4-tuple for AF_INET6:
+    ('2620:0:861:ed1a::1', 80, 0, 0),
+    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3),  # Link-local
+
+    # str for AF_UNIX:
+    '/tmp/my.socket',
+
+    # bytes for AF_UNIX (Linux abstract name):
+    b'\x0000022',
+)
+
+
 # Some bad address permutations:
-BAD_ADDRESSES = (
+BAD_TUPLE_ADDRESSES = (
     ('::1',),
     ('127.0.0.1',),
     ('::1', 5678, 0),
     ('127.0.0.1', 5678, 0),
     ('::1', 5678, 0, 0, 0),
     ('127.0.0.1', 5678, 0, 0, 0),
-)
-
-# Some good address permutations:
-GOOD_ADDRESSES = (
-    ('127.0.0.1', 5678),
-    ('example.com', 80),
-    ('example.com', 443),
-    ('::1', 5678, 0, 0),
-    ('fe80::290:f5ff:fef0:d35c', 5678, 0, 2),
-)
-
-# Expected host for each of the above good addresses:
-HOSTS = (
-    '127.0.0.1',
-    'example.com',
-    'example.com',
-    '::1',
-    'fe80::290:f5ff:fef0:d35c',
 )
 
 
@@ -580,7 +582,7 @@ class TestFunctions(TestCase):
         self.assertEqual(client.build_default_client_options(),
             {
                 'base_headers': None,
-                'bodies': base.default_bodies,
+                'bodies': base.bodies,
                 'timeout': 90,
                 'Connection': client.Connection,
             }
@@ -642,11 +644,11 @@ class TestConnection(TestCase):
     def test_init(self):
         sock = DummySocket()
         host = 'www.example.com'
-        inst = client.Connection(sock, host, base.default_bodies)
+        inst = client.Connection(sock, host, base.bodies)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
         self.assertIs(inst.host, host)
-        self.assertIs(inst.bodies, base.default_bodies)
+        self.assertIs(inst.bodies, base.bodies)
         self.assertIs(inst.rfile, sock._rfile)
         self.assertIs(inst.wfile, sock._wfile)
         self.assertIsNone(inst.response_body)
@@ -673,7 +675,7 @@ class TestConnection(TestCase):
 
     def test_close(self):
         sock = DummySocket()
-        inst = client.Connection(sock, None, base.default_bodies)
+        inst = client.Connection(sock, None, base.bodies)
         sock._calls.clear()
 
         # When Connection.closed is False:
@@ -693,7 +695,7 @@ class TestConnection(TestCase):
     def test_request(self):
         # Test when the connection has already been closed:
         sock = DummySocket()
-        conn = client.Connection(sock, None, base.default_bodies)
+        conn = client.Connection(sock, None, base.bodies)
         sock._calls.clear()
         conn.sock = None
         with self.assertRaises(client.ClosedConnectionError) as cm:
@@ -712,7 +714,7 @@ class TestConnection(TestCase):
             closed = False
 
         sock = DummySocket()
-        conn = client.Connection(sock, None, base.default_bodies)
+        conn = client.Connection(sock, None, base.bodies)
         sock._calls.clear()
         conn.response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
@@ -738,7 +740,7 @@ class TestClient(TestCase):
         )
 
         # Wrong number of items in address tuple:
-        for address in BAD_ADDRESSES:
+        for address in BAD_TUPLE_ADDRESSES:
             self.assertIn(len(address), {1, 3, 5})
             with self.assertRaises(ValueError) as cm:
                 client.Client(address)
@@ -752,6 +754,93 @@ class TestClient(TestCase):
         self.assertEqual(str(cm.exception),
             "address: bad socket filename: 'foo'"
         )
+
+        # Good address type and value permutations:
+        for address in GOOD_ADDRESSES:
+            inst = client.Client(address)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding host:
+            myhost = '.'.join([random_id() for i in range(3)])
+            inst = client.Client(address, host=myhost)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'host': myhost})
+            self.assertIs(inst.host, myhost)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding host with None:
+            inst = client.Client(address, host=None)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'host': None})
+            self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the timeout option:
+            inst = client.Client(address, timeout=17)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'timeout': 17})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 17)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the bodies option:
+            mybodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
+            inst = client.Client(address, bodies=mybodies)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'bodies': mybodies})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, mybodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the Connection option:
+            class MyConnection:
+                pass
+
+            inst = client.Client(address, Connection=MyConnection)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'Connection': MyConnection})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, MyConnection)
+
+            # Test overriding all the options together:
+            options = {
+                'host': myhost,
+                'timeout': 16.9,
+                'bodies': mybodies,
+                'Connection': MyConnection,
+            }
+            inst = client.Client(address, **options)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, options)
+            self.assertIs(inst.host, myhost)
+            self.assertEqual(inst.timeout, 16.9)
+            self.assertIs(inst.bodies, mybodies)
+            self.assertIs(inst.Connection, MyConnection)
 
     def test_repr(self):
         class Custom(client.Client):
@@ -767,7 +856,9 @@ class TestClient(TestCase):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host):
                 self.__sock = sock
+                self.Connection = client.Connection
                 self.host = host
+                self.bodies = base.bodies
 
             def create_socket(self):
                 return self.__sock
@@ -839,7 +930,8 @@ class TestSSLClient(TestCase):
             'sslctx.verify_mode must be ssl.CERT_REQUIRED'
         )
 
-        # Good sslctx from here on:
+        #############################
+        # Good sslctx from here on...
         sslctx.verify_mode = ssl.CERT_REQUIRED
 
         # Bad address type:
@@ -850,7 +942,7 @@ class TestSSLClient(TestCase):
         )
 
         # Wrong number of items in address tuple:
-        for address in BAD_ADDRESSES:
+        for address in BAD_TUPLE_ADDRESSES:
             self.assertIn(len(address), {1, 3, 5})
             with self.assertRaises(ValueError) as cm:
                 client.SSLClient(sslctx, address)
@@ -858,11 +950,99 @@ class TestSSLClient(TestCase):
                 'address: must have 2 or 4 items; got {!r}'.format(address)
             )
 
-        # A number of good address permutations:
-        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
+        # Non-absolute/non-normalized AF_UNIX filename:
+        with self.assertRaises(ValueError) as cm:
+            client.SSLClient(sslctx, 'foo')
+        self.assertEqual(str(cm.exception),
+            "address: bad socket filename: 'foo'"
+        )
+
+        # Good address type and value permutations:
+        for address in GOOD_ADDRESSES:
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
-            self.assertEqual(inst.host, host)
+            self.assertEqual(inst.options, {})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding host:
+            myhost = '.'.join([random_id() for i in range(3)])
+            inst = client.SSLClient(sslctx, address, host=myhost)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'host': myhost})
+            self.assertIs(inst.host, myhost)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding host with None:
+            inst = client.SSLClient(sslctx, address, host=None)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'host': None})
+            self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the timeout option:
+            inst = client.SSLClient(sslctx, address, timeout=17)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'timeout': 17})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 17)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the bodies option:
+            mybodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
+            inst = client.SSLClient(sslctx, address, bodies=mybodies)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'bodies': mybodies})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, mybodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding the Connection option:
+            class MyConnection:
+                pass
+
+            inst = client.SSLClient(sslctx, address, Connection=MyConnection)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'Connection': MyConnection})
+            if isinstance(address, tuple):
+                self.assertIs(inst.host, address[0])
+            else:
+                self.assertIsNone(inst.host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, MyConnection)
+
+            # Test overriding all the options together:
+            options = {
+                'host': myhost,
+                'timeout': 16.9,
+                'bodies': mybodies,
+                'Connection': MyConnection,
+            }
+            inst = client.SSLClient(sslctx, address, **options)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, options)
+            self.assertIs(inst.host, myhost)
+            self.assertEqual(inst.timeout, 16.9)
+            self.assertIs(inst.bodies, mybodies)
+            self.assertIs(inst.Connection, MyConnection)
 
     def test_repr(self):
         class Custom(client.SSLClient):
