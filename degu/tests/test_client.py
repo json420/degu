@@ -30,7 +30,7 @@ import socket
 import ssl
 
 from . import helpers
-from .helpers import TempDir, DummySocket, FuzzTestCase
+from .helpers import DummySocket, FuzzTestCase
 from degu.base import TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -58,11 +58,11 @@ GOOD_ADDRESSES = (
 
 # Expected host for each of the above good addresses:
 HOSTS = (
-    '127.0.0.1:5678',
-    'example.com:80',
-    'example.com:443',
-    '[::1]:5678',
-    '[fe80::290:f5ff:fef0:d35c]:5678',
+    '127.0.0.1',
+    'example.com',
+    'example.com',
+    '::1',
+    'fe80::290:f5ff:fef0:d35c',
 )
 
 
@@ -641,14 +641,11 @@ class TestFunctions(TestCase):
 class TestConnection(TestCase):
     def test_init(self):
         sock = DummySocket()
-        key = random_id().lower()
-        value = random_id()
-        base_headers = {key: value}
-        inst = client.Connection(sock, base_headers, base.default_bodies)
+        host = 'www.example.com'
+        inst = client.Connection(sock, host, base.default_bodies)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
-        self.assertIs(inst.base_headers, base_headers)
-        self.assertEqual(inst.base_headers, {key: value})
+        self.assertIs(inst.host, host)
         self.assertIs(inst.bodies, base.default_bodies)
         self.assertIs(inst.rfile, sock._rfile)
         self.assertIs(inst.wfile, sock._wfile)
@@ -756,73 +753,6 @@ class TestClient(TestCase):
             "address: bad socket filename: 'foo'"
         )
 
-        # Non-casefolded header names in base_headers:
-        base_headers = {
-            'Accept': 'application/json',
-            'x-stuff': 'junk',
-        }
-        with self.assertRaises(ValueError) as cm:
-            client.Client(('127.0.0.1', 5984), base_headers=base_headers)
-        self.assertEqual(str(cm.exception),
-            "non-casefolded header name: 'Accept'"
-        )
-
-        # 'content-length' in base_headers:
-        base_headers = {
-            'content-length': 17,
-            'x-stuff': 'junk',
-        }
-        with self.assertRaises(ValueError) as cm:
-            client.Client(('127.0.0.1', 5984), base_headers=base_headers)
-        self.assertEqual(str(cm.exception),
-            "base_headers cannot include 'content-length'"
-        )
-
-        # 'transfer-encoding' in base_headers:
-        base_headers = {
-            'transfer-encoding': 'chunked',
-            'x-stuff': 'junk',
-        }
-        with self.assertRaises(ValueError) as cm:
-            client.Client(('127.0.0.1', 5984), base_headers=base_headers)
-        self.assertEqual(str(cm.exception),
-            "base_headers cannot include 'transfer-encoding'"
-        )
-
-        # `str` (AF_UNIX)
-        tmp = TempDir()
-        filename = tmp.join('my.socket')
-        inst = client.Client(filename)
-        self.assertIs(inst.address, filename)
-        self.assertIs(inst.family, socket.AF_UNIX)
-        self.assertEqual(inst._base_headers, None)
-        options = inst.options
-        self.assertEqual(options, client.build_default_client_options())
-        self.assertEqual(options, inst._options)
-        self.assertIsNot(options, inst._options)  # Should be a copy
-
-        # `bytes` (AF_UNIX):
-        address = b'\x0000022'
-        inst = client.Client(address)
-        self.assertIs(inst.address, address)
-        self.assertIs(inst.family, socket.AF_UNIX)
-        self.assertEqual(inst._base_headers, None)
-        options = inst.options
-        self.assertEqual(options, client.build_default_client_options())
-        self.assertEqual(options, inst._options)
-        self.assertIsNot(options, inst._options)  # Should be a copy
-
-        # A number of good address permutations:
-        for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
-            inst = client.Client(address)
-            self.assertIsInstance(inst, client.Client)
-            self.assertIs(inst.address, address)
-            self.assertEqual(inst._base_headers, None)
-            options = inst.options
-            self.assertEqual(options, client.build_default_client_options())
-            self.assertEqual(options, inst._options)
-            self.assertIsNot(options, inst._options)  # Should be a copy
-
     def test_repr(self):
         class Custom(client.Client):
             pass
@@ -835,21 +765,16 @@ class TestClient(TestCase):
 
     def test_connect(self):
         class ClientSubclass(client.Client):
-            def __init__(self, sock, **options):
-                self._sock = sock
-                self._options = client.validate_client_options(**options)
-                self._Connection = self._options['Connection']
-                self._base_headers = self._options['base_headers']
-                self._bodies = self._options['bodies']
+            def __init__(self, sock, host):
+                self.__sock = sock
+                self.host = host
 
             def create_socket(self):
-                return self._sock
+                return self.__sock
 
-        key = random_id().lower()
-        value = random_id()
         sock = DummySocket()
-        base_headers = {key: value}
-        inst = ClientSubclass(sock, base_headers=base_headers)
+        host = random_id().lower()
+        inst = ClientSubclass(sock, host)
         conn = inst.connect()
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
@@ -937,7 +862,7 @@ class TestSSLClient(TestCase):
         for (address, host) in zip(GOOD_ADDRESSES, HOSTS):
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
-            self.assertEqual(inst._base_headers, None)
+            self.assertEqual(inst.host, host)
 
     def test_repr(self):
         class Custom(client.SSLClient):

@@ -276,10 +276,10 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, base_headers, bodies):
-        assert base_headers is None or isinstance(base_headers, dict)
+    def __init__(self, sock, host, bodies):
+        assert host is None or isinstance(host, str)
         self.sock = sock
-        self.base_headers = base_headers
+        self.host = host
         self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Body or ChunkedBody or None
@@ -316,8 +316,8 @@ class Connection:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
             validate_request(method, uri, headers, body)
-            if self.base_headers:
-                headers.update(self.base_headers)
+            if self.host:
+                headers['host'] = self.host
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -403,10 +403,10 @@ class Client:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            self.server_hostname = address[0]
+            host = address[0]
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
-            self.server_hostname = None
+            host = None
             if isinstance(address, str) and path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
@@ -416,18 +416,10 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        options = validate_client_options(**options)
-        self._Connection = options['Connection']
-        self._base_headers = options['base_headers']
-        self._bodies = options['bodies']
-        self._options = options
+        self.host = options.get('host', host)
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
-
-    @property
-    def options(self):
-        return self._options.copy()
 
     def create_socket(self):
         if self.family is None:
@@ -437,9 +429,7 @@ class Client:
         return sock
 
     def connect(self):
-        return self._Connection(self.create_socket(),
-            self._base_headers, self._bodies
-        )
+        return Connection(self.create_socket(), self.host, default_bodies)
 
 
 class SSLClient(Client):
@@ -460,7 +450,5 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        return self.sslctx.wrap_socket(sock,
-            server_hostname=self.server_hostname,
-        )
+        return self.sslctx.wrap_socket(sock, server_hostname=self.host)
 
