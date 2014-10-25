@@ -6,13 +6,13 @@
 
 The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
 
-:mod:`degu.client` is similar in abstraction level to the `http.client`_ module
-in the Python3 standard library, and has an API that overall should feel
-familiar to those experienced with `http.client`_ (although there are some major
-differences).
+It's similar in abstraction level to the `http.client`_ module in the Python3
+standard library, and has an API that overall should feel familiar to those
+experienced with `http.client`_ (although there are some major differences, for
+details see :ref:`degu-client-v-http-client`).
 
-As a quick example, say we define this :doc:`rgi` application and create a
-:class:`degu.misc.TempServer` instance:
+As a quick example, say we define this Degu server application and run it
+in a :class:`degu.misc.TempServer`:
 
 >>> def example_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
@@ -20,18 +20,22 @@ As a quick example, say we define this :doc:`rgi` application and create a
 >>> from degu.misc import TempServer
 >>> server = TempServer(('127.0.0.1', 0), example_app)
 
+A :class:`Client` specifies *how* to connect to an HTTP server.
 
-We can then create a :class:`Client` instance like this:
+Create a :class:`Client` like this:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-And then create a :class:`Connection` using :meth:`Client.connect()` like this:
+On the other hand, a :class:`Connection` represents a specific TCP connection to
+said server, through which one or more HTTP requests can be made.
+
+Create a :class:`Connection` using :meth:`Client.connect()` like this:
 
 >>> conn = client.connect()
 
-And finally make a request to our server using :meth:`Connection.request()` like
-this, which will return a :class:`Response` namedtuple:
+We can make an HTTP request to our server using :meth:`Connection.request()`
+like this, which will return a :class:`Response` namedtuple:
 
 >>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
@@ -41,27 +45,26 @@ As per HTTP/1.1, multiple requests can be made using the same connection:
 >>> conn.request('PUT', '/foo/bar', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-If you're truly done using it, it's a good idea to explicitly close a connection
-by calling :meth:`Connection.close()`, although this will likewise be done
-automatically when the connection instance is garbage collected:
+It's a good idea to explicitly call :meth:`Connection.close()` when you're done
+using a connection, although this will likewise be done automatically when the
+:class:`Connection` is garbage collected.
 
 >>> conn.close()
 
-For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance.
-You'll likely want to build the needed `ssl.SSLContext`_ using
+For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance,
+for example:
+
+>>> from degu.client import SSLClient
+>>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
+
+When creating a :class:`SSLClient`, the first argument can be either a pre-built
+`ssl.SSLContext`_, or an *sslconfig* ``dict`` that will be passed to
 :func:`build_client_sslctx()`.
 
-If you're connecting to an HTTP server (like Apache) that requires you always to
-supply a ``'host'`` in the request headers for each request, consider using the
-:func:`create_client()` and :func:`create_sslclient()` convenience functions.
-
-By default, the Degu HTTP client includes no request headers other than those
-supplied to :meth:`Connection.request()`, plus a ``'host'`` header.
 
 
-
-:class:`Client` class
----------------------
+:class:`Client`
+---------------
 
 .. class:: Client(address, **options)
 
@@ -210,8 +213,8 @@ Also see the server :ref:`server-options`.
 
 
 
-:class:`SSLClient` subclass
----------------------------
+:class:`SSLClient`
+------------------
 
 .. class:: SSLClient(sslctx, address, **options)
 
@@ -327,8 +330,8 @@ Also see the server :ref:`server-options`.
 
 
 
-:class:`Connection` class
--------------------------
+:class:`Connection`
+-------------------
 
 .. class:: Connection(sock, host, bodies)
 
@@ -437,8 +440,8 @@ Also see the server :ref:`server-options`.
 
 
 
-:class:`Response` namedtuple
-----------------------------
+:class:`Response`
+-----------------
 
 .. class:: Response(status, reason, headers, body)
 
@@ -486,8 +489,68 @@ Also see the server :ref:`server-options`.
 
 
 
+.. _degu-client-v-http-client:
+
+Degu vs. ``http.client``
+------------------------
+
+:mod:`degu.client` is similar in abstraction level to the `http.client`_ module
+in the Python3 standard library, and has an API that overall should feel
+familiar to those experienced with `http.client`_, although there are some key
+differences.
+
+Degu specifies the target server via the exact *address* argument used by the
+underlying Python `socket`_ API.  This allows Degu to fully expose IPv6 address
+semantics, including the *scopeid* needed for `link-local addresses`_, and also
+allows Degu to transparently support HTTP over ``AF_UNIX``.
+
+Consider the `HTTPConnection`_ vs the :class:`Client` constructors::
+
+    # http.client:
+    HTTPConnection(host, port=None, timeout=None, source_address=None)
+
+    # degu.client:
+    Client(address, **options)
+
+For example, here's how to use `http.client`_ to specify the server by DNS name,
+IPv4 IP, and IPv6 IP:
+
+>>> from http.client import HTTPConnection
+>>> conn = HTTPConnection('www.wikipedia.org', 80)
+>>> conn = HTTPConnection('208.80.154.224', 80)
+>>> conn = HTTPConnection('2620:0:861:ed1a::1', 80)
+
+And here's the equivalent using :mod:`degu.client`:
+
+>>> from degu.client import Client
+>>> client = Client(('www.wikipedia.org', 80))
+>>> client = Client(('208.80.154.224', 80))
+>>> client = Client(('2620:0:861:ed1a::1', 80))  # As 2-tuple
+>>> client = Client(('2620:0:861:ed1a::1', 80, 0, 0))  # As 4-tuple
+
+But here are some :mod:`degu.client` examples that aren't possible with
+`http.client`_:
+
+>>> client = Client(('fe80::e8b:fdff:fe75:402c', 80, 0, 3))  # IPv6 link-local
+>>> client = Client('/tmp/my.socket')  # AF_UNIX
+>>> client = Client(b'\x0000022')  # AF_UNIX
+
+`HTTPConnection`_ is somewhat overloaded with two distict problem domains:
+
+    1. Information about *how* to connect to a server (the socket address, plus
+       an ``ssl.SSLContext`` in the case of HTTPS)
+
+    2. An actuall TPC connection to said server
+
+In contrast, :mod:`degu.client` decomposes this abstraction and handles (1) via
+the :class:`Client` class, and handles (2) via
+:class:`Connection`.
+
+
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
+.. _`HTTPConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection
+
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`socket.socket.connect()`: https://docs.python.org/3/library/socket.html#socket.socket.connect
 .. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
@@ -499,5 +562,6 @@ Also see the server :ref:`server-options`.
 .. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 
+.. _`socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
