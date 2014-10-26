@@ -41,7 +41,7 @@ from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import TYPE_ERROR
-from degu import util, rgi, base, server
+from degu import rgi, base, server
 
 
 random = SystemRandom()
@@ -258,130 +258,6 @@ class TestFunctions(TestCase):
         # All good:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server.validate_server_sslctx(sslctx), sslctx)
-
-    def test_parse_request(self):
-        # Bad separators:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET/foo/bar?stuff=junkHTTP/1.1')
-        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET MY /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 3)'
-        )
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar\rstuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 3)'
-        )
-
-        # Bad method:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('OPTIONS /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad HTTP method: 'get'")
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/2.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/2.0'")
-
-        # Multiple "?" present in URI:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            "bad request uri: '/foo/bar?stuff=junk?other=them'"
-        )
-
-        # All manner of path problems:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo/bar HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET // HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo// HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//bar HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar// HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Same as above, but toss a query into the mix:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET ?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: ''")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET //?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar//?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Test all valid methods:
-        for M in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD'):
-            line = '{} /foo/bar?stuff=junk HTTP/1.1'.format(M)
-            (method, path_list, query) = server.parse_request(line)
-            self.assertEqual(method, M)
-            self.assertEqual(path_list, ['foo', 'bar'])
-            self.assertEqual(query, 'stuff=junk')
-
-        # Test URI permutations and round-tripping with util.relative_uri():
-        cases = [
-            ('/', []),
-            ('/foo', ['foo']),
-            ('/foo/', ['foo', '']),
-            ('/foo/bar', ['foo', 'bar']),
-            ('/foo/bar/', ['foo', 'bar', '']),
-        ]
-        for (U, P) in cases:
-            for Q in ('', 'stuff=junk'):
-                uri = ('?'.join([U, Q]) if Q else U)
-                line = 'GET {} HTTP/1.1'.format(uri)
-                (method, path_list, query) = server.parse_request(line)
-                self.assertEqual(method, 'GET')
-                self.assertEqual(path_list, P)
-                self.assertEqual(query, Q)
-                request = {'path': path_list, 'query': query}
-                self.assertEqual(util.relative_uri(request), uri)
-
-        # Test URI with a trailing "?" but no query (note that relative_uri()
-        # wont round-trip URI such as this):
-        self.assertEqual(
-            server.parse_request('GET /foo/bar? HTTP/1.1'),
-            ('GET', ['foo', 'bar'], '')
-        )
-        self.assertEqual(
-            server.parse_request('GET /foo/bar/? HTTP/1.1'),
-            ('GET', ['foo', 'bar', ''], '')
-        )
-        self.assertEqual(
-            server.parse_request('GET /? HTTP/1.1'),
-            ('GET', [], '')
-        )
 
     def test_read_request(self):
         longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
