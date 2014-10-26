@@ -429,11 +429,10 @@ class Client:
 
     def create_socket(self):
         if self.family is None:
-            sock = socket.create_connection(self.address)
-        else:
-            sock = socket.socket(self.family, socket.SOCK_STREAM)
-            sock.connect(self.address)
+            return socket.create_connection(self.address, timeout=self.timeout)
+        sock = socket.socket(self.family, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
+        sock.connect(self.address)
         return sock
 
     def connect(self, Connection=None, bodies=None):

@@ -199,6 +199,10 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         :class:`Connection`, and when not ``None``, :meth:`Connection.request()`
         will use this value for the "host" request header.
 
+        :meth:`SSLClient.create_socket()` uses :attr:`Client.host` as the
+        *server_hostname* provided to `ssl.SSLContext.wrap_socket()`_, which
+        will be used for hostname checking, and for SNI, as appropriate.
+
     .. attribute:: timeout
 
         The client socket timeout in seconds, or ``None`` for no timeout.
@@ -219,11 +223,11 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
     .. method:: create_socket()
 
-        Create a `socket.socket`_ and connect it to :attr:`Client.address`.
+        Create a new `socket.socket`_ connected to :attr:`Client.address`.
 
     .. method:: connect(Connection=None, bodies=None)
 
-        Create and return a *Connection* instance.
+        Create a new *Connection* instance.
 
 
 
@@ -335,7 +339,9 @@ Also see the server :ref:`server-options`.
     The *address* argument, along with any keyword-only *options*, are passed
     unchanged to the :class:`Client` constructor.
 
-    This subclass add the :attr:
+    This subclass adds the :attr:`SSLClient.sslctx` attribute, and overrides the
+    :meth:`Client.create_socket()` method with its own
+    :meth:`SSLClient.create_socket()`.
 
     An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
     the server is (the *address*) and "how" to connect to the server (the
@@ -358,8 +364,20 @@ Also see the server :ref:`server-options`.
 
     .. method:: create_socket()
 
-        Create a `socket.socket`_ and connect it to :attr:`Client.address`.
+        Create a new `ssl.SSLSocket`_ connected to :attr:`Client.address`.
 
+        This method first calls :meth:`Client.create_socket()` to create a
+        `socket.socket`_, which it then wraps using
+        `ssl.SSLContext.wrap_socket()`_ to produce a `ssl.SSLContext`_.
+
+        This method uses :attr:`Client.host` for the *server_hostname*
+        provided to `ssl.SSLContext.wrap_socket()`_.
+
+        When `ssl.SSLContext.check_hostname`_ is ``True``, this is the hostname
+        that will be used when maching the common name (CN) in the server
+        certificate.
+
+        This is also the hostname that will be used for SNI.
 
 
 
@@ -737,11 +755,13 @@ For example:
 .. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`HTTP/1.1`: http://www.w3.org/Protocols/rfc2616/rfc2616.html
 .. _`Apache 2.4`: https://httpd.apache.org/docs/2.4/
-.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
-.. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
 .. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
+
+.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
+.. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
+.. _`ssl.SSLContext.wrap_socket()`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.wrap_socket
 
 .. _`socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
