@@ -331,7 +331,7 @@ def write_response(wfile, status, reason, headers, body):
 def handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
     assert session['requests'] == 0
-    while handle_one(app, rfile, wfile, bodies, session) is True:
+    while handle_one(app, rfile, wfile, session, bodies) is True:
         session['requests'] += 1
         if session['requests'] >= max_requests:
             log.info("%r requests from %r, closing",
@@ -341,7 +341,7 @@ def handle_requests(app, sock, max_requests, session, bodies):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, bodies, session):
+def handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
@@ -441,20 +441,6 @@ class Server:
         return '{}({!r}, {!r})'.format(
             self.__class__.__name__, self.address, self.app
         )
-
-    def build_base_session(self):
-        """
-        Builds the base session used throughout the server lifetime.
-
-        Each new *session* argument starts out as a copy of this.
-        """
-        return {
-            #'rgi.version': (0, 1),
-            'scheme': self.scheme,
-            'protocol': 'HTTP/1.1',
-            'server': self.address,
-            'requests': 0,  # Number of fully handled requests
-        }
 
     def serve_forever(self):
         timeout = self.timeout

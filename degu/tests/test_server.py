@@ -867,20 +867,6 @@ class TestServer(TestCase):
             'Custom({!r}, {!r})'.format(inst.address, good_app)
         )
 
-    def test_build_base_session(self):
-        class ServerSubclass(server.Server):
-            def __init__(self, address):
-                self.address = address
-
-        address = (random_id(), random_id())
-        inst = ServerSubclass(address)
-        self.assertEqual(inst.build_base_session(), {
-            'scheme': 'http',
-            'protocol': 'HTTP/1.1',
-            'server': address,
-            'requests': 0,
-        })
-
 
 class TestSSLServer(TestCase):
     def test_init(self):
@@ -1033,20 +1019,6 @@ class TestSSLServer(TestCase):
         self.assertEqual(repr(inst),
             'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
-
-    def test_build_base_session(self):
-        class SSLServerSubclass(server.SSLServer):
-            def __init__(self, address):
-                self.address = address
-
-        address = (random_id(), random_id())
-        inst = SSLServerSubclass(address)
-        self.assertEqual(inst.build_base_session(), {
-            'scheme': 'https',
-            'protocol': 'HTTP/1.1',
-            'server': address,
-            'requests': 0,
-        })
 
 
 CHUNKS = []
