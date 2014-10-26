@@ -57,8 +57,8 @@ example, to kill the server process we just created:
 
 
 
-:class:`Server` class
----------------------
+:class:`Server`
+---------------
 
 .. class:: Server(address, app, **options)
 
@@ -407,8 +407,8 @@ Also see the client :ref:`client-options`.
 
 
 
-:class:`SSLServer` subclass
----------------------------
+:class:`SSLServer`
+------------------
 
 .. class:: SSLServer(sslctx, address, app, **options)
 

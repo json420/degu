@@ -1,13 +1,12 @@
-:mod:`degu.misc` --- Unit test helpers
-======================================
+:mod:`degu.misc` --- Test fixtures
+==================================
 
 .. module:: degu.misc
    :synopsis: Test fixtures and other handy tidbits
 
 
-
-:class:`TempServer` class
--------------------------
+:class:`TempServer`
+-------------------
 
 .. class:: TempServer(address, app, **options)
 
@@ -82,8 +81,8 @@
 
 
 
-:class:`TempSSLServer` class
-----------------------------
+:class:`TempSSLServer`
+----------------------
 
 .. class:: TempSSLServer(sslconfig, address, app, **options)
 
@@ -115,8 +114,8 @@
 
 
 
-:class:`TempPKI` class
--------------------------
+:class:`TempPKI`
+----------------
 
 .. class:: TempPKI(client_pki=True, bits=1024)
 

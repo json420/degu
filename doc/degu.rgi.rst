@@ -47,8 +47,8 @@ Which in code would look like:
 >>> server = Server(('127.0.0.1', 0), app)
 
 
-:class:`Validator` class
-------------------------
+:class:`Validator`
+------------------
 
 .. class:: Validator(app)
 

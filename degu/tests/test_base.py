@@ -165,9 +165,9 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.FILE_IO_BYTES, MiB)
 
     def test_bodies(self):
-        self.assertTrue(issubclass(base.Bodies, tuple))
+        self.assertTrue(issubclass(base.BodiesAPI, tuple))
         self.assertIsInstance(base.bodies, tuple)
-        self.assertIsInstance(base.bodies, base.Bodies)
+        self.assertIsInstance(base.bodies, base.BodiesAPI)
 
         self.assertIs(base.bodies.Body, base.Body)
         self.assertIs(base.bodies.BodyIter, base.BodyIter)

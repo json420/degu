@@ -800,7 +800,7 @@ class TestClient(TestCase):
             self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the bodies option:
-            mybodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
+            mybodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
             inst = client.Client(address, bodies=mybodies)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})
@@ -1002,7 +1002,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the bodies option:
-            mybodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
+            mybodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
             inst = client.SSLClient(sslctx, address, bodies=mybodies)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})

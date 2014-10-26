@@ -19,26 +19,8 @@ server for a limited period of time after which the Degu server is shutdown.
 
 
 
-Functions
----------
-
-.. function:: start_server(address, build_func, *build_args, **options)
-
-    Start a :class:`degu.server.Server` in a new process.
-
-    The return value is a ``(process, address)`` tuple.
-
-
-.. function:: start_sslserver(sslconfig, address, build_func, *build_args, **options)
-
-    Start a :class:`degu.server.SSLServer` in a new process.
-
-    The return value is a ``(process, address)`` tuple.
-
-
-
-Address constants
------------------
+*address* constants
+-------------------
 
 :mod:`degu` includes handy constants with some common IPv6 and IPv4 *address*
 tuples:

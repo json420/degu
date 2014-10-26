@@ -37,6 +37,22 @@ or even running on the localhost using HTTP over ``AF_UNIX``.
 Degu is optimized for low-latency and high-throughput when only modest
 concurrency is needed.
 
+Some noteworthy Degu features:
+
+    *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
+        the optional per-chunk *extension*
+
+    *   Degu provides access to full IPv6 address semantics, including the
+        *scopeid* needed for IPv6 link-local addresses
+
+    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
+        all via a single *address* argument used uniformly by the server and
+        client
+
+    *   Degu provides a safe and opinionated API for using TLSv1.2, with a
+        particular focus on using client certificates to authenticate incoming
+        TCP connections
+
 
 
 Example: SSL reverse-proxy
