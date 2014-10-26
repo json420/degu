@@ -436,10 +436,12 @@ class Client:
         sock.settimeout(self.timeout)
         return sock
 
-    def connect(self, bodies=None):
+    def connect(self, Connection=None, bodies=None):
+        if Connection is None:
+            Connection = self.Connection
         if bodies is None:
             bodies = self.bodies
-        return self.Connection(self.create_socket(), self.host, bodies)
+        return Connection(self.create_socket(), self.host, bodies)
 
 
 class SSLClient(Client):

@@ -20,7 +20,7 @@ Degu includes:
     *   **Stream-friendly IO abstractions** used by both the server and client
         for HTTP request and response bodies
 
-    *   **Test fixtures** that make it easy to create throw-away Degu server\
+    *   **Test fixtures** that make it easy to create throw-away Degu server
         instances for unit testing, illustration, and play
 
 Degu server applications are implemented according to the :doc:`rgi` (RGI),

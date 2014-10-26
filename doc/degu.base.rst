@@ -37,13 +37,23 @@ version.
 
 .. class:: BodiesAPI(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
-    .. attribute:: Body
+    Instances of this namedtuple are used to expose the IO abstraction API.
 
     .. attribute:: Body
 
-    .. attribute:: Body
+        1st argument passed to constructor.
 
-    .. attribute:: Body
+    .. attribute:: BodyIter
+
+        2nd argument passed to constructor.
+
+    .. attribute:: ChunkedBody
+
+        3rd argument passed to constructor.
+
+    .. attribute:: ChunkedBodyIter
+
+        4th argument passed to constructor.
 
 
 
@@ -51,7 +61,18 @@ version.
 --------------
 
 
-.. attribute:: bodies
+.. data:: bodies
+
+    A :class:`BodiesAPI` instance exposing the standard Degu IO abstraction API.
+
+    This uses the Degu reference implementation of the four IO abstraction
+    classes:
+
+        * :class:`Body` class
+        * :class:`BodyIter` class
+        * :class:`ChunkedBody` class
+        * :class:`ChunkedBodyIter` class
+        
 
 
 :class:`Body`
