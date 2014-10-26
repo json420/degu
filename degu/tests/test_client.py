@@ -29,7 +29,6 @@ import io
 import socket
 import ssl
 
-from . import helpers
 from .helpers import DummySocket, FuzzTestCase
 from degu.base import TYPE_ERROR
 from degu.sslhelpers import random_id
@@ -586,57 +585,6 @@ class TestFunctions(TestCase):
                 'timeout': 90,
                 'Connection': client.Connection,
             }
-        )
-
-    def test_validate_client_options(self):
-        # No options overridden, should equal build_default_client_options():
-        self.assertEqual(
-            client.validate_client_options(),
-            client.build_default_client_options()
-        )
-
-        # empty base_headers dict:
-        options = client.build_default_client_options()
-        options['base_headers'] = {}
-        self.assertEqual(
-            client.validate_client_options(base_headers={}),
-            options
-        )
-
-        # bodies:
-        for (bodies, name) in helpers.iter_bodies_with_missing_object():
-            with self.assertRaises(TypeError) as cm:
-                client.validate_client_options(bodies=bodies)
-            self.assertEqual(str(cm.exception),
-                'bodies is missing {!r} attribute'.format(name)
-            )
-        for (bodies, name, attr) in helpers.iter_bodies_with_non_callable_object():
-            with self.assertRaises(TypeError) as cm:
-                client.validate_client_options(bodies=bodies)
-            self.assertEqual(str(cm.exception),
-                'bodies.{} is not callable: {!r}'.format(name, attr)
-            )
-
-        # timeout:
-        for attr in ('1', '1.0'):
-            with self.assertRaises(TypeError) as cm:
-                client.validate_client_options(timeout=attr)
-            self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format('timeout', (int, float), str, attr)
-            )
-        for attr in (0, 0.0, -1, -0.00001):
-            with self.assertRaises(ValueError) as cm:
-                client.validate_client_options(timeout=attr)
-            self.assertEqual(str(cm.exception),
-                'timeout must be > 0; got {!r}'.format(attr)
-            )
-
-        # Connection:
-        attr = helpers.random_identifier()
-        with self.assertRaises(TypeError) as cm:
-            client.validate_client_options(Connection=attr)
-        self.assertEqual(str(cm.exception),
-            'Connection is not callable: {!r}'.format(attr)
         )
 
 

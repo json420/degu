@@ -336,56 +336,6 @@ def build_default_client_options():
     }
 
 
-def validate_client_options(**options):
-    result = build_default_client_options()
-    result.update(options)
-
-    # base_headers:
-    base_headers = result['base_headers']
-    if base_headers is not None:
-        if not isinstance(base_headers, dict):
-            raise TypeError(TYPE_ERROR.format(
-                'base_headers', dict, type(base_headers), base_headers
-            ))
-        for key in base_headers:
-            assert isinstance(key, str)
-            if not key.islower():
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        for key in ('content-length', 'transfer-encoding'):
-            if key in base_headers:
-                raise ValueError('base_headers cannot include {!r}'.format(key))
-
-    # bodies:
-    bodies = result['bodies']
-    for name in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter'):
-        if not hasattr(bodies, name):
-            raise TypeError('bodies is missing {!r} attribute'.format(name))
-        attr = getattr(bodies, name)
-        if not callable(attr):
-            raise TypeError('bodies.{} is not callable: {!r}'.format(name, attr))
-
-    # timeout:
-    timeout = result['timeout']
-    if timeout is not None:
-        if not isinstance(timeout, (int, float)):
-            raise TypeError(
-                TYPE_ERROR.format('timeout', (int, float), type(timeout), timeout)
-            )
-        if not (timeout > 0):
-            raise ValueError(
-                'timeout must be > 0; got {!r}'.format(timeout)
-            )
-
-    # Connection:
-    Connection = result['Connection']
-    if not callable(Connection):
-        raise TypeError(
-            'Connection is not callable: {!r}'.format(Connection)
-        )
-
-    return result
-
-
 class Client:
     """
     Represents an HTTP server to which Degu can make client connections.
