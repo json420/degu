@@ -52,7 +52,7 @@ if args.unix:
     address = tmp.join('my.socket')
 else:
     address = degu.IPv6_LOOPBACK
-server = TempServer(address, None, ping_pong_app)
+server = TempServer(address, ping_pong_app)
 client = Client(server.address)
 
 
