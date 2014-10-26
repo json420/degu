@@ -577,16 +577,6 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.closed, True)
         self.assertEqual(rfile.tell(), total)
 
-    def test_build_default_client_options(self):
-        self.assertEqual(client.build_default_client_options(),
-            {
-                'base_headers': None,
-                'bodies': base.bodies,
-                'timeout': 90,
-                'Connection': client.Connection,
-            }
-        )
-
 
 class TestConnection(TestCase):
     def test_init(self):

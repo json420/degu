@@ -327,15 +327,6 @@ class Connection:
             raise
 
 
-def build_default_client_options():
-    return {
-        'base_headers': None,
-        'bodies': default_bodies,
-        'timeout': 90,
-        'Connection': Connection,
-    }
-
-
 class Client:
     """
     Represents an HTTP server to which Degu can make client connections.
