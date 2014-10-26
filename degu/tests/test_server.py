@@ -987,15 +987,12 @@ class AppWithConnectionHandler:
         return self.accept
 
 
-def wrap_with_validator(app):
-    return rgi.Validator(app)
-
 
 class TestLiveServer(TestCase):
     address = degu.IPv4_LOOPBACK
 
-    def build_with_app(self, app):
-        httpd = TempServer(self.address, wrap_with_validator(app))
+    def build_with_app(self, app, **options):
+        httpd = TempServer(self.address, rgi.Validator(app), **options)
         client = Client(httpd.address)
         return (httpd, client)
 
@@ -1021,7 +1018,9 @@ class TestLiveServer(TestCase):
         """
         if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
             self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
-        (httpd, client) = self.build_with_app(timeout_app)
+
+        timeout = 3
+        (httpd, client) = self.build_with_app(timeout_app, timeout=timeout)
         conn = client.connect()
 
         # Make an inital request:
@@ -1031,14 +1030,14 @@ class TestLiveServer(TestCase):
 
         # Wait till 1 second *before* the timeout should happen, to make sure
         # connection is still open:
-        time.sleep(server.SERVER_SOCKET_TIMEOUT - 1)
+        time.sleep(timeout - 0.5)
         self.assertEqual(conn.request('POST', '/foo', {}, None),
             (200, 'OK', {}, None)
         )
 
-        # Now tait till 1 second *after* the timeout should have happened, to
+        # Now wait till 1 second *after* the timeout should have happened, to
         # make sure the connection was closed by the server:
-        time.sleep(server.SERVER_SOCKET_TIMEOUT + 1)
+        time.sleep(timeout + 0.5)
         with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo', {}, None)
         self.assertIs(conn.closed, True)
@@ -1272,10 +1271,10 @@ class TestLiveServer_AF_INET6(TestLiveServer):
 
 
 class TestLiveServer_AF_UNIX(TestLiveServer):
-    def build_with_app(self, app):
+    def build_with_app(self, app, **options):
         tmp = TempDir()
         filename = tmp.join('my.socket')
-        httpd = TempServer(filename, wrap_with_validator(app))
+        httpd = TempServer(filename, rgi.Validator(app), **options)
         httpd.tmp = tmp
         return (httpd, Client(httpd.address))
 
@@ -1292,10 +1291,10 @@ def ssl_app(session, request, bodies):
 
 
 class TestLiveSSLServer(TestLiveServer):
-    def build_with_app(self, app):
+    def build_with_app(self, app, **options):
         pki = TempPKI()
         httpd = TempSSLServer(
-            pki.server_sslconfig, self.address, wrap_with_validator(app)
+            pki.server_sslconfig, self.address, rgi.Validator(app), **options
         )
         httpd.pki = pki
         sslctx = build_client_sslctx(pki.client_sslconfig)

@@ -359,6 +359,7 @@ class Server:
     scheme = 'http'
 
     def __init__(self, address, app, **options):
+        # address:
         if isinstance(address, tuple):  
             if len(address) == 4:
                 family = socket.AF_INET6
@@ -380,23 +381,28 @@ class Server:
             raise TypeError(
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
+
+        # app:
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))
         on_connect = getattr(app, 'on_connect', None)
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
+
+        # options:
+        self.timeout = options.get('timeout', 10)
+        self.max_connections = options.get('max_connections', 100)
+        self.max_requests = options.get('max_requests', 5000)
+        self.bodies = options.get('bodies', default_bodies)
+        self.options = options
+
+        # Listen...
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
         self.app = app
         self.on_connect = on_connect
         self.sock.listen(5)
-
-        self.timeout = options.get('timeout', 10)
-        self.max_connections = options.get('max_connections', 100)
-        self.max_requests = options.get('max_requests', 5000)
-        self.bodies = options.get('bodies', default_bodies)
-        self.options = options
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -458,9 +464,9 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, sslctx, address, app):
+    def __init__(self, sslctx, address, app, **options):
         self.sslctx = validate_server_sslctx(sslctx)
-        super().__init__(address, app)
+        super().__init__(address, app, **options)
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(
