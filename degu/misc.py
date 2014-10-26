@@ -50,7 +50,7 @@ def get_value(value):
 
 def echo_app(session, request, bodies):
     obj = {
-        'bodies': [repr(item) for item in bodies],
+        'bodies': repr(bodies),
         'session': {},
         'request': {},
     }
