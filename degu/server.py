@@ -328,15 +328,15 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, bodies, session):
+def handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
-    requests = session['requests']
-    assert requests == 0
+    assert session['requests'] == 0
     while handle_one(app, rfile, wfile, bodies, session) is True:
-        requests += 1
-        session['requests'] = requests
-        if requests >= 5000:
-            log.info("%r requests from %r, closing", requests, session['client'])
+        session['requests'] += 1
+        if session['requests'] >= max_requests:
+            log.info("%r requests from %r, closing",
+                session['requests'], session['client']
+            )
             break
     wfile.close()  # Will block till write buffer is flushed
 
@@ -397,7 +397,7 @@ def handle_one(app, rfile, wfile, bodies, session):
 class Server:
     scheme = 'http'
 
-    def __init__(self, address, app):
+    def __init__(self, address, app, **options):
         if isinstance(address, tuple):  
             if len(address) == 4:
                 family = socket.AF_INET6
@@ -431,6 +431,12 @@ class Server:
         self.on_connect = on_connect
         self.sock.listen(5)
 
+        self.timeout = options.get('timeout', 10)
+        self.max_connections = options.get('max_connections', 100)
+        self.max_requests = options.get('max_requests', 5000)
+        self.bodies = options.get('bodies', default_bodies)
+        self.options = options
+
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
             self.__class__.__name__, self.address, self.app
@@ -451,32 +457,37 @@ class Server:
         }
 
     def serve_forever(self):
+        timeout = self.timeout
+        max_connections = self.max_connections
+        max_requests = self.max_requests
+        bodies = self.bodies
+        listensock = self.sock
+        worker = self.worker
+
         while True:
-            (sock, address) = self.sock.accept()
+            (sock, address) = listensock.accept()
+            sock.settimeout(timeout)
             count = threading.active_count()
-            # FIXME: The max connections and timeout value should really both be
-            # tunable, but till we decide on the API for this, we're hard-coding
-            # a limit of 100 concurrent connections:
-            if count > 100:
+            if count > max_connections:
                 log.error('%d connections, rejecting %r', count, address)
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
                     sock.close()
                 except OSError:
                     pass
-                return
+                continue
             log.info('Connection from %r; active threads: %d', address, count)
+            session = {'client': address, 'requests': 0}
             thread = threading.Thread(
-                target=self.worker,
-                args=(sock, {'client': address, 'requests': 0}),
+                target=worker,
+                args=(sock, max_requests, session, bodies),
                 daemon=True
             )
             thread.start()
 
-    def worker(self, sock, session):
+    def worker(self, sock, max_requests, session, bodies):
         try:
-            sock.settimeout(SERVER_SOCKET_TIMEOUT)
-            self.handler(sock, session)
+            self.handler(sock, max_requests, session, bodies)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
                 session['requests'], session['client'], e
@@ -490,9 +501,9 @@ class Server:
             except OSError:
                 pass
 
-    def handler(self, sock, session):
+    def handler(self, sock, max_requests, session, bodies):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            handle_requests(self.app, sock, default_bodies, session)
+            handle_requests(self.app, sock, max_requests, session, bodies)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
@@ -509,11 +520,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def handler(self, sock, session):
+    def handler(self, sock, max_requests, session, bodies):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super().handler(sock, session)
+        super().handler(sock, max_requests, session, bodies)
 

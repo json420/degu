@@ -37,7 +37,7 @@ or even running on the localhost using HTTP over ``AF_UNIX``.
 Degu is optimized for low-latency and high-throughput when only modest
 concurrency is needed.
 
-Some noteworthy Degu features:
+Some other noteworthy Degu features:
 
     *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
         the optional per-chunk *extension*
