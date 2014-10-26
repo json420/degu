@@ -207,6 +207,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         The client socket timeout in seconds, or ``None`` for no timeout.
 
+        The default is ``90`` seconds, or this can be overridden via a *timeout*
+        keyword argument provided to the constructor.
+
+        :meth:`Client.create_socket()` sets the socket timeout to
+        :attr:`Client.timeout` for all new sockets it creates.
+
     .. attribute:: bodies
 
         A namedtuple exposing the IO abstraction API.
@@ -218,7 +224,7 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         The Connection class used by :meth:`Client.connect()`.
 
-        The default is :class:`Connection` or this can be overridden via a
+        The default is :class:`Connection`, or this can be overridden via a
         *Connection* keyword argument provided to the constructor.
 
     .. method:: create_socket()

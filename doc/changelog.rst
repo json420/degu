@@ -69,28 +69,58 @@ Breaking API changes:
         true.  So we'll let this experiment run for a while, and then
         reevaluate.
 
+    *   Drop the ``create_client()`` and ``create_sslclient()`` functions from
+        the :mod:`degu.client` module; these convenience functions allowed you
+        to create a :class:`degu.client.Client` or
+        :class:`degu.client.SSLClient` from a URL, for example::
+
+            client = create_client('http://example.com/')
+            sslclient = create_client(sslctx, 'https://example.com/')
+
+        These functions were in part justified as an easy way to set the "host"
+        request header when connecting to a server that always requires it (eg.,
+        Apache2), but now :attr:`degu.client.Client.host` and the keyword-only
+        *host* option provide a much better solution.
+
+        Using a URL to specify a server is really a Degu-anti pattern that we
+        don't want to invite, because there's no standard way to encoded the
+        IPv6 *flowinfo* and *scopeid* in a URL, nor is there a standard way to
+        represent ``AF_UNIX`` socket addresses in a URL.
+
+        Whether by *url* or *address*, the way you specify a server location
+        will tend to find its way into lots of 3rd-party code.  We want people
+        to use the generic client :ref:`client-address` argument because that's
+        the only way they can tranparently use link-local IPv6 addresses and
+        ``AF_UNIX`` addresses, both of which you loose using a URL.
+
+    *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` no longer
+        take a *base_headers* argument; at best it was an awkward way to set the
+        "host" (a header that might truly be justified in every request), and at
+        worst, *base_headers* invited another Degu anti-pattern (unconditionally
+        including certain headers in every request); the "Degu way" is to do
+        special authentication or negotiation per-connection rather than
+        per-request (when possible), and to otherwise use request headers
+        sparingly in order to minimize the HTTP protocol overhead
+
+
+Other changes:
+
     *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
         accept generic and easily extensible keyword-only *options*::
 
             Client(address, **options)
             SSLClient(sslctx, address, **options)
 
-        This means that you can no longer supply the *base_headers* as a
-        positonal argument, only as a keyword argument.  See the client
-        :ref:`client-options` for details.
+        *host*, *timeout*, *bodies*, and *Connection* are the currently
+        supported keyword-only *options*, which are exposed via new attributes
+        with the same name:
 
-    *   Likewise, :func:`degu.client.create_client()` and
-        :func:`degu.client.create_sslclient()` now accept the same keyword-only
-        *options*::
+            * :attr:`degu.client.Client.host`
+            * :attr:`degu.client.Client.timeout`
+            * :attr:`degu.client.Client.bodies`
+            * :attr:`degu.client.Client.Connection`
 
-            create_client(url, **options)
-            create_sslclient(sslctx, url, **options)
-
-        Again, this means that you can no longer supply the *base_headers* as a
-        positional argument, only as a keyword argument.
-
-
-Other changes:
+        See the client :ref:`client-options` for details.
 
     *   The RGI *request* argument now includes a ``uri`` item, which will be
         the complete, unparsed URI from the request line, for example::
