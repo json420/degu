@@ -162,6 +162,33 @@ Breaking API changes:
         even just needing another value from the background process would mean
         using a 3-tuple, which would break the API.
 
+    *   Rename *config* to *sslconfig* as used internally in the sslctx
+        build functions:
+
+            * :func:`degu.server.build_server_sslctx()`
+            * :func:`degu.client.build_client_sslctx()`
+
+        This is only a breaking API change if you have unit tests that check the
+        the exact error strings used in TypeError and ValueError these functions
+        raise.  In these messages, you'll now need to use ``sslconfig`` in place
+        of ``config``.
+
+    *   Replace previous :class:`degu.misc.TempPKI` *get_foo_config()* methods
+        with *foo_sslconfig* properties, to be consistent with the above naming
+        convention change, yet still be a bit less verbose::
+
+            pki.get_server_config()
+            pki.server_sslconfig
+
+            pki.get_client_config()
+            pki.client_sslconfig
+
+            pki.get_anonymous_server_config()
+            pki.anonymous_server_sslconfig
+
+            pki.get_anonymous_server_config()
+            pki.anonymous_server_sslconfig
+
 
 
 Other changes:
