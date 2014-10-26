@@ -71,30 +71,6 @@ def echo_app(session, request, bodies):
     return (200, 'OK', headers, body)
 
 
-def address_to_url(scheme, address):
-    """
-    Convert `Server.address` into a URL.
-
-    For example:
-
-    >>> address_to_url('https', ('::1', 54321, 0, 0))
-    'https://[::1]:54321/'
-
-    >>> address_to_url('http', ('127.0.0.1', 54321))
-    'http://127.0.0.1:54321/'
-
-    """
-    assert scheme in ('http', 'https')
-    if isinstance(address, (str, bytes)):
-        return None
-    assert isinstance(address, tuple)
-    assert len(address) in {4, 2}
-    if len(address) == 2:  # IPv4?
-        return '{}://{}:{:d}/'.format(scheme, address[0], address[1])
-    # More better, IPv6:
-    return '{}://[{}]:{}/'.format(scheme, address[0], address[1])
-
-
 class TempPKI(PKI):
     def __init__(self, client_pki=True, bits=1024):
         # To make unit testing faster, we use 1024 bit keys by default, but this
@@ -208,7 +184,11 @@ class TempServer(_TempProcess):
         (self.process, self.address) = _start_server(address, app, **options)
         self.app = app
         self.options = options
-        self.url = address_to_url('http', self.address)
+
+    def __repr__(self):
+        return '{}({!r}, {!r})'.format(
+            self.__class__.__name__, self.address, self.app
+        )
 
 
 class TempSSLServer(_TempProcess):
@@ -219,10 +199,9 @@ class TempSSLServer(_TempProcess):
         )
         self.app = app
         self.options = options
-        self.url = address_to_url('https', self.address)
 
     def __repr__(self):
-        return '{}(<sslconfig>, {!r}, <app>)'.format(
-            self.__class__.__name__, self.address
+        return '{}(<sslconfig>, {!r}, {!r})'.format(
+            self.__class__.__name__, self.address, self.app
         )
 
