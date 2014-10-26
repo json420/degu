@@ -75,7 +75,7 @@ Breaking API changes:
         :class:`degu.client.SSLClient` from a URL, for example::
 
             client = create_client('http://example.com/')
-            sslclient = create_client(sslctx, 'https://example.com/')
+            sslclient = create_sslclient(sslctx, 'https://example.com/')
 
         These functions were in part justified as an easy way to set the "host"
         request header when connecting to a server that always requires it (eg.,
@@ -91,7 +91,7 @@ Breaking API changes:
         will tend to find its way into lots of 3rd-party code.  We want people
         to use the generic client :ref:`client-address` argument because that's
         the only way they can tranparently use link-local IPv6 addresses and
-        ``AF_UNIX`` addresses, both of which you loose using a URL.
+        ``AF_UNIX`` addresses, both of which you loose with a URL.
 
     *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` no longer
         take a *base_headers* argument; at best it was an awkward way to set the
@@ -102,13 +102,46 @@ Breaking API changes:
         per-request (when possible), and to otherwise use request headers
         sparingly in order to minimize the HTTP protocol overhead
 
+    *   :class:`degu.misc.TempServer` now takes the exact same arguments as
+        :class:`degu.server.Server`, no longer uses a *build_func* to create
+        the server :ref:`server-app`::
+
+            TempServer(address, app, **options)
+                Server(address, app, **options)
+
+        Although the *build_func* and *build_args* in the previous API did
+        capture an important pattern for embedding a Degu server in a production
+        application, :class:`degu.misc.TempServer` isn't for production use,
+        should just illustrate the :class:`degu.server.Server` API as clearly as
+        possible.
+
+    *   :class:`degu.misc.TempSSLServer` now takes (with one restiction) the
+        exact same arguments as :class:`degu.server.SSLServer`, no longer uses a
+        *build_func* to create the server :ref:`server-app`.
+
+        The one restriction is that :class:`degu.misc.TempSSLServer` only
+        accepts an *sslconfig* ``dict`` as its first argument, whereas
+        :class:`degu.server.SSLServer` accepts either an *sslconfig* ``dict`` or
+        an *sslctx* (pre-built ``ssl.SSLContext``)::
+
+            TempSSLServer(sslconfig, address, app, **options)
+                SSLServer(sslconfig, address, app, **options)
+                SSLServer(sslctx,    address, app, **options)
+
+        Although the *build_func* and *build_args* in the previous API did
+        capture an important pattern for embedding a Degu server in a production
+        application, :class:`degu.misc.TempSSLServer` isn't for production use,
+        should just illustrate the :class:`degu.server.SSLServer` API as clearly
+        as possible.
+
+
 
 Other changes:
 
     *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
         accept generic and easily extensible keyword-only *options*::
 
-            Client(address, **options)
+                       Client(address, **options)
             SSLClient(sslctx, address, **options)
 
         *host*, *timeout*, *bodies*, and *Connection* are the currently
@@ -121,6 +154,16 @@ Other changes:
             * :attr:`degu.client.Client.Connection`
 
         See the client :ref:`client-options` for details.
+
+
+    *   :class:`degu.server.Server` and :class:`degu.server.SSLServer` now also
+        accepts generic and easily extensible keyword-only *options*::
+
+                       Server(address, app, **options)
+            SSLServer(sslctx, address, app, **options)
+
+        See the server :ref:`server-options` for details.
+
 
     *   The RGI *request* argument now includes a ``uri`` item, which will be
         the complete, unparsed URI from the request line, for example::
@@ -138,14 +181,6 @@ Other changes:
         ``request['uri']`` was added so that RGI validation middleware can check
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
-
-    *   :class:`degu.server.Server` and :class:`degu.server.SSLServer` now also
-        accepts generic and easily extensible keyword-only *options*::
-
-            Server(address, app, **options)
-            SSLServer(sslctx, address, app, **options)
-
-        See the server :ref:`server-options` for details.
 
 
 
