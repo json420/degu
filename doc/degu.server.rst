@@ -28,19 +28,20 @@ And then start the server by calling :meth:`Server.serve_forever()`.
 
 However, note that :meth:`Server.serve_forever()` will block the calling thread
 forever.  When embedding Degu within another application, it's generally best to
-run your server in its own `multiprocessing.Process`_, which you can easily do
-using the :func:`degu.start_server()` helper function, for example:
+run your server in its own `multiprocessing.Process`_,  which you can easily
+do by creating a :class:`degu.EmbeddedServer`:
 
->>> from degu import start_server
+>>> from degu import EmbeddedServer
 >>> def my_build_func():
 ...     return my_app
->>> (process, address) = start_server(('::1', 0, 0, 0), my_build_func)
+...
+>>> server = EmbeddedServer(('::1', 0, 0, 0), my_build_func)
 
-You can create a suitable :class:`degu.client.Client` with the returned
-*address* like this:
+You can create a suitable :class:`degu.client.Client` using the
+:attr:`degu.EmbeddedServer.address`:
 
 >>> from degu.client import Client
->>> client = Client(address)
+>>> client = Client(server.address)
 >>> conn = client.connect()
 >>> response = conn.request('GET', '/', {}, None)
 >>> response.body.read()
@@ -52,8 +53,7 @@ application process, and it also means you can forcibly and instantly kill the
 server process whenever you need (something you can't do with a thread).  For
 example, to kill the server process we just created:
 
->>> process.terminate()
->>> process.join()
+>>> server.terminate()
 
 
 

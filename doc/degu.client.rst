@@ -71,22 +71,19 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
     An HTTP server to which client connections can be made.
 
     The *address* argument specifies the server socket address to which TCP
-    connections will be made.  It can be a 2-tuple for ``AF_INIT`` or
-    ``AF_INET6``, a 4-tuple for ``AF_INET``, or a ``str`` or ``bytes`` instance
-    for ``AF_UNIX``.  See :ref:`client-address` for details.
+    connections will be made.  It can be a 2-tuple, a 4-tuple, a ``str``, or a
+    ``bytes`` instance.  See :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  Currently supported options are *host*, *timeout*,
-    *bodies*, and *Connection*, and their values are exposed via attributes of
-    the same name:
+    configuration defaults.  You can override the *host*, *timeout*, *bodies*,
+    and *Connection*, and their values are exposed via attributes of the same
+    name:
 
         * :attr:`Client.host`
         * :attr:`Client.timeout`
         * :attr:`Client.bodies`
         * :attr:`Client.Connection`
 
-    Each attribute will contain either the override value provide as keyword
-    argument, or the Degu default value if no keyword argument was provided.
     See :ref:`client-options` for details.
 
     A :class:`Client` is stateless and thread-safe.  It specifies "where" the
@@ -108,21 +105,10 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         Keyword-only *options* provided to the constructor.
 
-        This ``dict`` contains any keyword-only *options* provided to the
-        constructor.  For example:
+        For example:
 
-        >>> client = Client(('127.0.0.1', 12345))
-        >>> client.options
-        {}
-        >>> client = Client(('127.0.0.1', 12345), timeout=5)
-        >>> client.options
+        >>> Client(('127.0.0.1', 12345), timeout=5).options
         {'timeout': 5}
-
-        It's largely aimed at making it easy to unit test code that should
-        create a :class:`Client` with specific options.
-
-        Note that modifying this ``dict`` will *not* change the configuration
-        of a :class:`Client`  instance.
 
         See :ref:`client-options` for details.
 
@@ -133,66 +119,38 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         The default is derived from the :ref:`client-address` argument provided
         to the constructor.
 
-        If a ``(host, port)`` 2-tuple, this attribute will default to the *host*
-        portion:
+        If *address* is a ``(host, port)`` 2-tuple, this attribute will default
+        to the *host* portion:
 
-        >>> client = Client(('www.wikipedia.org', 80))
-        >>> client.host
-        'www.wikipedia.org'
-        >>> client = Client(('208.80.154.224', 80))
-        >>> client.host
+        >>> Client(('208.80.154.224', 80)).host
         '208.80.154.224'
-        >>> client = Client(('2620:0:861:ed1a::1', 80))
-        >>> client.host
+
+        If *address* is a ``(host, port, flowinfo, scopeid)`` 4-tuple, this
+        attribute will also default to the *host* portion:
+
+        >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
         '2620:0:861:ed1a::1'
 
-        If a ``(host, port, flowinfo, scopeid)`` 4-tuple, this attribute will
-        also default to the *host* portion:
+        Finally, if *address* is a ``str`` or ``bytes`` instance, this attribute
+        will default to ``None``:
 
-        >>> client = Client(('2620:0:861:ed1a::1', 80, 0, 0))
-        >>> client.host
-        '2620:0:861:ed1a::1'
-        >>> client = Client(('fe80::e8b:fdff:fe75:402c', 80, 0, 3))
-        >>> client.host
-        'fe80::e8b:fdff:fe75:402c'
-
-        Finally, if a ``str`` or ``bytes`` instance, this attribute will default
-        to ``None``, as there is no standard way to derive a "host" from such
-        an address, plus HTTP over AF_UNIX is a scenario where the "host" header
-        tends to be rather meaningless:
-
-        >>> client = Client('/tmp/my.socket')
-        >>> client.host is None
-        True
-        >>> client = Client(b'\x0000022')
-        >>> client.host is None
+        >>> Client('/tmp/my.socket').host is None
         True
 
-        A ``host='example.com'`` keyword argument (for example) can be used to
-        unconditionally override this attribute, no matter what the
-        :ref:`client-address` argument:
+        A *host* keyword option will override the default value of for this
+        attribute, regardless of the *address*:
 
-        >>> client = Client(('2620:0:861:ed1a::1', 80), host='example.com')
-        >>> client.host
+        >>> Client(('208.80.154.224', 80), host='example.com').host
         'example.com'
-        >>> client = Client(('2620:0:861:ed1a::1', 80, 0, 0), host='example.com')
-        >>> client.host
-        'example.com'
-        >>> client = Client('/tmp/my.socket', host='example.com')
-        >>> client.host
+        >>> Client('/tmp/my.socket', host='example.com').host
         'example.com'
 
-        Likewise, a ``host=None`` keyword argument can be used to
-        unconditionally set this attribute to ``None``:
+        Likewise, you can use the *host* keyword option to set this attribute to
+        ``None``, regardless of the *address*:
 
-        >>> client = Client(('2620:0:861:ed1a::1', 80), host=None)
-        >>> client.host is None
+        >>> Client(('2620:0:861:ed1a::1', 80), host=None).host is None
         True
-        >>> client = Client(('2620:0:861:ed1a::1', 80, 0, 0), host=None)
-        >>> client.host is None
-        True
-        >>> client = Client('/tmp/my.socket', host=None)
-        >>> client.host is None
+        >>> Client('/tmp/my.socket', host=None).host is None
         True
 
         :meth:`Client.connect()` will pass :attr:`Client.host` to the
@@ -207,8 +165,8 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         The client socket timeout in seconds, or ``None`` for no timeout.
 
-        The default is ``90`` seconds, or this can be overridden via a *timeout*
-        keyword argument provided to the constructor.
+        The default is ``90`` second, but you can override this using the
+        *timeout* keyword option.
 
         :meth:`Client.create_socket()` sets the socket timeout to
         :attr:`Client.timeout` for all new sockets it creates.
@@ -217,15 +175,15 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         A namedtuple exposing the IO abstraction API.
 
-        The default is :attr:`degu.base.bodies`, or this can be overridden via
-        a *bodies* keyword argument provided to the constructor.
+        The default is :attr:`degu.base.bodies`, but you can override this using
+        the *bodies* keyword option.
 
     .. attribute:: Connection
 
         The Connection class used by :meth:`Client.connect()`.
 
-        The default is :class:`Connection`, or this can be overridden via a
-        *Connection* keyword argument provided to the constructor.
+        The default is :class:`Connection`, but you can override this using
+        the *Connection* keyword option.
 
     .. method:: create_socket()
 
@@ -344,10 +302,6 @@ Also see the server :ref:`server-options`.
 
     The *address* argument, along with any keyword-only *options*, are passed
     unchanged to the :class:`Client` constructor.
-
-    This subclass adds the :attr:`SSLClient.sslctx` attribute, and overrides the
-    :meth:`Client.create_socket()` method with its own
-    :meth:`SSLClient.create_socket()`.
 
     An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
     the server is (the *address*) and "how" to connect to the server (the

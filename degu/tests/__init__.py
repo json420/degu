@@ -79,7 +79,7 @@ def my_build_func(marker):
 class TestFunctions(TestCase):
     def test_start_server(self):
         marker = os.urandom(16)
-        (process, address) = degu.start_server(
+        (process, address) = degu._start_server(
             ('127.0.0.1', 0), my_build_func, marker
         )
         self.assertIsInstance(process, multiprocessing.Process)
@@ -101,7 +101,7 @@ class TestFunctions(TestCase):
     def test_start_sslserver(self):
         pki = TempPKI()
         marker = os.urandom(16)
-        (process, address) = degu.start_sslserver(
+        (process, address) = degu._start_sslserver(
             pki.server_sslconfig, ('127.0.0.1', 0), my_build_func, marker
         )
         self.assertIsInstance(process, multiprocessing.Process)
@@ -119,3 +119,58 @@ class TestFunctions(TestCase):
         conn.close()
         process.terminate()
         process.join()
+
+
+class TestEmbeddedServer(TestCase):
+    def test_init(self):
+        for address in (degu.IPv4_LOOPBACK, degu.IPv6_LOOPBACK):
+            marker = os.urandom(16)
+            server = degu.EmbeddedServer(address, my_build_func, marker)
+            self.assertIsInstance(server.process, multiprocessing.Process)
+            self.assertIsInstance(server.address, tuple)
+            self.assertEqual(len(server.address), len(address))
+            self.assertEqual(server.address[0], address[0])
+            self.assertGreater(server.address[1], 0)
+            self.assertEqual(server.build_func, my_build_func)
+            self.assertEqual(server.build_args, (marker,))
+            self.assertEqual(server.options, {})
+
+            client = Client(server.address)
+            conn = client.connect()
+            response = conn.request('GET', '/', {}, None)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 16})
+            self.assertEqual(response.body.read(), marker)
+            conn.close()
+            server.terminate()
+
+
+class TestEmbeddedSSLServer(TestCase):
+    def test_start_sslserver(self):
+        for address in (degu.IPv4_LOOPBACK, degu.IPv6_LOOPBACK):
+            pki = TempPKI()
+            marker = os.urandom(16)
+            server = degu.EmbeddedSSLServer(
+                pki.server_sslconfig, address, my_build_func, marker
+            )
+            self.assertEqual(server.sslconfig, pki.server_sslconfig)
+            self.assertIsInstance(server.process, multiprocessing.Process)
+            self.assertIsInstance(server.address, tuple)
+            self.assertEqual(len(server.address), len(address))
+            self.assertEqual(server.address[0], address[0])
+            self.assertGreater(server.address[1], 0)
+            self.assertEqual(server.build_func, my_build_func)
+            self.assertEqual(server.build_args, (marker,))
+            self.assertEqual(server.options, {})
+
+            client = SSLClient(pki.client_sslconfig, server.address)
+            conn = client.connect()
+            response = conn.request('GET', '/', {}, None)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 16})
+            self.assertEqual(response.body.read(), marker)
+            conn.close()
+            server.terminate()
+

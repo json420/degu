@@ -82,7 +82,7 @@ Breaking API changes:
         Apache2), but now :attr:`degu.client.Client.host` and the keyword-only
         *host* option provide a much better solution.
 
-        Using a URL to specify a server is really a Degu-anti pattern that we
+        Using a URL to specify a server is really a Degu anti-pattern that we
         don't want to invite, because there's no standard way to encoded the
         IPv6 *flowinfo* and *scopeid* in a URL, nor is there a standard way to
         represent ``AF_UNIX`` socket addresses in a URL.
@@ -101,6 +101,15 @@ Breaking API changes:
         special authentication or negotiation per-connection rather than
         per-request (when possible), and to otherwise use request headers
         sparingly in order to minimize the HTTP protocol overhead
+
+    *   If you create a :class:`degu.client.Client` with a 2-tuple or 4-tuple
+        :ref:`client-address`, :meth:`degu.client.Connection.request()` will now
+        by default include a "host" header in the HTTP request.  This means that
+        the Degu client now works by default with servers that require the
+        "host" header in every request (like Apache2).  However, you can still
+        set the "host" header to ``None`` using the *host* keyword option.
+
+        See :attr:`degu.client.Client.host` for details.
 
     *   :class:`degu.misc.TempServer` now takes the exact same arguments as
         :class:`degu.server.Server`, no longer uses a *build_func* to create
@@ -133,6 +142,25 @@ Breaking API changes:
         application, :class:`degu.misc.TempSSLServer` isn't for production use,
         should just illustrate the :class:`degu.server.SSLServer` API as clearly
         as possible.
+
+    *   In :mod:`degu`, demote ``start_server()`` and ``start_sslserver()``
+        functions to private, internal-use API, replacing them with:
+
+            * :class:`degu.EmbeddedServer`
+            * :class:`degu.EmbeddedSSLServer`
+
+        When garbage collected, instances of these classes will automatically
+        terminate the process, similar to :class:`degu.misc.TempServer` and
+        :class:`degu.misc.TempSSLServer`.
+
+        Not only are these classes easier to use, they also make it much easier
+        to add new functionality in the future without breaking backword
+        compatability.
+
+        The ``(process, address)`` 2-tuple returned by ``start_server()`` and
+        ``start_sslserver()`` was a far too fragile API agreement.  For example,
+        even just needing another value from the background process would mean
+        using a 3-tuple, which would break the API.
 
 
 

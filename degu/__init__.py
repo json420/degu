@@ -68,7 +68,7 @@ def _run_sslserver(q, sslconfig, address, build_func, *build_args, **options):
         raise e
 
 
-def start_server(address, build_func, *build_args, **options):
+def _start_server(address, build_func, *build_args, **options):
     import multiprocessing
     q = multiprocessing.Queue()
     process = multiprocessing.Process(
@@ -86,7 +86,7 @@ def start_server(address, build_func, *build_args, **options):
     return (process, address)
 
 
-def start_sslserver(sslconfig, address, build_func, *build_args, **options):
+def _start_sslserver(sslconfig, address, build_func, *build_args, **options):
     import multiprocessing
     if not isinstance(sslconfig, dict):
         raise TypeError(
@@ -120,17 +120,22 @@ class _EmbeddedProcess:
 
 class EmbeddedServer(_EmbeddedProcess):
     def __init__(self, address, build_func, *build_args, **options):
-        (self.process, self.address) = start_server(
+        (self.process, self.address) = _start_server(
             address, build_func, *build_args, **options
         )
+        self.build_func = build_func
+        self.build_args = build_args
         self.options = options
 
 
 class EmbeddedSSLServer(_EmbeddedProcess):
     def __init__(self, sslconfig, address, build_func, *build_args, **options):
         self.sslconfig = sslconfig
-        (self.process, self.address) = start_sslserver(
+        (self.process, self.address) = _start_sslserver(
             sslconfig, address, build_func, *build_args, **options
         )
+        self.build_func = build_func
+        self.build_args = build_args
+        self.options = options
         self.options = options
 

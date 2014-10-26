@@ -71,13 +71,6 @@ tuples:
     :class:`EmbeddedServer` instance is garbage collected, and can likewise be
     explicitly terminated by calling :meth:`EmbeddedServer.terminate()`.
 
-    This class is aimed at unit testing, illustrative documentation, and
-    experimenting with the Degu API.  However, it's not the recommended way to
-    start an embedded :class:`degu.server.Server` within a production
-    application.
-
-    For the production equivalent, please see :class:`degu.EmbeddedServer`.
-
     .. attribute:: address
 
         The bound server address as returned by `socket.socket.getsockname()`_.
