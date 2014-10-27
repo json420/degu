@@ -643,8 +643,8 @@ Again, consider the `HTTPConnection`_ vs. :class:`Client` constructors::
 
 **Connections**
 
-`HTTPConnection`_ is rather overloaded because its really two types of objects
-(from two different problem domains) entangled into one:
+`HTTPConnection`_ is rather overloaded because it is really *two* types of
+objects (from two different problem domains) entangled into one:
 
     1. A server specification object ("where" the server is and "how" to create
        connections to it)

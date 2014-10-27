@@ -62,14 +62,21 @@ tuples:
 
 .. class:: EmbeddedServer(address, build_func, *build_args, **options)
 
-    Starts a :class:`degu.server.Server` in a `multiprocessing.Process`_.
+    Starts a :class:`degu.server.Server` in a new `multiprocessing.Process`_.
 
     The *address* argument, and any keyword-only *options*, are passed unchanged
     to the :class:`degu.server.Server` created in the new process.
 
-    This background process will be automatically terminated when the
-    :class:`EmbeddedServer` instance is garbage collected, and can likewise be
-    explicitly terminated by calling :meth:`EmbeddedServer.terminate()`.
+    Your *build_func* will be called with *build_args* in the new process to
+    create your application, something like this::
+
+        from degu.server import Server
+        app = build_func(*build_args)
+        server = Server(address, app, **options)
+
+    :meth:`EmbeddedServer.terminate()` will be automatically called when an
+    instance is garbage collected.
+
 
     .. attribute:: address
 
@@ -81,28 +88,25 @@ tuples:
         For details, see the :attr:`degu.server.Server.address` attribute, and
         the server :ref:`server-address` argument.
 
-        :class:`EmbeddedServer` uses a `multiprocessing.Queue`_ to pass the bound
-        server address from the newly created background process up to your
-        controlling process.
+        :class:`EmbeddedServer` uses a `multiprocessing.Queue`_ to pass the
+        bound server address from the newly created background process up to
+        your controlling process.
 
-    .. attribute:: app
 
-        The *app* argument provided to the constructor.
+    .. attribute:: build_func
 
-        For details, see the the :attr:`degu.server.Server.app` attribute,
-        and the server :ref:`server-app` argument.
+        The *build_func* argument provided to the constructor.
+
+
+    .. attribute:: build_args
+
+        A ``tuple`` containing any *build_args* passed to the constructor.
+
 
     .. attribute:: options
 
-        A ``dict`` containing the *options* passed to the constructor.
+        A ``dict`` containing any *options* passed to the constructor.
 
-        Note that unlike :attr:`degu.server.Server.options`, this attribute will
-        only contain the keyword-only options specifically provided to the
-        :class:`EmbeddedServer` constructor, and will not include the default values
-        for any other server configuration options.
-
-        For details, see the :attr:`degu.server.Server.options` attribute, and
-        the server :ref:`server-options` argument.
 
     .. attribute:: process
 
@@ -130,31 +134,28 @@ tuples:
 
 .. class:: EmbeddedSSLServer(sslconfig, address, build_func, *build_args, **options)
 
-    Starts a :class:`degu.server.SSLServer` in a `multiprocessing.Process`_.
+    Starts a :class:`degu.server.SSLServer` in a new `multiprocessing.Process`_.
 
-    The *sslconfig*, *address*, and *app* arguments, plus any keyword-only
-    *options*, are all passed unchanged to the :class:`degu.server.SSLServer`
-    created in the new process.
+    The *sslconfig* and *address* arguments, plus any keyword-only *options*,
+    are all passed unchanged to the :class:`degu.server.SSLServer` created in
+    the new process.
 
-    Note that unlike :class:`degu.server.SSLServer`, the first contructor
-    argument must be a ``dict`` containing an *sslconfig* as understood by
-    :func:`degu.server.build_server_sslctx()`, and cannot be a pre-built
-    *sslctx* (an `ssl.SSLContext`_ instance).
+    Your *build_func* will be called with *build_args* in the new process to
+    create your application, something like this::
+
+        from degu.server import SSLServer
+        app = build_func(*build_args)
+        server = SSLServer(sslconfig, address, app, **options)
 
     Although not a subclass, this class includes all the same attributes and
     methods as the :class:`EmbeddedServer` class, plus adds the
     :attr:`EmbeddedSSLServer.sslconfig` attribute.
 
-    This class is aimed at unit testing, illustrative documentation, and
-    experimenting with the Degu API.  However, it's not the recommended way to
-    start an embedded :class:`degu.server.SSLServer` within a production
-    application.
-
-    For the production equivalent, please see :class:`degu.EmbeddedSSLServer`.
 
     .. attribute:: sslconfig
 
-        The exact *sslconfig* dict passed to the constructor.
+        The *sslconfig* argument provided to the constructor.
+
 
 
 
