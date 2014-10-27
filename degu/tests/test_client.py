@@ -699,7 +699,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
@@ -730,7 +730,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 17)
@@ -743,7 +743,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
@@ -758,7 +758,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'Connection': MyConnection})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
@@ -901,9 +901,11 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
+                self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
+                self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.Connection, client.Connection)
@@ -927,14 +929,35 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.Connection, client.Connection)
 
+            # Test overriding ssl_host:
+            my_ssl_host = '.'.join([random_id(10) for i in range(4)])
+            inst = client.SSLClient(sslctx, address, ssl_host=my_ssl_host)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'ssl_host': my_ssl_host})
+            self.assertIs(inst.ssl_host, my_ssl_host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
+            # Test overriding host with None:
+            inst = client.SSLClient(sslctx, address, ssl_host=None)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'ssl_host': None})
+            self.assertIsNone(inst.ssl_host)
+            self.assertEqual(inst.timeout, 90)
+            self.assertIs(inst.bodies, base.bodies)
+            self.assertIs(inst.Connection, client.Connection)
+
             # Test overriding the timeout option:
             inst = client.SSLClient(sslctx, address, timeout=17)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
+                self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
+                self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 17)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.Connection, client.Connection)
@@ -945,9 +968,11 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
+                self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
+                self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, mybodies)
             self.assertIs(inst.Connection, client.Connection)
@@ -960,9 +985,11 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'Connection': MyConnection})
             if isinstance(address, tuple):
-                self.assertIs(inst.host, address[0])
+                self.assertEqual(inst.host, client.build_host(*address))
+                self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
+                self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.Connection, MyConnection)

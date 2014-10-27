@@ -327,6 +327,24 @@ class Connection:
             raise
 
 
+def build_host(host, port, *extra):
+    """
+    Build value for HTTP "host" header.
+
+    For example:
+
+    >>> build_host('208.80.154.224', 80)
+    '208.80.154.224:80'
+    >>> build_host('2620:0:861:ed1a::1', 80, 0, 0)
+    '[2620:0:861:ed1a::1]:80'
+
+    """
+
+    if ':' in host:
+        return '[{}]:{}'.format(host, port)
+    return '{}:{}'.format(host, port)
+
+
 class Client:
     """
     Represents an HTTP server to which Degu can make client connections.
@@ -344,7 +362,7 @@ class Client:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            host = address[0]
+            host = build_host(*address)
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
             host = None
@@ -394,6 +412,8 @@ class SSLClient(Client):
     def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
         super().__init__(address, **options)
+        ssl_host = (address[0] if isinstance(address, tuple) else None)
+        self.ssl_host = options.get('ssl_host', ssl_host)
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -402,5 +422,5 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        return self.sslctx.wrap_socket(sock, server_hostname=self.host)
+        return self.sslctx.wrap_socket(sock, server_hostname=self.ssl_host)
 

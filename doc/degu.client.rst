@@ -116,25 +116,25 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
         Value of the HTTP "host" header to be included in each request.
 
-        The default is derived from the :ref:`client-address` argument provided
-        to the constructor.
+        If the :ref:`client-address` argument provided to the constructor was
+        a 2-tuple or 4-tuple, the default value will be constructed from the
+        *address*:
 
-        If *address* is a ``(host, port)`` 2-tuple, this attribute will default
-        to the *host* portion:
-
+        >>> Client(('www.wikipedia.org', 80)).host
+        'www.wikipedia.org:80'
         >>> Client(('208.80.154.224', 80)).host
-        '208.80.154.224'
-
-        If *address* is a ``(host, port, flowinfo, scopeid)`` 4-tuple, this
-        attribute will also default to the *host* portion:
-
+        '208.80.154.224:80'
+        >>> Client(('2620:0:861:ed1a::1', 80)).host
+        '[2620:0:861:ed1a::1]:80'
         >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
-        '2620:0:861:ed1a::1'
+        '[2620:0:861:ed1a::1]:80'
 
-        Finally, if *address* is a ``str`` or ``bytes`` instance, this attribute
+        If the *address* is a ``str`` or ``bytes`` instance, this attribute
         will default to ``None``:
 
         >>> Client('/tmp/my.socket').host is None
+        True
+        >>> Client(b'\x0000022').host is None
         True
 
         A *host* keyword option will override the default value of for this
@@ -156,10 +156,6 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         :meth:`Client.connect()` will pass :attr:`Client.host` to the
         :class:`Connection`, and when not ``None``, :meth:`Connection.request()`
         will use this value for the "host" request header.
-
-        :meth:`SSLClient.create_socket()` uses :attr:`Client.host` as the
-        *server_hostname* provided to `ssl.SSLContext.wrap_socket()`_, which
-        will be used for hostname checking, and for SNI, as appropriate.
 
     .. attribute:: timeout
 
