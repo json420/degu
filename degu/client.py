@@ -25,6 +25,8 @@ HTTP client.
 
 import socket
 from collections import namedtuple
+import io
+import os
 from os import path
 
 from .base import bodies as default_bodies
@@ -315,6 +317,16 @@ class Connection:
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
+
+            # FIXME: Here for temporary Microfiber compatability, remove soon!
+            if isinstance(body, io.BufferedReader):
+                if 'content-length' in headers:
+                    content_length = headers['content-length']
+                else:
+                    content_length = os.stat(body.fileno()).st_size
+                body = Body(body, content_length)
+            # /FIXME
+
             validate_request(method, uri, headers, body)
             if self.host:
                 headers['host'] = self.host
