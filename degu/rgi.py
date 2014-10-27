@@ -497,15 +497,9 @@ class Validator:
         return '{}({!r})'.format(self.__class__.__name__, self.app)
 
     def __call__(self, session, request, bodies):
-        orig_session = session.copy()
-        orig_request = request.copy()
-        for key in ('script', 'path', 'headers'):
-            orig_request[key] = request[key].copy()
         _validate_session(session)
         _validate_request(bodies, request)
-        assert session == orig_session
-        assert request == orig_request
-        request_body = orig_request['body']
+        request_body = request['body']
         response = self.app(session, request, bodies)
         if request_body is not None and request_body.closed is not True:
             # request body was not fully consumed:
@@ -514,13 +508,11 @@ class Validator:
                     "request['body'].closed", request_body.closed
                 )
             )
-        _validate_response(bodies, orig_request, response)
+        _validate_response(bodies, request, response)
         return response
 
     def on_connect(self, session, sock):
-        orig_session = session.copy()
         _validate_session(session)
-        assert session == orig_session
         if session['requests'] != 0:
             raise ValueError(
                 '{} must be 0 when app.on_connect() is called; got {!r}'.format(
@@ -529,7 +521,7 @@ class Validator:
             )
         if self._on_connect is None:
             return True
-        allow = self._on_connect(orig_session, sock)
+        allow = self._on_connect(session, sock)
         if not isinstance(allow, bool):
             raise TypeError(
                 'app.on_connect() must return a {!r}; got a {!r}: {!r}'.format(

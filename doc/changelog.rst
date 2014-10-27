@@ -10,7 +10,7 @@ This *may* end up being the API stable Degu 1.0 release ``:D``
 
 Breaking API changes:
 
-    *   Change order of RGI ``app.on_connect()`` arguments from::
+    *   Change order of the RGI ``app.on_connect()`` arguments from::
 
             app.on_connect(sock, session)
 
@@ -19,8 +19,16 @@ Breaking API changes:
             app.on_connect(session, sock)
 
         Especially when you look at the overall API structurally, this change
-        clearly makes sense.  See the new ``Degu-API.svg`` diagram in the Degu
-        source tree for details.
+        makes it a bit easier to understand that the same *session* argument
+        passed to your TCP connection handler is likewise passed to your HTTP
+        request handler::
+
+            app.on_connect(session, sock)
+
+                       app(session, request, bodies)
+
+        See the new ``Degu-API.svg`` diagram in the Degu source tree for a good
+        structural view of the API.
 
     *   :meth:`degu.client.Connection.request()` now requires the *headers* and
         *body* arguments always to be provided; ie., the method signature has
@@ -61,28 +69,156 @@ Breaking API changes:
         true.  So we'll let this experiment run for a while, and then
         reevaluate.
 
-    *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
-        accept generic and easily extensible keyword-only *options*::
+    *   Drop the ``create_client()`` and ``create_sslclient()`` functions from
+        the :mod:`degu.client` module; these convenience functions allowed you
+        to create a :class:`degu.client.Client` or
+        :class:`degu.client.SSLClient` from a URL, for example::
 
-            Client(address, **options)
-            SSLClient(sslctx, address, **options)
+            client = create_client('http://example.com/')
+            sslclient = create_sslclient(sslctx, 'https://example.com/')
 
-        This means that you can no longer supply the *base_headers* as a
-        positonal argument, only as a keyword argument.  See the client
-        :ref:`client-options` for details.
+        These functions were in part justified as an easy way to set the "host"
+        request header when connecting to a server that always requires it (eg.,
+        Apache2), but now :attr:`degu.client.Client.host` and the keyword-only
+        *host* option provide a much better solution.
 
-    *   Likewise, :func:`degu.client.create_client()` and
-        :func:`degu.client.create_sslclient()` now accept the same keyword-only
-        *options*::
+        Using a URL to specify a server is really a Degu anti-pattern that we
+        don't want to invite, because there's no standard way to encoded the
+        IPv6 *flowinfo* and *scopeid* in a URL, nor is there a standard way to
+        represent ``AF_UNIX`` socket addresses in a URL.
 
-            create_client(url, **options)
-            create_sslclient(sslctx, url, **options)
+        Whether by *url* or *address*, the way you specify a server location
+        will tend to find its way into lots of 3rd-party code.  We want people
+        to use the generic client :ref:`client-address` argument because that's
+        the only way they can tranparently use link-local IPv6 addresses and
+        ``AF_UNIX`` addresses, both of which you loose with a URL.
 
-        Again, this means that you can no longer supply the *base_headers* as a
-        positional argument, only as a keyword argument.
+    *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` no longer
+        take a *base_headers* argument; at best it was an awkward way to set the
+        "host" (a header that might truly be justified in every request), and at
+        worst, *base_headers* invited another Degu anti-pattern (unconditionally
+        including certain headers in every request); the "Degu way" is to do
+        special authentication or negotiation per-connection rather than
+        per-request (when possible), and to otherwise use request headers
+        sparingly in order to minimize the HTTP protocol overhead
+
+    *   If you create a :class:`degu.client.Client` with a 2-tuple or 4-tuple
+        :ref:`client-address`, :meth:`degu.client.Connection.request()` will now
+        by default include a "host" header in the HTTP request.  This means that
+        the Degu client now works by default with servers that require the
+        "host" header in every request (like Apache2).  However, you can still
+        set the "host" header to ``None`` using the *host* keyword option.
+
+        See :attr:`degu.client.Client.host` for details.
+
+    *   :class:`degu.misc.TempServer` now takes the exact same arguments as
+        :class:`degu.server.Server`, no longer uses a *build_func* to create
+        the server :ref:`server-app`::
+
+            TempServer(address, app, **options)
+                Server(address, app, **options)
+
+        Although the *build_func* and *build_args* in the previous API did
+        capture an important pattern for embedding a Degu server in a production
+        application, :class:`degu.misc.TempServer` isn't for production use,
+        should just illustrate the :class:`degu.server.Server` API as clearly as
+        possible.
+
+    *   :class:`degu.misc.TempSSLServer` now takes (with one restiction) the
+        exact same arguments as :class:`degu.server.SSLServer`, no longer uses a
+        *build_func* to create the server :ref:`server-app`.
+
+        The one restriction is that :class:`degu.misc.TempSSLServer` only
+        accepts an *sslconfig* ``dict`` as its first argument, whereas
+        :class:`degu.server.SSLServer` accepts either an *sslconfig* ``dict`` or
+        an *sslctx* (pre-built ``ssl.SSLContext``)::
+
+            TempSSLServer(sslconfig, address, app, **options)
+                SSLServer(sslconfig, address, app, **options)
+                SSLServer(sslctx,    address, app, **options)
+
+        Although the *build_func* and *build_args* in the previous API did
+        capture an important pattern for embedding a Degu server in a production
+        application, :class:`degu.misc.TempSSLServer` isn't for production use,
+        should just illustrate the :class:`degu.server.SSLServer` API as clearly
+        as possible.
+
+    *   In :mod:`degu`, demote ``start_server()`` and ``start_sslserver()``
+        functions to private, internal-use API, replacing them with:
+
+            * :class:`degu.EmbeddedServer`
+            * :class:`degu.EmbeddedSSLServer`
+
+        When garbage collected, instances of these classes will automatically
+        terminate the process, similar to :class:`degu.misc.TempServer` and
+        :class:`degu.misc.TempSSLServer`.
+
+        Not only are these classes easier to use, they also make it much easier
+        to add new functionality in the future without breaking backword
+        compatability.
+
+        The ``(process, address)`` 2-tuple returned by ``start_server()`` and
+        ``start_sslserver()`` was a far too fragile API agreement.  For example,
+        even just needing another value from the background process would mean
+        using a 3-tuple, which would break the API.
+
+    *   Rename *config* to *sslconfig* as used internally in the sslctx
+        build functions:
+
+            * :func:`degu.server.build_server_sslctx()`
+            * :func:`degu.client.build_client_sslctx()`
+
+        This is only a breaking API change if you have unit tests that check the
+        the exact error strings used in TypeError and ValueError these functions
+        raise.  In these messages, you'll now need to use ``sslconfig`` in place
+        of ``config``.
+
+    *   Replace previous :class:`degu.misc.TempPKI` *get_foo_config()* methods
+        with *foo_sslconfig* properties, to be consistent with the above naming
+        convention change, yet still be a bit less verbose::
+
+            pki.get_server_config()
+            pki.server_sslconfig
+
+            pki.get_client_config()
+            pki.client_sslconfig
+
+            pki.get_anonymous_server_config()
+            pki.anonymous_server_sslconfig
+
+            pki.get_anonymous_server_config()
+            pki.anonymous_server_sslconfig
+
 
 
 Other changes:
+
+    *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
+        accept generic and easily extensible keyword-only *options*::
+
+                       Client(address, **options)
+            SSLClient(sslctx, address, **options)
+
+        *host*, *timeout*, *bodies*, and *Connection* are the currently
+        supported keyword-only *options*, which are exposed via new attributes
+        with the same name:
+
+            * :attr:`degu.client.Client.host`
+            * :attr:`degu.client.Client.timeout`
+            * :attr:`degu.client.Client.bodies`
+            * :attr:`degu.client.Client.Connection`
+
+        See the client :ref:`client-options` for details.
+
+
+    *   :class:`degu.server.Server` and :class:`degu.server.SSLServer` now also
+        accepts generic and easily extensible keyword-only *options*::
+
+                       Server(address, app, **options)
+            SSLServer(sslctx, address, app, **options)
+
+        See the server :ref:`server-options` for details.
+
 
     *   The RGI *request* argument now includes a ``uri`` item, which will be
         the complete, unparsed URI from the request line, for example::
@@ -100,14 +236,6 @@ Other changes:
         ``request['uri']`` was added so that RGI validation middleware can check
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
-
-    *   :class:`degu.server.Server` and :class:`degu.server.SSLServer` now also
-        accepts generic and easily extensible keyword-only *options*::
-
-            Server(address, app, **options)
-            SSLServer(sslctx, address, app, **options)
-
-        See the server :ref:`server-options` for details.
 
 
 

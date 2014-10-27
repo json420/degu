@@ -28,12 +28,10 @@ from collections import namedtuple
 import io
 import os
 from os import path
-from urllib.parse import urlparse, ParseResult
 
-
+from .base import bodies as default_bodies
 from .base import (
     TYPE_ERROR,
-    default_bodies,
     Body,
     BodyIter,
     ChunkedBody,
@@ -70,52 +68,52 @@ class UnconsumedResponseError(Exception):
         )
 
 
-def build_client_sslctx(config):
+def build_client_sslctx(sslconfig):
     """
     Build an ``ssl.SSLContext`` appropriately configured for client use.
 
     For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'check_hostname': False,
     ...     'ca_file': '/my/server.ca',
     ...     'cert_file': '/my/client.cert',
     ...     'key_file': '/my/client.key',
     ... }
-    >>> sslctx = build_client_sslctx(config)  #doctest: +SKIP
+    >>> sslctx = build_client_sslctx(sslconfig)  #doctest: +SKIP
 
     """
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
-    if not isinstance(config, dict):
+    if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('config', dict, type(config), config)
+            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # In typical Degu P2P usage, hostname checking is meaningless because we
     # wont be trusting centralized certificate authorities, and will typically
     # only connect to servers via their IP address; however, it's still prudent
     # to make *check_hostname* default to True:
-    check_hostname = config.get('check_hostname', True)
+    check_hostname = sslconfig.get('check_hostname', True)
     if not isinstance(check_hostname, bool):
         raise TypeError(TYPE_ERROR.format(
-            "config['check_hostname']", bool, type(check_hostname), check_hostname
+            "sslconfig['check_hostname']", bool, type(check_hostname), check_hostname
         ))
 
     # Don't allow 'key_file' to be provided without the 'cert_file':
-    if 'key_file' in config and 'cert_file' not in config:
+    if 'key_file' in sslconfig and 'cert_file' not in sslconfig:
         raise ValueError(
-            "config['key_file'] provided without config['cert_file']"
+            "sslconfig['key_file'] provided without sslconfig['cert_file']"
         )
 
     # For safety and clarity, force all paths to be absolute, normalized paths:
     for key in ('ca_file', 'ca_path', 'cert_file', 'key_file'):
-        if key in config:
-            value = config[key]
+        if key in sslconfig:
+            value = sslconfig[key]
             if value != path.abspath(value):
                 raise ValueError(
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
                     )
                 )
@@ -124,10 +122,10 @@ def build_client_sslctx(config):
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
     sslctx.options |= ssl.OP_NO_COMPRESSION
-    if 'ca_file' in config or 'ca_path' in config:
+    if 'ca_file' in sslconfig or 'ca_path' in sslconfig:
         sslctx.load_verify_locations(
-            cafile=config.get('ca_file'),
-            capath=config.get('ca_path'),
+            cafile=sslconfig.get('ca_file'),
+            capath=sslconfig.get('ca_path'),
         )
     else:
         if check_hostname is not True:
@@ -135,9 +133,9 @@ def build_client_sslctx(config):
                 'check_hostname must be True when using default verify paths'
             )
         sslctx.set_default_verify_paths()
-    if 'cert_file' in config:
-        sslctx.load_cert_chain(config['cert_file'],
-            keyfile=config.get('key_file')
+    if 'cert_file' in sslconfig:
+        sslctx.load_cert_chain(sslconfig['cert_file'],
+            keyfile=sslconfig.get('key_file')
         )
     sslctx.check_hostname = check_hostname
     return sslctx
@@ -146,6 +144,9 @@ def build_client_sslctx(config):
 def validate_client_sslctx(sslctx):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
+
+    if isinstance(sslctx, dict):
+        sslctx = build_client_sslctx(sslctx)
 
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
@@ -277,10 +278,10 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, base_headers, bodies):
-        assert base_headers is None or isinstance(base_headers, dict)
+    def __init__(self, sock, host, bodies):
+        assert host is None or isinstance(host, str)
         self.sock = sock
-        self.base_headers = base_headers
+        self.host = host
         self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Body or ChunkedBody or None
@@ -316,15 +317,19 @@ class Connection:
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
+
+            # FIXME: Here for temporary Microfiber compatability, remove soon!
             if isinstance(body, io.BufferedReader):
                 if 'content-length' in headers:
                     content_length = headers['content-length']
                 else:
                     content_length = os.stat(body.fileno()).st_size
                 body = Body(body, content_length)
+            # /FIXME
+
             validate_request(method, uri, headers, body)
-            if self.base_headers:
-                headers.update(self.base_headers)
+            if self.host:
+                headers['host'] = self.host
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -334,63 +339,22 @@ class Connection:
             raise
 
 
-def build_default_client_options():
-    return {
-        'base_headers': None,
-        'bodies': default_bodies,
-        'timeout': 90,
-        'Connection': Connection,
-    }
+def build_host(host, port, *extra):
+    """
+    Build value for HTTP "host" header.
 
+    For example:
 
-def validate_client_options(**options):
-    result = build_default_client_options()
-    result.update(options)
+    >>> build_host('208.80.154.224', 80)
+    '208.80.154.224:80'
+    >>> build_host('2620:0:861:ed1a::1', 80, 0, 0)
+    '[2620:0:861:ed1a::1]:80'
 
-    # base_headers:
-    base_headers = result['base_headers']
-    if base_headers is not None:
-        if not isinstance(base_headers, dict):
-            raise TypeError(TYPE_ERROR.format(
-                'base_headers', dict, type(base_headers), base_headers
-            ))
-        for key in base_headers:
-            assert isinstance(key, str)
-            if not key.islower():
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        for key in ('content-length', 'transfer-encoding'):
-            if key in base_headers:
-                raise ValueError('base_headers cannot include {!r}'.format(key))
+    """
 
-    # bodies:
-    bodies = result['bodies']
-    for name in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter'):
-        if not hasattr(bodies, name):
-            raise TypeError('bodies is missing {!r} attribute'.format(name))
-        attr = getattr(bodies, name)
-        if not callable(attr):
-            raise TypeError('bodies.{} is not callable: {!r}'.format(name, attr))
-
-    # timeout:
-    timeout = result['timeout']
-    if timeout is not None:
-        if not isinstance(timeout, (int, float)):
-            raise TypeError(
-                TYPE_ERROR.format('timeout', (int, float), type(timeout), timeout)
-            )
-        if not (timeout > 0):
-            raise ValueError(
-                'timeout must be > 0; got {!r}'.format(timeout)
-            )
-
-    # Connection:
-    Connection = result['Connection']
-    if not callable(Connection):
-        raise TypeError(
-            'Connection is not callable: {!r}'.format(Connection)
-        )
-
-    return result
+    if ':' in host:
+        return '[{}]:{}'.format(host, port)
+    return '{}:{}'.format(host, port)
 
 
 class Client:
@@ -410,10 +374,10 @@ class Client:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            self.server_hostname = address[0]
+            host = build_host(*address)
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
-            self.server_hostname = None
+            host = None
             if isinstance(address, str) and path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
@@ -423,30 +387,31 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         self.address = address
-        options = validate_client_options(**options)
-        self._Connection = options['Connection']
-        self._base_headers = options['base_headers']
-        self._bodies = options['bodies']
-        self._options = options
+        self.options = options
+        self.host = options.get('host', host)
+        self.timeout = options.get('timeout', 90)
+        self.bodies = options.get('bodies', default_bodies)
+        self.Connection = options.get('Connection', Connection)
+        assert self.host is None or isinstance(self.host, str)
+        assert self.timeout is None or isinstance(self.timeout, (int, float))
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
-    @property
-    def options(self):
-        return self._options.copy()
-
     def create_socket(self):
         if self.family is None:
-            return socket.create_connection(self.address)
+            return socket.create_connection(self.address, timeout=self.timeout)
         sock = socket.socket(self.family, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
         sock.connect(self.address)
         return sock
 
-    def connect(self):
-        return self._Connection(self.create_socket(),
-            self._base_headers, self._bodies
-        )
+    def connect(self, Connection=None, bodies=None):
+        if Connection is None:
+            Connection = self.Connection
+        if bodies is None:
+            bodies = self.bodies
+        return Connection(self.create_socket(), self.host, bodies)
 
 
 class SSLClient(Client):
@@ -459,6 +424,8 @@ class SSLClient(Client):
     def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
         super().__init__(address, **options)
+        ssl_host = (address[0] if isinstance(address, tuple) else None)
+        self.ssl_host = options.get('ssl_host', ssl_host)
 
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
@@ -467,45 +434,5 @@ class SSLClient(Client):
 
     def create_socket(self):
         sock = super().create_socket()
-        return self.sslctx.wrap_socket(sock,
-            server_hostname=self.server_hostname,
-        )
-
-
-def create_client(url, **options):
-    """
-    Convenience function to create a `Client` from a URL.
-
-    For example:
-
-    >>> create_client('http://www.example.com/')
-    Client(('www.example.com', 80))
-
-    """
-    t = (url if isinstance(url, ParseResult) else urlparse(url))
-    if t.scheme != 'http':
-        raise ValueError("scheme must be 'http', got {!r}".format(t.scheme))
-    port = (80 if t.port is None else t.port)
-    base_headers = options.get('base_headers')
-    if base_headers is None:
-        base_headers = {}
-        options['base_headers'] = base_headers
-    base_headers['host'] = t.netloc
-    return Client((t.hostname, port), **options)
-
-
-def create_sslclient(sslctx, url, **options):
-    """
-    Convenience function to create an `SSLClient` from a URL.
-    """
-    t = (url if isinstance(url, ParseResult) else urlparse(url))
-    if t.scheme != 'https':
-        raise ValueError("scheme must be 'https', got {!r}".format(t.scheme))
-    port = (443 if t.port is None else t.port)
-    base_headers = options.get('base_headers')
-    if base_headers is None:
-        base_headers = {}
-        options['base_headers'] = base_headers
-    base_headers['host'] = t.netloc
-    return SSLClient(sslctx, (t.hostname, port), **options)
+        return self.sslctx.wrap_socket(sock, server_hostname=self.ssl_host)
 

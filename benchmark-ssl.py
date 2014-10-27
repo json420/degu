@@ -41,7 +41,7 @@ import math
 
 from degu import IPv6_LOOPBACK
 from degu.misc import TempPKI, TempSSLServer
-from degu.client import build_client_sslctx, SSLClient
+from degu.client import SSLClient
 
 
 logging.basicConfig(
@@ -101,9 +101,8 @@ def file_app(session, request, bodies):
 
 
 pki = TempPKI()
-server = TempSSLServer(pki.get_server_config(), IPv6_LOOPBACK, None, file_app)
-sslctx = build_client_sslctx(pki.get_client_config())
-client = SSLClient(sslctx, server.address)
+server = TempSSLServer(pki.server_sslconfig, IPv6_LOOPBACK, file_app)
+client = SSLClient(pki.client_sslconfig, server.address)
 
 
 count = 5
@@ -112,7 +111,7 @@ for i in range(5):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
-        r = conn.request('GET', '/')
+        r = conn.request('GET', '/', {}, None)
         cipher = conn.sock.cipher()
         for block in r.body:
             pass

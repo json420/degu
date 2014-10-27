@@ -41,7 +41,7 @@ from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import TYPE_ERROR
-from degu import util, rgi, base, server
+from degu import rgi, base, server
 
 
 random = SystemRandom()
@@ -61,11 +61,18 @@ class FuzzTestFunctions(FuzzTestCase):
 
 class TestFunctions(TestCase):
     def test_build_server_sslctx(self):
-        # Bad config type:
+        # Bad sslconfig type:
         with self.assertRaises(TypeError) as cm:
             server.build_server_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('config', dict, str, 'bad')
+            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
+        )
+
+        # The remaining test both build_server_sslctx() directly, and the
+        # pass-through from validate_server_sslctx():
+        server_sslctx_funcs = (
+            server.build_server_sslctx,
+            server.validate_server_sslctx,
         )
 
         # Non absulute, non normalized paths:
@@ -76,88 +83,99 @@ class TestFunctions(TestCase):
             'ca_path': '/my/client.ca.dir',
         }
         for key in good.keys():
-            # Relative path:
-            bad = good.copy()
-            value = 'relative/path'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                server.build_server_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
-            # Non-normalized path with directory traversal:
-            bad = good.copy()
-            value = '/my/../secret/path'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                server.build_server_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
-            # Non-normalized path with trailing slash:
-            bad = good.copy()
-            value = '/sorry/very/strict/'
-            bad[key] = value
-            with self.assertRaises(ValueError) as cm:
-                server.build_server_sslctx(bad)
-            self.assertEqual(str(cm.exception),
-                'config[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
-            )
+            for func in server_sslctx_funcs:
+                # Relative path:
+                bad = good.copy()
+                value = 'relative/path'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
+
+                # Non-normalized path with directory traversal:
+                bad = good.copy()
+                value = '/my/../secret/path'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
+
+                # Non-normalized path with trailing slash:
+                bad = good.copy()
+                value = '/sorry/very/strict/'
+                bad[key] = value
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception),
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(key, value)
+                )
 
 
         pki = TempPKI(client_pki=True)
 
-        # Typical config with client authentication:
-        config = pki.get_server_config()
-        self.assertEqual(set(config), {'cert_file', 'key_file', 'ca_file'})
-        sslctx = server.build_server_sslctx(config)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        # Typical sslconfig with client authentication:
+        self.assertEqual(set(pki.server_sslconfig),
+            {'cert_file', 'key_file', 'ca_file'}
+        )
+        for func in server_sslctx_funcs:
+            sslctx = func(pki.server_sslconfig)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
+            self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+            self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # New in Degu 0.3: should not be able to accept connections from
         # unauthenticated clients by merely omitting ca_file/ca_path:
-        del config['ca_file']
-        with self.assertRaises(ValueError) as cm:
-            server.build_server_sslctx(config)
-        self.assertEqual(str(cm.exception),
-            'must include ca_file or ca_path (or allow_unauthenticated_clients)'
-        )
+        sslconfig = pki.server_sslconfig
+        del sslconfig['ca_file']
+        for func in server_sslctx_funcs:
+            with self.assertRaises(ValueError) as cm:
+                func(sslconfig)
+            self.assertEqual(str(cm.exception),
+                'must include ca_file or ca_path (or allow_unauthenticated_clients)'
+            )
 
         # Typical config allowing anonymous clients:
-        config['allow_unauthenticated_clients'] = True
-        sslctx = server.build_server_sslctx(config)
-        self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
-        self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
-        self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-        self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-        self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
+        sslconfig['allow_unauthenticated_clients'] = True
+        for func in server_sslctx_funcs:
+            sslctx = func(sslconfig)
+            self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
+            self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
+            self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
+            self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
+            self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
-        config['ca_file'] = '/my/client.ca'
-        with self.assertRaises(ValueError) as cm:
-            server.build_server_sslctx(config)
-        self.assertEqual(str(cm.exception),
-            'cannot include ca_file/ca_path allow_unauthenticated_clients'
-        )
-        config['ca_path'] = config.pop('ca_file')
-        with self.assertRaises(ValueError) as cm:
-            server.build_server_sslctx(config)
-        self.assertEqual(str(cm.exception),
-            'cannot include ca_file/ca_path allow_unauthenticated_clients'
-        )
+        sslconfig['ca_file'] = '/my/client.ca'
+        for func in server_sslctx_funcs:
+            with self.assertRaises(ValueError) as cm:
+                func(sslconfig)
+            self.assertEqual(str(cm.exception),
+                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+            )
+        sslconfig['ca_path'] = sslconfig.pop('ca_file')
+        for func in server_sslctx_funcs:
+            with self.assertRaises(ValueError) as cm:
+                func(sslconfig)
+            self.assertEqual(str(cm.exception),
+                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+            )
 
         # True is only allowed value for allow_unauthenticated_clients:
-        config.pop('ca_path')
+        sslconfig.pop('ca_path')
         for bad in (1, 0, False, None):
-            config['allow_unauthenticated_clients'] = bad
-            with self.assertRaises(ValueError) as cm:
-                server.build_server_sslctx(config)
-            self.assertEqual(str(cm.exception),
-                'True is only allowed value for allow_unauthenticated_clients'
-            )
+            sslconfig['allow_unauthenticated_clients'] = bad
+            for func in server_sslctx_funcs:
+                with self.assertRaises(ValueError) as cm:
+                    func(sslconfig)
+                self.assertEqual(str(cm.exception),
+                    'True is only allowed value for allow_unauthenticated_clients'
+                )
 
     def test_validate_server_sslctx(self):
         # Bad type:
@@ -240,130 +258,6 @@ class TestFunctions(TestCase):
         # All good:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server.validate_server_sslctx(sslctx), sslctx)
-
-    def test_parse_request(self):
-        # Bad separators:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET/foo/bar?stuff=junkHTTP/1.1')
-        self.assertEqual(str(cm.exception), 'need more than 1 value to unpack')
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET MY /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 3)'
-        )
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar\rstuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 3)'
-        )
-
-        # Bad method:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('OPTIONS /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('get /foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad HTTP method: 'get'")
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/1.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk HTTP/2.0')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/2.0'")
-
-        # Multiple "?" present in URI:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar?stuff=junk?other=them HTTP/1.1')
-        self.assertEqual(str(cm.exception),
-            "bad request uri: '/foo/bar?stuff=junk?other=them'"
-        )
-
-        # All manner of path problems:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo/bar HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET // HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo// HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//bar HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar// HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Same as above, but toss a query into the mix:
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET ?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: ''")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET foo/bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET //?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo//bar?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
-        with self.assertRaises(ValueError) as cm:
-            server.parse_request('GET /foo/bar//?stuff=junk HTTP/1.1')
-        self.assertEqual(str(cm.exception), "bad request path: '/foo/bar//'")
-
-        # Test all valid methods:
-        for M in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD'):
-            line = '{} /foo/bar?stuff=junk HTTP/1.1'.format(M)
-            (method, path_list, query) = server.parse_request(line)
-            self.assertEqual(method, M)
-            self.assertEqual(path_list, ['foo', 'bar'])
-            self.assertEqual(query, 'stuff=junk')
-
-        # Test URI permutations and round-tripping with util.relative_uri():
-        cases = [
-            ('/', []),
-            ('/foo', ['foo']),
-            ('/foo/', ['foo', '']),
-            ('/foo/bar', ['foo', 'bar']),
-            ('/foo/bar/', ['foo', 'bar', '']),
-        ]
-        for (U, P) in cases:
-            for Q in ('', 'stuff=junk'):
-                uri = ('?'.join([U, Q]) if Q else U)
-                line = 'GET {} HTTP/1.1'.format(uri)
-                (method, path_list, query) = server.parse_request(line)
-                self.assertEqual(method, 'GET')
-                self.assertEqual(path_list, P)
-                self.assertEqual(query, Q)
-                request = {'path': path_list, 'query': query}
-                self.assertEqual(util.relative_uri(request), uri)
-
-        # Test URI with a trailing "?" but no query (note that relative_uri()
-        # wont round-trip URI such as this):
-        self.assertEqual(
-            server.parse_request('GET /foo/bar? HTTP/1.1'),
-            ('GET', ['foo', 'bar'], '')
-        )
-        self.assertEqual(
-            server.parse_request('GET /foo/bar/? HTTP/1.1'),
-            ('GET', ['foo', 'bar', ''], '')
-        )
-        self.assertEqual(
-            server.parse_request('GET /? HTTP/1.1'),
-            ('GET', [], '')
-        )
 
     def test_read_request(self):
         longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
@@ -849,20 +743,6 @@ class TestServer(TestCase):
             'Custom({!r}, {!r})'.format(inst.address, good_app)
         )
 
-    def test_build_base_session(self):
-        class ServerSubclass(server.Server):
-            def __init__(self, address):
-                self.address = address
-
-        address = (random_id(), random_id())
-        inst = ServerSubclass(address)
-        self.assertEqual(inst.build_base_session(), {
-            'scheme': 'http',
-            'protocol': 'HTTP/1.1',
-            'server': address,
-            'requests': 0,
-        })
-
 
 class TestSSLServer(TestCase):
     def test_init(self):
@@ -1002,7 +882,7 @@ class TestSSLServer(TestCase):
 
     def test_repr(self):
         pki = TempPKI()
-        sslctx = server.build_server_sslctx(pki.get_server_config())
+        sslctx = server.build_server_sslctx(pki.server_sslconfig)
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
             'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
@@ -1015,20 +895,6 @@ class TestSSLServer(TestCase):
         self.assertEqual(repr(inst),
             'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
         )
-
-    def test_build_base_session(self):
-        class SSLServerSubclass(server.SSLServer):
-            def __init__(self, address):
-                self.address = address
-
-        address = (random_id(), random_id())
-        inst = SSLServerSubclass(address)
-        self.assertEqual(inst.build_base_session(), {
-            'scheme': 'https',
-            'protocol': 'HTTP/1.1',
-            'server': address,
-            'requests': 0,
-        })
 
 
 CHUNKS = []
@@ -1121,15 +987,12 @@ class AppWithConnectionHandler:
         return self.accept
 
 
-def wrap_with_validator(app):
-    return rgi.Validator(app)
-
 
 class TestLiveServer(TestCase):
     address = degu.IPv4_LOOPBACK
 
-    def build_with_app(self, app):
-        httpd = TempServer(self.address, wrap_with_validator, app)
+    def build_with_app(self, app, **options):
+        httpd = TempServer(self.address, rgi.Validator(app), **options)
         client = Client(httpd.address)
         return (httpd, client)
 
@@ -1155,7 +1018,9 @@ class TestLiveServer(TestCase):
         """
         if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
             self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
-        (httpd, client) = self.build_with_app(timeout_app)
+
+        timeout = 3
+        (httpd, client) = self.build_with_app(timeout_app, timeout=timeout)
         conn = client.connect()
 
         # Make an inital request:
@@ -1165,14 +1030,14 @@ class TestLiveServer(TestCase):
 
         # Wait till 1 second *before* the timeout should happen, to make sure
         # connection is still open:
-        time.sleep(server.SERVER_SOCKET_TIMEOUT - 1)
+        time.sleep(timeout - 0.5)
         self.assertEqual(conn.request('POST', '/foo', {}, None),
             (200, 'OK', {}, None)
         )
 
-        # Now tait till 1 second *after* the timeout should have happened, to
+        # Now wait till 1 second *after* the timeout should have happened, to
         # make sure the connection was closed by the server:
-        time.sleep(server.SERVER_SOCKET_TIMEOUT + 1)
+        time.sleep(timeout + 0.5)
         with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo', {}, None)
         self.assertIs(conn.closed, True)
@@ -1406,10 +1271,10 @@ class TestLiveServer_AF_INET6(TestLiveServer):
 
 
 class TestLiveServer_AF_UNIX(TestLiveServer):
-    def build_with_app(self, app):
+    def build_with_app(self, app, **options):
         tmp = TempDir()
         filename = tmp.join('my.socket')
-        httpd = TempServer(filename, wrap_with_validator, app)
+        httpd = TempServer(filename, rgi.Validator(app), **options)
         httpd.tmp = tmp
         return (httpd, Client(httpd.address))
 
@@ -1426,20 +1291,20 @@ def ssl_app(session, request, bodies):
 
 
 class TestLiveSSLServer(TestLiveServer):
-    def build_with_app(self, app):
+    def build_with_app(self, app, **options):
         pki = TempPKI()
         httpd = TempSSLServer(
-            pki.get_server_config(), self.address, wrap_with_validator, app
+            pki.server_sslconfig, self.address, rgi.Validator(app), **options
         )
         httpd.pki = pki
-        sslctx = build_client_sslctx(pki.get_client_config())
+        sslctx = build_client_sslctx(pki.client_sslconfig)
         return (httpd, SSLClient(sslctx, httpd.address))
 
     def test_ssl(self):
         pki = TempPKI(client_pki=True)
-        server_config = pki.get_server_config()
-        client_config = pki.get_client_config()
-        httpd = TempSSLServer(server_config, self.address, None, ssl_app)
+        server_config = pki.server_sslconfig
+        client_config = pki.client_sslconfig
+        httpd = TempSSLServer(server_config, self.address,  ssl_app)
 
         # Test from a non-SSL client:
         client = Client(httpd.address)

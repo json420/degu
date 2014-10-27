@@ -5,9 +5,9 @@
    :synopsis: Embedded HTTP Server
 
 
-As a quick example, say you have this :doc:`rgi` application:
+As a quick example, say you have this :doc:`rgi` (RGI) application:
 
->>> def hello_world_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -16,29 +16,32 @@ As a quick example, say you have this :doc:`rgi` application:
 ...         return (200, 'OK', headers, body)
 ...     return (200, 'OK', headers, None)  # No response body for HEAD
 
-(For a short primer on implementing RGI server applications, please see
-:ref:`server-app-callable`.)
+(For a short primer on implementing RGI server applications, please read about
+the server :ref:`server-app` argument.)
 
 You can create a :class:`Server` like this:
 
 >>> from degu.server import Server
->>> server = Server(('::1', 0, 0, 0), hello_world_app)
+>>> server = Server(('::1', 0, 0, 0), my_app)
 
 And then start the server by calling :meth:`Server.serve_forever()`.
 
 However, note that :meth:`Server.serve_forever()` will block the calling thread
 forever.  When embedding Degu within another application, it's generally best to
-run your server in its own `multiprocessing.Process`_, which you can easily do
-using the :func:`degu.start_server()` helper function, for example:
+run your server in its own `multiprocessing.Process`_,  which you can easily
+do by creating a :class:`degu.EmbeddedServer`:
 
->>> from degu import start_server
->>> (process, address) = start_server(('::1', 0, 0, 0), None, hello_world_app)
+>>> from degu import EmbeddedServer
+>>> def my_build_func():
+...     return my_app
+...
+>>> server = EmbeddedServer(('::1', 0, 0, 0), my_build_func)
 
-You can create a suitable :class:`degu.client.Client` with the returned
-*address* like this:
+You can create a suitable :class:`degu.client.Client` using the
+:attr:`degu.EmbeddedServer.address`:
 
 >>> from degu.client import Client
->>> client = Client(address)
+>>> client = Client(server.address)
 >>> conn = client.connect()
 >>> response = conn.request('GET', '/', {}, None)
 >>> response.body.read()
@@ -50,13 +53,12 @@ application process, and it also means you can forcibly and instantly kill the
 server process whenever you need (something you can't do with a thread).  For
 example, to kill the server process we just created:
 
->>> process.terminate()
->>> process.join()
+>>> server.terminate()
 
 
 
-:class:`Server` class
----------------------
+:class:`Server`
+---------------
 
 .. class:: Server(address, app, **options)
 
@@ -70,7 +72,7 @@ example, to kill the server process we just created:
     The *app* argument provides your :doc:`rgi` (RGI) server application.  It
     must be a callable object (called to handle each HTTP request), and can
     optionally have a callable ``app.on_connect()`` attribute (called to handle
-    each TCP connection).  See :ref:`server-app-callable` for details.
+    each TCP connection).  See :ref:`server-app` for details.
 
     Finally, you can provide keyword-only *options* to override the defaults for
     a number of tunable server runtime parameters.  See :ref:`server-options`
@@ -89,15 +91,19 @@ example, to kill the server process we just created:
             ('::1', 0, 0, 0)  # AF_INET6 (IPv6)
 
         In which case the :attr:`Server.address` attribute will contain the port
-        assigned by the operating system.  For example, assuming port ``12345``
+        assigned by the kernel.  For example, assuming port ``12345`` was
         assigned::
 
             ('127.0.0.1', 12345)  # AF_INET (IPv4)
             ('::1', 12345, 0, 0)  # AF_INET6 (IPv6)
 
+        See :ref:`server-address` for details.
+
     .. attribute:: app
 
         The *app* argument provided to the constructor.
+
+        See :ref:`server-app` for details.
 
     .. attribute:: options
 
@@ -106,6 +112,8 @@ example, to kill the server process we just created:
         This will contain the values of any keyword-only *options* provided to
         the constructor, and will otherwise contain the default values for all
         other *options* that weren't explicitly provided.
+
+        See :ref:`server-options` for details.
 
     .. attribute:: sock
 
@@ -211,24 +219,24 @@ like::
 
 
 
-.. _server-app-callable:
+.. _server-app:
 
 *app*
 '''''
 
 Both :class:`Server` and :class:`SSLServer` take an *app* argument, by which you
-provide your HTTP request handler, and optionally provide a TCP connection
+provide your HTTP request handler, and can optionally provide a TCP connection
 handler.
 
 Here's a quick primer on implementing Degu server applications, but for full
-details, please see the :doc:`rgi` specification.
+details, please see the :doc:`rgi` (RGI) specification.
 
 
 **HTTP request handler:**
 
 Your *app* must be a callable object that accepts three arguments, for example:
 
->>> def my_rgi_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
@@ -276,7 +284,7 @@ Which in the case of our example was::
 If your *app* argument itself has a callable ``on_connect`` attribute, it must
 accept two arguments, for example:
 
->>> class MyRGIApp:
+>>> class MyApp:
 ...     def __call__(self, session, request, bodies):
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ... 
@@ -306,7 +314,7 @@ If your *app* has an ``on_connect`` attribute that is *not* callable, it must be
 ``None``.  This allows you to disable the ``app.on_connect()`` handler in a
 subclass, for example:
 
->>> class MyRGIAppSubclass(MyRGIApp):
+>>> class MyAppSubclass(MyApp):
 ...     on_connect = None
 ...
 
@@ -328,17 +336,18 @@ application-specific per-connection authentication information.
 If your ``app()`` HTTP request handler adds anything to the *session*, it should
 prefix the key with ``'__'`` (double underscore).  For example:
 
->>> def my_rgi_app(session, request, bodies):
+>>> def my_app(session, request, bodies):
 ...     body = session.get('__body')
 ...     if body is None:
 ...         body = b'hello, world'
 ...         session['__body'] = body
 ...     return (200, 'OK', {'content-type': 'text/plain'}, body)
+...
 
 Likewise, if your ``app.on_connect()`` TCP connection handler adds anything to
 the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 
->>> class MyRGIApp:
+>>> class MyApp:
 ...     def __call__(self, session, request, bodies):
 ...         if session.get('_user') != 'admin':
 ...             return (403, 'Forbidden', {}, None)
@@ -348,6 +357,7 @@ the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
 ...         # Somehow authenticate the user who made the connection:
 ...         session['_user'] = 'admin'
 ...         return True
+...
 
 
 
@@ -397,8 +407,8 @@ Also see the client :ref:`client-options`.
 
 
 
-:class:`SSLServer` subclass
----------------------------
+:class:`SSLServer`
+------------------
 
 .. class:: SSLServer(sslctx, address, app, **options)
 
@@ -406,20 +416,23 @@ Also see the client :ref:`client-options`.
 
     This subclass inherits all attributes and methods from :class:`Server`.
 
-    The *sslctx* argument must be an `ssl.SSLContext`_ instance appropriately
-    configured for server-side use.
+    The *sslctx* argument must be an `ssl.SSLContext`_ appropriately configured
+    for server-side TLSv1.2 use.
 
-    Alternatively, if the *sslctx* argument is a ``dict`` instance, it is
-    interpreted as the server *sslconfig* and the actual `ssl.SSLContext`_
-    instance will be built automatically by calling
-    :func:`build_server_sslctx()`.
+    Alternately, if the *sslctx* argument is a ``dict``, it's treated as the
+    server *sslconfig* and the actual `ssl.SSLContext`_ will be built
+    automatically by calling :func:`build_server_sslctx()`.
 
     The *address* and *app* arguments, along with any keyword-only *options*,
-    are passed unchanged to :class:`Server()`.
+    are passed unchanged to the :class:`Server()` constructor.
 
     .. attribute:: sslctx
 
         The *sslctx* argument provided to the contructor.
+
+        Alternately, if the first argument provided to the constructor was an
+        *sslconfig* ``dict``, this attribute will contain the
+        `ssl.SSLContext`_ returned by :func:`build_server_sslctx()`.
 
 
 
@@ -448,7 +461,7 @@ Also see the client :ref:`client-options`.
         * ``'key_file'`` --- an ``str`` providing the path of the server key
           file
 
-    And can optionally include either of the keys:
+    And can optionally include any of:
 
         * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
           of the file or directory, respectively, containing the trusted CA

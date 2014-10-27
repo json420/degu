@@ -38,17 +38,17 @@ Which in code would look like:
 ...     def __call__(self, session, request, bodies):
 ...         return self.app(session, request, bodies)
 ...
-...     def on_connect(self, sock, session):
+...     def on_connect(self, session, sock):
 ...         if getattr(self.app, 'on_connect', None) is None:
 ...             return True
-...         return self.app.on_connect(sock, session)
+...         return self.app.on_connect(session, sock)
 ...
 >>> app = Validator(MyMiddleware(Validator(my_app)))
 >>> server = Server(('127.0.0.1', 0), app)
 
 
-:class:`Validator` class
-------------------------
+:class:`Validator`
+------------------
 
 .. class:: Validator(app)
 
@@ -64,7 +64,7 @@ Which in code would look like:
 
         Request handler.
 
-    .. method:: on_connect(sock, session)
+    .. method:: on_connect(session, sock)
 
         Connection handler.
 

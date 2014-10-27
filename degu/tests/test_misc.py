@@ -41,26 +41,32 @@ class TestTempPKI(TestCase):
         self.assertGreater(path.getsize(pki.path(pki.client_ca_id, 'ca')), 0)
         self.assertGreater(path.getsize(pki.path(pki.client_id, 'key')), 0)
         self.assertGreater(path.getsize(pki.path(pki.client_id, 'cert')), 0)
-        self.assertEqual(pki.get_server_config(), {
+
+        # pki.server_sslconfig property:
+        self.assertEqual(pki.server_sslconfig, {
             'cert_file': pki.path(pki.server_id, 'cert'),
             'key_file': pki.path(pki.server_id, 'key'),
             'ca_file': pki.path(pki.client_ca_id, 'ca'),
         })
-        self.assertEqual(pki.get_anonymous_server_config(), {
+
+        self.assertEqual(pki.anonymous_server_sslconfig, {
             'cert_file': pki.path(pki.server_id, 'cert'),
             'key_file': pki.path(pki.server_id, 'key'),
             'allow_unauthenticated_clients': True,
         })
-        self.assertEqual(pki.get_client_config(), {
+
+        self.assertEqual(pki.client_sslconfig, {
             'ca_file': pki.path(pki.server_ca_id, 'ca'),
             'check_hostname': False,
             'cert_file': pki.path(pki.client_id, 'cert'),
             'key_file': pki.path(pki.client_id, 'key'),
         })
-        self.assertEqual(pki.get_anonymous_client_config(), {
+
+        self.assertEqual(pki.anonymous_client_sslconfig, {
             'ca_file': pki.path(pki.server_ca_id, 'ca'),
             'check_hostname': False,
         })
+
         self.assertTrue(path.isdir(pki.ssldir))
         pki.__del__()
         self.assertFalse(path.exists(pki.ssldir))
@@ -72,16 +78,20 @@ class TestTempPKI(TestCase):
         self.assertGreater(path.getsize(pki.path(pki.server_ca_id, 'ca')), 0)
         self.assertGreater(path.getsize(pki.path(pki.server_id, 'key')), 0)
         self.assertGreater(path.getsize(pki.path(pki.server_id, 'cert')), 0)
-        self.assertEqual(pki.get_anonymous_server_config(), {
+
+        self.assertEqual(pki.anonymous_server_sslconfig, {
             'cert_file': pki.path(pki.server_id, 'cert'),
             'key_file': pki.path(pki.server_id, 'key'),
             'allow_unauthenticated_clients': True,
         })
-        self.assertEqual(pki.get_anonymous_client_config(), {
+
+        self.assertEqual(pki.anonymous_client_sslconfig, {
             'ca_file': pki.path(pki.server_ca_id, 'ca'),
             'check_hostname': False,
         })
+
         self.assertTrue(path.isdir(pki.ssldir))
         pki.__del__()
         self.assertFalse(path.exists(pki.ssldir))
         pki.__del__()
+

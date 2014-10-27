@@ -6,32 +6,36 @@
 
 The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
 
-:mod:`degu.client` is similar in abstraction level to the `http.client`_ module
-in the Python3 standard library, and has an API that overall should feel
-familiar to those experienced with `http.client`_ (although there are some major
-differences).
+It's similar in abstraction level to the `http.client`_ module in the Python3
+standard library, and has an API that overall should feel familiar to those
+experienced with `http.client`_ (although there are some major differences, for
+details see :ref:`degu-client-v-http-client`).
 
-As a quick example, say we define this :doc:`rgi` application and create a
-:class:`degu.misc.TempServer` instance:
+As a quick example, say we define this Degu server application and run it
+in a :class:`degu.misc.TempServer`:
 
 >>> def example_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 >>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), None, example_app)
+>>> server = TempServer(('127.0.0.1', 0), example_app)
 
+A :class:`Client` specifies *how* to connect to an HTTP server.
 
-We can then create a :class:`Client` instance like this:
+Create a :class:`Client` like this:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-And then create a :class:`Connection` using :meth:`Client.connect()` like this:
+On the other hand, a :class:`Connection` represents a specific TCP connection to
+said server, through which one or more HTTP requests can be made.
+
+Create a :class:`Connection` using :meth:`Client.connect()` like this:
 
 >>> conn = client.connect()
 
-And finally make a request to our server using :meth:`Connection.request()` like
-this, which will return a :class:`Response` namedtuple:
+We can make an HTTP request to our server using :meth:`Connection.request()`
+like this, which will return a :class:`Response` namedtuple:
 
 >>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
@@ -41,44 +45,54 @@ As per HTTP/1.1, multiple requests can be made using the same connection:
 >>> conn.request('PUT', '/foo/bar', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-If you're truly done using it, it's a good idea to explicitly close a connection
-by calling :meth:`Connection.close()`, although this will likewise be done
-automatically when the connection instance is garbage collected:
+It's a good idea to explicitly call :meth:`Connection.close()` when you're done
+using a connection, although this will likewise be done automatically when the
+:class:`Connection` is garbage collected.
 
 >>> conn.close()
 
-For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance.
-You'll likely want to build the needed `ssl.SSLContext`_ using
+For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance,
+for example:
+
+>>> from degu.client import SSLClient
+>>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
+
+When creating a :class:`SSLClient`, the first argument can be either a pre-built
+`ssl.SSLContext`_, or an *sslconfig* ``dict`` that will be passed to
 :func:`build_client_sslctx()`.
 
-If you're connecting to an HTTP server (like Apache) that requires you always to
-supply a ``'host'`` in the request headers for each request, consider using the
-:func:`create_client()` and :func:`create_sslclient()` convenience functions.
-
-By default, the Degu HTTP client includes no request headers other than those
-supplied to :meth:`Connection.request()`.  For details, see
-:ref:`request-headers`.
 
 
-
-:class:`Client` class
----------------------
+:class:`Client`
+---------------
 
 .. class:: Client(address, **options)
 
     An HTTP server to which client connections can be made.
 
     The *address* argument specifies the server socket address to which TCP
-    connections will be made.  It can be a 2-tuple for ``AF_INIT`` or
-    ``AF_INET6``, a 4-tuple for ``AF_INET``, or an ``str`` or ``bytes`` instance
-    for ``AF_UNIX``.  See :ref:`client-address` for details.
+    connections will be made.  It can be a 2-tuple, a 4-tuple, a ``str``, or a
+    ``bytes`` instance.  See :ref:`client-address` for details.
 
-    Finally, you can provide keyword-only *options* to override the defaults for
-    certain client configuration values.  See :ref:`client-options` for details.
+    The keyword-only *options* allow you to override certain client
+    configuration defaults.  You can override the *host*, *timeout*, *bodies*,
+    and *Connection*, and their values are exposed via attributes of the same
+    name:
 
-    A :class:`Client` is stateless and thread-safe.  It contains the information
-    needed to create actual :class:`Connection` instances, but does not itself
-    reference any socket resources.
+        * :attr:`Client.host`
+        * :attr:`Client.timeout`
+        * :attr:`Client.bodies`
+        * :attr:`Client.Connection`
+
+    See :ref:`client-options` for details.
+
+    A :class:`Client` is stateless and thread-safe.  It specifies "where" the
+    server is (the *address*) and "how" to connect to the server (the
+    *options*), but does not itself reference any socket resources.
+
+    To make HTTP requests, use :meth:`Client.connect()` to create a
+    :class:`Connection`.
+
 
     .. attribute:: address
 
@@ -86,23 +100,94 @@ supplied to :meth:`Connection.request()`.  For details, see
 
         See :ref:`client-address` for details.
 
+
     .. attribute:: options
 
-        A ``dict`` containing the client configuration options.
+        Keyword-only *options* provided to the constructor.
 
-        This will contain the values of any keyword *options* provided to the
-        constructor, and will otherwise contain the default values for the
-        remaining options.
+        For example:
 
-        Note that this property returns a copy of the *options* ``dict``, as
-        currently modifying these options after a :class:`Client` has been
-        created is not supported.
+        >>> Client(('127.0.0.1', 12345), timeout=5).options
+        {'timeout': 5}
 
         See :ref:`client-options` for details.
 
-    .. method:: connect()
+    .. attribute:: host
 
-        Create and return a new :class:`Connection` instance.
+        Value of the HTTP "host" header to be included in each request.
+
+        If the :ref:`client-address` argument provided to the constructor was
+        a 2-tuple or 4-tuple, the default value will be constructed from the
+        *address*:
+
+        >>> Client(('www.wikipedia.org', 80)).host
+        'www.wikipedia.org:80'
+        >>> Client(('208.80.154.224', 80)).host
+        '208.80.154.224:80'
+        >>> Client(('2620:0:861:ed1a::1', 80)).host
+        '[2620:0:861:ed1a::1]:80'
+        >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
+        '[2620:0:861:ed1a::1]:80'
+
+        If the *address* is a ``str`` or ``bytes`` instance, this attribute
+        will default to ``None``:
+
+        >>> Client('/tmp/my.socket').host is None
+        True
+        >>> Client(b'\x0000022').host is None
+        True
+
+        A *host* keyword option will override the default value of for this
+        attribute, regardless of the *address*:
+
+        >>> Client(('208.80.154.224', 80), host='example.com').host
+        'example.com'
+        >>> Client('/tmp/my.socket', host='example.com').host
+        'example.com'
+
+        Likewise, you can use the *host* keyword option to set this attribute to
+        ``None``, regardless of the *address*:
+
+        >>> Client(('2620:0:861:ed1a::1', 80), host=None).host is None
+        True
+        >>> Client('/tmp/my.socket', host=None).host is None
+        True
+
+        :meth:`Client.connect()` will pass :attr:`Client.host` to the
+        :class:`Connection`, and when not ``None``, :meth:`Connection.request()`
+        will use this value for the "host" request header.
+
+    .. attribute:: timeout
+
+        The client socket timeout in seconds, or ``None`` for no timeout.
+
+        The default is ``90`` second, but you can override this using the
+        *timeout* keyword option.
+
+        :meth:`Client.create_socket()` sets the socket timeout to
+        :attr:`Client.timeout` for all new sockets it creates.
+
+    .. attribute:: bodies
+
+        A namedtuple exposing the IO abstraction API.
+
+        The default is :attr:`degu.base.bodies`, but you can override this using
+        the *bodies* keyword option.
+
+    .. attribute:: Connection
+
+        The Connection class used by :meth:`Client.connect()`.
+
+        The default is :class:`Connection`, but you can override this using
+        the *Connection* keyword option.
+
+    .. method:: create_socket()
+
+        Create a new `socket.socket`_ connected to :attr:`Client.address`.
+
+    .. method:: connect(Connection=None, bodies=None)
+
+        Create a new *Connection* instance.
 
 
 
@@ -114,41 +199,46 @@ supplied to :meth:`Connection.request()`.  For details, see
 Both :class:`Client` and :class:`SSLClient` take an *address* argument, which
 can be:
 
-    * A ``(host, port)`` 2-tuple where the *host* is an IPv6 IP, an IPv4 IP, or
-      a DNS name; the socket family will be ``AF_INET`` or ``AF_INET6`` as
-      appropriate for the *host*
+    * A ``(host, port)`` 2-tuple where the *host* is an IPv4 IP, an IPv6 IP, or
+      a DNS name
 
-    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an
-      IPv6 IP; the socket family will always be ``AF_INET6``
+    * A ``(host, port, flowinfo, scopeid)`` 4-tuple where the *host* is an IPv6
+      IP
 
-    * An ``str`` instance providing the filename of an ``AF_UNIX`` socket
+    * A ``str`` providing the filename of an ``AF_UNIX`` socket
 
     * A ``bytes`` instance providing the Linux abstract name of an ``AF_UNIX``
       socket
 
-If your *address* is a 2-tuple, it's passed directly to
-`socket.create_connection()`_ when creating a connection.  For example, all
-three of these are valid 2-tuple *address* values::
+If your *address* is a ``(host, port)``  2-tuple, it's passed directly to
+`socket.create_connection()`_ when creating a connection.  The socket family
+will be ``AF_INET`` or ``AF_INET6`` as appropriate for the *host* IP (or the IP
+that the DNS *host* name resolves to).
 
-    ('8.8.8.8', 80)
-    ('2001:4860:4860::8888', 80)
-    ('www.example.com', 80)
+For example, all three of these are valid 2-tuple *address* values::
 
-If your *address* is a 4-tuple, ``AF_INET6`` is assumed and your *address* is
+    ('208.80.154.224', 80)
+    ('2620:0:861:ed1a::1', 80)
+    ('www.wikipedia.org', 80)
+
+If your *address* is a 4-tuple, ``AF_INET6`` is assumed, and your *address* is
 passed directly to `socket.socket.connect()`_ when creating a connection,
 thereby giving you access to full IPv6 semantics, including the *scopeid* needed
-for `link-local addresses`_.  For example, this 4-tuple *address* would connect
-to a hypothetical server listening on an IPv6 link-local address::
+for `link-local addresses`_.
 
-    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)
+For example, these are both valid 4-tuple *address* values::
 
-Finally, if your *address* is an ``str`` or ``bytes`` instance, ``AF_UNIX`` is
-assumed and again your *address* is passed directly to
-`socket.socket.connect()`_ when creating a connection.  For example, these are
-both valid ``AF_UNIX`` *address* values::
+    ('2620:0:861:ed1a::1', 80, 0, 0)
+    ('fe80::e8b:fdff:fe75:402c', 80, 0, 3)  # Link-local
+
+Finally, if your *address* is a ``str`` or ``bytes`` instance, ``AF_UNIX`` is
+assumed, and your *address* is again passed directly to
+`socket.socket.connect()`_ when creating a connection.
+
+For example, these are both valid ``AF_UNIX`` *address* values::
 
     '/tmp/my.socket'
-    b'\x0000022'
+    b'\x0000022'  # Linux abstract name
 
 
 
@@ -158,89 +248,92 @@ both valid ``AF_UNIX`` *address* values::
 '''''''''
 
 Both :class:`Client` and :class:`SSLClient` accept keyword-only *options* by
-which you can override certain configuration defaults.
+which you can override certain client configuration defaults.
 
 The following client *options* are supported:
 
-    *   **base_headers** --- a ``dict`` of headers that will always be
-        included in each HTTP request; some care must be taken here as these
-        headers always override the same header if provided to
-        :meth:`Connection.request()`; must be a ``dict``
-        instance, or ``None`` to indicate no base headers; cannot include
-        ``'content-length'`` or ``'transfer-encoding'`` headers; default is
-        ``None``
+    *   **host** --- a ``str`` containing the value of the HTTP "host"
+        request header that will be set by :meth:`Connection.request()`, or
+        ``None``, in which case no "host" header will be set
+
+    *   **timeout** --- client socket timeout in seconds; must be a positve
+        ``int`` or ``float``, or ``None`` to indicate no timeout
 
     *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
         used to construct HTTP request and response bodies
-
-    *   **timeout** --- client socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance, or ``None`` to indicate no timeout
 
     *   **Connection** --- :meth:`Client.connect()` will return an instance of
         this class; this is a good way to provide domain-specific behavior in a
         :class:`degu.client.Connection` subclass
 
-Unless you override any of them, the default client configuration *options*
-are::
+Default values:
 
-    default_client_options = {
-        'base_headers': None,
-        'bodies': degu.base.DEFAULT_BODIES,
-        'timeout': 90,
-        'Connection': degu.client.Connection,
-    }
+    ==============  =========================  ==================================
+    Option          Attribute                  Default value
+    ==============  =========================  ==================================
+    ``host``        :attr:`Client.host`        derived from :ref:`client-address`
+    ``timeout``     :attr:`Client.timeout`     ``90`` seconds
+    ``bodies``      :attr:`Client.bodies`      :attr:`degu.base.bodies`
+    ``Connection``  :attr:`Client.Connection`  :class:`Connection`
+    ==============  =========================  ==================================
 
-For example, you could override some of these options like this:
 
->>> from degu.client import Client, Connection
->>> class SuperSpecialConnection(Connection):
-...     def get(uri, headers, body):
-...         return self.request('GET', uri, headers, body)
-... 
-...     def put(uri, headers, body):
-...         return self.request('PUT', uri, headers, body)
-...
->>> address = ('127.0.0.1', 12345)
->>> client = Client(address,
-...     base_headers={'user-agent': 'SuperSpecial/1.0'},
-...     Connection=SuperSpecialConnection,
-...     timeout=17,
-... )
 
 Also see the server :ref:`server-options`.
 
 
 
-:class:`SSLClient` subclass
----------------------------
+:class:`SSLClient`
+------------------
 
 .. class:: SSLClient(sslctx, address, **options)
 
-    An HTTPS server (TLSv1.2) to which client connections can be made.
+    An HTTPS server to which client connections can be made.
 
     This subclass inherits all attributes and methods from :class:`Client`.
 
-    The *sslctx* argument must be an `ssl.SSLContext`_ appropriately configured
-    for client-side TLSv1.2 use.
+    The *sslctx* argument can be a pre-built `ssl.SSLContext`_, or it can be
+    a ``dict`` providing an *sslconfig*, in which case a `ssl.SSLContext`_
+    will be built automatically by :func:`build_client_sslctx()`.
 
-    Alternately, if the *sslctx* argument is a ``dict``, it's interpreted as the
-    client *sslconfig* and the actual `ssl.SSLContext`_ will be implicitly built
-    by calling :func:`build_client_sslctx()`.
-
-    The *address* argument, along with any keyword *options*, are passed
+    The *address* argument, along with any keyword-only *options*, are passed
     unchanged to the :class:`Client` constructor.
 
-    An :class:`SSLClient` instance is stateless and thread-safe.  It contains
-    the information needed to create actual :class:`Connection` instances, but
-    does not itself reference any socket resources.
+    An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
+    the server is (the *address*) and "how" to connect to the server (the
+    *sslctx* and *options*), but does not itself reference any socket resources.
+
+    To make HTTP requests, use :meth:`Client.connect()` to create a
+    :class:`Connection`.
 
     .. attribute:: sslctx
 
-        The *sslctx* argument provided to the constructor.
+        The `ssl.SSLContext`_ used to wrap socket connections.
 
-        Alternately, if *sslctx* is a ``dict``, it's interpreted as the client
-        *sslconfig* and is passed to :func:`build_client_sslctx()` to build the
-        actual *sslctx*.
+        If the *sslctx* argument provided to the contructor was a pre-built
+        `ssl.SSLContext`_ instance, this attribute will contain that exact same
+        instance.
+
+        Otherwise the *sslctx* argument needed be a ``dict`` providing a client
+        *sslconfig*, and this attribute will contain the `ssl.SSLContext`_
+        returned by :func:`build_client_sslctx()`.
+
+    .. method:: create_socket()
+
+        Create a new `ssl.SSLSocket`_ connected to :attr:`Client.address`.
+
+        This method first calls :meth:`Client.create_socket()` to create a
+        `socket.socket`_, which it then wraps using
+        `ssl.SSLContext.wrap_socket()`_ to produce a `ssl.SSLContext`_.
+
+        This method uses :attr:`Client.host` for the *server_hostname*
+        provided to `ssl.SSLContext.wrap_socket()`_.
+
+        When `ssl.SSLContext.check_hostname`_ is ``True``, this is the hostname
+        that will be used when maching the common name (CN) in the server
+        certificate.
+
+        This is also the hostname that will be used for SNI.
 
 
 
@@ -324,25 +417,30 @@ Also see the server :ref:`server-options`.
 
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.get_client_config())
+    >>> sslctx = build_client_sslctx(pki.client_sslconfig)
 
 
 
-:class:`Connection` class
--------------------------
+:class:`Connection`
+-------------------
 
-.. class:: Connection(sock, base_headers, bodies)
+.. class:: Connection(sock, host, bodies)
 
-    Represents a specific connection to an HTTP (or HTTPS) server.
+    Provides an HTTP client request API atop an arbitrary socket connection. 
 
-    Note that typically connections are created using :meth:`Client.connect()`
-    rather than by directly creating an instance of this class.
+    :meth:`Client.connect()` will return an instance of this class, but you can
+    likewise directly create one yourself.  For composability, the two are
+    completely decoupled.
 
-    The *sock* will be either a ``socket.socket`` or an ``ssl.SSLSocket``.
+    The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
+    anything else implementing the needed API.
 
-    The *base_headers* and *bodies* will be the same as were passed to the
-    :class:`Client` constructor via keyword-only :ref:`client-options`, or
-    wise will be the internal Degu default values for each.
+    The *host* argument can be a ``str`` providing the value for the ``'host'``
+    header, or it can be ``None``, in which case :meth:`Connection.request()`
+    will not automatically include a ``'host'`` header in each request.
+
+    The *bodies* argument should be a ``namedtuple`` exposing the four standard
+    wrapper classes used to construct HTTP request and response bodies.
 
     A :class:`Connection` instance is statefull and is *not* thread-safe.
 
@@ -350,9 +448,9 @@ Also see the server :ref:`server-options`.
 
         The *sock* argument passed to the constructor.
 
-    .. attribute:: base_headers
+    .. attribute:: host
 
-        The *base_headers* argument passed to the constructor.
+        The *host* argument passed to the constructor.
 
     .. attribute:: bodies
 
@@ -361,24 +459,6 @@ Also see the server :ref:`server-options`.
     .. attribute:: closed
 
         Will be ``True`` if the connection has been closed, otherwise ``False``.
-
-    .. method:: close()
-
-        Shutdown the underlying ``socket.socket`` instance.
-
-        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
-        immediately preventing further reading from or writing to the socket.
-
-        Once a connection is closed, no further requests can be made via that
-        same connection instance.  To make subsequent requests, a new connection
-        must be created with :meth:`Client.connect()`.
-
-        After this method has been called, :attr:`Connection.closed` will be
-        ``True``.
-
-        Note that a connection is automatically closed when any unhandled
-        exception occurs in :meth:`Connection.request()`, and is likewise
-        automatically closed when the connection instance is garbage collected.
 
     .. method:: request(method, uri, headers, body)
 
@@ -396,10 +476,10 @@ Also see the server :ref:`server-options`.
             /foo
             /foo/bar?stuff=junk
 
-        The *headers*, if provided, must be a ``dict``.  All header names (keys)
-        must be lowercase as produced by ``str.casefold()``.
+        The *headers* must be a ``dict``.  All header names (keys) must be
+        lowercase.
 
-        The *body*, if provided, can be:
+        The *body* can be:
 
             ==================================  ========  ================
             Type                                Encoding  Source object
@@ -431,10 +511,27 @@ Also see the server :ref:`server-options`.
         >>> body = Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
+    .. method:: close()
+
+        Shutdown the underlying ``socket.socket`` instance.
+
+        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
+        immediately preventing further reading from or writing to the socket.
+
+        Once a connection is closed, no further requests can be made via that
+        same connection instance.  To make subsequent requests, a new connection
+        must be created with :meth:`Client.connect()`.
+
+        After this method has been called, :attr:`Connection.closed` will be
+        ``True``.
+
+        Note that a connection is automatically closed when any unhandled
+        exception occurs in :meth:`Connection.request()`, and is likewise
+        automatically closed when the connection instance is garbage collected.
 
 
-:class:`Response` namedtuple
-----------------------------
+:class:`Response`
+-----------------
 
 .. class:: Response(status, reason, headers, body)
 
@@ -482,115 +579,146 @@ Also see the server :ref:`server-options`.
 
 
 
-:func:`create_client()`
------------------------
+.. _degu-client-v-http-client:
 
-.. function:: create_client(url, **options)
+Degu vs. ``http.client``
+------------------------
 
-    Convenience function to create a :class:`Client` from a *url*.
+:mod:`degu.client` is heavily inspired by the `http.client`_ module in the
+Python3 standard library.
 
-    For example:
+Here's a summary of how :mod:`degu.client` differs from `http.client`_, and some
+rationale for why Degu took a different approach in each case.
 
-    >>> from degu.client import create_client
-    >>> client = create_client('http://example.com')
-    >>> client.address
-    ('example.com', 80)
-    >>> client.options['base_headers']
-    {'host': 'example.com'}
+**Specifying "where" the server is**
 
-    Unlike when directly creating a :class:`Client` instance, this function will
-    automatically include an appropriate ``'host'`` header in the *base_headers*
-    option.  Note that this is needed for compatibility with Apache, even when
-    connecting to Apache via an IP address alone.
+Degu specifies the target server via the exact *address* argument used by the
+underlying Python `socket`_ API.  This allows Degu to fully expose IPv6 address
+semantics, including the *scopeid* needed for `link-local addresses`_, and also
+allows Degu to transparently support HTTP over ``AF_UNIX``.
 
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'http'``.
+Consider the `HTTPConnection`_ vs. :class:`Client` constructors::
 
-    If the *url* doesn't include a port, the port will default to ``80``.
+    # http.client:
+    HTTPConnection(host, port=None, timeout=None, source_address=None)
+
+    # degu.client:
+    Client(address, **options)
+
+For example, here's how to use `http.client`_ to specify the server by DNS name,
+IPv4 IP, and IPv6 IP:
+
+>>> from http.client import HTTPConnection
+>>> client = HTTPConnection('www.wikipedia.org', 80)
+>>> client = HTTPConnection('208.80.154.224', 80)
+>>> client = HTTPConnection('2620:0:861:ed1a::1', 80)
+
+And here's the equivalent using :mod:`degu.client`:
+
+>>> from degu.client import Client
+>>> client = Client(('www.wikipedia.org', 80))
+>>> client = Client(('208.80.154.224', 80))
+>>> client = Client(('2620:0:861:ed1a::1', 80))  # As 2-tuple
+>>> client = Client(('2620:0:861:ed1a::1', 80, 0, 0))  # As 4-tuple
+
+But here are some :mod:`degu.client` examples that aren't possible with
+`http.client`_:
+
+>>> client = Client(('fe80::e8b:fdff:fe75:402c', 80, 0, 3))  # IPv6 link-local
+>>> client = Client('/tmp/my.socket')  # AF_UNIX
+>>> client = Client(b'\x0000022')  # AF_UNIX
+
+(Read about the Client :ref:`client-address` argument for more details.)
+
+**Specifying "how" to connect to the server**
+
+Again, consider the `HTTPConnection`_ vs. :class:`Client` constructors::
+
+    # http.client:
+    HTTPConnection(host, port=None, timeout=None, source_address=None)
+
+    # degu.client:
+    Client(address, **options)
 
 
+**Connections**
 
-:func:`create_sslclient()`
---------------------------
+`HTTPConnection`_ is rather overloaded because it is really *two* types of
+objects (from two different problem domains) entangled into one:
 
-.. function:: create_sslclient(sslctx, url, **options)
+    1. A server specification object ("where" the server is and "how" to create
+       connections to it)
 
-    Convenience function to create an :class:`SSLClient` from a *url*.
+    2. A connection object (a specific TCP connections created according to the
+       above "where" and "how")
 
-    For example:
+An `HTTPConnection`_ instance itself acts as the connection object for the
+current TCP connection (when there is one).  Although you can create, use, and
+close any number of TCP connections sequentially, one after the other, you
+cannot create multiple, *concurrent* TCP connections without creating multiple,
+concurrent `HTTPConnection`_ instances.
 
-    >>> from degu.client import create_sslclient, build_client_sslctx
-    >>> from degu.misc import TempPKI
-    >>> pki = TempPKI()
-    >>> sslctx = build_client_sslctx(pki.get_client_config())
-    >>> sslclient = create_sslclient(sslctx, 'https://example.com')
-    >>> sslclient.address
-    ('example.com', 443)
-    >>> sslclient.options['base_headers']
-    {'host': 'example.com'}
+For example:
 
-    Unlike when directly creating an :class:`SSLClient` instance, this function
-    will automatically include an appropriate ``'host'`` header in the
-    *base_headers* option.  Note that this is needed for compatibility with
-    Apache, even when connecting to Apache via an IP address alone.
+>>> client = HTTPConnection('en.wikipedia.org', 80)
+>>> # 1st connection:
+>>> client.connect()  #doctest: +SKIP
+>>> client.request('GET', '/wiki/Main_Page', None, {})  #doctest: +SKIP
+>>> response = client.getresponse()  #doctest: +SKIP
+>>> page1 = response.read()  #doctest: +SKIP
+>>> client.close()  #doctest: +SKIP
+>>> # 2nd connection:
+>>> client.connect()  #doctest: +SKIP
+>>> client.request('GET', '/wiki/Portal:Science', None, {})  #doctest: +SKIP
+>>> response = client.getresponse()  #doctest: +SKIP
+>>> page2 = response.read()  #doctest: +SKIP
+>>> client.close()  #doctest: +SKIP
 
-    A ``ValueError`` will be raise if the *url* scheme isn't ``'https'``.
+(And the same goes for `HTTPSConnection`_.)
 
-    If the *url* doesn't include a port, the port will default to ``443``.
+In contrast, Degu decouples this and uses an independent type of object for
+each problem domain:
 
-    Also see :func:`build_client_sslctx()` and :class:`degu.misc.TempPKI`.
+    1. Server specification object --- :class:`Client` or :class:`SSLClient`
+
+    2. Connection object --- :class:`Connection`
+
+Degu allows you to create an arbitrary number of concurrent connection objects
+from the same server specification object.
+
+For example:
+
+>>> client = Client(('en.wikipedia.org', 80))
+>>> # Two concurrent connections:
+>>> conn1 = client.connect()  #doctest: +SKIP
+>>> conn2 = client.connect()  #doctest: +SKIP
+>>> response1 = conn1.request('GET', '/wiki/Main_Page', {}, None)  #doctest: +SKIP
+>>> response2 = conn2.request('GET', '/wiki/Portal:Science', {}, None)  #doctest: +SKIP
+>>> page1 = response1.body.read()  #doctest: +SKIP
+>>> page2 = response2.body.read()  #doctest: +SKIP
+>>> conn1.close()  #doctest: +SKIP
+>>> conn2.close()  #doctest: +SKIP
 
 
-.. _request-headers:
-
-Note on request headers
------------------------
-
-Considering the highly specialized P2P use case that Degu is aimed at, sending
-an HTTP ``'host'`` header along with *every* request isn't particularly
-meaningful.
-
-For one, the Degu server itself doesn't support named-based virtual hosts, and
-will typically be reached via an IP address alone, not via a DNS name.  For
-another, Degu supports HTTP over ``AF_UNIX``, a scenario where the ``'host'``
-request header tends to be *extra* meaningless.
-
-A strait-forward way to minimize the overhead of the HTTP protocol is to simply
-send fewer headers along with each request and response, and the Degu client
-aggressively pursues this optimization path.  By default, :class:`Client` and
-:class:`SSLClient` don't include *any* extra request headers that weren't
-provided to :meth:`Connection.request()`.
-
-Of particular note, in addition to the ``'host'`` request header, the Degu
-client doesn't by default include a ``{'connection': 'keep-alive'}`` request
-header, which is only needed for backward compatibly with HTTP/1.0 servers (in
-HTTP/1.1, connection-reuse is assumed).  Likewise, the Degu client doesn't by
-default include a ``'user-agent'`` request header.
-
-If you need to include specific request headers in every request, just provide
-them via the ``base_headers`` kwarg when creating your :class:`Client` or
-:class:`SSLClient` instance.
-
-However, note that when the Degu client does *not* include a ``'host'`` header
-with every request, it's not operating in a strictly `HTTP/1.1`_ compliant
-fashion, and that this is incompatible with at least one of the HTTP servers
-that the Degu client aims to support (`Apache 2.4`_).
-
-When making requests to Apache, or to other servers with similar requirements,
-consider using the :func:`create_client()` or :func:`create_sslclient()`
-convenience function, which will automatically add an appropriate ``'host'``
-header in the *base_headers* for the resulting :class:`Client` or
-:class:`SSLClient`, respectively.
 
 
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
+.. _`HTTPConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection
+.. _`HTTPSConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection
+
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`socket.socket.connect()`: https://docs.python.org/3/library/socket.html#socket.socket.connect
 .. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`HTTP/1.1`: http://www.w3.org/Protocols/rfc2616/rfc2616.html
 .. _`Apache 2.4`: https://httpd.apache.org/docs/2.4/
-.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
-.. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
 .. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 
+.. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
+.. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
+.. _`ssl.SSLContext.wrap_socket()`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.wrap_socket
+
+.. _`socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets

@@ -5,23 +5,20 @@ Let's immediately clarify where Degu is *not* a good fit:
 
 .. warning::
 
-    Degu is *not* meant for production web-sites, public REST APIs, nor any
-    other public HTTP server reachable across the Internet.  The Degu server
-    only supports a subset of HTTP/1.1 features and is likely not compatible
-    with a broad range of HTTP clients.
+    Degu is absolutely *not* suitable for serving public websites!
 
-If Degu isn't a good fit for your problem, please check out `gunicorn`_ and
-`modwsgi`_.
+    The Degu server isn't built for high concurrency, and it lacks many features
+    expected by typical web browsers.
+
+If the Degu server isn't a good fit for your problem, please check out
+`gunicorn`_ and `modwsgi`_.
 
 **So where is Degu a good fit?**
 
 Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
-communication on the local network.  In particular, Degu is aimed at P2P
-services that expose rich applications and even platform features over HTTP
-(secured with SSL, using client certificates for authentication).
+communication on the local network, especially for P2P applications.
 
-Degu is a `Python3`_ library that provides both an HTTP server and a matching
-HTTP client.  In a nutshell, the typical Degu usage pattern is:
+In a nutshell, this is the typical Degu pattern:
 
     1. Application starts an embedded :class:`degu.server.SSLServer` on a
        random, unprivileged port
@@ -30,15 +27,39 @@ HTTP client.  In a nutshell, the typical Degu usage pattern is:
        `Avahi`_ or similar
 
     3. Peers use a :class:`degu.client.SSLClient` to make requests to this
-       server for structured data sync, file transfer, RPC, or whatever else the
+       server for structured data sync, file transfer, or whatever else the
        application REST API might expose
+
+You can easily build network-transparent components with Degu that "just work"
+whether the other endpoint is running on another host, running on the localhost,
+or even running on the localhost using HTTP over ``AF_UNIX``.
+
+Degu is optimized for low-latency and high-throughput when only modest
+concurrency is needed.
+
+Some other noteworthy Degu features:
+
+    *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
+        the optional per-chunk *extension*
+
+    *   Degu provides access to full IPv6 address semantics, including the
+        *scopeid* needed for IPv6 link-local addresses
+
+    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
+        all via a single *address* argument used uniformly by the server and
+        client
+
+    *   Degu provides a safe and opinionated API for using TLSv1.2, with a
+        particular focus on using client certificates to authenticate incoming
+        TCP connections
 
 
 
 Example: SSL reverse-proxy
 --------------------------
 
-Here's a minimal :doc:`rgi` application:
+First, here's a minimal Degu server application, implemented according to the
+:doc:`rgi` (RGI) specification:
 
 >>> def example_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
@@ -47,27 +68,27 @@ Here's a minimal :doc:`rgi` application:
 Although not particularly useful, it's still a working example in only 2 lines
 of code.
 
-It's fun and easy to create a throw-away HTTP server on which to run our
-``example_app``.  We'll create a server that only accepts connections from the
-IPv4 looback device:
+It's fun and easy to create a throw-away :class:`degu.misc.TempServer` on which
+to run our ``example_app``.  We'll create a server that only accepts connections
+from the IPv4 looback device:
 
 >>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), None, example_app)
+>>> server = TempServer(('127.0.0.1', 0), example_app)
 
 That just spun-up a :class:`degu.server.Server` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
 :class:`degu.misc.TempServer` instance is garbage collected).
 
-Now we'll need a :class:`degu.client.Client` so we can make connections to our
-above ``server``:
+Now we'll create a :class:`degu.client.Client` using the
+:attr:`degu.server.Server.address` attribute from our above ``server``, which
+will included the random, unprivileged *port* assigned by the kernel:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-A :class:`degu.client.Client` is stateless and thread-safe, and does not itself
-reference any socket resources.  In order to make requests, we'll need to
-create a :class:`degu.client.Connection`, with with we can make one or more
-requests:
+A :class:`degu.client.Client` is stateless and thread-safe, does not itself
+reference any socket resources.  In order to make requests, we'll need to create a :class:`degu.client.Connection` by calling 
+:meth:`degu.client.Client.connect()`:
 
 >>> conn = client.connect()
 >>> conn.request('GET', '/', {}, None)
@@ -97,7 +118,6 @@ RGI application API have been carefully designed to complement each other.
 
 For example, here's an RGI application that implements a `reverse-proxy`_:
 
->>> import ssl
 >>> class ProxyApp:
 ...     def __init__(self, address):
 ...         self.client = Client(address)
@@ -113,47 +133,28 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...             request['body']
 ...         )
 ... 
-...     def on_connect(self, session, sock):
-...         if not isinstance(sock, ssl.SSLSocket):
-...             return False
-...         if sock.context.verify_mode != ssl.CERT_REQUIRED:
-...             return False
-...         return True
-... 
 
-The important thing to note above is that Degu server applications can
-*directly* use the incoming HTTP request body object in their forwarded HTTP
-client request, and can likewise return the *entire* HTTP response object from
-the upstream server.
+The important thing to note above is that a Degu reverse-proxy application can
+(more-or-less) directly use the incoming HTTP request as its forwarded HTTP
+client request, and can *directly* return the *entire* HTTP response from the
+upstream HTTP server without transformation.
 
-For this reason, the 4-tuple response object is something you'll really want to
-commit to memory, as it is used both server-side and client-side::
+This 4-tuple response object is something you'll really want to commit to
+memory, as in Degu it's used uniformly on both the server and client ends::
 
     (status, reason, headers, body)
 
-This case is slightly more complicated as the RGI callable will be a
-``ProxyApp`` instance rather than a plain function.  In order to avoid subtle
-problems when pickling and un-pickling complex objects on their way to a new `multiprocessing.Process`_, it's best to pass only functions and simple data
-structures to a new process.  This approach also avoids importing unnecessary
-modules and consuming unnecessary resources in your main application process.
-
-So in this case, it's best to specify a *build_func*:
-
->>> def build_proxy_app(address):
-...     return ProxyApp(address)
-...
-
-It's likewise fun and easy to create throw-away SSL certificate chains, and a
-throw-away HTTPS server on which to run our ``ProxyApp``.  We'll create a server
-that accepts connections on any IPv6 address (but only from clients with a
-client certificate signed by the correct client certificate authority):
+It's likewise fun and easy to create throw-away SSL certificate chains using
+:class:`degu.misc.TempPKI`, and to create a throw-away
+:class:`degu.misc.TempSSLServer` on which to run our ``ProxyApp``.   We'll
+create a server that accepts connections on any IPv6 address (but only from
+clients with a client certificate signed by the correct client certificate
+authority):
 
 >>> from degu.misc import TempPKI, TempSSLServer
 >>> pki = TempPKI()
->>> proxy_server = TempSSLServer(
-...     pki.get_server_config(), ('::', 0, 0, 0), build_proxy_app, server.address
-... )
-... 
+>>> proxy_app = ProxyApp(server.address)
+>>> proxy_server = TempSSLServer(pki.server_sslconfig, ('::', 0, 0, 0), proxy_app)
 
 That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
@@ -162,9 +163,8 @@ That just spun-up a :class:`degu.server.SSLServer` in a new
 We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 ``proxy_server``:
 
->>> from degu.client import SSLClient, build_client_sslctx
->>> sslctx = build_client_sslctx(pki.get_client_config())
->>> proxy_client = SSLClient(sslctx, proxy_server.address)
+>>> from degu.client import SSLClient
+>>> proxy_client = SSLClient(pki.client_sslconfig, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
 >>> proxy_conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
@@ -175,7 +175,7 @@ Finally, we'll *shut it down*:
 >>> proxy_server.terminate()
 >>> server.terminate()
 
-This example is based on real-world Degu usage.  This is more or less how
+This example is based on real-world Degu usage.  This is almost exactly how
 `Dmedia`_ uses Degu as an SSL front-end for `CouchDB`_.
 
 
@@ -201,11 +201,10 @@ exist:
 >>> tmpdir = tempfile.mkdtemp()
 >>> address = path.join(tmpdir, 'my.socket')
 
-We'll then create a :class:`degu.server.Server`, which in this case we'll again
-do via creating a :class:`degu.misc.TempServer` instance:
+We'll then spin-up a throw-away :class:`degu.server.Server` by creating a :class:`degu.misc.TempServer`:
 
 >>> from degu.misc import TempServer
->>> server = TempServer(address, None, example_app)
+>>> server = TempServer(address, example_app)
 
 Even though in this case the *address* we provide when creating a client will
 match the *address* we provided when creating a server, note that this wont
@@ -219,12 +218,13 @@ this:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-And then, as in our previous example, we can create a
-:class:`degu.client.Connection` and make a request like this:
+And as in our previous example, we'll create a :class:`degu.client.Connection`,
+and then make a few HTTP requests like this:
 
 >>> conn = client.connect()
->>> conn = client.connect()
 >>> conn.request('GET', '/', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> conn.request('PUT', '/foo/bar', {'content-type': 'silly'}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
@@ -244,66 +244,7 @@ network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
 
-
-Request & response bodies
--------------------------
-
-As exciting as our first two examples were, you may have noticed that no request
-or response bodies were used.
-
-The reason is because this is a broad and complex topic in Degu, especially as
-Degu fully exposes HTTP chunked transfer-encoding semantics.
-
-However, for your essential survival guide, you only need to know three things:
-
-    1. Degu uses ``None`` to represent the absence of an HTTP body
-
-    2. When you receive an HTTP body, it will always have a ``read()`` method
-       you can use to retrieve its contents
-
-    3. When you send an HTTP body, you can always send a ``bytes`` instance
-
-Before we dive into the details, here's a quick example:
-
->>> def hello_response_body(session, request, bodies):
-...     return (200, 'OK', {}, b'hello, world')
-...
->>> server = TempServer(('127.0.0.1', 0), None, hello_response_body)
->>> client = Client(server.address)
->>> conn = client.connect()
->>> response = conn.request('GET', '/', {}, None)
-
-Notice that this time the response body is a :class:`degu.base.Body` instance,
-rather than ``None``:
-
->>> response.body
-Body(<rfile>, 12)
-
-The ``body.chunked`` attribute will be ``True`` when the body uses chunked
-transfer-encoding, and will be ``False`` when the body has a content-length:
-
->>> response.body.chunked
-False
-
-As this body is not chunk-encoded, it has a ``content_length`` attribute, which
-will match the content-length in the response headers:
-
->>> response.body.content_length
-12
->>> response.headers
-{'content-length': 12}
-
-We can use the ``body.read()`` method to read its content:
-
->>> response.body.read()
-b'hello, world'
-
-Finally, we'll *shut it down*:
-
->>> conn.close()
->>> server.terminate()
-
-
+.. _io-abstractions:
 
 IO abstractions
 ---------------
@@ -453,7 +394,7 @@ with a content-length if we ``POST /length``:
 
 As usual, we'll start a throw-away server and create a client:
 
->>> server = TempServer(('127.0.0.1', 0), None, rgi_io_app)
+>>> server = TempServer(('127.0.0.1', 0), rgi_io_app)
 >>> client = Client(server.address)
 
 For now we'll just use a simple ``bytes`` instance for the client-side request
@@ -565,42 +506,6 @@ Well, that's all the time we have today for fancy!
 
 >>> conn.close()
 >>> server.terminate()
-
-
-
-Trade-offs
-----------
-
-Degu is focused on:
-
-    * **Security** - Degu is focused on security, even when at the expense of
-      compatibility; the more secure Degu can be, the more we can consider
-      exposing highly interesting platform features over HTTP
-
-    * **High-throughput at low-concurrency** - being able to handle 100k
-      concurrent connections doesn't necessarily mean you can keep a 10GbE local
-      network saturated with just a few concurrent connections; Degu is being
-      optimized for the latter, even when (possibly) at the expense of the
-      former
-
-    * **Modern SSL best-practices** - Degu is highly restrictive in how it will
-      configure an `ssl.SSLContext`_; although this means being compatible with
-      fewer HTTP clients, Degu is built from the assumption that you have
-      control of both endpoints, and that the client is likely a
-      :class:`degu.client.SSLClient` 
-
-    * **Full IPv6 address semantics** - on both the server and client, you use
-      a 4-tuple for IPv6 addresses, which gives you access to the *scopeid*
-      needed for `link-local addresses`_; on the other hand, the Degu server
-      doesn't support virtual hosts, SNI, or in general doing the right thing
-      when the "official" hostname is a DNS name... Degu servers are expected to
-      be reached be IP address alone (either an IPv6 or IPv4 address)
-
-.. note::
-
-    In contrast to the server, the Degu client does aim to support virtual hosts
-    and SNI, and is generally compatible with at least the `Apache 2.4`_ and
-    `CouchDB`_ servers.
 
 
 

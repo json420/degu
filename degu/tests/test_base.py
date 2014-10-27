@@ -164,22 +164,22 @@ class TestConstants(TestCase):
         self.assertEqual(base.FILE_IO_BYTES % MiB, 0)
         self.assertGreaterEqual(base.FILE_IO_BYTES, MiB)
 
-    def test_default_bodies(self):
-        self.assertTrue(issubclass(base.Bodies, tuple))
-        self.assertIsInstance(base.default_bodies, tuple)
-        self.assertIsInstance(base.default_bodies, base.Bodies)
+    def test_bodies(self):
+        self.assertTrue(issubclass(base.BodiesAPI, tuple))
+        self.assertIsInstance(base.bodies, tuple)
+        self.assertIsInstance(base.bodies, base.BodiesAPI)
 
-        self.assertIs(base.default_bodies.Body, base.Body)
-        self.assertIs(base.default_bodies.BodyIter, base.BodyIter)
-        self.assertIs(base.default_bodies.ChunkedBody, base.ChunkedBody)
-        self.assertIs(base.default_bodies.ChunkedBodyIter, base.ChunkedBodyIter)
+        self.assertIs(base.bodies.Body, base.Body)
+        self.assertIs(base.bodies.BodyIter, base.BodyIter)
+        self.assertIs(base.bodies.ChunkedBody, base.ChunkedBody)
+        self.assertIs(base.bodies.ChunkedBodyIter, base.ChunkedBodyIter)
 
-        self.assertIs(base.default_bodies[0], base.Body)
-        self.assertIs(base.default_bodies[1], base.BodyIter)
-        self.assertIs(base.default_bodies[2], base.ChunkedBody)
-        self.assertIs(base.default_bodies[3], base.ChunkedBodyIter)
+        self.assertIs(base.bodies[0], base.Body)
+        self.assertIs(base.bodies[1], base.BodyIter)
+        self.assertIs(base.bodies[2], base.ChunkedBody)
+        self.assertIs(base.bodies[3], base.ChunkedBodyIter)
 
-        self.assertEqual(base.default_bodies,
+        self.assertEqual(base.bodies,
             (base.Body, base.BodyIter, base.ChunkedBody, base.ChunkedBodyIter)
         )
 

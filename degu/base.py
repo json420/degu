@@ -362,5 +362,5 @@ class ChunkedBodyIter(_ChunkedBody):
 
 
 # Used to expose the RGI IO wrappers:
-Bodies = namedtuple('Bodies', 'Body BodyIter ChunkedBody ChunkedBodyIter')
-default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+BodiesAPI = namedtuple('BodiesAPI', 'Body BodyIter ChunkedBody ChunkedBodyIter')
+bodies = BodiesAPI(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

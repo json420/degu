@@ -28,13 +28,13 @@ import logging
 import threading
 from os import path
 
+from .base import bodies as default_bodies
 from .base import (
     TYPE_ERROR,
     Body,
     BodyIter,
     ChunkedBody,
     ChunkedBodyIter,
-    default_bodies,
     makefiles,
     read_preamble,
 )
@@ -52,24 +52,24 @@ class UnconsumedRequestError(Exception):
         )
 
 
-def build_server_sslctx(config):
+def build_server_sslctx(sslconfig):
     """
     Build a strictly configured server-side SSLContext.
 
-    The *config* must be a ``dict`` that always contains at least a
+    The *sslconfig* must be a ``dict`` that always contains at least a
     ``'cert_file'`` and a ``'key_file'``.
 
     Degu is primarily aimed at P2P services that use client certificates for
-    authentication.  In this case, your *config* must also contain a
+    authentication.  In this case, your *sslconfig* must also contain a
     ``'ca_file'`` or a ``'ca_dir'`` (or both).  For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'cert_file': '/my/server.cert',
     ...     'key_file': '/my/server.key',
     ...     'ca_file': '/my/client.ca',
     ... }
     ...
-    >>> sslctx = build_server_sslctx(config)  # doctest: +SKIP
+    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
     >>> sslctx.verify_mode is ssl.CERT_REQUIRED  # doctest: +SKIP
     True
 
@@ -81,22 +81,22 @@ def build_server_sslctx(config):
 
     But the danger here is that we don't want developers to accidentally
     allow unauthenticated connections by accidentally omitting ``'ca_file'``
-    and ``'ca_dir'`` from their *config*.  This was the case in Degu 0.2 and
+    and ``'ca_dir'`` from their *sslconfig*.  This was the case in Degu 0.2 and
     earlier.
 
     This was fixed in Degu 0.3, which requires you to be more explicit by
-    including ``'allow_unauthenticated_clients'`` in your *config* (in
+    including ``'allow_unauthenticated_clients'`` in your *sslconfig* (in
     addition to omitting ``'ca_file'`` and ``'ca_dir'``).
 
     For example:
 
-    >>> config = {
+    >>> sslconfig = {
     ...     'cert_file': '/my/server.cert',
     ...     'key_file': '/my/server.key',
     ...     'allow_unauthenticated_clients': True,
     ... }
     ...
-    >>> sslctx = build_server_sslctx(config)  # doctest: +SKIP
+    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
     >>> sslctx.verify_mode is ssl.CERT_NONE  # doctest: +SKIP
     True
 
@@ -136,18 +136,18 @@ def build_server_sslctx(config):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
-    if not isinstance(config, dict):
+    if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('config', dict, type(config), config)
+            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # For safety and clarity, force all paths to be absolute, normalized paths:
     for key in ('cert_file', 'key_file', 'ca_file', 'ca_path'):
-        if key in config:
-            value = config[key]
+        if key in sslconfig:
+            value = sslconfig[key]
             if value != path.abspath(value):
                 raise ValueError(
-                    'config[{!r}] is not an absulute, normalized path: {!r}'.format(
+                    'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
                     )
                 )
@@ -158,25 +158,25 @@ def build_server_sslctx(config):
     sslctx.options |= ssl.OP_NO_COMPRESSION
     sslctx.options |= ssl.OP_SINGLE_ECDH_USE
     sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
-    sslctx.load_cert_chain(config['cert_file'], config['key_file'])
-    if 'allow_unauthenticated_clients' in config:
-        if config['allow_unauthenticated_clients'] is not True:
+    sslctx.load_cert_chain(sslconfig['cert_file'], sslconfig['key_file'])
+    if 'allow_unauthenticated_clients' in sslconfig:
+        if sslconfig['allow_unauthenticated_clients'] is not True:
             raise ValueError(
                 'True is only allowed value for allow_unauthenticated_clients'
             )
-        if {'ca_file', 'ca_path'}.intersection(config):
+        if {'ca_file', 'ca_path'}.intersection(sslconfig):
             raise ValueError(
                 'cannot include ca_file/ca_path allow_unauthenticated_clients'
             )
         return sslctx
-    if not {'ca_file', 'ca_path'}.intersection(config):
+    if not {'ca_file', 'ca_path'}.intersection(sslconfig):
         raise ValueError(
             'must include ca_file or ca_path (or allow_unauthenticated_clients)'
         )
     sslctx.verify_mode = ssl.CERT_REQUIRED
     sslctx.load_verify_locations(
-        cafile=config.get('ca_file'),
-        capath=config.get('ca_path'),
+        cafile=sslconfig.get('ca_file'),
+        capath=sslconfig.get('ca_path'),
     )
     return sslctx
 
@@ -184,6 +184,9 @@ def build_server_sslctx(config):
 def validate_server_sslctx(sslctx):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
+
+    if isinstance(sslctx, dict):
+        sslctx = build_server_sslctx(sslctx)
 
     if not isinstance(sslctx, ssl.SSLContext):
         raise TypeError('sslctx must be an ssl.SSLContext')
@@ -204,45 +207,6 @@ def validate_server_sslctx(sslctx):
         raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
 
     return sslctx
-
-
-def parse_request(line):
-    """
-    Parse the request line.
-
-    The return value will be a ``(method, path_list, query)`` tuple.  For
-    example, when there is no query:
-
-    >>> parse_request('GET /foo/bar HTTP/1.1')
-    ('GET', ['foo', 'bar'], '')
-
-    And when there is a query:
-
-    >>> parse_request('GET /foo/bar?stuff=junk HTTP/1.1')
-    ('GET', ['foo', 'bar'], 'stuff=junk')
-
-    Note that the URI "/" is a special case in how it's parsed:
-
-    >>> parse_request('GET / HTTP/1.1')
-    ('GET', [], '')
-
-    """
-    (method, uri, protocol) = line.split()
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ValueError('bad HTTP method: {!r}'.format(method))
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
-    uri_parts = uri.split('?')
-    if len(uri_parts) == 2:
-        (path_str, query) = uri_parts
-    elif len(uri_parts) == 1:
-        (path_str, query) = (uri_parts[0], '')
-    else:
-        raise ValueError('bad request uri: {!r}'.format(uri))
-    if path_str[:1] != '/' or '//' in path_str:
-        raise ValueError('bad request path: {!r}'.format(path_str))
-    path_list = ([] if path_str == '/' else path_str[1:].split('/'))
-    return (method, path_list, query)
 
 
 def read_request(rfile):
@@ -325,20 +289,20 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, bodies, session):
+def handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
-    requests = session['requests']
-    assert requests == 0
-    while handle_one(app, rfile, wfile, bodies, session) is True:
-        requests += 1
-        session['requests'] = requests
-        if requests >= 5000:
-            log.info("%r requests from %r, closing", requests, session['client'])
+    assert session['requests'] == 0
+    while handle_one(app, rfile, wfile, session, bodies) is True:
+        session['requests'] += 1
+        if session['requests'] >= max_requests:
+            log.info("%r requests from %r, closing",
+                session['requests'], session['client']
+            )
             break
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, bodies, session):
+def handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
     request = read_request(rfile)
     request_method = request['method']
@@ -394,7 +358,8 @@ def handle_one(app, rfile, wfile, bodies, session):
 class Server:
     scheme = 'http'
 
-    def __init__(self, address, app):
+    def __init__(self, address, app, **options):
+        # address:
         if isinstance(address, tuple):  
             if len(address) == 4:
                 family = socket.AF_INET6
@@ -416,11 +381,22 @@ class Server:
             raise TypeError(
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
+
+        # app:
         if not callable(app):
             raise TypeError('app: not callable: {!r}'.format(app))
         on_connect = getattr(app, 'on_connect', None)
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
+
+        # options:
+        self.timeout = options.get('timeout', 10)
+        self.max_connections = options.get('max_connections', 100)
+        self.max_requests = options.get('max_requests', 5000)
+        self.bodies = options.get('bodies', default_bodies)
+        self.options = options
+
+        # Listen...
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
@@ -433,47 +409,38 @@ class Server:
             self.__class__.__name__, self.address, self.app
         )
 
-    def build_base_session(self):
-        """
-        Builds the base session used throughout the server lifetime.
-
-        Each new *session* argument starts out as a copy of this.
-        """
-        return {
-            #'rgi.version': (0, 1),
-            'scheme': self.scheme,
-            'protocol': 'HTTP/1.1',
-            'server': self.address,
-            'requests': 0,  # Number of fully handled requests
-        }
-
     def serve_forever(self):
+        timeout = self.timeout
+        max_connections = self.max_connections
+        max_requests = self.max_requests
+        bodies = self.bodies
+        listensock = self.sock
+        worker = self.worker
+
         while True:
-            (sock, address) = self.sock.accept()
+            (sock, address) = listensock.accept()
+            sock.settimeout(timeout)
             count = threading.active_count()
-            # FIXME: The max connections and timeout value should really both be
-            # tunable, but till we decide on the API for this, we're hard-coding
-            # a limit of 100 concurrent connections:
-            if count > 100:
+            if count > max_connections:
                 log.error('%d connections, rejecting %r', count, address)
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
                     sock.close()
                 except OSError:
                     pass
-                return
+                continue
             log.info('Connection from %r; active threads: %d', address, count)
+            session = {'client': address, 'requests': 0}
             thread = threading.Thread(
-                target=self.worker,
-                args=(sock, {'client': address, 'requests': 0}),
+                target=worker,
+                args=(sock, max_requests, session, bodies),
                 daemon=True
             )
             thread.start()
 
-    def worker(self, sock, session):
+    def worker(self, sock, max_requests, session, bodies):
         try:
-            sock.settimeout(SERVER_SOCKET_TIMEOUT)
-            self.handler(sock, session)
+            self.handler(sock, max_requests, session, bodies)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
                 session['requests'], session['client'], e
@@ -487,9 +454,9 @@ class Server:
             except OSError:
                 pass
 
-    def handler(self, sock, session):
+    def handler(self, sock, max_requests, session, bodies):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            handle_requests(self.app, sock, default_bodies, session)
+            handle_requests(self.app, sock, max_requests, session, bodies)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
@@ -497,20 +464,20 @@ class Server:
 class SSLServer(Server):
     scheme = 'https'
 
-    def __init__(self, sslctx, address, app):
+    def __init__(self, sslctx, address, app, **options):
         self.sslctx = validate_server_sslctx(sslctx)
-        super().__init__(address, app)
+        super().__init__(address, app, **options)
 
     def __repr__(self):
         return '{}({!r}, {!r}, {!r})'.format(
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def handler(self, sock, session):
+    def handler(self, sock, max_requests, session, bodies):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super().handler(sock, session)
+        super().handler(sock, max_requests, session, bodies)
 
