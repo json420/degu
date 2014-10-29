@@ -20,12 +20,13 @@ in a :class:`degu.misc.TempServer`:
 >>> from degu.misc import TempServer
 >>> server = TempServer(('127.0.0.1', 0), example_app)
 
-A :class:`Client` specifies *how* to connect to an HTTP server.
-
-Create a :class:`Client` like this:
+We'll create a :class:`Client` for talking to the above ``server`` like this:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
+
+A :class:`Client` instance specifies *where* an HTTP server is, and *how* to
+connect to it.
 
 On the other hand, a :class:`Connection` represents a specific TCP connection to
 said server, through which one or more HTTP requests can be made.
@@ -46,13 +47,12 @@ As per HTTP/1.1, multiple requests can be made using the same connection:
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 It's a good idea to explicitly call :meth:`Connection.close()` when you're done
-using a connection, although this will likewise be done automatically when the
+using a connection, although this will likewise be done automatically when a
 :class:`Connection` is garbage collected.
 
 >>> conn.close()
 
-For SSL (ie., TLSv1.2), you'll need to create an :class:`SSLClient` instance,
-for example:
+For SSL, you'll need to create an :class:`SSLClient` instance, for example:
 
 >>> from degu.client import SSLClient
 >>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
@@ -646,11 +646,11 @@ Again, consider the `HTTPConnection`_ vs. :class:`Client` constructors::
 `HTTPConnection`_ is rather overloaded because it is really *two* types of
 objects (from two different problem domains) entangled into one:
 
-    1. A server specification object ("where" the server is and "how" to create
-       connections to it)
+    1.  A server specification object ("where" the server is and "how" to create
+        connections to it)
 
-    2. A connection object (a specific TCP connections created according to the
-       above "where" and "how")
+    2.  A connection object (a specific TCP connection created according to the
+        "where" and "how")
 
 An `HTTPConnection`_ instance itself acts as the connection object for the
 current TCP connection (when there is one).  Although you can create, use, and

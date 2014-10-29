@@ -17,8 +17,8 @@ Degu includes:
     *   **A matching HTTP client** carefully designed to harmonize with the
         server
 
-    *   **Stream-friendly IO abstractions** used by both the server and client
-        for HTTP request and response bodies
+    *   **IO abstractions** used by the server and client for HTTP request and
+        response bodies
 
     *   **Test fixtures** for creating throw-away Degu servers for unit testing,
         illustration, and play

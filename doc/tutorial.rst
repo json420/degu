@@ -16,34 +16,27 @@ If the Degu server isn't a good fit for your problem, please check out
 **So where is Degu a good fit?**
 
 Degu is a *fantastic* fit if you're implementing REST APIs for device-to-device
-communication on the local network, especially for P2P applications.
+communication on the local network.
 
 In a nutshell, this is the typical Degu pattern:
 
-    1. Application starts an embedded :class:`degu.server.SSLServer` on a
-       random, unprivileged port
+    1.  Application starts a :class:`degu.server.SSLServer` on a random,
+        unprivileged port
 
-    2. Application advertises this server to peers on the local network using
-       `Avahi`_ or similar
+    2.  Application advertises this server to peers on the local network using
+        `Avahi`_ or similar
 
-    3. Peers use a :class:`degu.client.SSLClient` to make requests to this
-       server for structured data sync, file transfer, or whatever else the
-       application REST API might expose
+    3.  Peers use a :class:`degu.client.SSLClient` to make requests to this
+        server for structured data sync, file transfer, or whatever else the
+        application REST API might expose
 
-You can easily build network-transparent components with Degu that "just work"
-whether the other endpoint is running on another host, running on the localhost,
-or even running on the localhost using HTTP over ``AF_UNIX``.
-
-Degu is optimized for low-latency and high-throughput when only modest
-concurrency is needed.
-
-Some other noteworthy Degu features:
+Some noteworthy Degu features:
 
     *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
         the optional per-chunk *extension*
 
-    *   Degu provides access to full IPv6 address semantics, including the
-        *scopeid* needed for IPv6 link-local addresses
+    *   Degu fully exposes IPv6 address semantics, including the *scopeid*
+        needed for IPv6 link-local addresses
 
     *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
         all via a single *address* argument used uniformly by the server and
@@ -58,7 +51,7 @@ Some other noteworthy Degu features:
 Example: SSL reverse-proxy
 --------------------------
 
-First, here's a minimal Degu server application, implemented according to the
+Here's a minimal Degu server application, implemented according to the
 :doc:`rgi` (RGI) specification:
 
 >>> def example_app(session, request, bodies):
@@ -87,15 +80,18 @@ will included the random, unprivileged *port* assigned by the kernel:
 >>> client = Client(server.address)
 
 A :class:`degu.client.Client` is stateless and thread-safe, does not itself
-reference any socket resources.  In order to make requests, we'll need to create a :class:`degu.client.Connection` by calling 
-:meth:`degu.client.Client.connect()`:
+reference any socket resources.  It merely specifies *where* a server is and
+*how* to make connections to it.
+
+In order to make requests, we'll need to create a
+:class:`degu.client.Connection` by calling :meth:`degu.client.Client.connect()`:
 
 >>> conn = client.connect()
 >>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-In contrast to the client, a :class:`degu.client.Connection` is statefull and is
-*not* thread-safe.
+In contrast, a :class:`degu.client.Connection` is statefull and is *not*
+thread-safe.
 
 As both the Degu client and server are built for HTTP/1.1 only, connection
 reuse is assumed.  We can make another request to our ``server`` using the same
@@ -158,7 +154,7 @@ authority):
 
 That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
-:class:`degu.misc.TempSSLServer` instance is garbage collected).
+:class:`degu.misc.TempSSLServer` is garbage collected).
 
 We'll need a :class:`degu.client.SSLClient` so we can make requests to our
 ``proxy_server``:

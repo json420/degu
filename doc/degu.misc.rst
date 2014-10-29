@@ -50,15 +50,10 @@
 
     .. attribute:: options
 
-        A ``dict`` containing the *options* passed to the constructor.
+        Keyword-only *options* provided to the constructor.
 
-        Note that unlike :attr:`degu.server.Server.options`, this attribute will
-        only contain the keyword-only options specifically provided to the
-        :class:`TempServer` constructor, and will not include the default values
-        for any other server configuration options.
-
-        For details, see the :attr:`degu.server.Server.options` attribute, and
-        the server :ref:`server-options` argument.
+        This attribute is mostly aimed at unit testing.  See
+        :ref:`server-options` for details.
 
     .. attribute:: process
 
@@ -110,7 +105,7 @@
 
     .. attribute:: sslconfig
 
-        The exact *sslconfig* dict passed to the constructor.
+        The exact *sslconfig* ``dict`` passed to the constructor.
 
 
 

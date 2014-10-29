@@ -107,13 +107,10 @@ example, to kill the server process we just created:
 
     .. attribute:: options
 
-        A ``dict`` containing the server configuration options.
+        Keyword-only *options* provided to the constructor.
 
-        This will contain the values of any keyword-only *options* provided to
-        the constructor, and will otherwise contain the default values for all
-        other *options* that weren't explicitly provided.
-
-        See :ref:`server-options` for details.
+        This attribute is mostly aimed at unit testing.  See
+        :ref:`server-options` for details.
 
     .. attribute:: sock
 

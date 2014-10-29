@@ -5,7 +5,7 @@ Changelog
 0.10 (unreleased)
 -----------------
 
-This *may* end up being the API stable Degu 1.0 release ``:D``
+`Download Degu 0.10`_
 
 
 Breaking API changes:
@@ -634,6 +634,7 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
+.. _`Download Degu 0.10`: https://launchpad.net/degu/+milestone/0.10
 .. _`Download Degu 0.9`: https://launchpad.net/degu/+milestone/0.9
 .. _`Download Degu 0.8`: https://launchpad.net/degu/+milestone/0.8
 .. _`Download Degu 0.7`: https://launchpad.net/degu/+milestone/0.7
