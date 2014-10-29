@@ -1,142 +1,78 @@
-Road to 1.0 (or something like that)
-====================================
-
+Road to Degu 1.0 (or something like that)
+=========================================
 
 Definite
 --------
 
-    * Now that request['uri'] has been added, `degu.rgi.Validator` should check
-      that the server correctly parsed the URI into the (script, path, query)
-      components, and should likewise check that any path shifting done by
-      middleware or applications was done correctly... ie, you should always be
-      able to reconstruct the original URI from (script, path, query), even if
-      items have been shifted from path to script
+    *   RGI is currently ambiguous when it comes to "no query" (ie, URI does not
+        contain a '?') vs "an empty query" (ie, the final character in the URI
+        is a '?'); currently both of these scenarios result in the same empty ''
+        query string, which means we can't do a lossless round-trip between the
+        URI and the (script, path, query) components; when reconstructing the
+        URI, the "empty query" case will lose its final '?' on the way out;
+        similar to how RGI handles the request and response bodies, "no query"
+        should be expressed with {'query': None}, and an "empty query" should be
+        {'query': ''}.
 
-    * `ChunkedBody.read()` should take a size argument and should have the same
-      semantics as `Body.read()`; likewise, `ChunkedBody.read()` should return
-      bytes instead of a bytearray (in order to match standard Python file-like
-      object API expectations)
 
-    * `Body.read()` and `ChunkedBody.read()` need to enforce a sane max read
-      size as current implementation allows for unbounded resource usage; maybe
-      a max of 32 MiB or thereabouts; but this change would introduce a bit
-      ambiguity about size=None: if you call read() with no size argument, are
-      you done reading after that, or did you hit an internal sanity limit and
-      still need to make additional calls to body.read() to fully read it?  I
-      don't particularly like the semantics of size=None in the standard Python
-      file-like API.  It would be better for consumers to be expected to always
-      make successive calls to body.read() till an empty b'' is returned; in
-      other words, size=None is no longer means "read it all" but instead means
-      "read up to a generously large but still sane internal limit and I'll keep
-      calling body.read() till I get a b''", ofter which I know all has been
-      read
+    *   Flip the order of items in a single chunk (in a body using chunked
+        transfer-encoding) from:
 
-    *   Change Connection.request() signature from:
-
-            Connection.request(method, uri, headers=None, body=None)
+            (data, extension)
 
         To:
 
-            Connection.request(method, uri, headers, body)
+            (extension, data)
 
-        This means that from a single example, anyone can be reminded what the
-        API is, and it also better harmonizes with the RGI application API as
-        app() can't ommit the response headers or response body; eg., this is
-        always clear:
+        This is the one place where Degu/RGI currently isn't faithful to the
+        order in the HTTP wire format.  This is for historic reasons in how Degu
+        initially exposed the optional per-chunk extension; however, it's
+        inconsistent with the rest of the Degu/RGI API, and should be fixed.
 
-            conn.request('GET', '/', {}, None)
 
-        Where as this leaves a bit too much to the imagination, especially as
-        the order of the headers and body are flipped in :mod:`degu.client` vs
-        `http.client`:
+    *   Now that request['uri'] has been added, `degu.rgi.Validator` should
+        check that the server correctly parsed the URI into the
+        (script, path, query) components, and should likewise check that any
+        path shifting done by middleware or applications was done correctly...
+        ie, you should always be able to reconstruct the original URI from
+        (script, path, query), even if items have been shifted from path to
+        script.
 
-            conn.request('GET', '/')
 
-    *   Client/SSLClient/Connection should replace `base_headers` with
-        `default_headers` and these keys should only fill in a default value for
-        headers that weren't otherwise provided to Connection.request()
+    *   `ChunkedBody.read()` should take a size argument and should have the
+        same semantics as `Body.read()`; likewise, `ChunkedBody.read()` should
+        return bytes instead of a bytearray (in order to match standard Python
+        file-like API expectations)
 
-    *   TempServer/TempSSLServer __init__() API should match Server/SSLServer
-        API; when it comes to illustrative examples, the `build_func()`
-        complexity is very confusing, so it's very unclear that this:
 
-            TempServer(address, None, app)
+    *   `Body.read()` and `ChunkedBody.read()` need to enforce a sane max read
+        size when size=None, as the current implementation allows for unbounded
+        resource usage; maybe a max of 16 MiB or thereabouts; but this change
+        would introduce a bit of ambiguity about size=None: if you call read()
+        with no size argument, are you done reading after that, or did you hit
+        an internal sanity limit and still need to make additional calls to
+        body.read() to fully read it?
 
-        Is the same as this, just started in a new multiprocessing.Process:
+        I don't particularly like the semantics of size=None in the standard
+        Python file-like API.  It would be better for consumers to be expected
+        to always make successive calls to body.read() till an empty b'' is
+        returned; in other words, size=None would no longer mean "read it all",
+        but instead would mean "read up to a generously large but still sane
+        internal limit, and I'll keep calling body.read() till I get an empty
+        b'', after which I know the entire stream has been read."
 
-            Server(address, app)
 
-        The biggest reason we used the `build_func()` for these throw-away
-        instances aimed at unit testing was so that we didn't encounter any
-        weirdness when pickling/unpickling an ssl.SSLContext an its way to a new
-        multiprocessing.Process; however, if we change SSLServer to accept a
-        sslconfig dict in place of the actual sslctx, there is no problem here
 
-    *   Replace start_server()/TempServer, start_sslserver()/TempSSLServer with:
-
-            EmbeddedServer(address, app, **options)
-
-            EmbeddedSSLServer(sslconfig, address, app, **options)
-
-        (Or possibly keep the Temp* name.)  Whatever embedding heplers Degu
-        provides should really keep a reference to the process, and should
-        terminate the process automatially should this reference be deleted;
-        otherwise an application doesn't have an easy way to terminate the
-        process, a sort of "process leak"
-
-    *   The pattern that the `build_func()` stuff aimed to address is important
-        and is something that Degu should probably provide a high-level solution
-        for, but if we can solidify a solution for 1.0, best just to drop it and
-        add it later
+Likely post Degu 1.0
+--------------------
 
     *   Thus far Degu has focused on "embedding" within applications by running
         the Degu server in a multiprocessing.Process; however, Dmedia will soon
         be running Degu totally in stand-alone script launched via
         subprocess.Popen(); this allows for the Degu server that accepts outside
-        connections to be carefully issolated with apparmor and to not share any
+        connections to be carefully isolated with Apparmor and not share any
         memory space with the main Dmedia process; this is likewise a pattern
-        for which Degu should provide a high-level solution for, especially for
-        security reasons; however, how to capture this in a generic way is a bit
-        less clear at this point
-
-    *   Possibly flip connection handler args to app.on_connect(session, sock)
-
-
-
-Likely, but not 100% certain
-----------------------------
-
-    * RGI is currently ambiguous when it comes to "no query" (ie, URI does not
-      contain a '?') vs "an empty query" (ie, the final character in the URI is
-      a '?'); currently both of these scenarios result in the same empty ''
-      query string, which means we can't do a lossless round-trip between the
-      URI and the (script, path, query) components; when reconstructing the URI,
-      the "empty query" case will lose its final '?' on the way out; similar to
-      how RGI handles the request and response bodies, perhaps "no query" should
-      be expressed with {'query': None}, and an "empty query" should be
-      {'query': ''}
-
-    * `Server()` and `SSLServer()` should (probably) take an optional *config*
-      kwarg through which one can provide a dictionary with certain run-time
-      tunable items; I really want to avoid letting this config get too complex
-      (as I feel we could quickly get into stuff so specific that it would be
-      better handled by a middleware component... say, for authentication and
-      authorization); however, there are at least three tunable items I want to
-      expose from the start:
-
-        1. max_connections
-        2. max_requests_per_connection
-        3. timeout
-
-    * `SSLServer()` and `SSLClient()` should probably allow an ssl config dict
-      to be supplied as the *sslctx* argument, in which case an actual sslctx
-      would automatically be built by calling `build_server_sslctx()` or
-      `build_client_sslctx()`, respectively; in production applications I kinda
-      feel you should probably still always explicitly build your sslctx first;
-      however, when it comes to the friendliness and brevity of the API,
-      building the *sslctx* currently feels a bit too high-friction and verbose;
-      even if just for instructional purposes, it would be nice to be able to do
-      this:
-
-        >>> sslclient = SSLClient({}, ('www.example.com', 80))
+        for which Degu should provide a high-level solution, especially for
+        security reasons; however, how to capture this in a generic way isn't
+        clear at this point.
 
