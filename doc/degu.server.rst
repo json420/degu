@@ -452,26 +452,26 @@ Also see the client :ref:`client-options`.
     The *sslconfig* must be a ``dict`` instance, which must include at least two
     keys:
 
-        * ``'cert_file'`` --- an ``str`` providing the path of the server
-          certificate file
+        *   ``'cert_file'`` --- a ``str`` providing the path of the server
+            certificate file
 
-        * ``'key_file'`` --- an ``str`` providing the path of the server key
-          file
+        *   ``'key_file'`` --- a ``str`` providing the path of the server key
+            file
 
-    And can optionally include any of:
+    And must also include one of:
 
-        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
-          of the file or directory, respectively, containing the trusted CA
-          certificates used to verify client certificates on incoming client
-          connections
+        *   ``'ca_file'`` and/or ``'ca_path'`` --- a ``str`` providing the path
+            of the file or directory, respectively, containing the trusted CA
+            certificates used to verify client certificates on incoming client
+            connections
 
-        * ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
-          ``'ca_path'`` are provided, this must be provided and must be
-          ``True``; this is to prevent accidentally allowing anonymous clients
-          by merely omitting the ``'ca_file'`` and ``'ca_path'``
+        *   ``'allow_unauthenticated_clients'`` --- if neither ``'ca_file'`` nor
+            ``'ca_path'`` are provided, this must be provided and must be
+            ``True``; this is to prevent accidentally allowing anonymous clients
+            by merely omitting the ``'ca_file'`` and ``'ca_path'``
 
-    For example, typical Degu P2P usage will use an *sslconfig* something like
-    this:
+    For example, typical Degu P2P usage will use a server *sslconfig* something
+    like this:
 
     >>> from degu.server import build_server_sslctx
     >>> sslconfig = {
@@ -481,26 +481,40 @@ Also see the client :ref:`client-options`.
     ... }
     >>> sslctx = build_server_sslctx(sslconfig)  #doctest: +SKIP
 
-    Although you can directly build your own server-side `ssl.SSLContext`_, use
-    of this function eliminates many potential security gotchas that can occur
-    through misconfiguration.
+    Although you can directly build your own server-side `ssl.SSLContext`_, this
+    function eliminates many potential security gotchas that can occur through
+    misconfiguration.
 
     Opinionated security decisions this function makes:
 
-        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
+        *   The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
 
-        * The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
-          ``'allow_unauthenticated_clients'`` is provided in the *sslconfig*
-          (and is ``True``), in which case the *verify_mode* is set to
-          ``ssl.CERT_NONE``
+        *   The *verify_mode* is set to ``ssl.CERT_REQUIRED``, unless
+            ``'allow_unauthenticated_clients'`` is provided in the *sslconfig*
+            (and is ``True``), in which case the *verify_mode* is set to
+            ``ssl.CERT_NONE``
 
-        * The *sslconfig* unconditionally include ``ssl.OP_NO_COMPRESSION``,
-          thereby preventing `CRIME-like attacks`_, and also allowing lower
-          CPU usage and higher throughput on non-compressible payloads like
-          media files
+        *   The *options* unconditionally include ``ssl.OP_NO_COMPRESSION``,
+            thereby preventing `CRIME-like attacks`_, and also allowing lower
+            CPU usage and higher throughput on non-compressible payloads like
+            media files
 
-        * The *cipher* is unconditionally set to
-          ``'ECDHE-RSA-AES256-GCM-SHA384'``
+        *   The *ciphers* are unconditionally set to::
+
+                'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
+
+    This function is also advantageous because the *sslconfig* is simple and
+    easy to serialize/deserialize on its way to a new
+    `multiprocessing.Process`_.  This means that your main process doesn't need
+    to import any unnecessary modules or consume any unnecessary resources when
+    a :class:`degu.server.SSLServer` will only be run in a subprocess.
+
+    For unit testing and experimentation, consider using
+    a :class:`degu.misc.TempPKI` instance, for example:
+
+    >>> from degu.misc import TempPKI
+    >>> pki = TempPKI()
+    >>> sslctx = build_server_sslctx(pki.server_sslconfig)
 
 
 

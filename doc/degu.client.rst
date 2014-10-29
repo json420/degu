@@ -347,73 +347,80 @@ Also see the server :ref:`server-options`.
 :func:`build_client_sslctx()`
 -----------------------------
 
-.. function:: build_client_sslctx(config)
+.. function:: build_client_sslctx(sslconfig)
 
     Build an `ssl.SSLContext`_ appropriately configured for client use.
+    
+    This function compliments the server-side setup built with 
+    :func:`degu.server.build_server_sslctx()`.
 
-    The *config* must be a ``dict`` instance, which can be empty, or can
+    The *sslconfig* must be a ``dict`` instance, which can be empty, or can
     contain any of the following keys:
 
-        * ``'check_hostname'`` --- whether to check that the server hostname
-          matches the hostname in its SSL certificate; this value must be
-          ``True`` or ``False`` and is directly used to set the
-          `ssl.SSLContext.check_hostname`_ attribute; if not provided, this
-          defaults to ``True``
+        *   ``'check_hostname'`` --- whether to check that the server hostname
+            matches the common name (CN) in its SSL certificate; this value must
+            be ``True`` or ``False`` and is directly used to set the
+            `ssl.SSLContext.check_hostname`_ attribute; if not provided, this
+            defaults to ``True``
 
-        * ``'ca_file'`` and/or ``'ca_path'`` --- an ``str`` providing the path
-          of the file or directory, respectively, containing the trusted CA
-          certificates used to verify server certificates when making
-          connections; if neither of these are provided, then the default
-          system-wide CA certificates are used; also note that when neither of
-          these of these are provided, ``'check_hostname'`` must be ``True``, as
-          this is the only way to securely use the system-wide CA certificates
+        *   ``'ca_file'`` and/or ``'ca_path'`` --- a ``str`` providing the path
+            of the file or directory, respectively, containing the trusted CA
+            certificates used to verify server certificates when making
+            connections; if neither of these are provided, then the default
+            system-wide CA certificates are used; also note that when neither of
+            these of these are provided, ``'check_hostname'`` must be ``True``
+            (if provided), as that is the only way to securely use the
+            system-wide CA certificates
 
-        * ``'cert_file'`` and ``'key_file'`` --- an ``str`` providing the path
-          of the client certificate file and the client private key file,
-          respectively; you can omit ``'key_file'`` if the private key is
-          included in the client certificate file
+        *   ``'cert_file'`` and ``'key_file'`` --- a ``str`` providing the path
+            of the client certificate file and the client private key file,
+            respectively, by which the client can authenticate itself to the
+            server
 
-    For example, typical Degu P2P usage will use a *config* something like this:
+    For example, typical Degu P2P usage will use a client *sslconfig* something
+    like this:
 
     >>> from degu.client import build_client_sslctx
-    >>> config = {
+    >>> sslconfig = {
     ...     'check_hostname': False,
     ...     'ca_file': '/my/server.ca',
     ...     'cert_file': '/my/client.cert',
     ...     'key_file': '/my/client.key',
     ... }
-    >>> sslctx = build_client_sslctx(config)  #doctest: +SKIP
+    >>> sslctx = build_client_sslctx(sslconfig)  #doctest: +SKIP
 
-    Although you can of course directly build your own `ssl.SSLContext`_, this
+    Although you can directly build your own client-side `ssl.SSLContext`_, this
     function eliminates many potential security gotchas that can occur through
-    misconfiguration, and is also designed to compliment the server-side setup
-    built with the :func:`degu.server.build_server_sslctx()` function.
+    misconfiguration.
 
     Opinionated security decisions this function makes:
 
-        * The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
+        *   The *protocol* is unconditionally set to ``ssl.PROTOCOL_TLSv1_2``
 
-        * The *verify_mode* is unconditionally set to ``ssl.CERT_REQUIRED``, as
-          there are no meaningful scenarios under which the client should not
-          verify server certificates
+        *   The *verify_mode* is unconditionally set to ``ssl.CERT_REQUIRED``,
+            as  there are no meaningful scenarios under which the client should
+            not verify server certificates
 
-        * The *options* unconditionally include ``ssl.OP_NO_COMPRESSION``,
-          thereby preventing `CRIME-like attacks`_, and also allowing lower
-          CPU usage and higher throughput on non-compressible payloads like
-          media files
+        *   The *options* unconditionally include ``ssl.OP_NO_COMPRESSION``,
+            thereby preventing `CRIME-like attacks`_, and also allowing lower
+            CPU usage and higher throughput on non-compressible payloads like
+            media files
 
-        * The *cipher* is unconditionally set to
-          ``'ECDHE-RSA-AES256-GCM-SHA384'``, which among other things, means the
-          Degu client will only connect to servers providing `perfect forward
-          secrecy`_
+        *   The *ciphers* are unconditionally set to::
 
-    This function is also advantageous because the *config* is simple and easy
-    to serialize/deserialize on its way to a new `multiprocessing.Process`_.
-    This means that your main process doesn't need to import any unnecessary
-    modules or consume any unnecessary resources.
+                'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
+
+            Among other things, means the Degu client will only connect to
+            servers providing `perfect forward secrecy`_
+
+    This function is also advantageous because the *sslconfig* is simple and
+    easy to serialize/deserialize on its way to a new
+    `multiprocessing.Process`_.  This means that your main process doesn't need
+    to import any unnecessary modules or consume any unnecessary resources when
+    a :class:`degu.client.SSLClient` is only needed in a subprocess.
 
     For unit testing and experimentation, consider using
-    :class:`degu.misc.TempPKI`, for example:
+    a :class:`degu.misc.TempPKI` instance, for example:
 
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()

@@ -120,7 +120,9 @@ def build_client_sslctx(sslconfig):
 
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     sslctx.verify_mode = ssl.CERT_REQUIRED
-    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
+    sslctx.set_ciphers(
+        'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
+    )
     sslctx.options |= ssl.OP_NO_COMPRESSION
     if 'ca_file' in sslconfig or 'ca_path' in sslconfig:
         sslctx.load_verify_locations(

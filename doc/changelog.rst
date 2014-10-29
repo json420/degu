@@ -190,7 +190,6 @@ Breaking API changes:
             pki.anonymous_server_sslconfig
 
 
-
 Other changes:
 
     *   :class:`degu.client.Client` and :class:`degu.client.SSLClient` now
@@ -236,6 +235,35 @@ Other changes:
         ``request['uri']`` was added so that RGI validation middleware can check
         that the URI was properly parsed and that any path shifting was done
         correctly.  It's also handy for logging.
+
+
+    *   :func:`degu.server.build_server_sslctx()` and
+        :func:`degu.client.build_client_sslctx()` now unconditionally set the
+        *ciphers* to::
+
+            'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
+
+        Arguably AES128 is more secure than AES256 (especially because it's more
+        resistant to timing attacks), plus it's faster.  However, SHA384 is
+        certainly more secure than SHA256, both because it uses a 512-bit vs.
+        256-bit internal state size, and because it's not vulnerable to message
+        extension attacks (because the internal state is truncated to produce 
+        the digest).  SHA384 is also faster than SHA256 on 64-bit hardware.
+
+        If openssl supported it, this would be our default::
+
+            'ECDHE-RSA-AES128-GCM-SHA384'
+
+        However, on the balance, ``'ECDHE-RSA-AES128-GCM-SHA256'`` still feels
+        like the best choice, especially because of the better performance it
+        offers.
+
+        Note that as ``'ECDHE-RSA-AES256-GCM-SHA384'`` is still supported as an
+        option, Degu 0.10 remains network compatible with Degu 0.9 and earlier.
+
+        Post Degu 1.0, we'll likely make it possible to specify the *ciphers*
+        via your *sslconfig*, which can be done without breaking backward
+        compatibility.
 
 
 

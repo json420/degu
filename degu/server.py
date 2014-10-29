@@ -153,7 +153,9 @@ def build_server_sslctx(sslconfig):
                 )
 
     sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    sslctx.set_ciphers('ECDHE-RSA-AES256-GCM-SHA384')
+    sslctx.set_ciphers(
+        'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
+    )
     sslctx.set_ecdh_curve('secp384r1')
     sslctx.options |= ssl.OP_NO_COMPRESSION
     sslctx.options |= ssl.OP_SINGLE_ECDH_USE

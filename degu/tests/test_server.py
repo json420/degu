@@ -1281,7 +1281,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
 
 def ssl_app(session, request, bodies):
     assert session['ssl_cipher'] == (
-        'ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256
+        'ECDHE-RSA-AES128-GCM-SHA256', 'TLSv1/SSLv3', 128
     )
     assert session['ssl_compression'] is None
     assert request['method'] == 'GET'
