@@ -2,8 +2,8 @@ Changelog
 =========
 
 
-0.10 (unreleased)
------------------
+0.10 (October 2014)
+-------------------
 
 `Download Degu 0.10`_
 
