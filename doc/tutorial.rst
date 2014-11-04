@@ -344,16 +344,16 @@ server-side response body, one for chunked transfer-encoding and another for
 content-length encoding:
 
 >>> def chunked_response_body(echo):
-...     yield (echo,      None)
-...     yield (b' ',      None)
-...     yield (b'are',    None)
-...     yield (b' ',      ('key', 'value'))
-...     yield (b'belong', None)
-...     yield (b' ',      ('chunk', 'extensions'))
-...     yield (b'to',     None)
-...     yield (b' ',      ('are', 'neat'))
-...     yield (b'us',     None)
-...     yield (b'',       None)
+...     yield (None,                      echo)
+...     yield (None,                      b' ')
+...     yield (None,                      b'are')
+...     yield (('key', 'value'),          b' ')
+...     yield (None,                      b'belong')
+...     yield (('chunk', 'extensions'),   b' ')
+...     yield (None,                      b'to')
+...     yield (('are', 'neat'),           b' ' )
+...     yield (None,                      b'us')
+...     yield (None,                      b'')
 ...
 >>> def response_body(echo):
 ...     yield echo
@@ -374,7 +374,7 @@ chunked transfer encoding if we ``POST /chunked``, and that will return a body
 with a content-length if we ``POST /length``:
 
 >>> def rgi_io_app(session, request, bodies):
-...     if len(request['path']) != 1 or request['path'][0] not in ('chunked', 'length'):
+...     if request['path'] not in (['length'], ['chunked']):
 ...         return (404, 'Not Found', {}, None)
 ...     if request['method'] != 'POST':
 ...         return (405, 'Method Not Allowed', {}, None)
@@ -414,16 +414,16 @@ in the response body like this:
 >>> for (extension, data) in response.body:
 ...     print((extension, data))
 ...
-(b'All your base', None)
-(b' ', None)
-(b'are', None)
-(b' ', ('key', 'value'))
-(b'belong', None)
-(b' ', ('chunk', 'extensions'))
-(b'to', None)
-(b' ', ('are', 'neat'))
-(b'us', None)
-(b'', None)
+(None, b'All your base')
+(None, b' ')
+(None, b'are')
+(('key', 'value'), b' ')
+(None, b'belong')
+(('chunk', 'extensions'), b' ')
+(None, b'to')
+(('are', 'neat'), b' ')
+(None, b'us')
+(None, b'')
 
 (Note that :meth:`degu.base.ChunkedBody.readchunk()` can also be used to
 manually step through the chunks.)
@@ -469,14 +469,14 @@ So let's define a third silly Python generator function to generate the
 client-side request body using chunked trasfer-encoding:
 
 >>> def chunked_request_body():
-...     yield (b'All',        None)
-...     yield (b' ',          None)
-...     yield (b'your',       None)
-...     yield (b' ',          None)
-...     yield (b'*something', None)
-...     yield (b' ',          ('key', 'value'))
-...     yield (b'else*',      ('chunk', 'extensions'))
-...     yield (b'',           ('are', 'neat'))
+...     yield (None,                     b'All')
+...     yield (None,                     b' ')
+...     yield (None,                     b'your')
+...     yield (None,                     b' ')
+...     yield (None,                     b'*something')
+...     yield (('key', 'value'),         b' ')
+...     yield (('chunk', 'extensions'),  b'else*')
+...     yield (('are', 'neat'),          b'')
 ...
 
 To use this generator as our request body, we need to wrap it in a
