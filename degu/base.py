@@ -331,7 +331,7 @@ class ChunkedBody(_ChunkedBody):
             raise BodyClosedError(self)
         buf = bytearray()
         while not self.closed:
-            buf.extend(self.readchunk()[0])
+            buf.extend(self.readchunk()[1])
         return buf
 
     def __iter__(self):
