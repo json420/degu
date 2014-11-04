@@ -408,11 +408,11 @@ ChunkedBody(<rfile>)
 >>> response.headers
 {'transfer-encoding': 'chunked'}
 
-We can easily iterate through the ``(data, extension)`` tuples for each chunk
+We can easily iterate through the ``(extension, data)`` tuples for each chunk
 in the response body like this:
 
->>> for (data, extension) in response.body:
-...     print((data, extension))
+>>> for (extension, data) in response.body:
+...     print((extension, data))
 ...
 (b'All your base', None)
 (b' ', None)

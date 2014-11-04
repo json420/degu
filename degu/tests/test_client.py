@@ -568,10 +568,10 @@ class TestFunctions(TestCase):
         self.assertIs(r.body.closed, False)
         self.assertEqual(list(r.body),
             [
-                (chunk1, None),
-                (chunk2, None),
-                (chunk3, None),
-                (b'', None),
+                (None, chunk1),
+                (None, chunk2),
+                (None, chunk3),
+                (None, b''),
             ]
         )
         self.assertIs(r.body.closed, True)

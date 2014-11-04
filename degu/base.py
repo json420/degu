@@ -136,7 +136,7 @@ def read_chunk(rfile):
     crlf = rfile.read(2)
     if crlf != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(crlf))
-    return (data, extension)
+    return (extension, data)
 
 
 def write_chunk(wfile, data, extension=None):
@@ -287,7 +287,7 @@ class _ChunkedBody:
         flush = wfile.flush
         flush()  # Flush preamble before writting first chunk
         total = 0
-        for (data, extension) in self:
+        for (extension, data) in self:
             if extension:
                 (key, value) = extension
                 size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
@@ -315,13 +315,13 @@ class ChunkedBody(_ChunkedBody):
         if self.closed:
             raise BodyClosedError(self)
         try:
-            (data, extension) = read_chunk(self.rfile)
+            (extension, data) = read_chunk(self.rfile)
         except:
             self.rfile.close()
             raise
         if not data:
             self.closed = True
-        return (data, extension)
+        return (extension, data)
 
     def read(self):
         # FIXME: consider removing this, or at least adding some sane memory
@@ -351,10 +351,10 @@ class ChunkedBodyIter(_ChunkedBody):
             raise BodyClosedError(self)
         self.closed = True
         empty = False
-        for (data, extension) in self.source:
+        for (extension, data) in self.source:
             if empty:
                 raise ChunkError('non-empty chunk data after empty')
-            yield (data, extension)
+            yield (extension, data)
             if not data:
                 empty = True
         if not empty:

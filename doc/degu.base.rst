@@ -257,7 +257,7 @@ version.
     object implementing the needed API.
 
     If you iterate through a :class:`ChunkedBody` instance, it will yield a
-    ``(data, extension)`` tuple for each chunk in the chunk-encoded stream.  For
+    ``(extension, data)`` tuple for each chunk in the chunk-encoded stream.  For
     example:
 
     >>> from io import BytesIO
@@ -318,7 +318,7 @@ version.
         Iterate through chunks in the chunk-encoded HTTP body.
 
         This method will yield the HTTP body as a series of
-        ``(data, extension)`` tuples for each chunk in the body.
+        ``(extension, data)`` tuples for each chunk in the body.
 
         The final item yielded will always be an empty ``b''`` *data*.
 
@@ -340,10 +340,10 @@ version.
 
     On the server side, this can be used to generate the server response body.
 
-    *source* must yield a series of ``(data, extension)`` tuples, and must
+    *source* must yield a series of ``(extension, data)`` tuples, and must
     always yield at least one item.
 
-    The final ``(data, extension)`` item, and only the final item, must have
+    The final ``(extension, data)`` item, and only the final item, must have
     an empty *data* value of ``b''``.
 
     For example:
