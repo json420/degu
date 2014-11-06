@@ -302,7 +302,7 @@ def _validate_request(bodies, request):
 
     # request['query']:
     (label, value) = _get_path('request', request, 'query')
-    if not isinstance(value, str):
+    if not (value is None or isinstance(value, str)):
         raise TypeError(
             TYPE_ERROR.format(label, str, type(value), value) 
         )

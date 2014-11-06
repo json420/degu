@@ -399,7 +399,7 @@ class TestFunctions(TestCase):
                 'uri': '/foo',
                 'script': [],
                 'path': ['foo'],
-                'query': '',
+                'query': None,
                 'headers': {'bar': 'baz: jazz'},
                 'body': None,
             }
@@ -465,7 +465,7 @@ class TestFunctions(TestCase):
                 'uri': '/',
                 'script': [],
                 'path': [],
-                'query': '',
+                'query': None,
                 'headers': {},
                 'body': None,
             }
@@ -487,6 +487,22 @@ class TestFunctions(TestCase):
             }
         )
         self.assertEqual(rfile.tell(), 30)
+        self.assertEqual(rfile.read(), b'extra')
+
+        # An empty query (as opposed to no query):
+        rfile = io.BytesIO(b'HEAD /foo? HTTP/1.1\r\n\r\nextra')
+        self.assertEqual(server.read_request(rfile),
+            {
+                'method': 'HEAD',
+                'uri': '/foo?',
+                'script': [],
+                'path': ['foo'],
+                'query': '',
+                'headers': {},
+                'body': None,
+            }
+        )
+        self.assertEqual(rfile.tell(), 23)
         self.assertEqual(rfile.read(), b'extra')
 
         # Add a header, still no body:
