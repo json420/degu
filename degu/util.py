@@ -58,22 +58,29 @@ def relative_uri(request):
 
     For example, when there is no query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> request = {'path': ['bar', 'baz'], 'query': None}
     >>> relative_uri(request)
     '/bar/baz'
 
+    Or when there is merely an empty query:
+
+    >>> request = {'path': ['bar', 'baz'], 'query': ''}
+    >>> relative_uri(request)
+    '/bar/baz?'
+
     And when there is a query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = {'path': ['bar', 'baz'], 'query': 'stuff=junk'}
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
     Note that ``request['script']`` is ignored by this function.
     """
     uri = '/' + '/'.join(request['path'])
-    if request['query']:
-        return '?'.join((uri, request['query']))
-    return uri
+    query = request['query']
+    if query is None:
+        return uri
+    return '?'.join([uri, query])
 
 
 def absolute_uri(request):
@@ -82,9 +89,15 @@ def absolute_uri(request):
 
     For example, when there is no query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': None}
     >>> absolute_uri(request)
     '/foo/bar/baz'
+
+    Or when there is merely an empty query:
+
+    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> absolute_uri(request)
+    '/foo/bar/baz?'
 
     And when there is a query:
 
@@ -94,7 +107,8 @@ def absolute_uri(request):
 
     """
     uri = '/' + '/'.join(request['script'] + request['path'])
-    if request['query']:
-        return '?'.join((uri, request['query']))
-    return uri
+    query = request['query']
+    if query is None:
+        return uri
+    return '?'.join([uri, query])
 
