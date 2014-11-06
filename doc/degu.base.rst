@@ -257,7 +257,7 @@ version.
     object implementing the needed API.
 
     If you iterate through a :class:`ChunkedBody` instance, it will yield a
-    ``(data, extension)`` tuple for each chunk in the chunk-encoded stream.  For
+    ``(extension, data)`` tuple for each chunk in the chunk-encoded stream.  For
     example:
 
     >>> from io import BytesIO
@@ -265,7 +265,7 @@ version.
     >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
     >>> body = ChunkedBody(rfile)
     >>> list(body)
-    [(b'hello', None), (b'world', ('foo', 'bar')), (b'', None)]
+    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
 
     Note that you can only iterate through a :class:`ChunkedBody` once:
 
@@ -318,7 +318,7 @@ version.
         Iterate through chunks in the chunk-encoded HTTP body.
 
         This method will yield the HTTP body as a series of
-        ``(data, extension)`` tuples for each chunk in the body.
+        ``(extension, data)`` tuples for each chunk in the body.
 
         The final item yielded will always be an empty ``b''`` *data*.
 
@@ -340,30 +340,30 @@ version.
 
     On the server side, this can be used to generate the server response body.
 
-    *source* must yield a series of ``(data, extension)`` tuples, and must
+    *source* must yield a series of ``(extension, data)`` tuples, and must
     always yield at least one item.
 
-    The final ``(data, extension)`` item, and only the final item, must have
+    The final ``(extension, data)`` item, and only the final item, must have
     an empty *data* value of ``b''``.
 
     For example:
 
     >>> from degu.base import ChunkedBodyIter
     >>> def generate_chunked_body():
-    ...     yield (b'hello', None)
-    ...     yield (b'world', ('foo', 'bar'))
-    ...     yield (b'', None)
+    ...     yield (None,            b'hello')
+    ...     yield (('foo', 'bar'),  b'world')
+    ...     yield (None,            b'')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
     >>> list(body)
-    [(b'hello', None), (b'world', ('foo', 'bar')), (b'', None)]
+    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
 
     A :exc:`ChunkError` will be raised if the *data* in the final chunk isn't
     empty:
 
     >>> def generate_chunked_body():
-    ...     yield (b'hello', None)
-    ...     yield (b'world', ('foo', 'bar'))
+    ...     yield (None,            b'hello')
+    ...     yield (('foo', 'bar'),  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
@@ -375,9 +375,9 @@ version.
     is followed by a chunk with non-empty *data*:
 
     >>> def generate_chunked_body():
-    ...     yield (b'hello', None)
-    ...     yield (b'', None)
-    ...     yield (b'world', None)
+    ...     yield (None,  b'hello')
+    ...     yield (None,  b'')
+    ...     yield (None,  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
@@ -557,13 +557,13 @@ Parsing functions
     >>> from degu.base import read_chunk
     >>> rfile = io.BytesIO(b'5\r\nhello\r\n')
     >>> read_chunk(rfile)
-    (b'hello', None)
+    (None, b'hello')
 
     Or when there is a chunk extension:
 
     >>> rfile = io.BytesIO(b'5;foo=bar\r\nhello\r\n')
     >>> read_chunk(rfile)
-    (b'hello', ('foo', 'bar'))
+    (('foo', 'bar'), b'hello')
 
     For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
 

@@ -1281,13 +1281,13 @@ class TestFunctions(AlternatesTestCase):
 
         # Test when it's all good:
         rfile = io.BytesIO(size + termed)
-        self.assertEqual(base.read_chunk(rfile), (data, None))
+        self.assertEqual(base.read_chunk(rfile), (None, data))
         self.assertEqual(rfile.tell(), 7785)
         self.assertFalse(rfile.closed)
 
         # Test when size line has extra information:
         rfile = io.BytesIO(size_plus + termed)
-        self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
+        self.assertEqual(base.read_chunk(rfile), (('foo', 'bar'), data))
         self.assertEqual(rfile.tell(), 7793)
         self.assertFalse(rfile.closed)
 
@@ -1299,7 +1299,7 @@ class TestFunctions(AlternatesTestCase):
         rfile.write(data)
         rfile.write(b'\r\n')
         rfile.seek(0)
-        self.assertEqual(base.read_chunk(rfile), (data, None))
+        self.assertEqual(base.read_chunk(rfile), (None, data))
         self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
 
         # Again, with extension:
@@ -1310,7 +1310,7 @@ class TestFunctions(AlternatesTestCase):
         rfile.write(data)
         rfile.write(b'\r\n')
         rfile.seek(0)
-        self.assertEqual(base.read_chunk(rfile), (data, ('foo', 'bar')))
+        self.assertEqual(base.read_chunk(rfile), (('foo', 'bar'), data))
         self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
 
         # Bad bytes in extension:
@@ -1391,7 +1391,7 @@ class TestFunctions(AlternatesTestCase):
             fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), (data, None))
+            self.assertEqual(base.read_chunk(fp), (None, data))
 
             # With extension:
             key = random_id()
@@ -1400,7 +1400,7 @@ class TestFunctions(AlternatesTestCase):
             fp = io.BytesIO()
             self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), (data, (key, value)))
+            self.assertEqual(base.read_chunk(fp), ((key, value), data))
 
         # Make sure we can round-trip MAX_CHUNK_BYTES:
         size = base.MAX_CHUNK_BYTES
@@ -1409,7 +1409,7 @@ class TestFunctions(AlternatesTestCase):
         fp = io.BytesIO()
         self.assertEqual(base.write_chunk(fp, data), total)
         fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), (data, None))
+        self.assertEqual(base.read_chunk(fp), (None, data))
 
         # With extension:
         key = random_id()
@@ -1418,7 +1418,7 @@ class TestFunctions(AlternatesTestCase):
         fp = io.BytesIO()
         self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
         fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), (data, (key, value)))
+        self.assertEqual(base.read_chunk(fp), ((key, value), data))
 
 
 class TestBody(TestCase):
@@ -1869,7 +1869,7 @@ class TestChunkedBody(TestCase):
         # Test when all good:
         body = base.ChunkedBody(rfile)
         for data in chunks:
-            self.assertEqual(body.readchunk(), (data, None))
+            self.assertEqual(body.readchunk(), (None, data))
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
@@ -1917,7 +1917,7 @@ class TestChunkedBody(TestCase):
 
         # Test when all good:
         body = base.ChunkedBody(rfile)
-        self.assertEqual(list(body), [(data, None) for data in chunks])
+        self.assertEqual(list(body), [(None, data) for data in chunks])
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
@@ -2095,10 +2095,10 @@ class TestChunkedBodyIter(TestCase):
 
     def test_iter(self):
         source = (
-            (b'hello', None),
-            (b'naughty', None),
-            (b'nurse', None),
-            (b'', None),
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b'nurse'),
+            (None, b''),
         )
 
         # Test when closed:
@@ -2133,9 +2133,9 @@ class TestChunkedBodyIter(TestCase):
 
         # Should raise ChunkError if final chunk isn't empty:
         source = (
-            (b'hello', None),
-            (b'naughty', None),
-            (b'nurse', None),
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b'nurse'),
         )
         body = base.ChunkedBodyIter(source)
         result = []
@@ -2147,11 +2147,11 @@ class TestChunkedBodyIter(TestCase):
 
         # Should raise ChunkError if empty chunk is followed by non-empty:
         source = (
-            (b'hello', None),
-            (b'naughty', None),
-            (b'', None),
-            (b'nurse', None),
-            (b'', None),
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b''),
+            (None, b'nurse'),
+            (None, b''),
         )
         body = base.ChunkedBodyIter(source)
         result = []
@@ -2159,14 +2159,14 @@ class TestChunkedBodyIter(TestCase):
             for item in body:
                 result.append(item)
         self.assertEqual(result,
-            [(b'hello', None), (b'naughty', None), (b'', None)]
+            [(None, b'hello'), (None, b'naughty'), (None, b'')]
         )
         self.assertEqual(str(cm.exception), 'non-empty chunk data after empty')
 
         # Test with random data of varying sizes:
-        source = [(os.urandom(i), None) for i in range(1, 51)]
+        source = [(None, os.urandom(i)) for i in range(1, 51)]
         random.shuffle(source)
-        source.append((b'', None))
+        source.append((None, b''))
         body = base.ChunkedBodyIter(tuple(source))
         self.assertEqual(list(body), source)
         self.assertIs(body.closed, True)

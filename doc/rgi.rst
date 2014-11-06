@@ -404,7 +404,7 @@ This gives RGI applications full access to chunk-encoding semantics in the
 incoming request body, and also gives RGI applications full control over
 chunk-encoding semantics in their outgoing response body.
 
-RGI represents a single chunk with a ``(data, extension)`` tuple.  When no
+RGI represents a single chunk with a ``(extension, data)`` tuple.  When no
 extension is present for that chunk, the *extension* will be ``None``::
 
     (b'hello', None)
@@ -466,7 +466,7 @@ like this:
 ...     if request['body'] is None:
 ...         return (400, 'Bad Request', {}, None)
 ...     if request['body'].chunked:
-...         for (data, extension) in request['body']:
+...         for (extension, data) in request['body']:
 ...             pass  # Do something useful
 ...     else:
 ...         for data in request['body']:
@@ -661,13 +661,13 @@ response ``'transfer-encoding'``.)
 
 It's important to understand that ``bodies.ChunkedBody`` expects the content
 read from the provided *rfile* to itself be properly HTTP chunk-encoded.  It
-will stop yielding ``(data, extension)`` items after the first chunk with an
+will stop yielding ``(extension, data)`` items after the first chunk with an
 empty data ``b''`` is encountered.  The *rfile* must always contain at least one
 empty chunk.
 
 On the other hand, the ``bodies.ChunkedBodyIter`` class
 (:class:`degu.base.ChunkedBodyIter`) is used to wrap an arbitrary iterable that
-yields the response body as a series of ``(data, extension)`` tuples for each
+yields the response body as a series of ``(extension, data)`` tuples for each
 chunk in the response.
 
 The *source* iterable must always produce at least one item, and the last (and
