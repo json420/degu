@@ -7,6 +7,34 @@ Changelog
 This *may* end up being the API stable Degu 1.0 release ``:D``
 
 
+Breaking API changes:
+
+    *   Flip order of items in a single chunk (in an HTTP body using chunked
+        transfer-encoding) from::
+
+            (data, extension)
+
+        To::
+
+            (extension, data)
+
+        This was the one place where the Degu/RGI API wasn't faithful to the
+        HTTP wire format (the chunk *extension*, when present, is contained in
+        the chunk size line, prior to the actual chunk *data*).
+
+        As before, the *extension* will be ``None`` when there is no extension
+        for a specific chunk::
+
+            (None, b'hello, world')
+
+        And *extension* will be a ``(key, value)`` tuple when a specific chunk
+        does contain an optional per-chunk extension::
+
+            (('foo', 'bar'), b'hello, world')
+
+        
+
+
 
 0.10 (October 2014)
 -------------------
