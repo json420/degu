@@ -225,7 +225,7 @@ def read_request(rfile):
     if len(uri_parts) == 2:
         (path_str, query) = uri_parts
     elif len(uri_parts) == 1:
-        (path_str, query) = (uri_parts[0], '')
+        (path_str, query) = (uri_parts[0], None)
     else:
         raise ValueError('bad request uri: {!r}'.format(uri))
     if path_str[:1] != '/' or '//' in path_str:

@@ -49,7 +49,7 @@ Functions
     For example, when there is no query:
 
     >>> from degu.util import relative_uri
-    >>> request = {'path': ['bar', 'baz'], 'query': ''}
+    >>> request = {'path': ['bar', 'baz'], 'query': None}
     >>> relative_uri(request)
     '/bar/baz'
 
@@ -71,7 +71,7 @@ Functions
     For example, when there is no query:
 
     >>> from degu.util import absolute_uri
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': None}
     >>> absolute_uri(request)
     '/foo/bar/baz'
 
