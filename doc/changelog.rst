@@ -32,6 +32,40 @@ Breaking API changes:
 
             (('foo', 'bar'), b'hello, world')
 
+    *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
+        difference between *no* query vs merely an *empty* query.
+
+        When there is *no* query, ``request['query']`` will now be ``None``
+        (whereas previously it would be ``''``).  For example::
+
+            request = {
+                'method': 'GET',
+                'uri': '/foo/bar',
+                'script': [],
+                'path': ['foo', 'bar'],
+                'query': None,
+                'body': None,
+            }
+
+        As before, an *empty* query is still represented via an empty ``str``::
+
+            request = {
+                'method': 'GET',
+                'uri': '/foo/bar?',
+                'script': [],
+                'path': ['foo', 'bar'],
+                'query': '',
+                'body': None,
+            }
+
+        The change means it's now possible to exactly reconstructed the original
+        URI from the *script*, *path*, and *query* components.
+
+    *   :func:`degu.util.relative_uri()` and :func:`degu.util.absolute_uri()`
+        now preserve the difference between *no* query vs merely an *empty*
+        query, can always reconstruct a lossless relative URI, or a lossless
+        absolute URI, respectively.
+
         
 
 
