@@ -30,10 +30,6 @@ from urllib.parse import quote_plus
 
 
 class HTTPError(Exception):
-    """
-    Base class for exceptions raised based on HTTP response status.
-    """
-
     def __init__(self, response, method, uri):
         self.response = response
         self.method = method
@@ -102,11 +98,11 @@ class JSONConnection:
 
 
 class JSONClient:
-    def __init__(self, client, *base):
+    def __init__(self, client, *script):
         self.client = client
-        self.base = base
+        self.script = script
 
     def connect(self, bodies=None):
         conn = self.client.connect(bodies=bodies)
-        return JSONConnection(conn, *self.base)
+        return JSONConnection(conn, *self.script)
 

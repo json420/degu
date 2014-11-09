@@ -420,7 +420,7 @@ Also see the server :ref:`server-options`.
 :class:`Connection`
 -------------------
 
-.. class:: Connection(sock, host, bodies)
+.. class:: Connection(sock, base_headers, bodies)
 
     Provides an HTTP client request API atop an arbitrary socket connection. 
 
@@ -431,22 +431,23 @@ Also see the server :ref:`server-options`.
     The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
     anything else implementing the needed API.
 
-    The *host* argument can be a ``str`` providing the value for the ``'host'``
-    header, or it can be ``None``, in which case :meth:`Connection.request()`
-    will not automatically include a ``'host'`` header in each request.
+    The *base_headers* argument can be a ``dict`` providing headers that
+    :meth:`Connection.request()` will include in each request.  Or
+    *base_headers* can be ``None``, meaning no headers will be automatically
+    included in each request.
 
     The *bodies* argument should be a ``namedtuple`` exposing the four standard
     wrapper classes used to construct HTTP request and response bodies.
 
-    A :class:`Connection` instance is statefull and is *not* thread-safe.
+    A :class:`Connection` instance is stateful  and is *not* thread-safe.
 
     .. attribute:: sock
 
         The *sock* argument passed to the constructor.
 
-    .. attribute:: host
+    .. attribute:: base_headers
 
-        The *host* argument passed to the constructor.
+        The *base_headers* argument passed to the constructor.
 
     .. attribute:: bodies
 

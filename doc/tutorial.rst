@@ -90,7 +90,7 @@ In order to make requests, we'll need to create a
 >>> conn.request('GET', '/', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-In contrast, a :class:`degu.client.Connection` is statefull and is *not*
+In contrast, a :class:`degu.client.Connection` is stateful and is *not*
 thread-safe.
 
 As both the Degu client and server are built for HTTP/1.1 only, connection

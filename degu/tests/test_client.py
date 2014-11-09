@@ -581,11 +581,12 @@ class TestFunctions(TestCase):
 class TestConnection(TestCase):
     def test_init(self):
         sock = DummySocket()
-        host = 'www.example.com'
-        inst = client.Connection(sock, host, base.bodies)
+        base_headers = {'host': 'www.example.com:80'}
+        inst = client.Connection(sock, base_headers, base.bodies)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
-        self.assertIs(inst.host, host)
+        self.assertIs(inst.base_headers, base_headers)
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
         self.assertIs(inst.rfile, sock._rfile)
         self.assertIs(inst.wfile, sock._wfile)
@@ -772,7 +773,7 @@ class TestClient(TestCase):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host):
                 self.__sock = sock
-                self.host = host
+                self._base_headers = {'host': host}
                 self.bodies = base.bodies
 
             def create_socket(self):
@@ -784,6 +785,8 @@ class TestClient(TestCase):
         conn = inst.connect()
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
+        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.bodies, base.bodies)
         self.assertIs(conn.rfile, sock._rfile)
         self.assertIs(conn.wfile, sock._wfile)
         self.assertEqual(sock._calls, [
@@ -796,6 +799,8 @@ class TestClient(TestCase):
         self.assertIsNot(conn2, conn)
         self.assertIsInstance(conn2, client.Connection)
         self.assertIs(conn2.sock, sock)
+        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.bodies, base.bodies)
         self.assertIs(conn2.rfile, sock._rfile)
         self.assertIs(conn2.wfile, sock._wfile)
         self.assertEqual(sock._calls, [

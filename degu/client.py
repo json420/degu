@@ -280,10 +280,10 @@ class Connection:
     A `Connection` is statefull and is *not* thread-safe.
     """
 
-    def __init__(self, sock, host, bodies):
-        assert host is None or isinstance(host, str)
+    def __init__(self, sock, base_headers, bodies):
+        assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
-        self.host = host
+        self.base_headers = base_headers
         self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
         self.response_body = None  # Previous Body or ChunkedBody or None
@@ -330,8 +330,8 @@ class Connection:
             # /FIXME
 
             validate_request(method, uri, headers, body)
-            if self.host:
-                headers['host'] = self.host
+            if self.base_headers:
+                headers.update(self.base_headers)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, method)
             self.response_body = response.body
@@ -395,6 +395,7 @@ class Client:
         self.timeout = options.get('timeout', 90)
         assert self.host is None or isinstance(self.host, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
+        self._base_headers = ({'host': self.host} if self.host else None)
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
@@ -410,7 +411,7 @@ class Client:
     def connect(self, bodies=None):
         if bodies is None:
             bodies = self.bodies
-        return Connection(self.create_socket(), self.host, bodies)
+        return Connection(self.create_socket(), self._base_headers, bodies)
 
 
 class SSLClient(Client):

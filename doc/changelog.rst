@@ -709,7 +709,7 @@ As of Degu 0.5, you now need to do this::
 
 :class:`degu.client.Client` and :class:`degu.client.SSLClient` instances are
 now stateless and thread-safe, do not themselves reference any socket resources.
-On the other hand, :class:`degu.client.Connection` instances are statefull and
+On the other hand, :class:`degu.client.Connection` instances are stateful and
 are *not* thread-safe.
 
 Two things motivated these breaking API changes:
