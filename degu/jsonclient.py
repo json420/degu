@@ -22,11 +22,15 @@
 """
 High-level, domain-specific client for a JSON lovin' REST API like CouchDB.
 
-This is a proof of concept domain-specific built atop `degu.client.Client`.
+This is a proof of concept domain-specific API built atop `degu.client.Client`.
 """
 
 from json import dumps, loads
 from urllib.parse import quote_plus
+from collections import namedtuple
+
+
+Attachment = namedtuple('Attachment', 'content_type body')
 
 
 class HTTPError(Exception):
@@ -39,6 +43,15 @@ class HTTPError(Exception):
         )
 
 
+class BulkConflict(Exception):
+    def __init__(self, conflicts, rows):
+        self.conflicts = conflicts
+        self.rows = rows
+        count = len(conflicts)
+        msg = ('conflict on {} doc' if count == 1 else 'conflict on {} docs')
+        super().__init__(msg.format(count))
+
+
 def _build_query(query):
     pairs = []
     for (key, value) in query.items():
@@ -49,7 +62,23 @@ def _build_query(query):
     return '&'.join(pairs)
 
 
+class JSONClient:
+    def __init__(self, client, *script):
+        self.client = client
+        self.script = script
+
+    def connect(self, bodies=None):
+        conn = self.client.connect(bodies=bodies)
+        return JSONConnection(conn, *self.script)
+
+
 class JSONConnection:
+    """
+    A generic JSON REST adapter implemented the "Degu way".
+
+    This doodle implements most of the `microfiber.CouchBase` functionality.
+    """
+
     def __init__(self, conn, *script):
         self.conn = conn
         self.script = script
@@ -91,18 +120,37 @@ class JSONConnection:
     def delete(self, *path, **query):
         return self.json_request('DELETE', {}, None, *path, **query)
 
-    def save(self, doc):
+    def head(self, *path, **query):
+        response = self.request('HEAD', {}, None, *path, **query)
+        return response.headers
+
+    def put_att(self, attachment, *path, **query):
+        (content_type, body) = attachment
+        headers = {'content-type': content_type}
+        response = self.request('PUT', headers, body, *path, **query)
+        if response.body is not None:
+            return loads(response.body.read().decode())
+
+    def get_att(self, *path, **query):
+        response = self.request('GET', {}, None, *path, **query)
+        return Attachment(response.headers.get('content-type'), response.body)
+
+    def save(self, doc, *path, **query):
         r = self.post(doc)
         doc['_rev'] = r['rev']
         return r
 
-
-class JSONClient:
-    def __init__(self, client, *script):
-        self.client = client
-        self.script = script
-
-    def connect(self, bodies=None):
-        conn = self.client.connect(bodies=bodies)
-        return JSONConnection(conn, *self.script)
+    def save_many(self, docs, *path, **query):
+        path += ('_bulk_docs',)
+        rows = self.post({'docs': docs}, *path, **query)
+        conflicts = []
+        for (doc, row) in zip(docs, rows):
+            assert doc['_id'] == row['id']
+            if 'rev' in row:
+                doc['_rev'] = row['rev']
+            else:
+                conflicts.append(doc)
+        if conflicts:
+            raise BulkConflict(conflicts, rows)
+        return rows
 
