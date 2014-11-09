@@ -15,7 +15,7 @@ As a quick example, say we define this Degu server application and run it
 in a :class:`degu.misc.TempServer`:
 
 >>> def example_app(session, request, bodies):
-...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...     return (200, 'OK', {},  b'hello, world')
 ...
 >>> from degu.misc import TempServer
 >>> server = TempServer(('127.0.0.1', 0), example_app)
@@ -25,8 +25,8 @@ We'll create a :class:`Client` for talking to the above ``server`` like this:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-A :class:`Client` instance specifies *where* an HTTP server is, and *how* to
-connect to it.
+A :class:`Client` specifies *where* an HTTP server is, and *how* to connect to
+it.
 
 On the other hand, a :class:`Connection` represents a specific TCP connection to
 said server, through which one or more HTTP requests can be made.
@@ -38,13 +38,16 @@ Create a :class:`Connection` using :meth:`Client.connect()` like this:
 We can make an HTTP request to our server using :meth:`Connection.request()`
 like this, which will return a :class:`Response` namedtuple:
 
->>> conn.request('GET', '/', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> response = conn.request('GET', '/', {}, None)
+>>> response
+Response(status=200, reason='OK', headers={'content-length': 12}, body=Body(<rfile>, 12))
+>>> response.body.read()
+b'hello, world'
 
 As per HTTP/1.1, multiple requests can be made using the same connection:
 
->>> conn.request('PUT', '/foo/bar', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> conn.request('PUT', '/foo/bar', {}, None).body.read()
+b'hello, world'
 
 It's a good idea to explicitly call :meth:`Connection.close()` when you're done
 using a connection, although this will likewise be done automatically when a
@@ -75,14 +78,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
     ``bytes`` instance.  See :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  You can override the *host*, *timeout*, *bodies*,
-    and *Connection*, and their values are exposed via attributes of the same
-    name:
+    configuration defaults.  You can override the *host*, *timeout*, and
+    *bodies*, and their values are exposed via attributes of the same name:
 
         * :attr:`Client.host`
         * :attr:`Client.timeout`
         * :attr:`Client.bodies`
-        * :attr:`Client.Connection`
 
     See :ref:`client-options` for details.
 
@@ -174,20 +175,13 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         The default is :attr:`degu.base.bodies`, but you can override this using
         the *bodies* keyword option.
 
-    .. attribute:: Connection
-
-        The Connection class used by :meth:`Client.connect()`.
-
-        The default is :class:`Connection`, but you can override this using
-        the *Connection* keyword option.
-
     .. method:: create_socket()
 
         Create a new `socket.socket`_ connected to :attr:`Client.address`.
 
-    .. method:: connect(Connection=None, bodies=None)
+    .. method:: connect(bodies=None)
 
-        Create a new *Connection* instance.
+        Create a new :class:`Connection` instance.
 
 
 
@@ -262,19 +256,14 @@ The following client *options* are supported:
     *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
         used to construct HTTP request and response bodies
 
-    *   **Connection** --- :meth:`Client.connect()` will return an instance of
-        this class; this is a good way to provide domain-specific behavior in a
-        :class:`degu.client.Connection` subclass
-
 Default values:
 
     ==============  =========================  ==================================
     Option          Attribute                  Default value
     ==============  =========================  ==================================
     ``host``        :attr:`Client.host`        derived from :ref:`client-address`
-    ``timeout``     :attr:`Client.timeout`     ``90`` seconds
+    ``timeout``     :attr:`Client.timeout`     ``90``
     ``bodies``      :attr:`Client.bodies`      :attr:`degu.base.bodies`
-    ``Connection``  :attr:`Client.Connection`  :class:`Connection`
     ==============  =========================  ==================================
 
 
