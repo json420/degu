@@ -390,10 +390,9 @@ class Client:
             )
         self.address = address
         self.options = options
+        self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
         self.timeout = options.get('timeout', 90)
-        self.bodies = options.get('bodies', default_bodies)
-        self.Connection = options.get('Connection', Connection)
         assert self.host is None or isinstance(self.host, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
 
@@ -408,9 +407,7 @@ class Client:
         sock.connect(self.address)
         return sock
 
-    def connect(self, Connection=None, bodies=None):
-        if Connection is None:
-            Connection = self.Connection
+    def connect(self, bodies=None):
         if bodies is None:
             bodies = self.bodies
         return Connection(self.create_socket(), self.host, bodies)
