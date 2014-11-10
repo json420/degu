@@ -6,7 +6,7 @@
 
 The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
 
-It's similar in abstraction level to the `http.client`_ module in the Python3
+It's similar in abstraction level to the `http.client`_ module in the Python
 standard library, and has an API that overall should feel familiar to those
 experienced with `http.client`_ (although there are some major differences, for
 details see :ref:`degu-client-v-http-client`).
@@ -576,13 +576,96 @@ Also see the server :ref:`server-options`.
 
 
 
+.. _high-level-client-API:
+
+High-level client API
+---------------------
+
+:mod:`degu.client` is a low-level API aimed at exposing complete HTTP client
+semantics, with neither fanfare nor magic.  As such, :mod:`degu.client` is
+sometimes lower-level than you'll want for a given scenario.
+
+Although high-level APIs like the excellent `Requests`_ library can make certain
+patterns extremely succinct, they generally do so at the expense of making other
+patterns more complex, and sometimes making still other patterns impossible.
+
+Rather than making you choose between a low-level (but universal) API and a
+high-level (but insufficiently  generic) API for all your HTTP client needs, the
+"Degu way" is to build high-level, domain-specific APIs as needed, and to
+otherwise use the low-level :mod:`degu.client` API.
+
+When implementing high-level, domain-specific APIs, the recommended Degu
+approach is modeled after the `io`_ module in the Python standard library.
+
+The Degu equivalent of the *Raw I/O* layer in the `io`_ module is provided by
+the "raw" client classes (:class:`Client` and :class:`SSLClient`), plus the
+"raw" connection class (:class:`Connection`).
+
+It's best to implement your high-level, domain-specific API as a pair of classes
+that wrap these "raw" objects.  This is the Degu equivalent of the high-level
+*Text I/O* and *Binary I/O* layers in the `io`_ module.
+
+Your high-level client class should take the "raw" client object as its first
+argument, and should implement an equivalent to :meth:`Client.connect()`, for
+example:
+
+>>> class MyClient:
+...     def __init__(self, client):
+...         self.client = client
+... 
+...     def connect(self, bodies=None):
+...         conn = self.client.connect(bodies=bodies)
+...         return MyConnection(conn)
+... 
+
+Your high-level connection class should take the "raw" connection object as its
+first argument, should implement equivalents to :attr:`Connection.closed` and
+:meth:`Connection.close()`, and should otherwise implement your domain-specific
+API, for example:
+
+>>> class MyConnection:
+...     def __init__(self, conn):
+...         self.conn = conn
+... 
+...     @property
+...     def closed(self):
+...         return self.conn.closed
+... 
+...     def close(self):
+...         return self.conn.close()
+... 
+...     def post(self, uri, headers, body):
+...         return self.conn.request('POST', uri, headers, body)
+... 
+...     def put(self, uri, headers, body):
+...         return self.conn.request('PUT', uri, headers, body)
+... 
+...     def get(self, uri, headers):
+...         return self.conn.request('GET', uri, headers, None)
+... 
+...     def delete(self, uri, headers):
+...         return self.conn.request('DELETE', uri, headers, None)
+... 
+...     def head(self, uri, headers):
+...         return self.conn.request('HEAD', uri, headers, None)
+... 
+
+Arguably the above ``post()``, ``put()``, ``get()``, ``delete()``, and
+``head()`` shortcut methods aren't useful enough to justify the custom
+``MyConnection`` API, but it still illustrates the general approach.
+
+For a more realistic example of a high-level, domain-specific client API, see
+:mod:`degu.jsonclient`.
+
+
+
 .. _degu-client-v-http-client:
 
 Degu vs. ``http.client``
 ------------------------
 
 :mod:`degu.client` is heavily inspired by the `http.client`_ module in the
-Python3 standard library.
+Python standard library.
 
 Here's a summary of how :mod:`degu.client` differs from `http.client`_, and some
 rationale for why Degu took a different approach in each case.
@@ -698,7 +781,6 @@ For example:
 
 
 
-
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`HTTPConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection
 .. _`HTTPSConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection
@@ -716,6 +798,9 @@ For example:
 .. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
 .. _`ssl.SSLContext.wrap_socket()`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.wrap_socket
 
-.. _`socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`socket`: https://docs.python.org/3/library/socket.html
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
+
+.. _`Requests`: http://docs.python-requests.org/en/latest/
+.. _`io`: https://docs.python.org/3/library/io.html

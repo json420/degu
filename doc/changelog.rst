@@ -66,7 +66,12 @@ Breaking API changes:
         query, can always reconstruct a lossless relative URI, or a lossless
         absolute URI, respectively.
 
-        
+    *   :class:`degu.client.Client` no longer accepts the *Connection* keyword
+        option, no longer has the ``Client.Connection`` attribute; the idea
+        behind the *Connection* option was so that high-level, domain-specific
+        APIs could be implemented via a :class:`degu.client.Connection`
+        subclass, but relying on subclassing is bad for composability, as the
+        high-level API is then tied to a specific RGI client implementation
 
 
 
