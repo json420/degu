@@ -581,11 +581,12 @@ class TestFunctions(TestCase):
 class TestConnection(TestCase):
     def test_init(self):
         sock = DummySocket()
-        host = 'www.example.com'
-        inst = client.Connection(sock, host, base.bodies)
+        base_headers = {'host': 'www.example.com:80'}
+        inst = client.Connection(sock, base_headers, base.bodies)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
-        self.assertIs(inst.host, host)
+        self.assertIs(inst.base_headers, base_headers)
+        self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
         self.assertIs(inst.rfile, sock._rfile)
         self.assertIs(inst.wfile, sock._wfile)
@@ -704,7 +705,6 @@ class TestClient(TestCase):
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding host:
             myhost = '.'.join([random_id() for i in range(3)])
@@ -714,7 +714,6 @@ class TestClient(TestCase):
             self.assertIs(inst.host, myhost)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding host with None:
             inst = client.Client(address, host=None)
@@ -723,7 +722,6 @@ class TestClient(TestCase):
             self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the timeout option:
             inst = client.Client(address, timeout=17)
@@ -735,7 +733,6 @@ class TestClient(TestCase):
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 17)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the bodies option:
             mybodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
@@ -748,29 +745,12 @@ class TestClient(TestCase):
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, mybodies)
-            self.assertIs(inst.Connection, client.Connection)
-
-            # Test overriding the Connection option:
-            class MyConnection:
-                pass
-
-            inst = client.Client(address, Connection=MyConnection)
-            self.assertIs(inst.address, address)
-            self.assertEqual(inst.options, {'Connection': MyConnection})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(*address))
-            else:
-                self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
-            self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, MyConnection)
 
             # Test overriding all the options together:
             options = {
                 'host': myhost,
                 'timeout': 16.9,
                 'bodies': mybodies,
-                'Connection': MyConnection,
             }
             inst = client.Client(address, **options)
             self.assertIs(inst.address, address)
@@ -778,7 +758,6 @@ class TestClient(TestCase):
             self.assertIs(inst.host, myhost)
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.bodies, mybodies)
-            self.assertIs(inst.Connection, MyConnection)
 
     def test_repr(self):
         class Custom(client.Client):
@@ -794,8 +773,7 @@ class TestClient(TestCase):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host):
                 self.__sock = sock
-                self.Connection = client.Connection
-                self.host = host
+                self._base_headers = {'host': host}
                 self.bodies = base.bodies
 
             def create_socket(self):
@@ -807,6 +785,8 @@ class TestClient(TestCase):
         conn = inst.connect()
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
+        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.bodies, base.bodies)
         self.assertIs(conn.rfile, sock._rfile)
         self.assertIs(conn.wfile, sock._wfile)
         self.assertEqual(sock._calls, [
@@ -819,6 +799,8 @@ class TestClient(TestCase):
         self.assertIsNot(conn2, conn)
         self.assertIsInstance(conn2, client.Connection)
         self.assertIs(conn2.sock, sock)
+        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.bodies, base.bodies)
         self.assertIs(conn2.rfile, sock._rfile)
         self.assertIs(conn2.wfile, sock._wfile)
         self.assertEqual(sock._calls, [
@@ -908,7 +890,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding host:
             myhost = '.'.join([random_id() for i in range(3)])
@@ -918,7 +899,6 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.host, myhost)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding host with None:
             inst = client.SSLClient(sslctx, address, host=None)
@@ -927,7 +907,6 @@ class TestSSLClient(TestCase):
             self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding ssl_host:
             my_ssl_host = '.'.join([random_id(10) for i in range(4)])
@@ -937,7 +916,6 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding host with None:
             inst = client.SSLClient(sslctx, address, ssl_host=None)
@@ -946,7 +924,6 @@ class TestSSLClient(TestCase):
             self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the timeout option:
             inst = client.SSLClient(sslctx, address, timeout=17)
@@ -960,7 +937,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 17)
             self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, client.Connection)
 
             # Test overriding the bodies option:
             mybodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
@@ -975,39 +951,21 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 90)
             self.assertIs(inst.bodies, mybodies)
-            self.assertIs(inst.Connection, client.Connection)
-
-            # Test overriding the Connection option:
-            class MyConnection:
-                pass
-
-            inst = client.SSLClient(sslctx, address, Connection=MyConnection)
-            self.assertIs(inst.address, address)
-            self.assertEqual(inst.options, {'Connection': MyConnection})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(*address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
-            self.assertIs(inst.bodies, base.bodies)
-            self.assertIs(inst.Connection, MyConnection)
 
             # Test overriding all the options together:
             options = {
                 'host': myhost,
+                'ssl_host': my_ssl_host,
                 'timeout': 16.9,
                 'bodies': mybodies,
-                'Connection': MyConnection,
             }
             inst = client.SSLClient(sslctx, address, **options)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, myhost)
+            self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.bodies, mybodies)
-            self.assertIs(inst.Connection, MyConnection)
 
     def test_repr(self):
         class Custom(client.SSLClient):

@@ -66,7 +66,13 @@ Breaking API changes:
         query, can always reconstruct a lossless relative URI, or a lossless
         absolute URI, respectively.
 
-        
+    *   :class:`degu.client.Client` no longer accepts the *Connection* keyword
+        option, no longer has the ``Client.Connection`` attribute; the idea
+        behind the *Connection* option was so that high-level, domain-specific
+        APIs could be implemented via a :class:`degu.client.Connection`
+        subclass, but subclassing severely limits composability; in contrast,
+        the new approach is inspired by the `io`_ module in the Python standard
+        library (see :ref:`high-level-client-API` for details).
 
 
 
@@ -709,7 +715,7 @@ As of Degu 0.5, you now need to do this::
 
 :class:`degu.client.Client` and :class:`degu.client.SSLClient` instances are
 now stateless and thread-safe, do not themselves reference any socket resources.
-On the other hand, :class:`degu.client.Connection` instances are statefull and
+On the other hand, :class:`degu.client.Connection` instances are stateful and
 are *not* thread-safe.
 
 Two things motivated these breaking API changes:
@@ -738,4 +744,5 @@ Two things motivated these breaking API changes:
 .. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
 
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
+.. _`io`: https://docs.python.org/3/library/io.html
 

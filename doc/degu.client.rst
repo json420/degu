@@ -6,7 +6,7 @@
 
 The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
 
-It's similar in abstraction level to the `http.client`_ module in the Python3
+It's similar in abstraction level to the `http.client`_ module in the Python
 standard library, and has an API that overall should feel familiar to those
 experienced with `http.client`_ (although there are some major differences, for
 details see :ref:`degu-client-v-http-client`).
@@ -15,7 +15,7 @@ As a quick example, say we define this Degu server application and run it
 in a :class:`degu.misc.TempServer`:
 
 >>> def example_app(session, request, bodies):
-...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...     return (200, 'OK', {},  b'hello, world')
 ...
 >>> from degu.misc import TempServer
 >>> server = TempServer(('127.0.0.1', 0), example_app)
@@ -25,8 +25,8 @@ We'll create a :class:`Client` for talking to the above ``server`` like this:
 >>> from degu.client import Client
 >>> client = Client(server.address)
 
-A :class:`Client` instance specifies *where* an HTTP server is, and *how* to
-connect to it.
+A :class:`Client` specifies *where* an HTTP server is, and *how* to connect to
+it.
 
 On the other hand, a :class:`Connection` represents a specific TCP connection to
 said server, through which one or more HTTP requests can be made.
@@ -38,13 +38,16 @@ Create a :class:`Connection` using :meth:`Client.connect()` like this:
 We can make an HTTP request to our server using :meth:`Connection.request()`
 like this, which will return a :class:`Response` namedtuple:
 
->>> conn.request('GET', '/', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> response = conn.request('GET', '/', {}, None)
+>>> response
+Response(status=200, reason='OK', headers={'content-length': 12}, body=Body(<rfile>, 12))
+>>> response.body.read()
+b'hello, world'
 
 As per HTTP/1.1, multiple requests can be made using the same connection:
 
->>> conn.request('PUT', '/foo/bar', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> conn.request('PUT', '/foo/bar', {}, None).body.read()
+b'hello, world'
 
 It's a good idea to explicitly call :meth:`Connection.close()` when you're done
 using a connection, although this will likewise be done automatically when a
@@ -75,14 +78,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
     ``bytes`` instance.  See :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  You can override the *host*, *timeout*, *bodies*,
-    and *Connection*, and their values are exposed via attributes of the same
-    name:
+    configuration defaults.  You can override the *host*, *timeout*, and
+    *bodies*, and their values are exposed via attributes of the same name:
 
         * :attr:`Client.host`
         * :attr:`Client.timeout`
         * :attr:`Client.bodies`
-        * :attr:`Client.Connection`
 
     See :ref:`client-options` for details.
 
@@ -174,20 +175,13 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         The default is :attr:`degu.base.bodies`, but you can override this using
         the *bodies* keyword option.
 
-    .. attribute:: Connection
-
-        The Connection class used by :meth:`Client.connect()`.
-
-        The default is :class:`Connection`, but you can override this using
-        the *Connection* keyword option.
-
     .. method:: create_socket()
 
         Create a new `socket.socket`_ connected to :attr:`Client.address`.
 
-    .. method:: connect(Connection=None, bodies=None)
+    .. method:: connect(bodies=None)
 
-        Create a new *Connection* instance.
+        Create a new :class:`Connection` instance.
 
 
 
@@ -262,19 +256,14 @@ The following client *options* are supported:
     *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
         used to construct HTTP request and response bodies
 
-    *   **Connection** --- :meth:`Client.connect()` will return an instance of
-        this class; this is a good way to provide domain-specific behavior in a
-        :class:`degu.client.Connection` subclass
-
 Default values:
 
     ==============  =========================  ==================================
     Option          Attribute                  Default value
     ==============  =========================  ==================================
     ``host``        :attr:`Client.host`        derived from :ref:`client-address`
-    ``timeout``     :attr:`Client.timeout`     ``90`` seconds
+    ``timeout``     :attr:`Client.timeout`     ``90``
     ``bodies``      :attr:`Client.bodies`      :attr:`degu.base.bodies`
-    ``Connection``  :attr:`Client.Connection`  :class:`Connection`
     ==============  =========================  ==================================
 
 
@@ -431,7 +420,7 @@ Also see the server :ref:`server-options`.
 :class:`Connection`
 -------------------
 
-.. class:: Connection(sock, host, bodies)
+.. class:: Connection(sock, base_headers, bodies)
 
     Provides an HTTP client request API atop an arbitrary socket connection. 
 
@@ -442,22 +431,23 @@ Also see the server :ref:`server-options`.
     The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
     anything else implementing the needed API.
 
-    The *host* argument can be a ``str`` providing the value for the ``'host'``
-    header, or it can be ``None``, in which case :meth:`Connection.request()`
-    will not automatically include a ``'host'`` header in each request.
+    The *base_headers* argument can be a ``dict`` providing headers that
+    :meth:`Connection.request()` will include in each request.  Or
+    *base_headers* can be ``None``, meaning no headers will be automatically
+    included in each request.
 
     The *bodies* argument should be a ``namedtuple`` exposing the four standard
     wrapper classes used to construct HTTP request and response bodies.
 
-    A :class:`Connection` instance is statefull and is *not* thread-safe.
+    A :class:`Connection` instance is stateful  and is *not* thread-safe.
 
     .. attribute:: sock
 
         The *sock* argument passed to the constructor.
 
-    .. attribute:: host
+    .. attribute:: base_headers
 
-        The *host* argument passed to the constructor.
+        The *base_headers* argument passed to the constructor.
 
     .. attribute:: bodies
 
@@ -586,13 +576,96 @@ Also see the server :ref:`server-options`.
 
 
 
+.. _high-level-client-API:
+
+High-level client API
+---------------------
+
+:mod:`degu.client` is a low-level API aimed at exposing complete HTTP client
+semantics, with neither fanfare nor magic.  As such, :mod:`degu.client` is
+sometimes lower-level than you'll want for a given scenario.
+
+Although high-level APIs like the excellent `Requests`_ library can make certain
+patterns extremely succinct, they generally do so at the expense of making other
+patterns more complex, and sometimes making still other patterns impossible.
+
+Rather than making you choose between a low-level (but universal) API and a
+high-level (but insufficiently  generic) API for all your HTTP client needs, the
+"Degu way" is to build high-level, domain-specific APIs as needed, and to
+otherwise use the low-level :mod:`degu.client` API.
+
+When implementing high-level, domain-specific APIs, the recommended Degu
+approach is modeled after the `io`_ module in the Python standard library.
+
+The Degu equivalent of the *Raw I/O* layer in the `io`_ module is provided by
+the "raw" client classes (:class:`Client` and :class:`SSLClient`), plus the
+"raw" connection class (:class:`Connection`).
+
+It's best to implement your high-level, domain-specific API as a pair of classes
+that wrap these "raw" objects.  This is the Degu equivalent of the high-level
+*Text I/O* and *Binary I/O* layers in the `io`_ module.
+
+Your high-level client class should take the "raw" client object as its first
+argument, and should implement an equivalent to :meth:`Client.connect()`, for
+example:
+
+>>> class MyClient:
+...     def __init__(self, client):
+...         self.client = client
+... 
+...     def connect(self, bodies=None):
+...         conn = self.client.connect(bodies=bodies)
+...         return MyConnection(conn)
+... 
+
+Your high-level connection class should take the "raw" connection object as its
+first argument, should implement equivalents to :attr:`Connection.closed` and
+:meth:`Connection.close()`, and should otherwise implement your domain-specific
+API, for example:
+
+>>> class MyConnection:
+...     def __init__(self, conn):
+...         self.conn = conn
+... 
+...     @property
+...     def closed(self):
+...         return self.conn.closed
+... 
+...     def close(self):
+...         return self.conn.close()
+... 
+...     def post(self, uri, headers, body):
+...         return self.conn.request('POST', uri, headers, body)
+... 
+...     def put(self, uri, headers, body):
+...         return self.conn.request('PUT', uri, headers, body)
+... 
+...     def get(self, uri, headers):
+...         return self.conn.request('GET', uri, headers, None)
+... 
+...     def delete(self, uri, headers):
+...         return self.conn.request('DELETE', uri, headers, None)
+... 
+...     def head(self, uri, headers):
+...         return self.conn.request('HEAD', uri, headers, None)
+... 
+
+Arguably the above ``post()``, ``put()``, ``get()``, ``delete()``, and
+``head()`` shortcut methods aren't useful enough to justify the custom
+``MyConnection`` API, but it still illustrates the general approach.
+
+For a more realistic example of a high-level, domain-specific client API, see
+:mod:`degu.jsonclient`.
+
+
+
 .. _degu-client-v-http-client:
 
 Degu vs. ``http.client``
 ------------------------
 
 :mod:`degu.client` is heavily inspired by the `http.client`_ module in the
-Python3 standard library.
+Python standard library.
 
 Here's a summary of how :mod:`degu.client` differs from `http.client`_, and some
 rationale for why Degu took a different approach in each case.
@@ -708,7 +781,6 @@ For example:
 
 
 
-
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`HTTPConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection
 .. _`HTTPSConnection`: https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection
@@ -726,6 +798,9 @@ For example:
 .. _`ssl.SSLContext.check_hostname`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.check_hostname
 .. _`ssl.SSLContext.wrap_socket()`: https://docs.python.org/3/library/ssl.html#ssl.SSLContext.wrap_socket
 
-.. _`socket`: https://docs.python.org/3/library/socket.html#socket-objects
+.. _`socket`: https://docs.python.org/3/library/socket.html
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
+
+.. _`Requests`: http://docs.python-requests.org/en/latest/
+.. _`io`: https://docs.python.org/3/library/io.html
