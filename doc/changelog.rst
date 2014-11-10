@@ -70,8 +70,9 @@ Breaking API changes:
         option, no longer has the ``Client.Connection`` attribute; the idea
         behind the *Connection* option was so that high-level, domain-specific
         APIs could be implemented via a :class:`degu.client.Connection`
-        subclass, but relying on subclassing is bad for composability, as the
-        high-level API is then tied to a specific RGI client implementation
+        subclass, but subclassing severely limits composability; in contrast,
+        the new approach is inspired by the `io`_ module in the Python standard
+        library (see :ref:`high-level-client-API` for details).
 
 
 
@@ -743,4 +744,5 @@ Two things motivated these breaking API changes:
 .. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
 
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
+.. _`io`: https://docs.python.org/3/library/io.html
 
