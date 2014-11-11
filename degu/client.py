@@ -340,6 +340,21 @@ class Connection:
             self.close()
             raise
 
+    def put(self, uri, headers, body):
+        return self.request('PUT', uri, headers, body)
+
+    def post(self, uri, headers, body):
+        return self.request('POST', uri, headers, body)
+
+    def get(self, uri, headers):
+        return self.request('GET', uri, headers, None)
+
+    def head(self, uri, headers):
+        return self.request('HEAD', uri, headers, None)
+
+    def delete(self, uri, headers):
+        return self.request('DELETE', uri, headers, None)
+
 
 def build_host(host, port, *extra):
     """

@@ -668,6 +668,79 @@ class TestConnection(TestCase):
         self.assertIsNone(conn.response_body)
         self.assertIs(conn.closed, True)
 
+    def get_subclass(self, marker):
+        class Subclass(client.Connection):
+            def __init__(self, marker):
+                self._marker = marker
+                self._args = None
+                self._kw = None
+
+            def request(self, *args, **kw):
+                assert self._args is None
+                assert self._kw is None
+                self._args = args
+                self._kw = kw
+                return self._marker
+
+        return Subclass(marker)
+
+    def test_put(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        body = os.urandom(16)
+        self.assertIs(inst.put(uri, headers, body), marker)
+        self.assertEqual(inst._args, ('PUT', uri, {key: value}, body))
+        self.assertEqual(inst._kw, {})
+
+    def test_post(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        body = os.urandom(16)
+        self.assertIs(inst.post(uri, headers, body), marker)
+        self.assertEqual(inst._args, ('POST', uri, {key: value}, body))
+        self.assertEqual(inst._kw, {})
+
+    def test_get(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.get(uri, headers), marker)
+        self.assertEqual(inst._args, ('GET', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})
+
+    def test_head(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.head(uri, headers), marker)
+        self.assertEqual(inst._args, ('HEAD', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})
+
+    def test_delete(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.delete(uri, headers), marker)
+        self.assertEqual(inst._args, ('DELETE', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})   
+
 
 class TestClient(TestCase):
     def test_init(self):
