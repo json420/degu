@@ -97,13 +97,31 @@ Other changes:
         these shortcuts any longer, plus they make the
         :class:`degu.client.Connection` API more inviting to use directly, so
         there's no reason to use a higher-level wrapper just for the sake of
-        this brevity.
+        this same brevity.
 
         Note that the generic :meth:`degu.client.Connection.request()` method
         remains unchanged, and should still be used whenever you need to specify
         an arbitrary HTTP request via arguments alone (for example, when
         implementing a reverse-proxy).
 
+    *   :class:`degu.client.Connection` now internally uses the provided
+        *bodies* API rather than directly importing the default wrapper classes
+        from :mod:`degu.base`; this means the standard client and bodies APIs
+        are now fully compossible, so you can use the Degu client with other
+        implementations of the bodies API (for example, when using the Degu
+        client in a reverse-proxy running on some other RGI compatible server).
+
+        To maintain this composability when constructing HTTP request bodies,
+        you should use the wrappers exposed via
+        :attr:`degu.client.Connection.bodies` (rather than directly importing
+        the same from :mod:`degu.base`).  For example:
+
+        >>> from degu.client import Client
+        >>> client = Client(('127.0.0.1', 56789))
+        >>> conn = client.connect()  #doctest: +SKIP
+        >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
+        >>> body = conn.bodies.Body(fp, 76)  #doctest: +SKIP
+        >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
 
 0.10 (October 2014)

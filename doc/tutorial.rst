@@ -122,12 +122,12 @@ RGI application API have been carefully designed to complement each other.
 For example, here's an RGI application that implements a `reverse-proxy`_:
 
 >>> class ProxyApp:
-...     def __init__(self, address):
-...         self.client = Client(address)
+...     def __init__(self, client):
+...         self.client = client
 ... 
 ...     def __call__(self, session, request, bodies):
 ...         if '__conn' not in session:
-...             session['__conn'] = self.client.connect(bodies=bodies)
+...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
 ...         return conn.request(
 ...             request['method'],
@@ -165,7 +165,7 @@ authority):
 
 >>> from degu.misc import TempPKI, TempSSLServer
 >>> pki = TempPKI()
->>> proxy_app = ProxyApp(server.address)
+>>> proxy_app = ProxyApp(client)
 >>> proxy_server = TempSSLServer(pki.server_sslconfig, ('::', 0, 0, 0), proxy_app)
 
 That just spun-up a :class:`degu.server.SSLServer` in a new
@@ -271,6 +271,7 @@ network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
 
+
 .. _io-abstractions:
 
 IO abstractions
@@ -326,7 +327,7 @@ The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
 internally handles the writing.
 
-**Server agnostic RGI applications** are generally possible.
+**Server agnostic RGI applications** are possible.
 
 These four IO wrapper classes are exposed in the RGI *bodies* argument:
 
@@ -344,15 +345,36 @@ If server applications only use these wrapper classes via the *bodies* argument
 abstracted from Degu as an implementation, and could potentially run on other
 HTTP servers that implement the :doc:`rgi`.
 
-The place where this breaks down a bit is with something like our SSL
-reverse-proxy example.  Were you using the Degu client but not running on the
-Degu server, you couldn't *directly* use the incoming HTTP request body in your
-forwarded client request.  Likewise, you couldn't *directly* use the response
-body from the upstream HTTP server in your application response.
+The place where this is a bit more complicated is with something like our SSL
+reverse-proxy example.  In this case, you'll want the Degu client to use the
+same IO abstractions as the server, even when that server isn't Degu.
 
-In both directions, these HTTP input bodies would need to be wrapped in a
-``bodies.Body`` or ``bodies.ChunkedBody`` instance as appropriate (but no
-wrapping is needed when the HTTP body is ``None``).
+The best way to do this is to pass the *bodies* argument to
+:meth:`degu.client.Client.connect()`.  For example, our original ``ProxyApp``
+needs only a tiny change:
+
+>>> class ProxyApp:
+...     def __init__(self, client):
+...         self.client = client
+... 
+...     def __call__(self, session, request, bodies):
+...         if '__conn' not in session:
+...             session['__conn'] = self.client.connect(bodies=bodies)  # Changed
+...         conn = session['__conn']
+...         return conn.request(
+...             request['method'],
+...             request['uri'],
+...             request['headers'],
+...             request['body']
+...         )
+... 
+
+A second way is to use the *bodies* keyword option when creating a
+:class:`degu.client.Client`, which will override
+:attr:`degu.client.Client.bodies`.  Although note that this isn't the
+recommended approach, as it's generally best to keep your RGI reverse-proxy
+applications abstracted from the details of how a client was created (by
+providing them with a pre-build client, as done in the above ``ProxyApp``).
 
 
 
