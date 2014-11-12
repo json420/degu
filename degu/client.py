@@ -295,13 +295,15 @@ class Connection:
         return self.sock is None
 
     def close(self):
-        self.response_body = None  # Always deference previous response_body
         if self.sock is not None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except (OSError, TypeError):
                 pass
             self.sock = None
+            self.rfile = None
+            self.wfile = None
+            self.response_body = None
 
     def request(self, method, uri, headers, body):
         if self.sock is None:

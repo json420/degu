@@ -542,7 +542,7 @@ Also see the server :ref:`server-options`.
 
     .. method:: put(uri, headers, body)
 
-        Shortcut for ``'PUT'`` requests.
+        Shortcut for ``PUT`` requests.
 
         This calls :meth:`Connection.request()` with a *method* of ``'PUT'``.
 
@@ -553,7 +553,7 @@ Also see the server :ref:`server-options`.
 
     .. method:: post(uri, headers, body)
 
-        Shortcut for ``'POST'`` requests.
+        Shortcut for ``POST`` requests.
 
         This calls :meth:`Connection.request()` with a *method* of ``'POST'``.
 
@@ -564,7 +564,7 @@ Also see the server :ref:`server-options`.
 
     .. method:: get(uri, headers)
 
-        Shortcut for ``'GET'`` requests.
+        Shortcut for ``GET`` requests.
 
         This calls :meth:`Connection.request()` with a *method* of ``'GET'``,
         and a *body* of ``None``.
@@ -576,7 +576,7 @@ Also see the server :ref:`server-options`.
 
     .. method:: head(uri, headers)
 
-        Shortcut for ``'HEAD'`` requests.
+        Shortcut for ``HEAD`` requests.
 
         This calls :meth:`Connection.request()` with a *method* of ``'HEAD'``,
         and a *body* of ``None``.
@@ -588,7 +588,7 @@ Also see the server :ref:`server-options`.
 
     .. method:: delete(uri, headers)
 
-        Shortcut for ``'DELETE'`` requests.
+        Shortcut for ``DELETE`` requests.
 
         This calls :meth:`Connection.request()` with a *method* of ``'DELETE'``,
         and a *body* of ``None``.

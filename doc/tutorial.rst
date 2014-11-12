@@ -52,7 +52,7 @@ Example: SSL reverse-proxy
 --------------------------
 
 Here's a minimal Degu server application, implemented according to the
-:doc:`rgi` (RGI) specification:
+:doc:`rgi`:
 
 >>> def example_app(session, request, bodies):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
@@ -74,7 +74,7 @@ That just spun-up a :class:`degu.server.Server` in a new
 
 Now we'll create a :class:`degu.client.Client` using the
 :attr:`degu.server.Server.address` attribute from our above ``server``, which
-will included the random, unprivileged *port* assigned by the kernel:
+will include the random, unprivileged *port* assigned by the kernel:
 
 >>> from degu.client import Client
 >>> client = Client(server.address)
@@ -87,24 +87,31 @@ In order to make requests, we'll need to create a
 :class:`degu.client.Connection` by calling :meth:`degu.client.Client.connect()`:
 
 >>> conn = client.connect()
->>> conn.request('GET', '/', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 In contrast, a :class:`degu.client.Connection` is stateful and is *not*
 thread-safe.
 
-As both the Degu client and server are built for HTTP/1.1 only, connection
-reuse is assumed.  We can make another request to our ``server`` using the same
-connection:
+Now we can use :meth:`degu.client.Connection.put()` to make a ``PUT`` request,
+which will return a :class:`degu.client.Response` namedtuple:
 
->>> conn.request('PUT', '/foo', {}, None)
+>>> conn.put('/foo', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+As both the Degu client and server are built for HTTP/1.1 only, connection
+reuse is assumed, so we can make another request to our ``server`` using the
+same connection.
+
+This time we'll use :meth:`degu.client.Connection.post()` to make a ``POST``
+request:
+
+>>> conn.post('/bar', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 After you're done using a connection, it's a good idea to explicitly close it,
 although note that a connection is also automatically closed when garbage
 collected.
 
-Close the connection like this:
+Close a connection using :meth:`degu.client.Connection.close()`:
 
 >>> conn.close()
 
@@ -120,7 +127,7 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ... 
 ...     def __call__(self, session, request, bodies):
 ...         if '__conn' not in session:
-...             session['__conn'] = self.client.connect()
+...             session['__conn'] = self.client.connect(bodies=bodies)
 ...         conn = session['__conn']
 ...         return conn.request(
 ...             request['method'],
@@ -135,10 +142,19 @@ The important thing to note above is that a Degu reverse-proxy application can
 client request, and can *directly* return the *entire* HTTP response from the
 upstream HTTP server without transformation.
 
-This 4-tuple response object is something you'll really want to commit to
-memory, as in Degu it's used uniformly on both the server and client ends::
+Also note that our ``ProxyApp`` uses the generic
+:meth:`degu.client.Connection.request()` method, which allows you to specify any
+supported HTTP request via its four arguments.
 
-    (status, reason, headers, body)
+In contrast, our previous ``PUT`` and ``POST`` requests were made using the
+corresponding shortcut methods, one of which exists for each supported HTTP
+request *method*:
+
+    *   :meth:`degu.client.Connection.put()`
+    *   :meth:`degu.client.Connection.post()`
+    *   :meth:`degu.client.Connection.get()`
+    *   :meth:`degu.client.Connection.head()`
+    *   :meth:`degu.client.Connection.delete()`
 
 It's likewise fun and easy to create throw-away SSL certificate chains using
 :class:`degu.misc.TempPKI`, and to create a throw-away
@@ -156,13 +172,28 @@ That just spun-up a :class:`degu.server.SSLServer` in a new
 `multiprocessing.Process`_ (which will be automatically terminated when the
 :class:`degu.misc.TempSSLServer` is garbage collected).
 
-We'll need a :class:`degu.client.SSLClient` so we can make requests to our
+We'll need a :class:`degu.client.SSLClient` so we can make connections to our
 ``proxy_server``:
 
 >>> from degu.client import SSLClient
 >>> proxy_client = SSLClient(pki.client_sslconfig, proxy_server.address)
 >>> proxy_conn = proxy_client.connect()
->>> proxy_conn.request('GET', '/', {}, None)
+
+And now we can use this connection to make the same ``PUT`` and ``POST``
+requests to our ``example_app``, but this time through our ``ProxyApp``
+reverse-proxy:
+
+>>> proxy_conn.put('/foo', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> proxy_conn.post('/bar', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+To round things out, here's how to make the same two requests using
+:meth:`degu.client.Connection.request()`:
+
+>>> proxy_conn.request('PUT', '/foo', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+>>> proxy_conn.request('POST', '/bar', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 Finally, we'll *shut it down*:
