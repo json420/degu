@@ -311,9 +311,9 @@ class Connection:
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-            validate_request(self.bodies, method, uri, headers, body)
             if self.base_headers:
                 headers.update(self.base_headers)
+            validate_request(self.bodies, method, uri, headers, body)
             write_request(self.wfile, method, uri, headers, body)
             response = read_response(self.rfile, self.bodies, method)
             self.response_body = response.body

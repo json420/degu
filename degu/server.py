@@ -211,7 +211,7 @@ def validate_server_sslctx(sslctx):
     return sslctx
 
 
-def read_request(rfile):
+def read_request(rfile, bodies):
     # Read the entire request preamble:
     (request_line, headers) = read_preamble(rfile)
 
@@ -242,9 +242,9 @@ def read_request(rfile):
         if method in {'GET', 'HEAD'} and content_length == 0:
             del headers['content-length']
         else:
-            body = Body(rfile, content_length)
+            body = bodies.Body(rfile, content_length)
     elif 'transfer-encoding' in headers:
-        body = ChunkedBody(rfile)
+        body = bodies.ChunkedBody(rfile)
     else:
         body = None
     if body is not None and method not in {'POST', 'PUT'}:
@@ -306,7 +306,7 @@ def handle_requests(app, sock, max_requests, session, bodies):
 
 def handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
-    request = read_request(rfile)
+    request = read_request(rfile, bodies)
     request_method = request['method']
     request_body = request['body']
 

@@ -56,7 +56,7 @@ def standard_harness_app(session, request, bodies):
 
 class FuzzTestFunctions(FuzzTestCase):
     def test_read_request(self):
-        self.fuzz(server.read_request)
+        self.fuzz(server.read_request, base.bodies)
 
 
 class TestFunctions(TestCase):
@@ -265,12 +265,12 @@ class TestFunctions(TestCase):
         # No data:
         rfile = io.BytesIO()
         with self.assertRaises(base.EmptyPreambleError):
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
 
        # CRLF terminated request line is empty: 
         rfile = io.BytesIO(b'\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), 'first preamble line is empty')
         self.assertEqual(rfile.tell(), 2)
         self.assertEqual(rfile.read(), b'')
@@ -278,7 +278,7 @@ class TestFunctions(TestCase):
         # Line too long:
         rfile = io.BytesIO(longline)
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad line termination: b'D\\r'")
         self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
         self.assertEqual(rfile.read(), b'\n')
@@ -286,7 +286,7 @@ class TestFunctions(TestCase):
         # LF but no proceeding CR:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\n\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad line termination: b'1\\n'")
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(rfile.read(), b'\r\n')
@@ -294,7 +294,7 @@ class TestFunctions(TestCase):
         # Missing CRLF preamble terminator:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile.tell(), 19)
         self.assertEqual(rfile.read(), b'')
@@ -302,7 +302,7 @@ class TestFunctions(TestCase):
         # 1st header line too long:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n' + longline)
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b'D\\r'")
         self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES + 19)
         self.assertEqual(rfile.read(), b'\n')
@@ -310,7 +310,7 @@ class TestFunctions(TestCase):
         # 1st header line has LF but no proceeding CR:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\n\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b'z\\n'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\n')
@@ -318,7 +318,7 @@ class TestFunctions(TestCase):
         # Again, missing CRLF preamble terminator, but with a header also:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile.tell(), 29)
         self.assertEqual(rfile.read(), b'')
@@ -326,7 +326,7 @@ class TestFunctions(TestCase):
         # Request line has too few items to split:
         rfile = io.BytesIO(b'GET /fooHTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
         self.assertEqual(rfile.tell(), 20)
         self.assertEqual(rfile.read(), b'body')
@@ -334,7 +334,7 @@ class TestFunctions(TestCase):
         # Request line has too many items to split:
         rfile = io.BytesIO(b'GET /foo /bar HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'too many values to unpack (expected 3)'
         )
@@ -344,7 +344,7 @@ class TestFunctions(TestCase):
         # Bad method:
         rfile = io.BytesIO(b'OPTIONS /foo HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
         self.assertEqual(rfile.tell(), 25)
         self.assertEqual(rfile.read(), b'body')
@@ -352,7 +352,7 @@ class TestFunctions(TestCase):
         # Bad protocol:
         rfile = io.BytesIO(b'GET /foo HTTP/1.0\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
         self.assertEqual(rfile.tell(), 21)
         self.assertEqual(rfile.read(), b'body')
@@ -360,7 +360,7 @@ class TestFunctions(TestCase):
         # Too many ? in uri:
         rfile = io.BytesIO(b'GET /foo?bar=baz?stuff=junk HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "bad request uri: '/foo?bar=baz?stuff=junk'"
         )
@@ -370,7 +370,7 @@ class TestFunctions(TestCase):
         # uri path doesn't start with /:
         rfile = io.BytesIO(b'GET foo/bar?baz HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'body')
@@ -378,7 +378,7 @@ class TestFunctions(TestCase):
         # uri path contains a double //:
         rfile = io.BytesIO(b'GET /foo//bar?baz HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
         self.assertEqual(rfile.tell(), 30)
         self.assertEqual(rfile.read(), b'body')
@@ -386,14 +386,14 @@ class TestFunctions(TestCase):
         # 1st header line has too few items to split:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz\\r\\n'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\nbody')
 
         # 1st header line has too many items to split:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz: jazz\r\n\r\nbody')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'GET',
                 'uri': '/foo',
@@ -410,7 +410,7 @@ class TestFunctions(TestCase):
         # Duplicate headers:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "duplicate header: b'foo: baz\\r\\n'")
         self.assertEqual(rfile.tell(), 36)
         self.assertEqual(rfile.read(), b'\r\nbody')
@@ -418,7 +418,7 @@ class TestFunctions(TestCase):
         # Content-Length can't be parsed as a base-10 integer:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: 16.9\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 10: '16.9'"
         )
@@ -428,7 +428,7 @@ class TestFunctions(TestCase):
         # Content-Length is negative:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: -17\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'negative content-length: -17'
         )
@@ -438,7 +438,7 @@ class TestFunctions(TestCase):
         # Bad Transfer-Encoding:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "bad transfer-encoding: 'CHUNKED'"
         )
@@ -450,7 +450,7 @@ class TestFunctions(TestCase):
             b'GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 17\r\n\r\nbody'
         )
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
         )
@@ -459,7 +459,7 @@ class TestFunctions(TestCase):
 
         # No headers, no body, no query:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'GET',
                 'uri': '/',
@@ -475,7 +475,7 @@ class TestFunctions(TestCase):
 
         # No headers, no body, but add a query:
         rfile = io.BytesIO(b'HEAD /foo?nonpair HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'HEAD',
                 'uri': '/foo?nonpair',
@@ -491,7 +491,7 @@ class TestFunctions(TestCase):
 
         # An empty query (as opposed to no query):
         rfile = io.BytesIO(b'HEAD /foo? HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'HEAD',
                 'uri': '/foo?',
@@ -509,7 +509,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(
             b'DELETE /foo/Bar/?keY=vAl HTTP/1.1\r\nME: YOU\r\n\r\nextra'
         )
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'DELETE',
                 'uri': '/foo/Bar/?keY=vAl',
