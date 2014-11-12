@@ -431,13 +431,26 @@ Also see the server :ref:`server-options`.
     The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
     anything else implementing the needed API.
 
-    The *base_headers* argument can be a ``dict`` providing headers that
-    :meth:`Connection.request()` will include in each request.  Or
-    *base_headers* can be ``None``, meaning no headers will be automatically
-    included in each request.
+    The *base_headers* argument must be a ``dict`` providing headers that
+    :meth:`Connection.request()` will include in each request, or it can be
+    ``None``, which is treated the same as ``{}``.
 
     The *bodies* argument should be a ``namedtuple`` exposing the four standard
     wrapper classes used to construct HTTP request and response bodies.
+
+    :meth:`Connection.request()` allows any supported HTTP request to be fully
+    specified via its four arguments, which is important for reverse-proxy
+    applications or similar scenarios that need to be abstracted from the
+    specific HTTP request *method* being used.
+
+    There are also shortcuts for each of the five supported HTTP request
+    methods:
+
+        *   :meth:`Connection.put()`
+        *   :meth:`Connection.post()`
+        *   :meth:`Connection.get()`
+        *   :meth:`Connection.head()`
+        *   :meth:`Connection.delete()`
 
     A :class:`Connection` instance is stateful  and is *not* thread-safe.
 
@@ -457,6 +470,24 @@ Also see the server :ref:`server-options`.
 
         Will be ``True`` if the connection has been closed, otherwise ``False``.
 
+    .. method:: close()
+
+        Shutdown the underlying ``socket.socket`` instance.
+
+        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
+        immediately preventing further reading from or writing to the socket.
+
+        Once a connection is closed, no further requests can be made via that
+        same connection instance.  To make subsequent requests, a new connection
+        must be created with :meth:`Client.connect()`.
+
+        After this method has been called, :attr:`Connection.closed` will be
+        ``True``.
+
+        Note that a connection is automatically closed when any unhandled
+        exception occurs in :meth:`Connection.request()`, and is likewise
+        automatically closed when the connection instance is garbage collected.
+
     .. method:: request(method, uri, headers, body)
 
         Make an HTTP request.
@@ -473,8 +504,8 @@ Also see the server :ref:`server-options`.
             /foo
             /foo/bar?stuff=junk
 
-        The *headers* must be a ``dict``.  All header names (keys) must be
-        lowercase.
+        The *headers* must be a ``dict`` providing the request headers.  All
+        header names (keys) must be lowercase.
 
         The *body* can be:
 
@@ -494,7 +525,8 @@ Also see the server :ref:`server-options`.
         ``'HEAD'``, or ``'DELETE'``.
 
         If you want your request body to be directly uploaded from a regular
-        file, simply wrap it in a :class:`degu.base.Body`.  It will be uploaded
+        file, simply wrap it in a :class:`degu.base.Body` (or whatever
+        equivalent class is exposed)  It will be uploaded
         from the current seek position in the file up to the specified
         *content_length*.  For example, this will upload 76 bytes from the data
         slice ``[1700:1776]``:
@@ -508,23 +540,64 @@ Also see the server :ref:`server-options`.
         >>> body = Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
-    .. method:: close()
+    .. method:: put(uri, headers, body)
 
-        Shutdown the underlying ``socket.socket`` instance.
+        Shortcut for ``PUT`` requests.
 
-        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
-        immediately preventing further reading from or writing to the socket.
+        This calls :meth:`Connection.request()` with a *method* of ``'PUT'``.
 
-        Once a connection is closed, no further requests can be made via that
-        same connection instance.  To make subsequent requests, a new connection
-        must be created with :meth:`Client.connect()`.
+        These two are equivalent:
 
-        After this method has been called, :attr:`Connection.closed` will be
-        ``True``.
+        >>> response = conn.put(uri, headers, body)  #doctest: +SKIP
+        >>> response = conn.request('PUT', uri, headers, body)  #doctest: +SKIP
 
-        Note that a connection is automatically closed when any unhandled
-        exception occurs in :meth:`Connection.request()`, and is likewise
-        automatically closed when the connection instance is garbage collected.
+    .. method:: post(uri, headers, body)
+
+        Shortcut for ``POST`` requests.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'POST'``.
+
+        These two are equivalent:
+
+        >>> response = conn.post(uri, headers, body)  #doctest: +SKIP
+        >>> response = conn.request('POST', uri, headers, body)  #doctest: +SKIP
+
+    .. method:: get(uri, headers)
+
+        Shortcut for ``GET`` requests.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'GET'``,
+        and a *body* of ``None``.
+
+        These two are equivalent:
+
+        >>> response = conn.get(uri, headers)  #doctest: +SKIP
+        >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
+
+    .. method:: head(uri, headers)
+
+        Shortcut for ``HEAD`` requests.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'HEAD'``,
+        and a *body* of ``None``.
+
+        These two are equivalent:
+
+        >>> response = conn.head(uri, headers)  #doctest: +SKIP
+        >>> response = conn.request('HEAD', uri, headers, None)  #doctest: +SKIP
+
+    .. method:: delete(uri, headers)
+
+        Shortcut for ``DELETE`` requests.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'DELETE'``,
+        and a *body* of ``None``.
+
+        These two are equivalent:
+
+        >>> response = conn.delete(uri, headers)  #doctest: +SKIP
+        >>> response = conn.request('DELETE', uri, headers, None)  #doctest: +SKIP
+
 
 
 :class:`Response`

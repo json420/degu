@@ -23,10 +23,9 @@ Degu includes:
     *   **Test fixtures** for creating throw-away Degu servers for unit testing,
         illustration, and play
 
-Degu server applications are implemented according to the :doc:`rgi` (RGI),
-which is very much in the spirit of `WSGI`_ but does not attempt to be
-compatible with `CGI`_, nor necessarily to be compatible with any existing HTTP
-servers.
+Degu server applications are implemented according to the :doc:`rgi`, which is
+very much in the spirit of `WSGI`_ but does not attempt to be compatible with
+`CGI`_, nor necessarily to be compatible with any existing HTTP servers.
 
 Degu is being developed as part of the `Novacut`_ project. Packages are
 available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the `Novacut

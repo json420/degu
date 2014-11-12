@@ -25,20 +25,10 @@ HTTP client.
 
 import socket
 from collections import namedtuple
-import io
-import os
 from os import path
 
 from .base import bodies as default_bodies
-from .base import (
-    TYPE_ERROR,
-    Body,
-    BodyIter,
-    ChunkedBody,
-    ChunkedBodyIter,
-    makefiles,
-    read_preamble,
-)
+from .base import TYPE_ERROR, makefiles, read_preamble
 
 
 Response = namedtuple('Response', 'status reason headers body')
@@ -161,7 +151,7 @@ def validate_client_sslctx(sslctx):
     return sslctx
 
 
-def validate_request(method, uri, headers, body):
+def validate_request(bodies, method, uri, headers, body):
     # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
     if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
         raise ValueError('invalid method: {!r}'.format(method))
@@ -177,32 +167,37 @@ def validate_request(method, uri, headers, body):
     if body is None:
         if 'content-length' in headers:
             raise ValueError(
-                "cannot include 'content-length' when body is None"
+                "headers['content-length'] included when body is None"
             )
         if 'transfer-encoding' in headers:
             raise ValueError(
-                "cannot include 'transfer-encoding' when body is None"
+                "headers['transfer-encoding'] included when body is None"
             )
         return
 
     # Check body type, set content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray)): 
-        headers['content-length'] = len(body)
+    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
+        length = len(body)
+        if headers.setdefault('content-length', length) != length:
+            raise ValueError(
+                "headers['content-length'] != len(body): {!r} != {!r}".format(
+                    headers['content-length'], length
+                )
+            )
         if 'transfer-encoding' in headers:
             raise ValueError(
-                "cannot include 'transfer-encoding' with length-encoded body"
+                "headers['transfer-encoding'] with length-encoded body"
             )
-    elif isinstance(body, (Body, BodyIter)):
-        headers['content-length'] = body.content_length
-        if 'transfer-encoding' in headers:
+    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
+        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
             raise ValueError(
-                "cannot include 'transfer-encoding' with length-encoded body"
+                "headers['transfer-encoding'] is invalid: {!r}".format(
+                    headers['transfer-encoding']
+                )
             )
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        headers['transfer-encoding'] = 'chunked'
         if 'content-length' in headers:
             raise ValueError(
-                "cannot include 'content-length' with chunk-encoded body"
+                "headers['content-length'] with chunk-encoded body"
             )
     else:
         raise TypeError('bad request body type: {!r}'.format(type(body)))
@@ -261,13 +256,15 @@ def write_request(wfile, method, uri, headers, body):
     return total
 
 
-def read_response(rfile, method):
+def read_response(rfile, bodies, method):
     (status_line, headers) = read_preamble(rfile)
     (status, reason) = parse_status(status_line)
-    if 'content-length' in headers and method != 'HEAD':
-        body = Body(rfile, headers['content-length'])
+    if method == 'HEAD':
+        body = None
+    elif 'content-length' in headers:
+        body = bodies.Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = ChunkedBody(rfile)
+        body = bodies.ChunkedBody(rfile)
     else:
         body = None
     return Response(status, reason, headers, body)
@@ -275,18 +272,20 @@ def read_response(rfile, method):
 
 class Connection:
     """
-    Represents a specific connection to an HTTP (or HTTPS) server.
+    Provides an HTTP client request API atop an arbitrary socket connection.
 
-    A `Connection` is statefull and is *not* thread-safe.
+    A `Connection` is stateful and is *not* thread-safe.
     """
 
+    # Easy way to slighty reduce per-connection memory overhead:
+    __slots__ = ('sock', 'base_headers', 'bodies', 'rfile', 'wfile', 'response_body')
+
     def __init__(self, sock, base_headers, bodies):
-        assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
         (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Body or ChunkedBody or None
+        self.response_body = None  # Previous Body(), ChunkedBody(), or None
 
     def __del__(self):
         self.close()
@@ -296,49 +295,47 @@ class Connection:
         return self.sock is None
 
     def close(self):
-        # We sometimes get a TypeError when a connection is GC'ed just prior to
-        # a script exiting:
-        # Exception ignored in: <bound method Connection.__del__ of <degu.client.Connection object at 0x7f6e8ca10ef0>>
-        # Traceback (most recent call last):
-        # File "/usr/lib/python3/dist-packages/degu/client.py", line 252, in __del__
-        # File "/usr/lib/python3/dist-packages/degu/client.py", line 262, in close
-        # TypeError: an integer is required (got type NoneType)
-        #
-        self.response_body = None  # Always deference previous response_body
         if self.sock is not None:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except (OSError, TypeError):
                 pass
             self.sock = None
+            self.rfile = None
+            self.wfile = None
+            self.response_body = None
 
     def request(self, method, uri, headers, body):
-        assert isinstance(headers, dict)
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-
-            # FIXME: Here for temporary Microfiber compatability, remove soon!
-            if isinstance(body, io.BufferedReader):
-                if 'content-length' in headers:
-                    content_length = headers['content-length']
-                else:
-                    content_length = os.stat(body.fileno()).st_size
-                body = Body(body, content_length)
-            # /FIXME
-
-            validate_request(method, uri, headers, body)
+            validate_request(self.bodies, method, uri, headers, body)
             if self.base_headers:
                 headers.update(self.base_headers)
             write_request(self.wfile, method, uri, headers, body)
-            response = read_response(self.rfile, method)
+            response = read_response(self.rfile, self.bodies, method)
             self.response_body = response.body
             return response
         except Exception:
             self.close()
             raise
+
+    def put(self, uri, headers, body):
+        return self.request('PUT', uri, headers, body)
+
+    def post(self, uri, headers, body):
+        return self.request('POST', uri, headers, body)
+
+    def get(self, uri, headers):
+        return self.request('GET', uri, headers, None)
+
+    def head(self, uri, headers):
+        return self.request('HEAD', uri, headers, None)
+
+    def delete(self, uri, headers):
+        return self.request('DELETE', uri, headers, None)
 
 
 def build_host(host, port, *extra):

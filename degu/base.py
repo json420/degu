@@ -165,6 +165,9 @@ def write_chunk(wfile, data, extension=None):
 
 
 class _Body:
+    def __len__(self):
+        return self.content_length
+
     def write_to(self, wfile):
         write = wfile.write
         total = sum(write(data) for data in self)

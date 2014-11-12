@@ -100,7 +100,7 @@ class TestUnconsumedResponseError(TestCase):
 class FuzzTestFunctions(FuzzTestCase):
     def test_read_response(self):
         for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
-            self.fuzz(client.read_response, method)
+            self.fuzz(client.read_response, base.bodies, method)
 
 
 class TestFunctions(TestCase):
@@ -263,13 +263,13 @@ class TestFunctions(TestCase):
 
         # Bad method:
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('get', '/foo', {}, None)
+            client.validate_request(base.bodies, 'get', '/foo', {}, None)
         self.assertEqual(str(cm.exception), "invalid method: 'get'")
 
         # Non-casefolded header name:
         headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('GET', '/foo', headers, None)
+            client.validate_request(base.bodies, 'GET', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "non-casefolded header name: 'Content-Type'"
         )
@@ -277,23 +277,23 @@ class TestFunctions(TestCase):
         # Body is None but content-length header included:
         headers = {'content-length': 17}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('POST', '/foo', headers, None)
+            client.validate_request(base.bodies, 'POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
-            "cannot include 'content-length' when body is None"
+            "headers['content-length'] included when body is None"
         )
 
         # Body is None but transfer-encoding header included:
         headers = {'transfer-encoding': 'chunked'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request('POST', '/foo', headers, None)
+            client.validate_request(base.bodies, 'POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
-            "cannot include 'transfer-encoding' when body is None"
+            "headers['transfer-encoding'] included when body is None"
         )
 
         # Bad body type:
         headers = {'content-type': 'text/plain'}
         with self.assertRaises(TypeError) as cm:
-            client.validate_request('GET', '/foo', headers, 'hello')
+            client.validate_request(base.bodies, 'GET', '/foo', headers, 'hello')
         self.assertEqual(str(cm.exception),
             "bad request body type: <class 'str'>"
         )
@@ -302,31 +302,51 @@ class TestFunctions(TestCase):
         for body in length_bodies:
             headers = {'transfer-encoding': 'chunked'}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request('POST', '/foo', headers, body)
+                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
-                "cannot include 'transfer-encoding' with length-encoded body"
+                "headers['transfer-encoding'] with length-encoded body"
             )
             self.assertEqual(headers,
                 {'content-length': 17, 'transfer-encoding': 'chunked'}
             )
 
+        # headers['content-length'] != len(body):
+        for body in length_bodies:
+            headers = {'content-length': 16}
+            with self.assertRaises(ValueError) as cm:
+                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+            self.assertEqual(str(cm.exception),
+                "headers['content-length'] != len(body): 16 != 17"
+            )
+            self.assertEqual(headers, {'content-length': 16})
+
         # 'content-length' header with a chunk-encoded body:
         for body in chunked_bodies:
             headers = {'content-length': 5}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request('POST', '/foo', headers, body)
+                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
-                "cannot include 'content-length' with chunk-encoded body"
+                "headers['content-length'] with chunk-encoded body"
             )
             self.assertEqual(headers,
                 {'content-length': 5, 'transfer-encoding': 'chunked'}
             )
 
+        # headers['transfer-encoding'] != 'chunked':
+        for body in chunked_bodies:
+            headers = {'transfer-encoding': 'clumped'}
+            with self.assertRaises(ValueError) as cm:
+                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+            self.assertEqual(str(cm.exception),
+                "headers['transfer-encoding'] is invalid: 'clumped'"
+            )
+            self.assertEqual(headers, {'transfer-encoding': 'clumped'})
+
         # Cannot include body when method is GET, HEAD, or DELETE:
         for body in (length_bodies + chunked_bodies):
             for method in ('GET', 'HEAD', 'DELETE'):
                 with self.assertRaises(ValueError) as cm:
-                    client.validate_request(method, '/foo', {}, body)
+                    client.validate_request(base.bodies, method, '/foo', {}, body)
                 self.assertEqual(str(cm.exception),
                     'cannot include body in a {} request'.format(method)
                 )
@@ -335,7 +355,7 @@ class TestFunctions(TestCase):
         for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
             headers = {}
             self.assertIsNone(
-                client.validate_request(method, '/foo', headers, None)
+                client.validate_request(base.bodies, method, '/foo', headers, None)
             )
             self.assertEqual(headers, {})
 
@@ -344,7 +364,7 @@ class TestFunctions(TestCase):
             for body in length_bodies:
                 headers = {}
                 self.assertIsNone(
-                    client.validate_request(method, '/foo', headers, body)
+                    client.validate_request(base.bodies, method, '/foo', headers, body)
                 )
                 self.assertEqual(headers, {'content-length': 17})
 
@@ -353,7 +373,7 @@ class TestFunctions(TestCase):
             for body in chunked_bodies:
                 headers = {}
                 self.assertIsNone(
-                    client.validate_request(method, '/foo', headers, body)
+                    client.validate_request(base.bodies, method, '/foo', headers, body)
                 )
                 self.assertEqual(headers, {'transfer-encoding': 'chunked'})
 
@@ -509,7 +529,7 @@ class TestFunctions(TestCase):
             '\r\n',
         ]).encode('latin_1')
         rfile = io.BytesIO(lines)
-        r = client.read_response(rfile, 'GET')
+        r = client.read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {}, None))
 
@@ -521,7 +541,7 @@ class TestFunctions(TestCase):
         ]).encode('latin_1')
         data = os.urandom(17)
         rfile = io.BytesIO(lines + data)
-        r = client.read_response(rfile, 'GET')
+        r = client.read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -538,7 +558,7 @@ class TestFunctions(TestCase):
 
         # Like above, except this time for a HEAD request:
         rfile = io.BytesIO(lines + data)
-        r = client.read_response(rfile, 'HEAD')
+        r = client.read_response(rfile, base.bodies, 'HEAD')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
 
@@ -557,7 +577,7 @@ class TestFunctions(TestCase):
             total += base.write_chunk(rfile, chunk)
         self.assertEqual(rfile.tell(), total)
         rfile.seek(0)
-        r = client.read_response(rfile, 'GET')
+        r = client.read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -667,6 +687,79 @@ class TestConnection(TestCase):
         self.assertIsNone(conn.sock)
         self.assertIsNone(conn.response_body)
         self.assertIs(conn.closed, True)
+
+    def get_subclass(self, marker):
+        class Subclass(client.Connection):
+            def __init__(self, marker):
+                self._marker = marker
+                self._args = None
+                self._kw = None
+
+            def request(self, *args, **kw):
+                assert self._args is None
+                assert self._kw is None
+                self._args = args
+                self._kw = kw
+                return self._marker
+
+        return Subclass(marker)
+
+    def test_put(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        body = os.urandom(16)
+        self.assertIs(inst.put(uri, headers, body), marker)
+        self.assertEqual(inst._args, ('PUT', uri, {key: value}, body))
+        self.assertEqual(inst._kw, {})
+
+    def test_post(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        body = os.urandom(16)
+        self.assertIs(inst.post(uri, headers, body), marker)
+        self.assertEqual(inst._args, ('POST', uri, {key: value}, body))
+        self.assertEqual(inst._kw, {})
+
+    def test_get(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.get(uri, headers), marker)
+        self.assertEqual(inst._args, ('GET', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})
+
+    def test_head(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.head(uri, headers), marker)
+        self.assertEqual(inst._args, ('HEAD', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})
+
+    def test_delete(self):
+        marker = random_id()
+        inst = self.get_subclass(marker)
+        uri = random_id()
+        key = random_id().lower()
+        value = random_id()
+        headers = {key: value}
+        self.assertIs(inst.delete(uri, headers), marker)
+        self.assertEqual(inst._args, ('DELETE', uri, {key: value}, None))
+        self.assertEqual(inst._kw, {})   
 
 
 class TestClient(TestCase):

@@ -27,7 +27,7 @@ Overtime time, most all :degu.base will have a C implementation for production
 use, plus a Python reference implementation to help clarify the design and
 validate the correctness of the C implementation.
 
-This work as just started.  Thus far only :func:`read_preamble()` has a C
+This work has just started.  Thus far only :func:`read_preamble()` has a C
 version.
 
 
