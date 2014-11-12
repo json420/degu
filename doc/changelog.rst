@@ -75,6 +75,36 @@ Breaking API changes:
         library (see :ref:`high-level-client-API` for details).
 
 
+Other changes:
+
+    *   :class:`degu.client.Connection` now has shortcuts for the five supported
+        HTTP request methods:
+
+            *   :meth:`degu.client.Connection.put()`
+            *   :meth:`degu.client.Connection.post()`
+            *   :meth:`degu.client.Connection.get()`
+            *   :meth:`degu.client.Connection.head()`
+            *   :meth:`degu.client.Connection.delete()`
+
+        Previously these were avoided to prevent confusion with specialized
+        methods of the same name that would likely be added in
+        :class:`degu.client.Connection` subclasses, as sub-classing was the
+        expected way to implement high-level, domain-specific APIs; however, the
+        new wrapper class approach for high-level APIs is much cleaner, and it
+        eliminates confusion about which implementation of a method you're
+        getting (because unlike a subclass, a wrapper wont inherit anything from
+        :class:`degu.client.Connection`); as such, there's no reason to avoid
+        these shortcuts any longer, plus they make the
+        :class:`degu.client.Connection` API more inviting to use directly, so
+        there's no reason to use a higher-level wrapper just for the sake of
+        this brevity.
+
+        Note that the generic :meth:`degu.client.Connection.request()` method
+        remains unchanged, and should still be used whenever you need to specify
+        an arbitrary HTTP request via arguments alone (for example, when
+        implementing a reverse-proxy).
+
+
 
 0.10 (October 2014)
 -------------------

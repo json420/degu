@@ -25,8 +25,6 @@ HTTP client.
 
 import socket
 from collections import namedtuple
-import io
-import os
 from os import path
 
 from .base import bodies as default_bodies
@@ -275,13 +273,15 @@ def read_response(rfile, method):
 
 class Connection:
     """
-    Represents a specific connection to an HTTP (or HTTPS) server.
+    Provides an HTTP client request API atop an arbitrary socket connection.
 
-    A `Connection` is statefull and is *not* thread-safe.
+    A `Connection` is stateful and is *not* thread-safe.
     """
 
+    # Easy way to slighty reduce per-connection memory overhead:
+    __slots__ = ('sock', 'base_headers', 'bodies', 'rfile', 'wfile', 'response_body')
+
     def __init__(self, sock, base_headers, bodies):
-        assert base_headers is None or isinstance(base_headers, dict)
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
@@ -296,14 +296,6 @@ class Connection:
         return self.sock is None
 
     def close(self):
-        # We sometimes get a TypeError when a connection is GC'ed just prior to
-        # a script exiting:
-        # Exception ignored in: <bound method Connection.__del__ of <degu.client.Connection object at 0x7f6e8ca10ef0>>
-        # Traceback (most recent call last):
-        # File "/usr/lib/python3/dist-packages/degu/client.py", line 252, in __del__
-        # File "/usr/lib/python3/dist-packages/degu/client.py", line 262, in close
-        # TypeError: an integer is required (got type NoneType)
-        #
         self.response_body = None  # Always deference previous response_body
         if self.sock is not None:
             try:
@@ -313,22 +305,11 @@ class Connection:
             self.sock = None
 
     def request(self, method, uri, headers, body):
-        assert isinstance(headers, dict)
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
             if not (self.response_body is None or self.response_body.closed):
                 raise UnconsumedResponseError(self.response_body)
-
-            # FIXME: Here for temporary Microfiber compatability, remove soon!
-            if isinstance(body, io.BufferedReader):
-                if 'content-length' in headers:
-                    content_length = headers['content-length']
-                else:
-                    content_length = os.stat(body.fileno()).st_size
-                body = Body(body, content_length)
-            # /FIXME
-
             validate_request(method, uri, headers, body)
             if self.base_headers:
                 headers.update(self.base_headers)
