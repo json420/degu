@@ -1241,19 +1241,12 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_max_connections(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
         uri = '/status/404/Nope'
-        allconns = []
-        for i in range(95):
-            conn = client.connect()
-            allconns.append(conn)
-            response = conn.request('GET', uri, {}, None)
-            self.assertEqual(response.status, 404)
-            self.assertEqual(response.reason, 'Nope')
-            self.assertEqual(response.headers, {})
-            self.assertIsNone(response.body)
-        with self.assertRaises((ConnectionError, ssl.SSLError)):
-            for i in range(10):
+        for value in (17, 27):
+            (httpd, client) = self.build_with_app(standard_harness_app,
+                                                  max_connections=value)
+            allconns = []
+            for i in range(value):
                 conn = client.connect()
                 allconns.append(conn)
                 response = conn.request('GET', uri, {}, None)
@@ -1261,9 +1254,12 @@ class TestLiveServer(TestCase):
                 self.assertEqual(response.reason, 'Nope')
                 self.assertEqual(response.headers, {})
                 self.assertIsNone(response.body)
-        for conn in allconns:
-            conn.close()
-        httpd.terminate()
+            with self.assertRaises((ConnectionError, ssl.SSLError)):
+                conn = client.connect()
+                conn.request('GET', uri, {}, None)
+            for conn in allconns:
+                conn.close()
+            httpd.terminate()
 
     def test_max_requests(self):
         (httpd, client) = self.build_with_app(standard_harness_app)

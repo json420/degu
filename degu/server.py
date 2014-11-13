@@ -406,7 +406,7 @@ class Server:
 
         # options:
         self.options = options
-        self.max_connections = options.get('max_connections', 100)
+        self.max_connections = options.get('max_connections', 25)
         self.max_requests = options.get('max_requests', 5000)
         self.timeout = options.get('timeout', 10)
         self.bodies = options.get('bodies', default_bodies)
@@ -423,49 +423,50 @@ class Server:
         )
 
     def serve_forever(self):
-        timeout = self.timeout
-        max_connections = self.max_connections
+        semaphore = threading.BoundedSemaphore(self.max_connections)
         max_requests = self.max_requests
+        timeout = self.timeout
         bodies = self.bodies
         listensock = self.sock
         worker = self.worker
-
         while True:
             (sock, address) = listensock.accept()
-            sock.settimeout(timeout)
-            count = threading.active_count()
-            if count > max_connections:
-                log.error('%d connections, rejecting %r', count, address)
+            # Denial of Service note: when we already have max_connections, we
+            # should aggressively rate-limit the handling of new connections, so
+            # that's why we use `timeout=5` rather than `blocking=False`:
+            if not semaphore.acquire(timeout=5):
+                log.warning('Rejecting connection from %r', address)
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
-                    sock.close()
                 except OSError:
                     pass
                 continue
-            log.info('Connection from %r; active threads: %d', address, count)
-            session = {'client': address, 'requests': 0}
+            sock.settimeout(timeout)
             thread = threading.Thread(
                 target=worker,
-                args=(sock, max_requests, session, bodies),
+                args=(semaphore, max_requests, bodies, sock, address),
                 daemon=True
             )
             thread.start()
 
-    def worker(self, sock, max_requests, session, bodies):
+    def worker(self, semaphore, max_requests, bodies, sock, address):
+        session = {'client': address, 'requests': 0}
+        log.info('Connection from %r', address)
         try:
             self.handler(sock, max_requests, session, bodies)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
-                session['requests'], session['client'], e
+                session.get('requests'), address, e
             )
         except:
-            log.exception('Client: %r', session['client'])
+            log.exception('Client: %r', address)
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
             except OSError:
                 pass
+            semaphore.release()
 
     def handler(self, sock, max_requests, session, bodies):
         if self.on_connect is None or self.on_connect(session, sock) is True:

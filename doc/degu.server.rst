@@ -121,7 +121,7 @@ example, to kill the server process we just created:
 
         Maximum number of concurrent TCP connections accepted by server.
 
-        Default is ``100``; can be overridden via the *max_connections* keyword
+        Default is ``25``; can be overridden via the *max_connections* keyword
         option.
 
         When this limit is reached, subsequent connection attempts will be
