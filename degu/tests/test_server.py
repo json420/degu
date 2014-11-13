@@ -56,7 +56,7 @@ def standard_harness_app(session, request, bodies):
 
 class FuzzTestFunctions(FuzzTestCase):
     def test_read_request(self):
-        self.fuzz(server.read_request)
+        self.fuzz(server.read_request, base.bodies)
 
 
 class TestFunctions(TestCase):
@@ -265,12 +265,12 @@ class TestFunctions(TestCase):
         # No data:
         rfile = io.BytesIO()
         with self.assertRaises(base.EmptyPreambleError):
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
 
        # CRLF terminated request line is empty: 
         rfile = io.BytesIO(b'\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), 'first preamble line is empty')
         self.assertEqual(rfile.tell(), 2)
         self.assertEqual(rfile.read(), b'')
@@ -278,7 +278,7 @@ class TestFunctions(TestCase):
         # Line too long:
         rfile = io.BytesIO(longline)
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad line termination: b'D\\r'")
         self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
         self.assertEqual(rfile.read(), b'\n')
@@ -286,7 +286,7 @@ class TestFunctions(TestCase):
         # LF but no proceeding CR:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\n\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad line termination: b'1\\n'")
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(rfile.read(), b'\r\n')
@@ -294,7 +294,7 @@ class TestFunctions(TestCase):
         # Missing CRLF preamble terminator:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile.tell(), 19)
         self.assertEqual(rfile.read(), b'')
@@ -302,7 +302,7 @@ class TestFunctions(TestCase):
         # 1st header line too long:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\n' + longline)
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b'D\\r'")
         self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES + 19)
         self.assertEqual(rfile.read(), b'\n')
@@ -310,7 +310,7 @@ class TestFunctions(TestCase):
         # 1st header line has LF but no proceeding CR:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\n\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b'z\\n'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\n')
@@ -318,7 +318,7 @@ class TestFunctions(TestCase):
         # Again, missing CRLF preamble terminator, but with a header also:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz\r\n')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile.tell(), 29)
         self.assertEqual(rfile.read(), b'')
@@ -326,7 +326,7 @@ class TestFunctions(TestCase):
         # Request line has too few items to split:
         rfile = io.BytesIO(b'GET /fooHTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
         self.assertEqual(rfile.tell(), 20)
         self.assertEqual(rfile.read(), b'body')
@@ -334,7 +334,7 @@ class TestFunctions(TestCase):
         # Request line has too many items to split:
         rfile = io.BytesIO(b'GET /foo /bar HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'too many values to unpack (expected 3)'
         )
@@ -344,7 +344,7 @@ class TestFunctions(TestCase):
         # Bad method:
         rfile = io.BytesIO(b'OPTIONS /foo HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
         self.assertEqual(rfile.tell(), 25)
         self.assertEqual(rfile.read(), b'body')
@@ -352,7 +352,7 @@ class TestFunctions(TestCase):
         # Bad protocol:
         rfile = io.BytesIO(b'GET /foo HTTP/1.0\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
         self.assertEqual(rfile.tell(), 21)
         self.assertEqual(rfile.read(), b'body')
@@ -360,7 +360,7 @@ class TestFunctions(TestCase):
         # Too many ? in uri:
         rfile = io.BytesIO(b'GET /foo?bar=baz?stuff=junk HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "bad request uri: '/foo?bar=baz?stuff=junk'"
         )
@@ -370,7 +370,7 @@ class TestFunctions(TestCase):
         # uri path doesn't start with /:
         rfile = io.BytesIO(b'GET foo/bar?baz HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'body')
@@ -378,7 +378,7 @@ class TestFunctions(TestCase):
         # uri path contains a double //:
         rfile = io.BytesIO(b'GET /foo//bar?baz HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad request path: '/foo//bar'")
         self.assertEqual(rfile.tell(), 30)
         self.assertEqual(rfile.read(), b'body')
@@ -386,14 +386,14 @@ class TestFunctions(TestCase):
         # 1st header line has too few items to split:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz\\r\\n'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\nbody')
 
         # 1st header line has too many items to split:
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar: baz: jazz\r\n\r\nbody')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'GET',
                 'uri': '/foo',
@@ -410,7 +410,7 @@ class TestFunctions(TestCase):
         # Duplicate headers:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "duplicate header: b'foo: baz\\r\\n'")
         self.assertEqual(rfile.tell(), 36)
         self.assertEqual(rfile.read(), b'\r\nbody')
@@ -418,7 +418,7 @@ class TestFunctions(TestCase):
         # Content-Length can't be parsed as a base-10 integer:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: 16.9\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 10: '16.9'"
         )
@@ -428,7 +428,7 @@ class TestFunctions(TestCase):
         # Content-Length is negative:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: -17\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'negative content-length: -17'
         )
@@ -438,7 +438,7 @@ class TestFunctions(TestCase):
         # Bad Transfer-Encoding:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             "bad transfer-encoding: 'CHUNKED'"
         )
@@ -450,7 +450,7 @@ class TestFunctions(TestCase):
             b'GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 17\r\n\r\nbody'
         )
         with self.assertRaises(ValueError) as cm:
-            server.read_request(rfile)
+            server.read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
         )
@@ -459,7 +459,7 @@ class TestFunctions(TestCase):
 
         # No headers, no body, no query:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'GET',
                 'uri': '/',
@@ -475,7 +475,7 @@ class TestFunctions(TestCase):
 
         # No headers, no body, but add a query:
         rfile = io.BytesIO(b'HEAD /foo?nonpair HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'HEAD',
                 'uri': '/foo?nonpair',
@@ -491,7 +491,7 @@ class TestFunctions(TestCase):
 
         # An empty query (as opposed to no query):
         rfile = io.BytesIO(b'HEAD /foo? HTTP/1.1\r\n\r\nextra')
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'HEAD',
                 'uri': '/foo?',
@@ -509,7 +509,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(
             b'DELETE /foo/Bar/?keY=vAl HTTP/1.1\r\nME: YOU\r\n\r\nextra'
         )
-        self.assertEqual(server.read_request(rfile),
+        self.assertEqual(server.read_request(rfile, base.bodies),
             {
                 'method': 'DELETE',
                 'uri': '/foo/Bar/?keY=vAl',
@@ -686,7 +686,6 @@ class TestServer(TestCase):
         # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.Server(degu.IPv6_LOOPBACK, app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -695,7 +694,6 @@ class TestServer(TestCase):
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -703,7 +701,6 @@ class TestServer(TestCase):
 
         # IPv6 any:
         inst = server.Server(degu.IPv6_ANY, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::', port, 0, 0))
@@ -711,7 +708,6 @@ class TestServer(TestCase):
 
         # IPv4 loopback:
         inst = server.Server(degu.IPv4_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('127.0.0.1', port))
@@ -719,7 +715,6 @@ class TestServer(TestCase):
 
         # IPv4 any:
         inst = server.Server(degu.IPv4_ANY, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
@@ -730,7 +725,6 @@ class TestServer(TestCase):
         filename = tmp.join('my.socket')
         self.assertFalse(path.exists(filename))
         inst = server.Server(filename, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.address, filename)
         self.assertEqual(inst.sock.getsockname(), filename)
@@ -739,7 +733,6 @@ class TestServer(TestCase):
 
         # Linux abstract socket names:
         inst = server.Server(b'', good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.address, inst.sock.getsockname())
         self.assertIsInstance(inst.address, bytes)
@@ -853,7 +846,6 @@ class TestSSLServer(TestCase):
         # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -862,7 +854,6 @@ class TestSSLServer(TestCase):
 
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -871,7 +862,6 @@ class TestSSLServer(TestCase):
 
         # IPv6 any:
         inst = server.SSLServer(sslctx, degu.IPv6_ANY, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -880,7 +870,6 @@ class TestSSLServer(TestCase):
 
         # IPv4 loopback:
         inst = server.SSLServer(sslctx, degu.IPv4_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -889,7 +878,6 @@ class TestSSLServer(TestCase):
 
         # IPv4 any:
         inst = server.SSLServer(sslctx, degu.IPv4_ANY, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -1191,7 +1179,8 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_ok_status(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
+        (httpd, client) = self.build_with_app(standard_harness_app,
+                                              max_requests=600)
         conn = client.connect()
         # At no point should the connection be closed by the server:
         for status in range(100, 400):
@@ -1210,7 +1199,7 @@ class TestLiveServer(TestCase):
             self.assertEqual(response.reason, reason)
             self.assertEqual(response.headers, {})
             self.assertIsNone(response.body)
-        conn.close() 
+        conn.close()
         httpd.terminate()
 
     def test_error_status(self):
@@ -1241,19 +1230,12 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_max_connections(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
         uri = '/status/404/Nope'
-        allconns = []
-        for i in range(95):
-            conn = client.connect()
-            allconns.append(conn)
-            response = conn.request('GET', uri, {}, None)
-            self.assertEqual(response.status, 404)
-            self.assertEqual(response.reason, 'Nope')
-            self.assertEqual(response.headers, {})
-            self.assertIsNone(response.body)
-        with self.assertRaises((ConnectionError, ssl.SSLError)):
-            for i in range(10):
+        for value in (17, 27, 37):
+            (httpd, client) = self.build_with_app(standard_harness_app,
+                                                  max_connections=value)
+            allconns = []
+            for i in range(value):
                 conn = client.connect()
                 allconns.append(conn)
                 response = conn.request('GET', uri, {}, None)
@@ -1261,25 +1243,30 @@ class TestLiveServer(TestCase):
                 self.assertEqual(response.reason, 'Nope')
                 self.assertEqual(response.headers, {})
                 self.assertIsNone(response.body)
-        for conn in allconns:
-            conn.close()
-        httpd.terminate()
+            with self.assertRaises((ConnectionError, ssl.SSLError)):
+                conn = client.connect()
+                conn.request('GET', uri, {}, None)
+            for conn in allconns:
+                conn.close()
+            httpd.terminate()
 
     def test_max_requests(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
         uri = '/status/404/Nope'
-        conn = client.connect()
-        for i in range(5000):
-            response = conn.request('GET', uri, {}, None)
-            self.assertEqual(response.status, 404)
-            self.assertEqual(response.reason, 'Nope')
-            self.assertEqual(response.headers, {})
-            self.assertIsNone(response.body)
-        with self.assertRaises(ConnectionError):
-            conn.request('GET', uri, {}, None)
-        self.assertIs(conn.closed, True)
-        conn.close()
-        httpd.terminate()
+        for value in (17, 27, 37):
+            (httpd, client) = self.build_with_app(standard_harness_app,
+                                                  max_requests=value)
+            conn = client.connect()
+            for i in range(value):
+                response = conn.request('GET', uri, {}, None)
+                self.assertEqual(response.status, 404)
+                self.assertEqual(response.reason, 'Nope')
+                self.assertEqual(response.headers, {})
+                self.assertIsNone(response.body)
+            with self.assertRaises(ConnectionError):
+                conn.request('GET', uri, {}, None)
+            self.assertIs(conn.closed, True)
+            self.assertIsNone(conn.sock)
+            httpd.terminate()
 
 
 class TestLiveServer_AF_INET6(TestLiveServer):

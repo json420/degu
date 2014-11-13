@@ -65,18 +65,25 @@ example, to kill the server process we just created:
     An HTTP server instance.
 
     The *address* argument specifies the socket address upon which the server
-    will listen.  It can be a 2-tuple for ``AF_INET`` (IPv4), a 4-tuple for
-    ``AF_INET6`` (IPv6), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
-    See :ref:`server-address` for details.
+    will listen.  It can be a 2-tuple, a 4-tuple, a ``str``, or a ``bytes``
+    instance.  See :ref:`server-address` for details.
 
-    The *app* argument provides your :doc:`rgi` (RGI) server application.  It
-    must be a callable object (called to handle each HTTP request), and can
-    optionally have a callable ``app.on_connect()`` attribute (called to handle
-    each TCP connection).  See :ref:`server-app` for details.
+    The *app* argument provides your :doc:`rgi` server application.  It must be
+    a callable object (called to handle each HTTP request), and can optionally
+    have a callable ``app.on_connect()`` attribute (called to handle each TCP
+    connection).  See :ref:`server-app` for details.
 
-    Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable server runtime parameters.  See :ref:`server-options`
-    for details.
+    The keyword-only *options* allow you to override certain server
+    configuration defaults.  You can override *max_connections*, *max_requests*,
+    *timeout*, and *bodies*, and their values are exposed via attributes of the
+    same name:
+
+        * :attr:`Server.max_connections`
+        * :attr:`Server.max_requests`
+        * :attr:`Server.timeout`
+        * :attr:`Server.bodies`
+
+    See :ref:`server-options` for details.
 
     .. attribute:: address
 
@@ -84,15 +91,14 @@ example, to kill the server process we just created:
 
         Note that this wont necessarily match the *address* argument provided to
         the constructor.  As Degu is designed for per-user server instances
-        running on dynamic ports, you typically specify port ``0`` in an
-        ``AF_INET`` or ``AF_INET6`` *address* argument::
+        running on dynamic ports, you typically specify port ``0`` in a 2-tuple
+        or 4-tuple *address* argument, for example::
 
             ('127.0.0.1', 0)  # AF_INET (IPv4)
             ('::1', 0, 0, 0)  # AF_INET6 (IPv6)
 
-        In which case the :attr:`Server.address` attribute will contain the port
-        assigned by the kernel.  For example, assuming port ``12345`` was
-        assigned::
+        In which case :attr:`Server.address` will contain the port assigned by
+        the kernel.  For example, assuming port ``12345`` was assigned::
 
             ('127.0.0.1', 12345)  # AF_INET (IPv4)
             ('::1', 12345, 0, 0)  # AF_INET6 (IPv6)
@@ -108,13 +114,47 @@ example, to kill the server process we just created:
     .. attribute:: options
 
         Keyword-only *options* provided to the constructor.
+        
+        See :ref:`server-options` for details.
 
-        This attribute is mostly aimed at unit testing.  See
-        :ref:`server-options` for details.
+    .. attribute:: max_connections
 
-    .. attribute:: sock
+        Max concurrent TCP connections allowed by server.
 
-        The `socket.socket`_ instance upon which the server is listening.
+        Default is ``25``; can be overridden via the *max_connections* keyword
+        option.
+
+        When this limit is reached, subsequent connection attempts will be
+        rejected till the handling of at least one of the existing connections
+        has completed.
+
+    .. attribute:: max_requests
+
+        Max HTTP requests allowed through a single TCP connection.
+
+        Default is ``500``; can be overridden via the *max_requests* keyword
+        option.
+
+        When this limit is reached for a specific TCP connection, the connection
+        will be unconditionally shutdown.
+
+    .. attribute:: timeout
+
+        Socket timeout in seconds.
+
+        Default is ``30`` seconds; can be overridden via the *timeout* keyword
+        option.
+
+        Among other things, this timeout controls how long the server will keep
+        a TCP connection open while waiting for the client to make an additional
+        HTTP request.  
+
+    .. attribute:: bodies
+
+        A namedtuple exposing the IO abstraction API.
+
+        Default is :attr:`degu.base.bodies`; can be overridden via the *bodies*
+        keyword option.
 
     .. method:: serve_forever()
 
@@ -368,39 +408,39 @@ you can override certain configuration defaults.
 
 The following server configuration *options* are supported:
 
-    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies
-
-    *   **timeout** --- server socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance
-
-    *   **max_connections** --- maximum number of concurrent TCP connections the
-        server will accept; once this maximum has been reached, subsequent
+    *   **max_connections** --- max number of concurrent TCP connections the
+        server will allow; once this limit has been reached, subsequent
         connections will be rejected till one or more existing connections are
-        closed; this option directly effects the maximum amount of memory Degu
-        can consume for in-flight per-connection and per-request data; it must
+        closed; a lower value will reduce the peak potential memory usage; must
         be a positive ``int``
 
-    *   **max_requests_per_connection** --- maximum number of HTTP requests that
-        can be handled through a single TCP connection before that connection
-        is forcibly closed by the server; a lower value will minimize the impact
-        of heap fragmentation and will keep the memory usage flatter over time;
+    *   **max_requests** --- max number of HTTP requests that can be handled
+        through a single TCP connection before that connection is forcibly
+        closed by the server; a lower value will minimize the impact of heap
+        fragmentation and will tend to keep the memory usage flatter over time;
         a higher value can provide better throughput when a large number of
         small requests and responses need to travel in quick succession through
         the same TCP connection (typical for CouchDB-style structured data
         sync); it must be a positive ``int``
 
-Unless you override any of them, the default server configuration *options*
-are::
+    *   **timeout** --- server socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance
 
-    server_options = {
-        'bodies': degu.base.DEFAULT_BODIES,
-        'timeout': 15,
-        'max_connections': 25,
-        'max_requests_per_connection': 100,
-    }
+    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies;
+        see :class:`degu.base.BodiesAPI`
+        
 
-Also see the client :ref:`client-options`.
+The default values of which are:
+
+    ==============================  ========================
+    Option/Attribute                Default
+    ==============================  ========================
+    :attr:`Server.max_connections`  ``25``
+    :attr:`Server.max_requests`     ``500``
+    :attr:`Server.timeout`          ``30``
+    :attr:`Server.bodies`           :attr:`degu.base.bodies`
+    ==============================  ========================
 
 
 

@@ -29,18 +29,9 @@ import threading
 from os import path
 
 from .base import bodies as default_bodies
-from .base import (
-    TYPE_ERROR,
-    Body,
-    BodyIter,
-    ChunkedBody,
-    ChunkedBodyIter,
-    makefiles,
-    read_preamble,
-)
+from .base import TYPE_ERROR, makefiles, read_preamble
 
 
-SERVER_SOCKET_TIMEOUT = 10
 log = logging.getLogger()
 
 
@@ -211,7 +202,7 @@ def validate_server_sslctx(sslctx):
     return sslctx
 
 
-def read_request(rfile):
+def read_request(rfile, bodies):
     # Read the entire request preamble:
     (request_line, headers) = read_preamble(rfile)
 
@@ -242,9 +233,9 @@ def read_request(rfile):
         if method in {'GET', 'HEAD'} and content_length == 0:
             del headers['content-length']
         else:
-            body = Body(rfile, content_length)
+            body = bodies.Body(rfile, content_length)
     elif 'transfer-encoding' in headers:
-        body = ChunkedBody(rfile)
+        body = bodies.ChunkedBody(rfile)
     else:
         body = None
     if body is not None and method not in {'POST', 'PUT'}:
@@ -294,11 +285,13 @@ def write_response(wfile, status, reason, headers, body):
 def handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
     assert session['requests'] == 0
+    requests = 0
     while handle_one(app, rfile, wfile, session, bodies) is True:
-        session['requests'] += 1
-        if session['requests'] >= max_requests:
+        requests += 1
+        session['requests'] = requests
+        if requests >= max_requests:
             log.info("%r requests from %r, closing",
-                session['requests'], session['client']
+                requests, session['client']
             )
             break
     wfile.close()  # Will block till write buffer is flushed
@@ -306,7 +299,7 @@ def handle_requests(app, sock, max_requests, session, bodies):
 
 def handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
-    request = read_request(rfile)
+    request = read_request(rfile, bodies)
     request_method = request['method']
     request_body = request['body']
 
@@ -334,12 +327,29 @@ def handle_one(app, rfile, wfile, session, bodies):
             )
 
     # Set default content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray)):
-        headers.setdefault('content-length', len(body))
-    elif isinstance(body, (Body, BodyIter)):
-        headers.setdefault('content-length', body.content_length)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        headers.setdefault('transfer-encoding', 'chunked') 
+    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
+        length = len(body)
+        if headers.setdefault('content-length', length) != length:
+            raise ValueError(
+                "headers['content-length'] != len(body): {!r} != {!r}".format(
+                    headers['content-length'], length
+                )
+            )
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                "headers['transfer-encoding'] with length-encoded body"
+            )
+    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
+        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
+            raise ValueError(
+                "headers['transfer-encoding'] is invalid: {!r}".format(
+                    headers['transfer-encoding']
+                )
+            )
+        if 'content-length' in headers:
+            raise ValueError(
+                "headers['content-length'] with chunk-encoded body"
+            )
     elif body is not None:
         raise TypeError(
             'body: not valid type: {!r}: {!r}'.format(type(body), body)
@@ -358,8 +368,6 @@ def handle_one(app, rfile, wfile, session, bodies):
 
 
 class Server:
-    scheme = 'http'
-
     def __init__(self, address, app, **options):
         # address:
         if isinstance(address, tuple):  
@@ -390,20 +398,23 @@ class Server:
         on_connect = getattr(app, 'on_connect', None)
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
+        self.app = app
+        self.on_connect = on_connect
 
         # options:
-        self.timeout = options.get('timeout', 10)
-        self.max_connections = options.get('max_connections', 100)
-        self.max_requests = options.get('max_requests', 5000)
-        self.bodies = options.get('bodies', default_bodies)
         self.options = options
+        self.max_connections = options.get('max_connections', 25)
+        self.max_requests = options.get('max_requests', 500)
+        self.timeout = options.get('timeout', 30)
+        self.bodies = options.get('bodies', default_bodies)
+        assert isinstance(self.max_connections, int) and self.max_connections > 0
+        assert isinstance(self.max_requests, int) and self.max_requests > 0 
+        assert isinstance(self.timeout, (int, float)) and self.timeout > 0
 
         # Listen...
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
-        self.app = app
-        self.on_connect = on_connect
         self.sock.listen(5)
 
     def __repr__(self):
@@ -412,49 +423,49 @@ class Server:
         )
 
     def serve_forever(self):
-        timeout = self.timeout
-        max_connections = self.max_connections
+        semaphore = threading.BoundedSemaphore(self.max_connections)
         max_requests = self.max_requests
+        timeout = self.timeout
         bodies = self.bodies
         listensock = self.sock
         worker = self.worker
-
         while True:
             (sock, address) = listensock.accept()
-            sock.settimeout(timeout)
-            count = threading.active_count()
-            if count > max_connections:
-                log.error('%d connections, rejecting %r', count, address)
+            # Denial of Service note: when we already have max_connections, we
+            # should aggressively rate-limit the handling of new connections, so
+            # that's why we use `timeout=2` rather than `blocking=False`:
+            if semaphore.acquire(timeout=2) is True:
+                sock.settimeout(timeout)
+                thread = threading.Thread(
+                    target=worker,
+                    args=(semaphore, max_requests, bodies, sock, address),
+                    daemon=True
+                )
+                thread.start()
+            else:
+                log.warning('Rejecting connection from %r', address)
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
-                    sock.close()
                 except OSError:
                     pass
-                continue
-            log.info('Connection from %r; active threads: %d', address, count)
-            session = {'client': address, 'requests': 0}
-            thread = threading.Thread(
-                target=worker,
-                args=(sock, max_requests, session, bodies),
-                daemon=True
-            )
-            thread.start()
 
-    def worker(self, sock, max_requests, session, bodies):
+    def worker(self, semaphore, max_requests, bodies, sock, address):
+        session = {'client': address, 'requests': 0}
+        log.info('Connection from %r', address)
         try:
             self.handler(sock, max_requests, session, bodies)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
-                session['requests'], session['client'], e
+                session.get('requests'), address, e
             )
         except:
-            log.exception('Client: %r', session['client'])
+            log.exception('Client: %r', address)
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
-                sock.close()
             except OSError:
                 pass
+            semaphore.release()
 
     def handler(self, sock, max_requests, session, bodies):
         if self.on_connect is None or self.on_connect(session, sock) is True:
@@ -464,8 +475,6 @@ class Server:
 
 
 class SSLServer(Server):
-    scheme = 'https'
-
     def __init__(self, sslctx, address, app, **options):
         self.sslctx = validate_server_sslctx(sslctx)
         super().__init__(address, app, **options)

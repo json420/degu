@@ -123,6 +123,13 @@ Other changes:
         >>> body = conn.bodies.Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
+    *   :class:`degu.server.Server` now internally uses the provided *bodies*
+        API rather than directly importing the default wrapper classes from
+        :mod:`degu.base`; this means the standard server and bodies APIs are
+        now fully compossible, so you can use the Degu server with other
+        implementations of the bodies API.
+
+
 
 0.10 (October 2014)
 -------------------
