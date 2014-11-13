@@ -65,18 +65,25 @@ example, to kill the server process we just created:
     An HTTP server instance.
 
     The *address* argument specifies the socket address upon which the server
-    will listen.  It can be a 2-tuple for ``AF_INET`` (IPv4), a 4-tuple for
-    ``AF_INET6`` (IPv6), or an ``str`` or ``bytes`` instance for ``AF_UNIX``.
-    See :ref:`server-address` for details.
+    will listen.  It can be a 2-tuple, a 4-tuple, a ``str``, or a ``bytes``
+    instance.  See :ref:`server-address` for details.
 
     The *app* argument provides your :doc:`rgi` (RGI) server application.  It
     must be a callable object (called to handle each HTTP request), and can
     optionally have a callable ``app.on_connect()`` attribute (called to handle
     each TCP connection).  See :ref:`server-app` for details.
 
-    Finally, you can provide keyword-only *options* to override the defaults for
-    a number of tunable server runtime parameters.  See :ref:`server-options`
-    for details.
+    The keyword-only *options* allow you to override certain server
+    configuration defaults.  You can override *max_connections*, *max_requests*,
+    *timeout*, and *bodies*, and their values are exposed via attributes of the
+    same name:
+
+        * :attr:`Server.max_connections`
+        * :attr:`Server.max_requests`
+        * :attr:`Server.timeout`
+        * :attr:`Server.bodies`
+
+    See :ref:`server-options` for details.
 
     .. attribute:: address
 
@@ -84,15 +91,14 @@ example, to kill the server process we just created:
 
         Note that this wont necessarily match the *address* argument provided to
         the constructor.  As Degu is designed for per-user server instances
-        running on dynamic ports, you typically specify port ``0`` in an
-        ``AF_INET`` or ``AF_INET6`` *address* argument::
+        running on dynamic ports, you typically specify port ``0`` in a 2-tuple
+        or 4-tuple *address* argument, for example::
 
             ('127.0.0.1', 0)  # AF_INET (IPv4)
             ('::1', 0, 0, 0)  # AF_INET6 (IPv6)
 
-        In which case the :attr:`Server.address` attribute will contain the port
-        assigned by the kernel.  For example, assuming port ``12345`` was
-        assigned::
+        In which case :attr:`Server.address` will contain the port assigned by
+        the kernel.  For example, assuming port ``12345`` was assigned::
 
             ('127.0.0.1', 12345)  # AF_INET (IPv4)
             ('::1', 12345, 0, 0)  # AF_INET6 (IPv6)
@@ -108,13 +114,46 @@ example, to kill the server process we just created:
     .. attribute:: options
 
         Keyword-only *options* provided to the constructor.
+        
+        See :ref:`server-options` for details.
 
-        This attribute is mostly aimed at unit testing.  See
-        :ref:`server-options` for details.
+    .. attribute:: max_connections
 
-    .. attribute:: sock
+        Maximum number of concurrent TCP connections accepted by server.
 
-        The `socket.socket`_ instance upon which the server is listening.
+        Default is ``100``; can be overridden via the *max_connections* keyword
+        option.
+
+        When this limit is reached, subsequent connection attempts will be
+        rejected till at least one of the existing connections is closed.
+
+    .. attribute:: max_requests
+
+        Maximum number of HTTP requests handled through a single TCP connection.
+
+        Default is ``5000``; can be overridden via the *max_requests* keyword
+        option.
+
+        When this limit is reached for a specific TCP connection, the connection
+        will be unconditionally shutdown.
+
+    .. attribute:: timeout
+
+        Socket timeout in seconds.
+
+        Default is ``60`` seconds; can be overridden via the *timeout* keyword
+        option.
+
+        Among other things, this timeout controls how long the server will keep
+        a TCP connection open while waiting for the client to make an additional
+        HTTP request.  
+
+    .. attribute:: bodies
+
+        A namedtuple exposing the IO abstraction API.
+
+        Default is :attr:`degu.base.bodies`; can be overridden via the *bodies*
+        keyword option.
 
     .. method:: serve_forever()
 

@@ -401,20 +401,20 @@ class Server:
         on_connect = getattr(app, 'on_connect', None)
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
+        self.app = app
+        self.on_connect = on_connect
 
         # options:
-        self.timeout = options.get('timeout', 10)
+        self.options = options
         self.max_connections = options.get('max_connections', 100)
         self.max_requests = options.get('max_requests', 5000)
+        self.timeout = options.get('timeout', 10)
         self.bodies = options.get('bodies', default_bodies)
-        self.options = options
 
         # Listen...
         self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind(address)
         self.address = self.sock.getsockname()
-        self.app = app
-        self.on_connect = on_connect
         self.sock.listen(5)
 
     def __repr__(self):
