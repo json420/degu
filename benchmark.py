@@ -17,6 +17,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--unix', action='store_true', default=False,
     help='Use AF_UNIX instead of AF_INET6'
 )
+parser.add_argument('--requests', type=int, default=5000,
+    help='number of requests per connection'
+)
 args = parser.parse_args()
 
 
@@ -52,7 +55,7 @@ if args.unix:
     address = tmp.join('my.socket')
 else:
     address = degu.IPv6_LOOPBACK
-server = TempServer(address, ping_pong_app)
+server = TempServer(address, ping_pong_app, max_requests=args.requests)
 client = Client(server.address)
 
 
@@ -61,7 +64,7 @@ headers = {
     'content-type': 'application/json',
     'user-agent': agent
 }
-count = 5000
+count = args.requests
 deltas = []
 for i in range(50):
     conn = client.connect()
