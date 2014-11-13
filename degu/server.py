@@ -407,8 +407,8 @@ class Server:
         # options:
         self.options = options
         self.max_connections = options.get('max_connections', 25)
-        self.max_requests = options.get('max_requests', 5000)
-        self.timeout = options.get('timeout', 10)
+        self.max_requests = options.get('max_requests', 500)
+        self.timeout = options.get('timeout', 30)
         self.bodies = options.get('bodies', default_bodies)
 
         # Listen...

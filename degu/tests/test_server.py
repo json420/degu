@@ -1191,7 +1191,8 @@ class TestLiveServer(TestCase):
         httpd.terminate()
 
     def test_ok_status(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
+        (httpd, client) = self.build_with_app(standard_harness_app,
+                                              max_requests=600)
         conn = client.connect()
         # At no point should the connection be closed by the server:
         for status in range(100, 400):
@@ -1210,7 +1211,7 @@ class TestLiveServer(TestCase):
             self.assertEqual(response.reason, reason)
             self.assertEqual(response.headers, {})
             self.assertIsNone(response.body)
-        conn.close() 
+        conn.close()
         httpd.terminate()
 
     def test_error_status(self):
@@ -1242,7 +1243,7 @@ class TestLiveServer(TestCase):
 
     def test_max_connections(self):
         uri = '/status/404/Nope'
-        for value in (17, 27):
+        for value in (17, 27, 37):
             (httpd, client) = self.build_with_app(standard_harness_app,
                                                   max_connections=value)
             allconns = []
@@ -1262,20 +1263,22 @@ class TestLiveServer(TestCase):
             httpd.terminate()
 
     def test_max_requests(self):
-        (httpd, client) = self.build_with_app(standard_harness_app)
         uri = '/status/404/Nope'
-        conn = client.connect()
-        for i in range(5000):
-            response = conn.request('GET', uri, {}, None)
-            self.assertEqual(response.status, 404)
-            self.assertEqual(response.reason, 'Nope')
-            self.assertEqual(response.headers, {})
-            self.assertIsNone(response.body)
-        with self.assertRaises(ConnectionError):
-            conn.request('GET', uri, {}, None)
-        self.assertIs(conn.closed, True)
-        conn.close()
-        httpd.terminate()
+        for value in (17, 27, 37):
+            (httpd, client) = self.build_with_app(standard_harness_app,
+                                                  max_requests=value)
+            conn = client.connect()
+            for i in range(value):
+                response = conn.request('GET', uri, {}, None)
+                self.assertEqual(response.status, 404)
+                self.assertEqual(response.reason, 'Nope')
+                self.assertEqual(response.headers, {})
+                self.assertIsNone(response.body)
+            with self.assertRaises(ConnectionError):
+                conn.request('GET', uri, {}, None)
+            self.assertIs(conn.closed, True)
+            self.assertIsNone(conn.sock)
+            httpd.terminate()
 
 
 class TestLiveServer_AF_INET6(TestLiveServer):

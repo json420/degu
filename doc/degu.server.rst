@@ -131,7 +131,7 @@ example, to kill the server process we just created:
 
         Maximum number of HTTP requests handled through a single TCP connection.
 
-        Default is ``5000``; can be overridden via the *max_requests* keyword
+        Default is ``500``; can be overridden via the *max_requests* keyword
         option.
 
         When this limit is reached for a specific TCP connection, the connection
@@ -141,7 +141,7 @@ example, to kill the server process we just created:
 
         Socket timeout in seconds.
 
-        Default is ``60`` seconds; can be overridden via the *timeout* keyword
+        Default is ``30`` seconds; can be overridden via the *timeout* keyword
         option.
 
         Among other things, this timeout controls how long the server will keep
