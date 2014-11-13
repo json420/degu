@@ -32,7 +32,6 @@ from .base import bodies as default_bodies
 from .base import TYPE_ERROR, makefiles, read_preamble
 
 
-SERVER_SOCKET_TIMEOUT = 10
 log = logging.getLogger()
 
 
