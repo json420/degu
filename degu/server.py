@@ -29,15 +29,7 @@ import threading
 from os import path
 
 from .base import bodies as default_bodies
-from .base import (
-    TYPE_ERROR,
-    Body,
-    BodyIter,
-    ChunkedBody,
-    ChunkedBodyIter,
-    makefiles,
-    read_preamble,
-)
+from .base import TYPE_ERROR, makefiles, read_preamble
 
 
 SERVER_SOCKET_TIMEOUT = 10
@@ -294,11 +286,13 @@ def write_response(wfile, status, reason, headers, body):
 def handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
     assert session['requests'] == 0
+    requests = 0
     while handle_one(app, rfile, wfile, session, bodies) is True:
-        session['requests'] += 1
-        if session['requests'] >= max_requests:
+        requests += 1
+        session['requests'] = requests
+        if requests >= max_requests:
             log.info("%r requests from %r, closing",
-                session['requests'], session['client']
+                requests, session['client']
             )
             break
     wfile.close()  # Will block till write buffer is flushed
@@ -334,12 +328,29 @@ def handle_one(app, rfile, wfile, session, bodies):
             )
 
     # Set default content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray)):
-        headers.setdefault('content-length', len(body))
-    elif isinstance(body, (Body, BodyIter)):
-        headers.setdefault('content-length', body.content_length)
-    elif isinstance(body, (ChunkedBody, ChunkedBodyIter)):
-        headers.setdefault('transfer-encoding', 'chunked') 
+    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
+        length = len(body)
+        if headers.setdefault('content-length', length) != length:
+            raise ValueError(
+                "headers['content-length'] != len(body): {!r} != {!r}".format(
+                    headers['content-length'], length
+                )
+            )
+        if 'transfer-encoding' in headers:
+            raise ValueError(
+                "headers['transfer-encoding'] with length-encoded body"
+            )
+    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
+        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
+            raise ValueError(
+                "headers['transfer-encoding'] is invalid: {!r}".format(
+                    headers['transfer-encoding']
+                )
+            )
+        if 'content-length' in headers:
+            raise ValueError(
+                "headers['content-length'] with chunk-encoded body"
+            )
     elif body is not None:
         raise TypeError(
             'body: not valid type: {!r}: {!r}'.format(type(body), body)
