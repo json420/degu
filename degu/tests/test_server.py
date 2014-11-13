@@ -686,7 +686,6 @@ class TestServer(TestCase):
         # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.Server(degu.IPv6_LOOPBACK, app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -695,7 +694,6 @@ class TestServer(TestCase):
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -703,7 +701,6 @@ class TestServer(TestCase):
 
         # IPv6 any:
         inst = server.Server(degu.IPv6_ANY, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::', port, 0, 0))
@@ -711,7 +708,6 @@ class TestServer(TestCase):
 
         # IPv4 loopback:
         inst = server.Server(degu.IPv4_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('127.0.0.1', port))
@@ -719,7 +715,6 @@ class TestServer(TestCase):
 
         # IPv4 any:
         inst = server.Server(degu.IPv4_ANY, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
@@ -730,7 +725,6 @@ class TestServer(TestCase):
         filename = tmp.join('my.socket')
         self.assertFalse(path.exists(filename))
         inst = server.Server(filename, good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.address, filename)
         self.assertEqual(inst.sock.getsockname(), filename)
@@ -739,7 +733,6 @@ class TestServer(TestCase):
 
         # Linux abstract socket names:
         inst = server.Server(b'', good_app)
-        self.assertEqual(inst.scheme, 'http')
         self.assertIsInstance(inst.sock, socket.socket)
         self.assertEqual(inst.address, inst.sock.getsockname())
         self.assertIsInstance(inst.address, bytes)
@@ -853,7 +846,6 @@ class TestSSLServer(TestCase):
         # Good app.on_connect:
         app = GoodConnectionHandler()
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
@@ -862,7 +854,6 @@ class TestSSLServer(TestCase):
 
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -871,7 +862,6 @@ class TestSSLServer(TestCase):
 
         # IPv6 any:
         inst = server.SSLServer(sslctx, degu.IPv6_ANY, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -880,7 +870,6 @@ class TestSSLServer(TestCase):
 
         # IPv4 loopback:
         inst = server.SSLServer(sslctx, degu.IPv4_LOOPBACK, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]
@@ -889,7 +878,6 @@ class TestSSLServer(TestCase):
 
         # IPv4 any:
         inst = server.SSLServer(sslctx, degu.IPv4_ANY, good_app)
-        self.assertEqual(inst.scheme, 'https')
         self.assertIs(inst.sslctx, sslctx)
         self.assertIsInstance(inst.sock, socket.socket)
         port = inst.sock.getsockname()[1]

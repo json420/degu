@@ -369,8 +369,6 @@ def handle_one(app, rfile, wfile, session, bodies):
 
 
 class Server:
-    scheme = 'http'
-
     def __init__(self, address, app, **options):
         # address:
         if isinstance(address, tuple):  
@@ -410,6 +408,9 @@ class Server:
         self.max_requests = options.get('max_requests', 500)
         self.timeout = options.get('timeout', 30)
         self.bodies = options.get('bodies', default_bodies)
+        assert isinstance(self.max_connections, int) and self.max_connections > 0
+        assert isinstance(self.max_requests, int) and self.max_requests > 0 
+        assert isinstance(self.timeout, (int, float)) and self.timeout > 0
 
         # Listen...
         self.sock = socket.socket(family, socket.SOCK_STREAM)
@@ -463,7 +464,6 @@ class Server:
         finally:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
-                sock.close()
             except OSError:
                 pass
             semaphore.release()
@@ -476,8 +476,6 @@ class Server:
 
 
 class SSLServer(Server):
-    scheme = 'https'
-
     def __init__(self, sslctx, address, app, **options):
         self.sslctx = validate_server_sslctx(sslctx)
         super().__init__(address, app, **options)
