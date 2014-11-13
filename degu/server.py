@@ -434,21 +434,21 @@ class Server:
             (sock, address) = listensock.accept()
             # Denial of Service note: when we already have max_connections, we
             # should aggressively rate-limit the handling of new connections, so
-            # that's why we use `timeout=5` rather than `blocking=False`:
-            if not semaphore.acquire(timeout=5):
+            # that's why we use `timeout=2` rather than `blocking=False`:
+            if semaphore.acquire(timeout=2) is True:
+                sock.settimeout(timeout)
+                thread = threading.Thread(
+                    target=worker,
+                    args=(semaphore, max_requests, bodies, sock, address),
+                    daemon=True
+                )
+                thread.start()
+            else:
                 log.warning('Rejecting connection from %r', address)
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
-                continue
-            sock.settimeout(timeout)
-            thread = threading.Thread(
-                target=worker,
-                args=(semaphore, max_requests, bodies, sock, address),
-                daemon=True
-            )
-            thread.start()
 
     def worker(self, semaphore, max_requests, bodies, sock, address):
         session = {'client': address, 'requests': 0}
