@@ -68,10 +68,10 @@ example, to kill the server process we just created:
     will listen.  It can be a 2-tuple, a 4-tuple, a ``str``, or a ``bytes``
     instance.  See :ref:`server-address` for details.
 
-    The *app* argument provides your :doc:`rgi` (RGI) server application.  It
-    must be a callable object (called to handle each HTTP request), and can
-    optionally have a callable ``app.on_connect()`` attribute (called to handle
-    each TCP connection).  See :ref:`server-app` for details.
+    The *app* argument provides your :doc:`rgi` server application.  It must be
+    a callable object (called to handle each HTTP request), and can optionally
+    have a callable ``app.on_connect()`` attribute (called to handle each TCP
+    connection).  See :ref:`server-app` for details.
 
     The keyword-only *options* allow you to override certain server
     configuration defaults.  You can override *max_connections*, *max_requests*,
@@ -119,17 +119,18 @@ example, to kill the server process we just created:
 
     .. attribute:: max_connections
 
-        Maximum number of concurrent TCP connections accepted by server.
+        Max concurrent TCP connections allowed by server.
 
         Default is ``25``; can be overridden via the *max_connections* keyword
         option.
 
         When this limit is reached, subsequent connection attempts will be
-        rejected till at least one of the existing connections is closed.
+        rejected till the handling of at least one of the existing connections
+        has completed.
 
     .. attribute:: max_requests
 
-        Maximum number of HTTP requests handled through a single TCP connection.
+        Max HTTP requests allowed through a single TCP connection.
 
         Default is ``500``; can be overridden via the *max_requests* keyword
         option.
@@ -407,39 +408,39 @@ you can override certain configuration defaults.
 
 The following server configuration *options* are supported:
 
-    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies
-
-    *   **timeout** --- server socket timeout in seconds; must be a positve
-        ``int`` or ``float`` instance
-
-    *   **max_connections** --- maximum number of concurrent TCP connections the
-        server will accept; once this maximum has been reached, subsequent
+    *   **max_connections** --- max number of concurrent TCP connections the
+        server will allow; once this limit has been reached, subsequent
         connections will be rejected till one or more existing connections are
-        closed; this option directly effects the maximum amount of memory Degu
-        can consume for in-flight per-connection and per-request data; it must
+        closed; a lower value will reduce the peak potential memory usage; must
         be a positive ``int``
 
-    *   **max_requests_per_connection** --- maximum number of HTTP requests that
-        can be handled through a single TCP connection before that connection
-        is forcibly closed by the server; a lower value will minimize the impact
-        of heap fragmentation and will keep the memory usage flatter over time;
+    *   **max_requests** --- max number of HTTP requests that can be handled
+        through a single TCP connection before that connection is forcibly
+        closed by the server; a lower value will minimize the impact of heap
+        fragmentation and will tend to keep the memory usage flatter over time;
         a higher value can provide better throughput when a large number of
         small requests and responses need to travel in quick succession through
         the same TCP connection (typical for CouchDB-style structured data
         sync); it must be a positive ``int``
 
-Unless you override any of them, the default server configuration *options*
-are::
+    *   **timeout** --- server socket timeout in seconds; must be a positve
+        ``int`` or ``float`` instance
 
-    server_options = {
-        'bodies': degu.base.DEFAULT_BODIES,
-        'timeout': 15,
-        'max_connections': 25,
-        'max_requests_per_connection': 100,
-    }
+    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
+        construct HTTP request and response bodies;
+        see :class:`degu.base.BodiesAPI`
+        
 
-Also see the client :ref:`client-options`.
+The default values of which are:
+
+    ==============================  ========================
+    Option/Attribute                Default
+    ==============================  ========================
+    :attr:`Server.max_connections`  ``25``
+    :attr:`Server.max_requests`     ``500``
+    :attr:`Server.timeout`          ``30``
+    :attr:`Server.bodies`           :attr:`degu.base.bodies`
+    ==============================  ========================
 
 
 
