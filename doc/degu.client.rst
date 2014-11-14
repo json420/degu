@@ -81,8 +81,8 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
     :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  You can override the *host*, *timeout*, and
-    *bodies*, and their values are exposed via attributes of the same name:
+    configuration defaults.  You can override *host*, *timeout*, and *bodies*,
+    and their values are exposed via attributes of the same name:
 
         * :attr:`Client.host`
         * :attr:`Client.timeout`

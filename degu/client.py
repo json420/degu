@@ -368,6 +368,8 @@ class Client:
     To make HTTP requests, create a Connection using Client.connect().
     """
 
+    allowed_options = ('host', 'timeout', 'bodies')
+
     def __init__(self, address, **options):
         if isinstance(address, tuple):  
             if len(address) == 4:
@@ -390,6 +392,10 @@ class Client:
             raise TypeError(
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
+        if not set(options).issubset(self.__class__.allowed_options):
+            allowed = self.__class__.allowed_options
+            unsupported = ', '.join(sorted(set(options) - set(allowed)))
+            raise TypeError('unsupported **options: {}'.format(unsupported))
         self.address = address
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
@@ -427,6 +433,8 @@ class SSLClient(Client):
 
     To make HTTP requests, create a Connection using Client.connect().
     """
+
+    allowed_options = Client.allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)

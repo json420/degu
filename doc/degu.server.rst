@@ -5,7 +5,7 @@
    :synopsis: Embedded HTTP Server
 
 
-As a quick example, say you have this :doc:`rgi` (RGI) application:
+As a quick example, say you have this :doc:`rgi` application:
 
 >>> def my_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
