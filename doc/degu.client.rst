@@ -71,11 +71,14 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
 
 .. class:: Client(address, **options)
 
-    An HTTP server to which client connections can be made.
+    Specifies where an HTTP server is, and how to connect to it.
 
-    The *address* argument specifies the server socket address to which TCP
-    connections will be made.  It can be a 2-tuple, a 4-tuple, a ``str``, or a
-    ``bytes`` instance.  See :ref:`client-address` for details.
+    >>> from degu.client import Client
+    >>> client = Client(('en.wikipedia.org', 80))
+
+    The *address* is the same used by the Python `socket`_ API.  It can be a
+    2-tuple, a 4-tuple, a ``str``, or a ``bytes`` instance.  See
+    :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
     configuration defaults.  You can override the *host*, *timeout*, and
@@ -92,7 +95,10 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
     *options*), but does not itself reference any socket resources.
 
     To make HTTP requests, use :meth:`Client.connect()` to create a
-    :class:`Connection`.
+    :class:`Connection`:
+
+    >>> conn = client.connect()  #doctest: +SKIP
+    >>> response = conn.get('/wiki/Portal:Science', {})  #doctest: +SKIP
 
 
     .. attribute:: address
@@ -125,8 +131,6 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         'www.wikipedia.org:80'
         >>> Client(('208.80.154.224', 80)).host
         '208.80.154.224:80'
-        >>> Client(('2620:0:861:ed1a::1', 80)).host
-        '[2620:0:861:ed1a::1]:80'
         >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
         '[2620:0:861:ed1a::1]:80'
 
@@ -277,23 +281,31 @@ Also see the server :ref:`server-options`.
 
 .. class:: SSLClient(sslctx, address, **options)
 
-    An HTTPS server to which client connections can be made.
+    Specifies where an HTTPS server is, and how to connect to it.
+
+    >>> from degu.client import SSLClient
+    >>> sslclient = SSLClient({}, ('en.wikipedia.org', 443))
 
     This subclass inherits all attributes and methods from :class:`Client`.
 
-    The *sslctx* argument can be a pre-built `ssl.SSLContext`_, or it can be
-    a ``dict`` providing an *sslconfig*, in which case a `ssl.SSLContext`_
-    will be built automatically by :func:`build_client_sslctx()`.
+    The *sslctx* can be a pre-built `ssl.SSLContext`_, or a ``dict`` providing
+    the *sslconfig* for :func:`build_client_sslctx()`.
 
-    The *address* argument, along with any keyword-only *options*, are passed
-    unchanged to the :class:`Client` constructor.
+    The *address*, along with any keyword-only *options*, are passed unchanged
+    to the :class:`Client` constructor.
+
+    This subclass adds a *ssl_host* option, exposed via the
+    :attr:`SSLClient.ssl_host` attribute.
 
     An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
     the server is (the *address*) and "how" to connect to the server (the
     *sslctx* and *options*), but does not itself reference any socket resources.
 
     To make HTTP requests, use :meth:`Client.connect()` to create a
-    :class:`Connection`.
+    :class:`Connection`:
+
+    >>> conn = sslclient.connect()  #doctest: +SKIP
+    >>> response = conn.get('/wiki/Portal:Science', {})  #doctest: +SKIP
 
     .. attribute:: sslctx
 
@@ -303,9 +315,33 @@ Also see the server :ref:`server-options`.
         `ssl.SSLContext`_ instance, this attribute will contain that exact same
         instance.
 
-        Otherwise the *sslctx* argument needed be a ``dict`` providing a client
-        *sslconfig*, and this attribute will contain the `ssl.SSLContext`_
-        returned by :func:`build_client_sslctx()`.
+        Otherwise this attribute will contain the `ssl.SSLContext`_returned by
+        :func:`build_client_sslctx()`.
+
+    .. attribute:: ssl_host
+
+        Value used for SNI and server certificate CN matching.
+
+        The default value is derived from the *address* argument, but you can
+        override this value using the *ssl_host* keyword option.
+
+        If your *address* is a 2-tuple or 4-tuple, the default value will be
+        the *host* portion:
+
+        >>> SSLClient({}, ('www.wikipedia.org', 80)).ssl_host
+        'www.wikipedia.org'
+        >>> SSLClient({}, ('208.80.154.224', 80)).ssl_host
+        '208.80.154.224'
+        >>> SSLClient({}, ('2620:0:861:ed1a::1', 80, 0, 0)).ssl_host
+        '2620:0:861:ed1a::1'
+
+        Note that unlike :attr:`Client.host`, the *port* is not included.
+
+        If your *address* is a ``str`` or a ``bytes`` instance, this value will
+        default to ``None``.
+
+        Although using SSL over ``AF_UNIX`` perhaps a bit silly, Degu does
+        support this just for API completeness.
 
     .. method:: create_socket()
 
@@ -313,16 +349,14 @@ Also see the server :ref:`server-options`.
 
         This method first calls :meth:`Client.create_socket()` to create a
         `socket.socket`_, which it then wraps using
-        `ssl.SSLContext.wrap_socket()`_ to produce a `ssl.SSLContext`_.
+        `ssl.SSLContext.wrap_socket()`_ to produce an `ssl.SSLSocket`_.
 
-        This method uses :attr:`Client.host` for the *server_hostname*
-        provided to `ssl.SSLContext.wrap_socket()`_.
+        This method uses :attr:`SSLClient.ssl_host` for the *server_hostname*
+        passed to `ssl.SSLContext.wrap_socket()`_.
 
         When `ssl.SSLContext.check_hostname`_ is ``True``, this is the hostname
-        that will be used when maching the common name (CN) in the server
+        that will be used when matching the common name (CN) in the server
         certificate.
-
-        This is also the hostname that will be used for SNI.
 
 
 

@@ -45,84 +45,17 @@ class UnconsumedRequestError(Exception):
 
 def build_server_sslctx(sslconfig):
     """
-    Build a strictly configured server-side SSLContext.
-
-    The *sslconfig* must be a ``dict`` that always contains at least a
-    ``'cert_file'`` and a ``'key_file'``.
-
-    Degu is primarily aimed at P2P services that use client certificates for
-    authentication.  In this case, your *sslconfig* must also contain a
-    ``'ca_file'`` or a ``'ca_dir'`` (or both).  For example:
-
-    >>> sslconfig = {
-    ...     'cert_file': '/my/server.cert',
-    ...     'key_file': '/my/server.key',
-    ...     'ca_file': '/my/client.ca',
-    ... }
-    ...
-    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
-    >>> sslctx.verify_mode is ssl.CERT_REQUIRED  # doctest: +SKIP
-    True
-
-    Note that the *verify_mode* was automatically set to ``ssl.CERT_REQUIRED``.
-
-    However, there are scenarios where it makes sense to allow unauthenticated 
-    clients to connect to your :class:`SSLServer`.  For example, the Dmedia
-    peering protocol requires this.
-
-    But the danger here is that we don't want developers to accidentally
-    allow unauthenticated connections by accidentally omitting ``'ca_file'``
-    and ``'ca_dir'`` from their *sslconfig*.  This was the case in Degu 0.2 and
-    earlier.
-
-    This was fixed in Degu 0.3, which requires you to be more explicit by
-    including ``'allow_unauthenticated_clients'`` in your *sslconfig* (in
-    addition to omitting ``'ca_file'`` and ``'ca_dir'``).
+    Build an `ssl.SSLContext` appropriately configured for server-side use.
 
     For example:
 
     >>> sslconfig = {
     ...     'cert_file': '/my/server.cert',
     ...     'key_file': '/my/server.key',
-    ...     'allow_unauthenticated_clients': True,
+    ...     'ca_file': '/my/client.ca',
     ... }
-    ...
-    >>> sslctx = build_server_sslctx(sslconfig)  # doctest: +SKIP
-    >>> sslctx.verify_mode is ssl.CERT_NONE  # doctest: +SKIP
-    True
+    >>> sslctx = build_server_sslctx(sslconfig)  #doctest: +SKIP
 
-    Note that the *verify_mode* is ``ssl.CERT_NONE``.
-
-    Configuration details and rationale:
-
-        ===========  =================================
-        Protocol:    ``PROTOCOL_TLSv1_2``
-
-        Ciphers:     ``'ECDHE-RSA-AES256-GCM-SHA384'``
-
-        ECDH Curve:  ``'secp384r1'``
-
-        Options:     ``OP_NO_COMPRESSION``
-                     ``OP_SINGLE_ECDH_USE``
-                     ``OP_CIPHER_SERVER_PREFERENCE``
-        ===========  =================================
-
-
-    FIXME: There is a good chance we should not use ECDHE, and if we do, it's
-    not overly clear what curve would be the best choice.  In fact, it seems
-    current openssl implementations don't offer a conservative, uncontroversial
-    option.  See:
-
-        http://safecurves.cr.yp.to/
-
-    To see the available curves supported by openssl, run this::
-
-        openssl ecparam -list_curves
-
-    Also, we should not rule out Diffie–Hellman.  It seems like a more
-    conservative choice at this point, and considering the use cases Degu is
-    aimed at, it's not a deal-breaker if creating the connection is more
-    expensive, as long as we get good performance using the connection.
     """
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl

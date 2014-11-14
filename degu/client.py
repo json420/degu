@@ -60,7 +60,7 @@ class UnconsumedResponseError(Exception):
 
 def build_client_sslctx(sslconfig):
     """
-    Build an ``ssl.SSLContext`` appropriately configured for client use.
+    Build an `ssl.SSLContext` appropriately configured for client-side use.
 
     For example:
 
@@ -358,9 +358,14 @@ def build_host(host, port, *extra):
 
 class Client:
     """
-    Represents an HTTP server to which Degu can make client connections.
+    Specifies where an HTTP server is, and how to connect to it.
 
-    A `Client` instance is stateless and thread-safe.
+    >>> client = Client(('en.wikipedia.org', 80))
+
+    A Client is stateless and thread-safe, does not itself reference any socket
+    resources.
+
+    To make HTTP requests, create a Connection using Client.connect().
     """
 
     def __init__(self, address, **options):
@@ -413,9 +418,14 @@ class Client:
 
 class SSLClient(Client):
     """
-    Represents an HTTPS server to which Degu can make client connections.
+    Specifies where an HTTPS server is, and how to connect to it.
 
-    An `SSLClient` instance is stateless and thread-safe.
+    >>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
+
+    An SSLClient is stateless and thread-safe, does not itself reference any
+    socket resources.
+
+    To make HTTP requests, create a Connection using Client.connect().
     """
 
     def __init__(self, sslctx, address, **options):
