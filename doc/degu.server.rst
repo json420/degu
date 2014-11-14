@@ -5,7 +5,7 @@
    :synopsis: Embedded HTTP Server
 
 
-As a quick example, say you have this :doc:`rgi` (RGI) application:
+As a quick example, say you have this :doc:`rgi` application:
 
 >>> def my_app(session, request, bodies):
 ...     if request['method'] not in {'GET', 'HEAD'}:
@@ -64,13 +64,19 @@ example, to kill the server process we just created:
 
     An HTTP server instance.
 
-    The *address* argument specifies the socket address upon which the server
-    will listen.  It can be a 2-tuple, a 4-tuple, a ``str``, or a ``bytes``
-    instance.  See :ref:`server-address` for details.
+    >>> from degu.server import Server
+    >>> def my_app(session, request, bodies):
+    ...     return (200, 'OK', {}, b'hello, world')
+    ...
+    >>> server = Server(('127.0.0.1', 0), my_app)
 
-    The *app* argument provides your :doc:`rgi` server application.  It must be
-    a callable object (called to handle each HTTP request), and can optionally
-    have a callable ``app.on_connect()`` attribute (called to handle each TCP
+    The *address* is the same used by the Python `socket`_ API.  It can be a
+    2-tuple, a 4-tuple, a ``str``, or a ``bytes`` instance.  See
+    :ref:`server-address` for details.
+
+    The *app* is your :doc:`rgi` server application.  It must be a callable
+    object (called to handle each HTTP request), and can optionally have a
+    callable ``app.on_connect()`` attribute (called to handle each TCP
     connection).  See :ref:`server-app` for details.
 
     The keyword-only *options* allow you to override certain server
@@ -453,15 +459,11 @@ The default values of which are:
 
     This subclass inherits all attributes and methods from :class:`Server`.
 
-    The *sslctx* argument must be an `ssl.SSLContext`_ appropriately configured
-    for server-side TLSv1.2 use.
+    The *sslctx* can be a pre-built `ssl.SSLContext`_, or a ``dict`` providing
+    the *sslconfig* for :func:`build_server_sslctx()`.
 
-    Alternately, if the *sslctx* argument is a ``dict``, it's treated as the
-    server *sslconfig* and the actual `ssl.SSLContext`_ will be built
-    automatically by calling :func:`build_server_sslctx()`.
-
-    The *address* and *app* arguments, along with any keyword-only *options*,
-    are passed unchanged to the :class:`Server()` constructor.
+    The *address* and *app*, along with any keyword-only *options*, are passed
+    unchanged to the :class:`Server()` constructor.
 
     .. attribute:: sslctx
 
@@ -560,6 +562,7 @@ The default values of which are:
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
+.. _`socket`: https://docs.python.org/3/library/socket.html
 .. _`socket.socket.bind()`: https://docs.python.org/3/library/socket.html#socket.socket.bind
 .. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects

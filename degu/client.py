@@ -60,7 +60,7 @@ class UnconsumedResponseError(Exception):
 
 def build_client_sslctx(sslconfig):
     """
-    Build an ``ssl.SSLContext`` appropriately configured for client use.
+    Build an `ssl.SSLContext` appropriately configured for client-side use.
 
     For example:
 
@@ -358,10 +358,17 @@ def build_host(host, port, *extra):
 
 class Client:
     """
-    Represents an HTTP server to which Degu can make client connections.
+    Specifies where an HTTP server is, and how to connect to it.
 
-    A `Client` instance is stateless and thread-safe.
+    >>> client = Client(('en.wikipedia.org', 80))
+
+    A Client is stateless and thread-safe, does not itself reference any socket
+    resources.
+
+    To make HTTP requests, create a Connection using Client.connect().
     """
+
+    allowed_options = ('host', 'timeout', 'bodies')
 
     def __init__(self, address, **options):
         if isinstance(address, tuple):  
@@ -385,6 +392,10 @@ class Client:
             raise TypeError(
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
+        if not set(options).issubset(self.__class__.allowed_options):
+            allowed = self.__class__.allowed_options
+            unsupported = ', '.join(sorted(set(options) - set(allowed)))
+            raise TypeError('unsupported **options: {}'.format(unsupported))
         self.address = address
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
@@ -413,10 +424,17 @@ class Client:
 
 class SSLClient(Client):
     """
-    Represents an HTTPS server to which Degu can make client connections.
+    Specifies where an HTTPS server is, and how to connect to it.
 
-    An `SSLClient` instance is stateless and thread-safe.
+    >>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
+
+    An SSLClient is stateless and thread-safe, does not itself reference any
+    socket resources.
+
+    To make HTTP requests, create a Connection using Client.connect().
     """
+
+    allowed_options = Client.allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
