@@ -25,7 +25,7 @@
 
 
 #define MAX_LINE_BYTES 4096
-#define MAX_HEADER_COUNT 15
+#define MAX_HEADER_COUNT 20
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;

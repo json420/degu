@@ -73,7 +73,7 @@ __all__ = (
 )
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
-MAX_HEADER_COUNT = 15
+MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
