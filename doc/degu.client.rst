@@ -127,12 +127,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         a 2-tuple or 4-tuple, the default value will be constructed from the
         *address*:
 
-        >>> Client(('www.wikipedia.org', 80)).host
-        'www.wikipedia.org:80'
-        >>> Client(('208.80.154.224', 80)).host
-        '208.80.154.224:80'
-        >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
-        '[2620:0:861:ed1a::1]:80'
+        >>> Client(('en.wikipedia.org', 80)).host
+        'en.wikipedia.org'
+        >>> Client(('192.168.1.171', 5984)).host
+        '192.168.1.171:5984'
+        >>> Client(('fe80::e8b:fdff:fe75:402c/64', 5984, 0, 3)).host
+        '[fe80::e8b:fdff:fe75:402c/64]:5984'
 
         If the *address* is a ``str`` or ``bytes`` instance, this attribute
         will default to ``None``:
@@ -145,7 +145,7 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         A *host* keyword option will override the default value of for this
         attribute, regardless of the *address*:
 
-        >>> Client(('208.80.154.224', 80), host='example.com').host
+        >>> Client(('192.168.1.171', 5984), host='example.com').host
         'example.com'
         >>> Client('/tmp/my.socket', host='example.com').host
         'example.com'
@@ -153,7 +153,7 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         Likewise, you can use the *host* keyword option to set this attribute to
         ``None``, regardless of the *address*:
 
-        >>> Client(('2620:0:861:ed1a::1', 80), host=None).host is None
+        >>> Client(('192.168.1.171', 5984), host=None).host is None
         True
         >>> Client('/tmp/my.socket', host=None).host is None
         True
