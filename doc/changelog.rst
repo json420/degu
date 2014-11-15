@@ -18,9 +18,9 @@ Breaking API changes:
 
             (extension, data)
 
-        This was the one place where the Degu/RGI API wasn't faithful to the
-        HTTP wire format (the chunk *extension*, when present, is contained in
-        the chunk size line, prior to the actual chunk *data*).
+        This was the one place where the Degu API wasn't faithful to the HTTP
+        wire format (the chunk *extension*, when present, is contained in the
+        chunk size line, prior to the actual chunk *data*).
 
         As before, the *extension* will be ``None`` when there is no extension
         for a specific chunk::
@@ -41,12 +41,16 @@ Breaking API changes:
             write_chunk(wfile, chunk)
 
         Where the *chunk* is an ``(extension, data)`` tuple.  This harmonizes
-        with the above change, also means you can treat the *chunk* as an opaque
-        data structure that can be passed between :func:`degu.base.read_chunk()`
-        and :func:`degu.base.write_chunk()`, for example::
+        with the above change, and also means that you can treat the *chunk* as
+        an opaque data structure when passing it between
+        :func:`degu.base.read_chunk()` and :func:`degu.base.write_chunk()`, for
+        example::
 
             chunk = read_chunk(rfile)
             write_chunk(wfile, chunk)
+
+    *   :meth:`degu.base.ChunkedBody.read()` now returns ``bytes`` instead of
+        a ``bytearray``
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
         difference between *no* query vs merely an *empty* query.

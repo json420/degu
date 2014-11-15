@@ -64,10 +64,10 @@ example, to kill the server process we just created:
 
     An HTTP server instance.
 
-    >>> from degu.server import Server
     >>> def my_app(session, request, bodies):
     ...     return (200, 'OK', {}, b'hello, world')
     ...
+    >>> from degu.server import Server
     >>> server = Server(('127.0.0.1', 0), my_app)
 
     The *address* is the same used by the Python `socket`_ API.  It can be a
@@ -457,11 +457,11 @@ The default values of which are:
 
     An HTTPS server instance (secured using TLSv1.2).
 
-    >>> from degu.server import SSLServer, build_server_sslctx
-    >>> from degu.misc import TempPKI
     >>> def my_app(session, request, bodies):
     ...     return (200, 'OK', {}, b'hello, world')
     ...
+    >>> from degu.server import SSLServer, build_server_sslctx
+    >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
     >>> sslctx = build_server_sslctx(pki.server_sslconfig)
     >>> server = SSLServer(sslctx, ('127.0.0.1', 0), my_app)

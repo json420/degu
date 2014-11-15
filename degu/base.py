@@ -342,7 +342,7 @@ class ChunkedBody(_ChunkedBody):
         buf = bytearray()
         while not self.closed:
             buf.extend(self.readchunk()[1])
-        return buf
+        return bytes(buf)
 
     def __iter__(self):
         if self.closed:

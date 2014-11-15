@@ -482,12 +482,12 @@ in the response body like this:
 manually step through the chunks.)
 
 :meth:`degu.base.ChunkedBody.read()` can be used to accumulate all the chunk
-data into a single ``bytearray``, at the expense of loosing the exact chunk data
-boundaries and any chunk extensions:
+data into a single ``bytes`` instance, at the expense of loosing the exact chunk
+data boundaries and any chunk extensions:
 
 >>> response = conn.request('POST', '/chunked', {}, b'All your base')
 >>> response.body.read()
-bytearray(b'All your base are belong to us')
+b'All your base are belong to us'
 
 API-wise, ``body.read()`` can always be used without worrying about the
 transfer-encoding, but in real applications you should be very cautions about
@@ -542,7 +542,7 @@ And then if we ``POST /chunked``:
 
 >>> response = conn.request('POST', '/chunked', {}, body)
 >>> response.body.read()
-bytearray(b'All your *something else* are belong to us')
+b'All your *something else* are belong to us'
 
 Or if we ``POST /length``:
 
