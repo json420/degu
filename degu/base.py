@@ -140,23 +140,29 @@ def read_chunk(rfile):
     return (extension, data)
 
 
-def write_chunk(wfile, data, extension=None):
+def write_chunk(wfile, chunk):
     """
-    Write a *data* to a chunk-encoded request or response body.
+    Write *chunk* to *wfile* using chunked transfer-encoding.
 
     See "Chunked Transfer Coding":
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
+    assert isinstance(chunk, tuple)
+    (extension, data) = chunk
+    assert extension is None or isinstance(extension, tuple)
+    assert isinstance(data, bytes)
     if len(data) > MAX_CHUNK_BYTES:
         raise ValueError(
             'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
         )
-    if extension:
-        (key, value) = extension
-        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-    else:
+    if extension is None:
         size_line = '{:x}\r\n'.format(len(data))
+    else:
+        (key, value) = extension
+        assert isinstance(key, str)
+        assert isinstance(value, str)
+        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
     total = wfile.write(size_line.encode('latin_1'))
     total += wfile.write(data)
     total += wfile.write(b'\r\n')

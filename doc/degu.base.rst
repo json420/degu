@@ -568,9 +568,19 @@ Parsing functions
     For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
 
 
-.. function:: write_chunk(wfile, chunk, extension=None)
+.. function:: write_chunk(wfile, chunk)
 
     Write a chunk to a chunk-encoded request or response body.
+
+    The *chunk* must be an ``(extension, data)`` tuple.  When there is no
+    extension in the chunk, *extension* must be ``None``::
+
+        (None, b'hello')
+
+    Or when there is an extension in the chunk, *extension* must be a
+    ``(key, value)`` tuple::
+
+        (('foo', 'bar'), b'hello')
 
     The return value will be the total bytes written, including the chunk size
     line and the final CRLF chunk data terminator.
@@ -580,7 +590,8 @@ Parsing functions
     >>> import io
     >>> from degu.base import write_chunk
     >>> wfile = io.BytesIO()
-    >>> write_chunk(wfile, b'hello')
+    >>> chunk = (None, b'hello')
+    >>> write_chunk(wfile, chunk)
     10
     >>> wfile.getvalue()
     b'5\r\nhello\r\n'
@@ -588,7 +599,8 @@ Parsing functions
     Or when there is a chunk extension:
 
     >>> wfile = io.BytesIO()
-    >>> write_chunk(wfile, b'hello', ('foo', 'bar'))
+    >>> chunk = (('foo', 'bar'), b'hello')
+    >>> write_chunk(wfile, chunk)
     18
     >>> wfile.getvalue()
     b'5;foo=bar\r\nhello\r\n'

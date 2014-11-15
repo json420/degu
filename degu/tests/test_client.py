@@ -574,7 +574,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO()
         total = rfile.write(lines)
         for chunk in [chunk1, chunk2, chunk3, b'']:
-            total += base.write_chunk(rfile, chunk)
+            total += base.write_chunk(rfile, (None, chunk))
         self.assertEqual(rfile.tell(), total)
         rfile.seek(0)
         r = client.read_response(rfile, base.bodies, 'GET')

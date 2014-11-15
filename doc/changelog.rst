@@ -32,6 +32,22 @@ Breaking API changes:
 
             (('foo', 'bar'), b'hello, world')
 
+    *   Change :func:`degu.base.write_chunk()` signature from::
+
+            write_chunk(wfile, data, extension=None)
+
+        To::
+
+            write_chunk(wfile, chunk)
+
+        Where the *chunk* is an ``(extension, data)`` tuple.  This harmonizes
+        with the above change, also means you can treat the *chunk* as an opaque
+        data structure that can be passed between :func:`degu.base.read_chunk()`
+        and :func:`degu.base.write_chunk()`, for example::
+
+            chunk = read_chunk(rfile)
+            write_chunk(wfile, chunk)
+
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
         difference between *no* query vs merely an *empty* query.
 

@@ -1335,17 +1335,19 @@ class TestFunctions(AlternatesTestCase):
         # len(data) > MAX_CHUNK_BYTES:
         data = b'D' * (base.MAX_CHUNK_BYTES + 1)
         wfile = io.BytesIO()
+        chunk = (None, data)
         with self.assertRaises(ValueError) as cm:
-            base.write_chunk(wfile, data, None)
+            base.write_chunk(wfile, chunk)
         self.assertEqual(str(cm.exception),
             'need len(data) <= 16777216; got 16777217'
         )
         self.assertEqual(wfile.getvalue(), b'')
 
-        # len(data) > MAX_CHUNK_BYTES, with extension:
+        # len(data) > MAX_CHUNK_BYTES, but now with extension:
         wfile = io.BytesIO()
+        chunk = (('foo', 'bar'), data)
         with self.assertRaises(ValueError) as cm:
-            base.write_chunk(wfile, data, ('foo', 'bar'))
+            base.write_chunk(wfile, chunk)
         self.assertEqual(str(cm.exception),
             'need len(data) <= 16777216; got 16777217'
         )
@@ -1353,34 +1355,39 @@ class TestFunctions(AlternatesTestCase):
 
         # Empty data:
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, b''), 5)
+        chunk = (None, b'')
+        self.assertEqual(base.write_chunk(wfile, chunk), 5)
         self.assertEqual(wfile.getvalue(), b'0\r\n\r\n')
 
         # Empty data plus extension:
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, b'', ('foo', 'bar')), 13)
+        chunk = (('foo', 'bar'),  b'')
+        self.assertEqual(base.write_chunk(wfile, chunk), 13)
         self.assertEqual(wfile.getvalue(), b'0;foo=bar\r\n\r\n')
 
         # Small data:
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, b'hello'), 10)
+        chunk = (None, b'hello')
+        self.assertEqual(base.write_chunk(wfile, chunk), 10)
         self.assertEqual(wfile.getvalue(), b'5\r\nhello\r\n')
 
         # Small data plus extension:
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, b'hello', ('foo', 'bar')), 18)
+        chunk = (('foo', 'bar'), b'hello')
+        self.assertEqual(base.write_chunk(wfile, chunk), 18)
         self.assertEqual(wfile.getvalue(), b'5;foo=bar\r\nhello\r\n')
 
         # Larger data:
         data = b'D' * 7777
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, data), 7785)
+        chunk = (None, data)
+        self.assertEqual(base.write_chunk(wfile, chunk), 7785)
         self.assertEqual(wfile.getvalue(), b'1e61\r\n' + data + b'\r\n')
 
         # Larger data plus extension:
-        data = b'D' * 7777
         wfile = io.BytesIO()
-        self.assertEqual(base.write_chunk(wfile, data, ('foo', 'bar')), 7793)
+        chunk = (('foo', 'bar'), data)
+        self.assertEqual(base.write_chunk(wfile, chunk), 7793)
         self.assertEqual(wfile.getvalue(), b'1e61;foo=bar\r\n' + data + b'\r\n')
 
         # Test random value round-trip with read_chunk():
@@ -1389,36 +1396,40 @@ class TestFunctions(AlternatesTestCase):
             data = os.urandom(size)
             total = size + len('{:x}'.format(size)) + 4
             fp = io.BytesIO()
-            self.assertEqual(base.write_chunk(fp, data), total)
+            chunk = (None, data)
+            self.assertEqual(base.write_chunk(fp, chunk), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), (None, data))
+            self.assertEqual(base.read_chunk(fp), chunk)
 
             # With extension:
             key = random_id()
             value = random_id()
             total = size + len('{:x};{}={}'.format(size, key, value)) + 4
             fp = io.BytesIO()
-            self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
+            chunk = ((key, value), data)
+            self.assertEqual(base.write_chunk(fp, chunk), total)
             fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), ((key, value), data))
+            self.assertEqual(base.read_chunk(fp), chunk)
 
         # Make sure we can round-trip MAX_CHUNK_BYTES:
         size = base.MAX_CHUNK_BYTES
         data = os.urandom(size)
         total = size + len('{:x}'.format(size)) + 4
         fp = io.BytesIO()
-        self.assertEqual(base.write_chunk(fp, data), total)
+        chunk = (None, data)
+        self.assertEqual(base.write_chunk(fp, chunk), total)
         fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), (None, data))
+        self.assertEqual(base.read_chunk(fp), chunk)
 
         # With extension:
         key = random_id()
         value = random_id()
         total = size + len('{:x};{}={}'.format(size, key, value)) + 4
+        chunk = ((key, value), data)
         fp = io.BytesIO()
-        self.assertEqual(base.write_chunk(fp, data, (key, value)), total)
+        self.assertEqual(base.write_chunk(fp, chunk), total)
         fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), ((key, value), data))
+        self.assertEqual(base.read_chunk(fp), chunk)
 
 
 class TestBody(TestCase):
@@ -1848,7 +1859,7 @@ class TestChunkedBody(TestCase):
         chunks = random_chunks()
         self.assertEqual(chunks[-1], b'')
         rfile = io.BytesIO()
-        total = sum(base.write_chunk(rfile, data) for data in chunks)
+        total = sum(base.write_chunk(rfile, (None, data)) for data in chunks)
         self.assertEqual(rfile.tell(), total)
         extra = os.urandom(3469)
         rfile.write(extra)
@@ -1897,7 +1908,7 @@ class TestChunkedBody(TestCase):
         chunks = random_chunks()
         self.assertEqual(chunks[-1], b'')
         rfile = io.BytesIO()
-        total = sum(base.write_chunk(rfile, data) for data in chunks)
+        total = sum(base.write_chunk(rfile, (None, data)) for data in chunks)
         self.assertEqual(rfile.tell(), total)
         extra = os.urandom(3469)
         rfile.write(extra)
