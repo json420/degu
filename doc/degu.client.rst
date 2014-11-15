@@ -294,7 +294,7 @@ Also see the server :ref:`server-options`.
     The *address*, along with any keyword-only *options*, are passed unchanged
     to the :class:`Client` constructor.
 
-    This subclass adds a *ssl_host* option, exposed via the
+    This subclass adds the *ssl_host* option, exposed via the
     :attr:`SSLClient.ssl_host` attribute.
 
     An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
@@ -315,7 +315,7 @@ Also see the server :ref:`server-options`.
         `ssl.SSLContext`_ instance, this attribute will contain that exact same
         instance.
 
-        Otherwise this attribute will contain the `ssl.SSLContext`_returned by
+        Otherwise this attribute will contain the `ssl.SSLContext`_ returned by
         :func:`build_client_sslctx()`.
 
     .. attribute:: ssl_host

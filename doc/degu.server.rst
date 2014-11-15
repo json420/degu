@@ -457,13 +457,22 @@ The default values of which are:
 
     An HTTPS server instance (secured using TLSv1.2).
 
+    >>> from degu.server import SSLServer, build_server_sslctx
+    >>> from degu.misc import TempPKI
+    >>> def my_app(session, request, bodies):
+    ...     return (200, 'OK', {}, b'hello, world')
+    ...
+    >>> pki = TempPKI()
+    >>> sslctx = build_server_sslctx(pki.server_sslconfig)
+    >>> server = SSLServer(sslctx, ('127.0.0.1', 0), my_app)
+
     This subclass inherits all attributes and methods from :class:`Server`.
 
     The *sslctx* can be a pre-built `ssl.SSLContext`_, or a ``dict`` providing
     the *sslconfig* for :func:`build_server_sslctx()`.
 
     The *address* and *app*, along with any keyword-only *options*, are passed
-    unchanged to the :class:`Server()` constructor.
+    unchanged to the :class:`Server` constructor.
 
     .. attribute:: sslctx
 

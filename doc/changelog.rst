@@ -129,6 +129,14 @@ Other changes:
         now fully compossible, so you can use the Degu server with other
         implementations of the bodies API.
 
+    *   :meth:`degu.server.Server.serve_forever()` now uses a
+        `BoundedSemaphore`_ to limit the active TCP connections (and therefore
+        worker threads) to at most :attr:`degu.server.Server.max_connections`
+        (this replaces the yucky ``threading.active_count()`` hack); when the
+        *max_connections* limit has been reached, the new implementation also
+        now rate-limits the handling of new connections to one attempt every 2
+        seconds (to mitigate Denial of Service attacks).
+
 
 
 0.10 (October 2014)
@@ -800,4 +808,4 @@ Two things motivated these breaking API changes:
 
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
-
+.. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
