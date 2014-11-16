@@ -110,7 +110,7 @@ class Test(Command):
 
 setup(
     name='degu',
-    description='an embedded HTTP server and client library',
+    description='Embedded HTTP server and client library',
     url='https://launchpad.net/degu',
     version=degu.__version__,
     author='Jason Gerard DeRose',
@@ -129,5 +129,20 @@ setup(
     cmdclass={
         'test': Test,
     },
+    platforms=['POSIX'],
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)',
+        'Natural Language :: English',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: C',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3 :: Only',
+        'Programming Language :: Python :: Implementation :: CPython',
+        'Topic :: Internet :: WWW/HTTP',
+        'Topic :: Internet :: WWW/HTTP :: HTTP Servers',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+    ],
 )
 
