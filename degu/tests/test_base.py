@@ -244,6 +244,19 @@ class DummyFile:
         return self._lines.pop(0)
 
 
+class DummyWriter:
+    def __init__(self):
+        self._calls = []
+
+    def write(self, data):
+        assert isinstance(data, bytes)
+        self._calls.append(('write', data))
+        return len(data)
+
+    def flush(self):
+        self._calls.append('flush')
+
+
 class UserBytes(bytes):
     pass
 
@@ -2057,6 +2070,115 @@ class TestBodyIter(TestCase):
         self.assertIs(body.source, source)
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.closed, False)
+
+    def test_len(self):
+        for content_length in (0, 17, 27, 37):
+            body = base.BodyIter([], content_length)
+        self.assertEqual(len(body), content_length)
+
+    def test_write_to(self):
+        source = (b'hello', b'naughty', b'nurse')
+
+        # Test when closed:
+        body = base.BodyIter(source, 17)
+        body.closed = True
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
+        self.assertEqual(wfile._calls, [])
+
+        # Should be closed after calling write_to():
+        body = base.BodyIter(source, 17)
+        wfile = DummyWriter()
+        self.assertEqual(body.write_to(wfile), 17)
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls, [
+            ('write', b'hello'),
+            ('write', b'naughty'),
+            ('write', b'nurse'),
+            'flush',
+        ])
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
+
+        # ValueError should be raised at first item that pushing total above
+        # content_length:
+        body = base.BodyIter(source, 4)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'overflow: 5 > 4')
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls, [])
+
+        body = base.BodyIter(source, 5)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'overflow: 12 > 5')
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls, [('write', b'hello')])
+
+        body = base.BodyIter(source, 12)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'overflow: 17 > 12')
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls,
+            [('write', b'hello'), ('write', b'naughty')]
+        )
+
+        body = base.BodyIter(source, 16)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'overflow: 17 > 16')
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls,
+            [('write', b'hello'), ('write', b'naughty')]
+        )
+
+        # ValueError for underflow should only be raised after all items have
+        # been yielded:
+        body = base.BodyIter(source, 18)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'underflow: 17 < 18')
+        self.assertIs(body.closed, True)
+        self.assertEqual(wfile._calls,
+            [('write', b'hello'), ('write', b'naughty'), ('write', b'nurse')]
+        )
+
+        # Empty data items are fine:
+        source = (b'', b'hello', b'', b'naughty', b'', b'nurse', b'')
+        body = base.BodyIter(source, 17)
+        wfile = DummyWriter()
+        self.assertEqual(body.write_to(wfile), 17)
+        expected = [('write', data) for data in source]
+        expected.append('flush')
+        self.assertEqual(wfile._calls, expected)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
+
+        # Test with random data of varying sizes:
+        source = [os.urandom(i) for i in range(50)]
+        content_length = sum(range(50))
+        body = base.BodyIter(source, content_length)
+        wfile = DummyWriter()
+        self.assertEqual(body.write_to(wfile), content_length)
+        expected = [('write', data) for data in source]
+        expected.append('flush')
+        self.assertEqual(wfile._calls, expected)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
 
     def test_iter(self):
         source = (b'hello', b'naughty', b'nurse')

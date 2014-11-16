@@ -265,7 +265,9 @@ class Body(_Body):
         self.closed = True
 
 
-class BodyIter(_Body):
+class BodyIter:
+    __slots__ = ('source', 'content_length', 'closed')
+
     def __init__(self, source, content_length):
         if not isinstance(content_length, int):
             raise TypeError(TYPE_ERROR.format(
@@ -278,6 +280,31 @@ class BodyIter(_Body):
         self.source = source
         self.content_length = content_length
         self.closed = False
+
+    def __len__(self):
+        return self.content_length
+
+    def write_to(self, wfile):
+        if self.closed is True:
+            raise ValueError('BodyIter.closed, already consumed')
+        assert self.closed is False
+        self.closed = True
+        content_length = self.content_length
+        total = 0
+        for data in self.source:
+            total += len(data)
+            if total > content_length:
+                raise ValueError(
+                    'overflow: {} > {}'.format(total, content_length)
+                )
+            if wfile.write(data) != len(data):
+                raise Exception('wfile.write() returned wrong size written')
+        if total != content_length:
+            raise ValueError(
+                'underflow: {} < {}'.format(total, content_length)
+            )
+        wfile.flush()
+        return total
 
     def __iter__(self):
         if self.closed:
