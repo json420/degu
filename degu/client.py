@@ -397,22 +397,22 @@ class Client:
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    default_port = 80  # Lame, but needed to contruct the default host header
-    allowed_options = ('host', 'timeout', 'bodies')
+    _default_port = 80  # Needed to contruct the default host header
+    _allowed_options = ('host', 'timeout', 'bodies')
 
     def __init__(self, address, **options):
         if isinstance(address, tuple):  
             if len(address) == 4:
-                self.family = socket.AF_INET6
+                self._family = socket.AF_INET6
             elif len(address) == 2:
-                self.family = None
+                self._family = None
             else:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            host = build_host(self.__class__.default_port, *address)
+            host = build_host(self.__class__._default_port, *address)
         elif isinstance(address, (str, bytes)):
-            self.family = socket.AF_UNIX
+            self._family = socket.AF_UNIX
             host = None
             if isinstance(address, str) and path.abspath(address) != address:
                 raise ValueError(
@@ -422,9 +422,9 @@ class Client:
             raise TypeError(
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
-        if not set(options).issubset(self.__class__.allowed_options):
+        if not set(options).issubset(self.__class__._allowed_options):
             cls = self.__class__
-            unsupported = sorted(set(options) - set(cls.allowed_options))
+            unsupported = sorted(set(options) - set(cls._allowed_options))
             raise TypeError(
                 'unsupported {} **options: {}'.format(
                     cls.__name__, ', '.join(unsupported)
@@ -443,9 +443,9 @@ class Client:
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def create_socket(self):
-        if self.family is None:
+        if self._family is None:
             return socket.create_connection(self.address, timeout=self.timeout)
-        sock = socket.socket(self.family, socket.SOCK_STREAM)
+        sock = socket.socket(self._family, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         sock.connect(self.address)
         return sock
@@ -468,8 +468,8 @@ class SSLClient(Client):
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    default_port = 443  # Lame, but needed to contruct the default host header
-    allowed_options = Client.allowed_options + ('ssl_host',)
+    _default_port = 443  # Needed to contruct the default host header
+    _allowed_options = Client._allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):
         self.sslctx = validate_client_sslctx(sslctx)
