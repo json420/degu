@@ -140,7 +140,7 @@ def read_chunk(rfile):
     return (extension, data)
 
 
-def write_chunk(wfile, chunk):
+def write_chunk(wfile, chunk, check_size=True):
     """
     Write *chunk* to *wfile* using chunked transfer-encoding.
 
@@ -152,7 +152,7 @@ def write_chunk(wfile, chunk):
     (extension, data) = chunk
     assert extension is None or isinstance(extension, tuple)
     assert isinstance(data, bytes)
-    if len(data) > MAX_CHUNK_BYTES:
+    if check_size and len(data) > MAX_CHUNK_BYTES:
         raise ValueError(
             'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
         )
@@ -176,8 +176,7 @@ class _Body:
         return self.content_length
 
     def write_to(self, wfile):
-        write = wfile.write
-        total = sum(write(data) for data in self)
+        total = sum(wfile.write(data) for data in self)
         assert total == self.content_length
         wfile.flush()
         return total
@@ -297,21 +296,8 @@ class BodyIter(_Body):
 
 class _ChunkedBody:
     def write_to(self, wfile):
-        write = wfile.write
-        flush = wfile.flush
-        flush()  # Flush preamble before writting first chunk
-        total = 0
-        for (extension, data) in self:
-            if extension:
-                (key, value) = extension
-                size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-            else:
-                size_line = '{:x}\r\n'.format(len(data))
-            total += write(size_line.encode())
-            total += write(data)
-            total += write(b'\r\n')
-            flush()
-        return total
+        wfile.flush()  # Flush preamble before writting first chunk
+        return sum(write_chunk(wfile, chunk) for chunk in self) 
 
 
 class ChunkedBody(_ChunkedBody):
@@ -337,15 +323,18 @@ class ChunkedBody(_ChunkedBody):
             self.closed = True
         return (extension, data)
 
-    def read(self):
-        # FIXME: consider removing this, or at least adding some sane memory
-        # usage limit.  For now, kept for transition compatibility with
-        # Microfiber:
+    def read(self, size=None):
         if self.closed:
             raise BodyClosedError(self)
         buf = bytearray()
         while not self.closed:
             buf.extend(self.readchunk()[1])
+            if len(buf) > MAX_READ_BYTES:
+                raise ValueError(
+                    'read size > MAX_READ_BYTES: {} > {}'.format(
+                        len(buf), MAX_READ_BYTES
+                    )
+                )
         return bytes(buf)
 
     def __iter__(self):

@@ -1965,6 +1965,65 @@ class TestChunkedBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
+    def test_read(self):
+        # Total read size too large:
+        chunks = [
+            (None, b'A' * base.MAX_READ_BYTES),
+            (None, b'B'),
+            (None, b''),
+        ]
+        rfile = io.BytesIO()
+        for chunk in chunks:
+            base.write_chunk(rfile, chunk)
+        rfile.seek(0)
+        body = base.ChunkedBody(rfile)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'read size > MAX_READ_BYTES: {:d} > {:d}'.format(
+                base.MAX_READ_BYTES + 1, base.MAX_READ_BYTES
+            )
+        )
+
+        # Total read size too large:
+        size = base.MAX_READ_BYTES // 8
+        chunks = [
+            (None, bytes([i]) * size) for i in b'ABCDEFGH'
+        ]
+        assert len(chunks) == 8
+        chunks.extend([(None, b'I'), (None, b'')])
+        rfile = io.BytesIO()
+        for chunk in chunks:
+            base.write_chunk(rfile, chunk)
+        rfile.seek(0)
+        body = base.ChunkedBody(rfile)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'read size > MAX_READ_BYTES: {:d} > {:d}'.format(
+                base.MAX_READ_BYTES + 1, base.MAX_READ_BYTES
+            )
+        )
+
+        # A chunk is larger than MAX_CHUNK_BYTES:
+        chunks = [
+            (None, b'A'),
+            (None, b'B' * (base.MAX_CHUNK_BYTES + 1)),
+            (None, b''),
+        ]
+        rfile = io.BytesIO()
+        for chunk in chunks:
+            base.write_chunk(rfile, chunk, check_size=False)
+        rfile.seek(0)
+        body = base.ChunkedBody(rfile)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'need 0 <= chunk_size <= {}; got {}'.format(
+                base.MAX_CHUNK_BYTES, base.MAX_CHUNK_BYTES + 1
+            )
+        )
+
 
 class TestBodyIter(TestCase):
     def test_init(self):
