@@ -18,9 +18,9 @@ Breaking API changes:
 
             (extension, data)
 
-        This was the one place where the Degu/RGI API wasn't faithful to the
-        HTTP wire format (the chunk *extension*, when present, is contained in
-        the chunk size line, prior to the actual chunk *data*).
+        This was the one place where the Degu API wasn't faithful to the HTTP
+        wire format (the chunk *extension*, when present, is contained in the
+        chunk size line, prior to the actual chunk *data*).
 
         As before, the *extension* will be ``None`` when there is no extension
         for a specific chunk::
@@ -31,6 +31,26 @@ Breaking API changes:
         does contain an optional per-chunk extension::
 
             (('foo', 'bar'), b'hello, world')
+
+    *   Change :func:`degu.base.write_chunk()` signature from::
+
+            write_chunk(wfile, data, extension=None)
+
+        To::
+
+            write_chunk(wfile, chunk)
+
+        Where the *chunk* is an ``(extension, data)`` tuple.  This harmonizes
+        with the above change, and also means that you can treat the *chunk* as
+        an opaque data structure when passing it between
+        :func:`degu.base.read_chunk()` and :func:`degu.base.write_chunk()`, for
+        example::
+
+            chunk = read_chunk(rfile)
+            write_chunk(wfile, chunk)
+
+    *   :meth:`degu.base.ChunkedBody.read()` now returns ``bytes`` instead of
+        a ``bytearray``
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
         difference between *no* query vs merely an *empty* query.
@@ -128,6 +148,14 @@ Other changes:
         :mod:`degu.base`; this means the standard server and bodies APIs are
         now fully compossible, so you can use the Degu server with other
         implementations of the bodies API.
+
+    *   :meth:`degu.server.Server.serve_forever()` now uses a
+        `BoundedSemaphore`_ to limit the active TCP connections (and therefore
+        worker threads) to at most :attr:`degu.server.Server.max_connections`
+        (this replaces the yucky ``threading.active_count()`` hack); when the
+        *max_connections* limit has been reached, the new implementation also
+        now rate-limits the handling of new connections to one attempt every 2
+        seconds (to mitigate Denial of Service attacks).
 
 
 
@@ -800,4 +828,4 @@ Two things motivated these breaking API changes:
 
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
-
+.. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore

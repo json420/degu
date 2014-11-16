@@ -909,7 +909,7 @@ CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 wfile = io.BytesIO()
 for data in CHUNKS:
-    base.write_chunk(wfile, data)
+    base.write_chunk(wfile, (None, data))
 ENCODED_CHUNKS = wfile.getvalue()
 del wfile
 

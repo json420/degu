@@ -6,64 +6,89 @@
 
 The :mod:`degu.client` module provides a low-level HTTP/1.1 client library.
 
-It's similar in abstraction level to the `http.client`_ module in the Python
-standard library, and has an API that overall should feel familiar to those
-experienced with `http.client`_ (although there are some major differences, for
-details see :ref:`degu-client-v-http-client`).
+It has an API that overall should feel familiar to those experienced with
+`http.client`_ (but there are key differences, for details see
+:ref:`degu-client-v-http-client`).
 
-As a quick example, say we define this Degu server application and run it
-in a :class:`degu.misc.TempServer`:
-
->>> def example_app(session, request, bodies):
-...     return (200, 'OK', {},  b'hello, world')
-...
->>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), example_app)
-
-We'll create a :class:`Client` for talking to the above ``server`` like this:
+A :class:`degu.client.Client` uses the same *address* format as the underlying
+Python `socket`_ API.  For example:
 
 >>> from degu.client import Client
->>> client = Client(server.address)
+>>> client = Client(('en.wikipedia.org', 80))
 
-A :class:`Client` specifies *where* an HTTP server is, and *how* to connect to
-it.
+A :class:`Client` specifies *where* a server is (and optional details on *how*
+to connect to it).  To make requests, use :meth:`Client.connect()` to create a
+:class:`Connection`.
 
-On the other hand, a :class:`Connection` represents a specific TCP connection to
-said server, through which one or more HTTP requests can be made.
+However, a :class:`Client` is really just for creating connections to servers
+running on the localhost (possibly using HTTP over ``AF_UNIX``, which Degu
+supports).
 
-Create a :class:`Connection` using :meth:`Client.connect()` like this:
+For security reasons, you should use an :class:`SSLClient` when creating
+connections to any external servers:
 
->>> conn = client.connect()
+>>> from degu.client import SSLClient
+>>> sslclient = SSLClient({}, ('en.wikipedia.org', 443))
 
-We can make an HTTP request to our server using :meth:`Connection.request()`
-like this, which will return a :class:`Response` namedtuple:
+The first argument can be a pre-built `ssl.SSLContext`_, or a ``dict`` providing
+the *sslconfig* for :func:`build_client_sslctx()`, the result of which will be
+available via the :attr:`SSLClient.sslctx` attribute:
 
->>> response = conn.request('GET', '/', {}, None)
->>> response
-Response(status=200, reason='OK', headers={'content-length': 12}, body=Body(<rfile>, 12))
->>> response.body.read()
-b'hello, world'
+>>> sslclient.sslctx
+<ssl.SSLContext object at 0x...>
 
-As per HTTP/1.1, multiple requests can be made using the same connection:
+``{}`` is shorthand for using the system-wide trusted certificate authorities
+and ensuring that the hostname matches the common name (CN) in the provided
+server certificate (more or less how a browser would configure SSL):
 
->>> conn.request('PUT', '/foo/bar', {}, None).body.read()
-b'hello, world'
+>>> import ssl
+>>> sslclient.sslctx.protocol == ssl.PROTOCOL_TLSv1_2
+True
+>>> sslclient.sslctx.verify_mode == ssl.CERT_REQUIRED
+True
+>>> sslclient.sslctx.check_hostname
+True
+
+Now we'll use :meth:`Client.connect()` (which :class:`SSLClient` inherits) to
+create a :class:`Connection`:
+
+>>> conn = sslclient.connect()  #doctest: +SKIP
+>>> conn.sock.cipher()  #doctest: +SKIP
+('ECDHE-RSA-AES128-GCM-SHA256', 'TLSv1/SSLv3', 128)
+
+:meth:`Connection.get()` will make a ``GET`` request, and will return a
+:class:`Response` namedtuple:
+
+>>> response = conn.get('/wiki/Portal:Science', {})  #doctest: +SKIP
+>>> response.status  #doctest: +SKIP
+200
+>>> response.reason  #doctest: +SKIP
+'OK'
+>>> response.headers['transfer-encoding']  #doctest: +SKIP
+'chunked'
+>>> response.body  #doctest: +SKIP
+ChunkedBody(<rfile>)
+>>> content = response.body.read()  #doctest: +SKIP
+
+You can make the same ``GET`` request using :meth:`Connection.request()`, which
+is a generic method that can specify any supported HTTP request:
+
+>>> response = conn.request('GET', '/wiki/Portal:Science', {}, None)  #doctest: +SKIP
+>>> response.status  #doctest: +SKIP
+200
+>>> response.reason  #doctest: +SKIP
+'OK'
+>>> response.headers['transfer-encoding']  #doctest: +SKIP
+'chunked'
+>>> response.body  #doctest: +SKIP
+ChunkedBody(<rfile>)
+>>> content = response.body.read()  #doctest: +SKIP
 
 It's a good idea to explicitly call :meth:`Connection.close()` when you're done
 using a connection, although this will likewise be done automatically when a
 :class:`Connection` is garbage collected.
 
->>> conn.close()
-
-For SSL, you'll need to create an :class:`SSLClient` instance, for example:
-
->>> from degu.client import SSLClient
->>> sslclient = SSLClient({}, ('www.wikipedia.org', 443))
-
-When creating a :class:`SSLClient`, the first argument can be either a pre-built
-`ssl.SSLContext`_, or an *sslconfig* ``dict`` that will be passed to
-:func:`build_client_sslctx()`.
-
+>>> conn.close()  #doctest: +SKIP
 
 
 :class:`Client`
@@ -127,12 +152,12 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         a 2-tuple or 4-tuple, the default value will be constructed from the
         *address*:
 
-        >>> Client(('www.wikipedia.org', 80)).host
-        'www.wikipedia.org:80'
-        >>> Client(('208.80.154.224', 80)).host
-        '208.80.154.224:80'
-        >>> Client(('2620:0:861:ed1a::1', 80, 0, 0)).host
-        '[2620:0:861:ed1a::1]:80'
+        >>> Client(('en.wikipedia.org', 80)).host
+        'en.wikipedia.org'
+        >>> Client(('192.168.1.171', 5984)).host
+        '192.168.1.171:5984'
+        >>> Client(('fe80::e8b:fdff:fe75:402c/64', 5984, 0, 3)).host
+        '[fe80::e8b:fdff:fe75:402c/64]:5984'
 
         If the *address* is a ``str`` or ``bytes`` instance, this attribute
         will default to ``None``:
@@ -145,7 +170,7 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         A *host* keyword option will override the default value of for this
         attribute, regardless of the *address*:
 
-        >>> Client(('208.80.154.224', 80), host='example.com').host
+        >>> Client(('192.168.1.171', 5984), host='example.com').host
         'example.com'
         >>> Client('/tmp/my.socket', host='example.com').host
         'example.com'
@@ -153,7 +178,7 @@ When creating a :class:`SSLClient`, the first argument can be either a pre-built
         Likewise, you can use the *host* keyword option to set this attribute to
         ``None``, regardless of the *address*:
 
-        >>> Client(('2620:0:861:ed1a::1', 80), host=None).host is None
+        >>> Client(('192.168.1.171', 5984), host=None).host is None
         True
         >>> Client('/tmp/my.socket', host=None).host is None
         True
@@ -294,7 +319,7 @@ Also see the server :ref:`server-options`.
     The *address*, along with any keyword-only *options*, are passed unchanged
     to the :class:`Client` constructor.
 
-    This subclass adds a *ssl_host* option, exposed via the
+    This subclass adds the *ssl_host* option, exposed via the
     :attr:`SSLClient.ssl_host` attribute.
 
     An :class:`SSLClient` is stateless and thread-safe.  It specifies "where"
@@ -315,7 +340,7 @@ Also see the server :ref:`server-options`.
         `ssl.SSLContext`_ instance, this attribute will contain that exact same
         instance.
 
-        Otherwise this attribute will contain the `ssl.SSLContext`_returned by
+        Otherwise this attribute will contain the `ssl.SSLContext`_ returned by
         :func:`build_client_sslctx()`.
 
     .. attribute:: ssl_host

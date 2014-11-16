@@ -338,21 +338,50 @@ class Connection:
         return self.request('DELETE', uri, headers, None)
 
 
-def build_host(host, port, *extra):
+def build_host(default_port, host, port, *extra):
     """
     Build value for HTTP "host" header.
 
-    For example:
+    For example, for a DNS *host* name:
 
-    >>> build_host('208.80.154.224', 80)
-    '208.80.154.224:80'
-    >>> build_host('2620:0:861:ed1a::1', 80, 0, 0)
-    '[2620:0:861:ed1a::1]:80'
+    >>> build_host(80, 'en.wikipedia.org', 80)
+    'en.wikipedia.org'
+    >>> build_host(80, 'en.wikipedia.org', 1234)
+    'en.wikipedia.org:1234'
+
+    And for an IPv4 literal *host*:
+
+    >>> build_host(80, '208.80.154.224', 80)
+    '208.80.154.224'
+    >>> build_host(80, '208.80.154.224', 1234)
+    '208.80.154.224:1234'
+
+    And for an IPv6 literal *host*:
+
+    >>> build_host(80, '2620:0:861:ed1a::1', 80, 0, 0)
+    '[2620:0:861:ed1a::1]'
+    >>> build_host(80, '2620:0:861:ed1a::1', 1234, 0, 0)
+    '[2620:0:861:ed1a::1]:1234'
 
     """
-
+    if not isinstance(default_port, int):
+        raise TypeError(
+            TYPE_ERROR.format('default_port', int, type(default_port), default_port)
+        )
+    if not isinstance(host, str):
+        raise TypeError(
+            TYPE_ERROR.format('host', str, type(host), host)
+        )
+    if not isinstance(port, int):
+        raise TypeError(
+            TYPE_ERROR.format('port', int, type(port), port)
+        )
+    for arg in extra:
+        assert isinstance(arg, int)
     if ':' in host:
-        return '[{}]:{}'.format(host, port)
+        host = '[{}]'.format(host)
+    if port == default_port:
+        return host
     return '{}:{}'.format(host, port)
 
 
@@ -368,6 +397,7 @@ class Client:
     To make HTTP requests, create a Connection using Client.connect().
     """
 
+    default_port = 80  # Lame, but needed to contruct the default host header
     allowed_options = ('host', 'timeout', 'bodies')
 
     def __init__(self, address, **options):
@@ -380,7 +410,7 @@ class Client:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            host = build_host(*address)
+            host = build_host(self.__class__.default_port, *address)
         elif isinstance(address, (str, bytes)):
             self.family = socket.AF_UNIX
             host = None
@@ -393,9 +423,13 @@ class Client:
                 TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         if not set(options).issubset(self.__class__.allowed_options):
-            allowed = self.__class__.allowed_options
-            unsupported = ', '.join(sorted(set(options) - set(allowed)))
-            raise TypeError('unsupported **options: {}'.format(unsupported))
+            cls = self.__class__
+            unsupported = sorted(set(options) - set(cls.allowed_options))
+            raise TypeError(
+                'unsupported {} **options: {}'.format(
+                    cls.__name__, ', '.join(unsupported)
+                )
+            )
         self.address = address
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
@@ -434,6 +468,7 @@ class SSLClient(Client):
     To make HTTP requests, create a Connection using Client.connect().
     """
 
+    default_port = 443  # Lame, but needed to contruct the default host header
     allowed_options = Client.allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):

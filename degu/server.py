@@ -339,9 +339,13 @@ class Server:
 
         # options:
         if not set(options).issubset(self.__class__.allowed_options):
-            allowed = self.__class__.allowed_options
-            unsupported = ', '.join(sorted(set(options) - set(allowed)))
-            raise TypeError('unsupported options: {}'.format(unsupported))
+            cls = self.__class__
+            unsupported = sorted(set(options) - set(cls.allowed_options))
+            raise TypeError(
+                'unsupported {} **options: {}'.format(
+                    cls.__name__, ', '.join(unsupported)
+                )
+            )
         self.options = options
         self.max_connections = options.get('max_connections', 25)
         self.max_requests = options.get('max_requests', 500)
