@@ -2110,7 +2110,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 5 > 4')
-        self.assertIs(body.closed, True)
+        self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls, [])
 
         body = base.BodyIter(source, 5)
@@ -2118,7 +2118,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 12 > 5')
-        self.assertIs(body.closed, True)
+        self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls, [('write', b'hello')])
 
         body = base.BodyIter(source, 12)
@@ -2126,7 +2126,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 17 > 12')
-        self.assertIs(body.closed, True)
+        self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty')]
         )
@@ -2136,7 +2136,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 17 > 16')
-        self.assertIs(body.closed, True)
+        self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty')]
         )
@@ -2148,7 +2148,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'underflow: 17 < 18')
-        self.assertIs(body.closed, True)
+        self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty'), ('write', b'nurse')]
         )
@@ -2179,116 +2179,6 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
-
-    def test_iter(self):
-        source = (b'hello', b'naughty', b'nurse')
-
-        # Test when closed:
-        body = base.BodyIter(source, 17)
-        body.closed = True
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
-        # Should close after one iteration:
-        body = base.BodyIter(source, 17)
-        self.assertEqual(list(body), [b'hello', b'naughty', b'nurse'])
-        self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
-        # OverFlowError should be raised at first item that pushing total above
-        # content_length:
-        body = base.BodyIter(source, 4)
-        result = []
-        with self.assertRaises(base.OverFlowError) as cm:
-            for data in body:
-                result.append(data)
-        self.assertEqual(result, [])
-        self.assertEqual(cm.exception.received, 5)
-        self.assertEqual(cm.exception.expected, 4)
-        self.assertEqual(str(cm.exception), 'received 5 bytes, expected 4')
-        self.assertIs(body.closed, True)
-
-        body = base.BodyIter(source, 5)
-        result = []
-        with self.assertRaises(base.OverFlowError) as cm:
-            for data in body:
-                result.append(data)
-        self.assertEqual(result, [b'hello'])
-        self.assertEqual(cm.exception.received, 12)
-        self.assertEqual(cm.exception.expected, 5)
-        self.assertEqual(str(cm.exception), 'received 12 bytes, expected 5')
-        self.assertIs(body.closed, True)
-
-        body = base.BodyIter(source, 12)
-        result = []
-        with self.assertRaises(base.OverFlowError) as cm:
-            for data in body:
-                result.append(data)
-        self.assertEqual(result, [b'hello', b'naughty'])
-        self.assertEqual(cm.exception.received, 17)
-        self.assertEqual(cm.exception.expected, 12)
-        self.assertEqual(str(cm.exception), 'received 17 bytes, expected 12')
-        self.assertIs(body.closed, True)
-
-        body = base.BodyIter(source, 16)
-        result = []
-        with self.assertRaises(base.OverFlowError) as cm:
-            for data in body:
-                result.append(data)
-        self.assertEqual(result, [b'hello', b'naughty'])
-        self.assertEqual(cm.exception.received, 17)
-        self.assertEqual(cm.exception.expected, 16)
-        self.assertEqual(str(cm.exception), 'received 17 bytes, expected 16')
-        self.assertIs(body.closed, True)
-
-        # UnderFlowError should only be raised after all items have been
-        # yielded:
-        body = base.BodyIter(source, 18)
-        result = []
-        with self.assertRaises(base.UnderFlowError) as cm:
-            for data in body:
-                result.append(data)
-        self.assertEqual(result, [b'hello', b'naughty', b'nurse'])
-        self.assertEqual(cm.exception.received, 17)
-        self.assertEqual(cm.exception.expected, 18)
-        self.assertEqual(str(cm.exception), 'received 17 bytes, expected 18')
-        self.assertIs(body.closed, True)
-
-        # Empty data items are fine:
-        source = (b'', b'hello', b'', b'naughty', b'', b'nurse', b'')
-        body = base.BodyIter(source, 17)
-        self.assertEqual(list(body),
-            [b'', b'hello', b'', b'naughty', b'', b'nurse', b'']
-        )
-        self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
-        # Test with random data of varying sizes:
-        source = [os.urandom(i) for i in range(50)]
-        random.shuffle(source)
-        body = base.BodyIter(tuple(source), sum(range(50)))
-        self.assertEqual(list(body), source)
-        self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
 
 
 class TestChunkedBodyIter(TestCase):

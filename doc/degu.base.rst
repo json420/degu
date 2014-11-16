@@ -170,11 +170,11 @@ version.
 
 .. class:: BodyIter(source, content_length)
 
-    Wraps an arbitrary iterable yielding a request or response body.
+    Wraps an iterable to construct an HTTP output body with a content-length.
 
-    This class allows an HTTP body to be piecewise generated on-the-fly, but
-    still with an explicit agreement about what the final content-length will
-    be.
+    This class allows an output HTTP body to be piecewise generated on-the-fly,
+    but still with an explicit agreement about what the final content-length
+    will be.
 
     On the client side, this can be used to generate the client request body.
 
@@ -183,37 +183,49 @@ version.
     Items in *source* can be of any size, including empty, as long as the total
     size matches the claimed *content_length*.  For example:
 
+    >>> import io
     >>> from degu.base import BodyIter
     >>> def generate_body():
-    ...     yield b'hello'
     ...     yield b''
+    ...     yield b'hello'
+    ...     yield b', '
     ...     yield b'world'
     ...
-    >>> body = BodyIter(generate_body(), 10)
-    >>> list(body)
-    [b'hello', b'', b'world']
+    >>> body = BodyIter(generate_body(), 12)
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)
+    12
+    >>> wfile.getvalue()
+    b'hello, world'
 
-    An :exc:`UnderFlowError` will be raised in the total produced by *source* is
-    less than *content_length*:
+    You can only call :meth:`BodyIter.write_to()` once.  Subsequent calls will
+    raise a ``ValueError``:
+    
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: BodyIter.closed, already consumed
+
+    A ``ValueError`` will be raised in the total produced by *source* is less
+    than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 13)
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: underflow: 12 < 13
+
+    Likewise, a ``ValueError`` will be raised if the total produced by *source*
+    is greater than *content_length*:
 
     >>> body = BodyIter(generate_body(), 11)
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.UnderFlowError: received 10 bytes, expected 11
+    ValueError: overflow: 12 > 11
 
-    An :exc:`OverFlowError` will be raised in the total produced by *source* is
-    greater than *content_length*:
-
-    >>> body = BodyIter(generate_body(), 9)
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    degu.base.OverFlowError: received 10 bytes, expected 9
-
-    Note that you can only iterate through a :class:`BodyIter` once.  If you try
-    to iterate through it a further time, a :exc:`BodyClosedError` will be
-    raised.
 
     .. attribute:: source
 
@@ -226,6 +238,10 @@ version.
     .. attribute:: closed
 
         Initially ``False``, will be ``True`` after body is fully consumed.
+
+    .. method:: write_to(wfile)
+
+        Write to *wfile*.
 
 
 

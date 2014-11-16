@@ -288,7 +288,6 @@ class BodyIter:
         if self.closed is True:
             raise ValueError('BodyIter.closed, already consumed')
         assert self.closed is False
-        self.closed = True
         content_length = self.content_length
         total = 0
         for data in self.source:
@@ -304,21 +303,8 @@ class BodyIter:
                 'underflow: {} < {}'.format(total, content_length)
             )
         wfile.flush()
-        return total
-
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
         self.closed = True
-        content_length = self.content_length
-        total = 0
-        for data in self.source:
-            total += len(data)
-            if total > content_length:
-                raise OverFlowError(total, content_length)
-            yield data
-        if total != content_length:
-            raise UnderFlowError(total, content_length)
+        return total
 
 
 class _ChunkedBody:
