@@ -10,14 +10,14 @@ It has an API that overall should feel familiar to those experienced with
 `http.client`_ (but there are key differences, for details see
 :ref:`degu-client-v-http-client`).
 
-A :class:`degu.client.Client` uses the same *address* format as the underlying
-Python `socket`_ API.  For example:
+A :class:`Client` uses the same *address* format as the underlying Python
+`socket`_ API.  For example:
 
 >>> from degu.client import Client
 >>> client = Client(('en.wikipedia.org', 80))
 
-A :class:`Client` specifies *where* a server is (and optional details on *how*
-to connect to it).  To make requests, use :meth:`Client.connect()` to create a
+It specifies *where* a server is (and optional details on *how* to connect to
+the server).  To make requests, use :meth:`Client.connect()` to create a
 :class:`Connection`.
 
 However, a :class:`Client` is really just for creating connections to servers

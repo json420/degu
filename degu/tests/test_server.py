@@ -1316,7 +1316,7 @@ class TestLiveSSLServer(TestLiveServer):
             conn.request('GET', '/', {}, None)
         self.assertEqual(str(cm.exception), '[Errno 104] Connection reset by peer')
         self.assertIs(conn.closed, True)
-        self.assertIsNone(conn.response_body)
+        self.assertIsNone(conn._response_body)
 
         # Test with no client cert:
         sslctx = build_client_sslctx({'ca_file': client_config['ca_file']})
@@ -1327,7 +1327,7 @@ class TestLiveSSLServer(TestLiveServer):
             str(cm.exception).startswith('[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]')
         )
         self.assertIs(conn.closed, True)
-        self.assertIsNone(conn.response_body)
+        self.assertIsNone(conn._response_body)
 
         # Test with the wrong client cert (not signed by client CA):
         sslctx = build_client_sslctx({
@@ -1342,7 +1342,7 @@ class TestLiveSSLServer(TestLiveServer):
             str(cm.exception).startswith('[SSL: TLSV1_ALERT_UNKNOWN_CA]')
         )
         self.assertIs(conn.closed, True)
-        self.assertIsNone(conn.response_body)
+        self.assertIsNone(conn._response_body)
 
         # Test with a properly configured SSLClient:
         sslctx = build_client_sslctx(client_config)

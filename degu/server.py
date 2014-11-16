@@ -301,8 +301,7 @@ def handle_one(app, rfile, wfile, session, bodies):
 
 
 class Server:
-
-    allowed_options = ('max_connections', 'max_requests', 'timeout', 'bodies')
+    _allowed_options = ('max_connections', 'max_requests', 'timeout', 'bodies')
 
     def __init__(self, address, app, **options):
         # address:
@@ -338,9 +337,9 @@ class Server:
         self.on_connect = on_connect
 
         # options:
-        if not set(options).issubset(self.__class__.allowed_options):
+        if not set(options).issubset(self.__class__._allowed_options):
             cls = self.__class__
-            unsupported = sorted(set(options) - set(cls.allowed_options))
+            unsupported = sorted(set(options) - set(cls._allowed_options))
             raise TypeError(
                 'unsupported {} **options: {}'.format(
                     cls.__name__, ', '.join(unsupported)

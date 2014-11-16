@@ -133,7 +133,7 @@ def build_client_sslctx(sslconfig):
     return sslctx
 
 
-def validate_client_sslctx(sslctx):
+def _validate_client_sslctx(sslctx):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
@@ -278,14 +278,16 @@ class Connection:
     """
 
     # Easy way to slighty reduce per-connection memory overhead:
-    __slots__ = ('sock', 'base_headers', 'bodies', 'rfile', 'wfile', 'response_body')
+    __slots__ = (
+        'sock', 'base_headers', 'bodies', '_rfile', '_wfile', '_response_body'
+    )
 
     def __init__(self, sock, base_headers, bodies):
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
-        (self.rfile, self.wfile) = makefiles(sock)
-        self.response_body = None  # Previous Body(), ChunkedBody(), or None
+        (self._rfile, self._wfile) = makefiles(sock)
+        self._response_body = None  # Previous Body(), ChunkedBody(), or None
 
     def __del__(self):
         self.close()
@@ -301,22 +303,22 @@ class Connection:
             except (OSError, TypeError):
                 pass
             self.sock = None
-            self.rfile = None
-            self.wfile = None
-            self.response_body = None
+            self._rfile = None
+            self._wfile = None
+            self._response_body = None
 
     def request(self, method, uri, headers, body):
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
-            if not (self.response_body is None or self.response_body.closed):
-                raise UnconsumedResponseError(self.response_body)
+            if not (self._response_body is None or self._response_body.closed):
+                raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
             validate_request(self.bodies, method, uri, headers, body)
-            write_request(self.wfile, method, uri, headers, body)
-            response = read_response(self.rfile, self.bodies, method)
-            self.response_body = response.body
+            write_request(self._wfile, method, uri, headers, body)
+            response = read_response(self._rfile, self.bodies, method)
+            self._response_body = response.body
             return response
         except Exception:
             self.close()
@@ -338,29 +340,29 @@ class Connection:
         return self.request('DELETE', uri, headers, None)
 
 
-def build_host(default_port, host, port, *extra):
+def _build_host(default_port, host, port, *extra):
     """
     Build value for HTTP "host" header.
 
     For example, for a DNS *host* name:
 
-    >>> build_host(80, 'en.wikipedia.org', 80)
+    >>> _build_host(80, 'en.wikipedia.org', 80)
     'en.wikipedia.org'
-    >>> build_host(80, 'en.wikipedia.org', 1234)
+    >>> _build_host(80, 'en.wikipedia.org', 1234)
     'en.wikipedia.org:1234'
 
     And for an IPv4 literal *host*:
 
-    >>> build_host(80, '208.80.154.224', 80)
+    >>> _build_host(80, '208.80.154.224', 80)
     '208.80.154.224'
-    >>> build_host(80, '208.80.154.224', 1234)
+    >>> _build_host(80, '208.80.154.224', 1234)
     '208.80.154.224:1234'
 
     And for an IPv6 literal *host*:
 
-    >>> build_host(80, '2620:0:861:ed1a::1', 80, 0, 0)
+    >>> _build_host(80, '2620:0:861:ed1a::1', 80, 0, 0)
     '[2620:0:861:ed1a::1]'
-    >>> build_host(80, '2620:0:861:ed1a::1', 1234, 0, 0)
+    >>> _build_host(80, '2620:0:861:ed1a::1', 1234, 0, 0)
     '[2620:0:861:ed1a::1]:1234'
 
     """
@@ -410,7 +412,7 @@ class Client:
                 raise ValueError(
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
-            host = build_host(self.__class__._default_port, *address)
+            host = _build_host(self.__class__._default_port, *address)
         elif isinstance(address, (str, bytes)):
             self._family = socket.AF_UNIX
             host = None
@@ -472,7 +474,7 @@ class SSLClient(Client):
     _allowed_options = Client._allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):
-        self.sslctx = validate_client_sslctx(sslctx)
+        self.sslctx = _validate_client_sslctx(sslctx)
         super().__init__(address, **options)
         ssl_host = (address[0] if isinstance(address, tuple) else None)
         self.ssl_host = options.get('ssl_host', ssl_host)
