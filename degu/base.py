@@ -223,6 +223,10 @@ class Body(_Body):
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
         read = (self.remaining if size is None else min(self.remaining, size))
+        if read > MAX_READ_BYTES:
+            raise ValueError(
+                'read size > MAX_READ_BYTES: {} > {}'.format(read, MAX_READ_BYTES)
+            )
         data = self.rfile.read(read)
         if len(data) != read:
             # Security note: if application-level code is being overly general

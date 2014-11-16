@@ -1,16 +1,14 @@
 Degu
 ====
 
-`Degu`_ is an embedded HTTP server and client library for Python3. It's well
-suited for implementing REST APIs for device-to-device communication on the
-local network.
+`Degu`_ is an embedded HTTP server and client library for Python3, and is
+especially well suited for implementing REST APIs for device-to-device
+communication on the local network.
 
-.. warning::
+Degu is a building block for future stuff, your vehicle into bold, uncharted
+territory.
 
-    The Degu API is **not yet stable!**  Even the API documented here is still
-    subject to change, although hopefully only subtle changes.
-
-Degu includes:
+It includes:
 
     *   **A lightweight HTTP server** that's easy to embed within applications
 

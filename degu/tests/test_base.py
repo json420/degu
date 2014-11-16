@@ -1696,6 +1696,19 @@ class TestBody(TestCase):
             )
             self.assertEqual(rfile.read(), trailer)
 
+        # Test when read size > MAX_READ_BYTES:
+        rfile = io.BytesIO()
+        content_length = base.MAX_READ_BYTES + 1
+        body = base.Body(rfile, content_length)
+        self.assertIs(body.content_length, content_length)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'read size > MAX_READ_BYTES: {} > {}'.format(
+                content_length, base.MAX_READ_BYTES
+            )
+        )
+
     def test_iter(self):
         data = os.urandom(1776)
 
