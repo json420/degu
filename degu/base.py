@@ -393,20 +393,6 @@ class ChunkedBodyIter:
         self.closed = False
         self._started = False
 
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        self.closed = True
-        empty = False
-        for (extension, data) in self.source:
-            if empty:
-                raise ChunkError('non-empty chunk data after empty')
-            yield (extension, data)
-            if not data:
-                empty = True
-        if not empty:
-            raise ChunkError('final chunk data was not empty')
-
     def write_to(self, wfile):
         if self.closed:
             raise ValueError('ChunkedBodyIter.closed, already consumed')

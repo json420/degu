@@ -2212,90 +2212,6 @@ class TestChunkedBodyIter(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(body._started, False)
 
-    def test_iter(self):
-        source = (
-            (None, b'hello'),
-            (None, b'naughty'),
-            (None, b'nurse'),
-            (None, b''),
-        )
-
-        # Test when closed:
-        body = base.ChunkedBodyIter(source)
-        body.closed = True
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
-        # Should close after one iteration:
-        body = base.ChunkedBodyIter(source)
-        self.assertEqual(list(body), list(source))
-        self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
-        # Should raise ChunkError on an empty source:
-        body = base.ChunkedBodyIter([])
-        result = []
-        with self.assertRaises(base.ChunkError) as cm:
-            for item in body:
-                result.append(item)
-        self.assertEqual(result, [])
-        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
-
-        # Should raise ChunkError if final chunk isn't empty:
-        source = (
-            (None, b'hello'),
-            (None, b'naughty'),
-            (None, b'nurse'),
-        )
-        body = base.ChunkedBodyIter(source)
-        result = []
-        with self.assertRaises(base.ChunkError) as cm:
-            for item in body:
-                result.append(item)
-        self.assertEqual(result, list(source))
-        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
-
-        # Should raise ChunkError if empty chunk is followed by non-empty:
-        source = (
-            (None, b'hello'),
-            (None, b'naughty'),
-            (None, b''),
-            (None, b'nurse'),
-            (None, b''),
-        )
-        body = base.ChunkedBodyIter(source)
-        result = []
-        with self.assertRaises(base.ChunkError) as cm:
-            for item in body:
-                result.append(item)
-        self.assertEqual(result,
-            [(None, b'hello'), (None, b'naughty'), (None, b'')]
-        )
-        self.assertEqual(str(cm.exception), 'non-empty chunk data after empty')
-
-        # Test with random data of varying sizes:
-        source = [(None, os.urandom(i)) for i in range(1, 51)]
-        random.shuffle(source)
-        source.append((None, b''))
-        body = base.ChunkedBodyIter(tuple(source))
-        self.assertEqual(list(body), source)
-        self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
-
     def test_write_to(self):
         source = (
             (None, b'hello'),
@@ -2321,9 +2237,7 @@ class TestChunkedBodyIter(TestCase):
         wfile = DummyWriter()
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
-        self.assertEqual(str(cm.exception),
-            'ChunkedBodyIter._started'
-        )
+        self.assertEqual(str(cm.exception), 'ChunkedBodyIter._started')
         self.assertEqual(wfile._calls, [])
 
         # Should close after one call:
@@ -2338,11 +2252,10 @@ class TestChunkedBodyIter(TestCase):
         ])
         self.assertIs(body._started, True)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
-            list(body)
-        self.assertIs(cm.exception.body, body)
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
         self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
+            'ChunkedBodyIter.closed, already consumed'
         )
 
         # Should raise a ValueError on an empty source:

@@ -347,7 +347,7 @@ version.
 
 .. class:: ChunkedBodyIter(source)
 
-    Wraps an arbitrary iterable yielding chunks of a request or response body.
+    Wraps an interable to construct a chunk-encoded HTTP output body.
 
     This class allows a chunked-encoded HTTP body to be piecewise generated
     on-the-fly.
@@ -364,6 +364,7 @@ version.
 
     For example:
 
+    >>> import io
     >>> from degu.base import ChunkedBodyIter
     >>> def generate_chunked_body():
     ...     yield (None,            b'hello')
@@ -371,10 +372,21 @@ version.
     ...     yield (None,            b'')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)
-    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)
+    33
+    >>> wfile.getvalue()
+    b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n'
 
-    A :exc:`ChunkError` will be raised if the *data* in the final chunk isn't
+    You can only call :meth:`ChunkedBodyIter.write_to()` once.  Subsequent calls
+    will raise a ``ValueError``:
+
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: ChunkedBodyIter.closed, already consumed
+
+    A ``ValueError`` will be raised if the *data* in the final chunk isn't
     empty:
 
     >>> def generate_chunked_body():
@@ -382,13 +394,14 @@ version.
     ...     yield (('foo', 'bar'),  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.ChunkError: final chunk data was not empty
+    ValueError: final chunk data was not empty
 
-    Likewise, a :exc:`ChunkError` will be raised if a chunk with empty *data*
-    is followed by a chunk with non-empty *data*:
+    Likewise, a ``ValueError`` will be raised if a chunk with empty *data* is
+    followed by a chunk with non-empty *data*:
 
     >>> def generate_chunked_body():
     ...     yield (None,  b'hello')
@@ -396,14 +409,11 @@ version.
     ...     yield (None,  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.ChunkError: non-empty chunk data after empty
-
-    Note that you can only iterate through a :class:`ChunkedBodyIter` once.  If
-    you try to iterate through it a further time, a :exc:`BodyClosedError` will
-    be raised.
+    ValueError: non-empty chunk data after empty
 
     .. attribute:: source
 
@@ -412,6 +422,10 @@ version.
     .. attribute:: closed
 
         Initially ``False``, will be ``True`` after body is fully consumed.
+
+    .. method:: write_to(wfile)
+
+        Write to *wfile*.
 
 
 
