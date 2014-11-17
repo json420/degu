@@ -237,7 +237,7 @@ class Body:
 
     def __iter__(self):
         if self.closed:
-            raise BodyClosedError(self)
+            raise ValueError('Body.closed, already consumed')
         remaining = self._remaining
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
@@ -257,7 +257,7 @@ class Body:
 
     def read(self, size=None):
         if self.closed:
-            raise BodyClosedError(self)
+            raise ValueError('Body.closed, already consumed')
         if self._remaining <= 0:
             self.closed = True
             return b''
@@ -313,13 +313,13 @@ class ChunkedBody:
 
     def __iter__(self):
         if self.closed:
-            raise BodyClosedError(self)
+            raise ValueError('ChunkedBody.closed, already consumed')
         while not self.closed:
             yield self.readchunk()
 
     def readchunk(self):
         if self.closed:
-            raise BodyClosedError(self)
+            raise ValueError('ChunkedBody.closed, already consumed')
         try:
             (extension, data) = read_chunk(self.rfile)
         except:
@@ -331,7 +331,7 @@ class ChunkedBody:
 
     def read(self, size=None):
         if self.closed:
-            raise BodyClosedError(self)
+            raise ValueError('ChunkedBody.closed, already consumed')
         buf = bytearray()
         while not self.closed:
             buf.extend(self.readchunk()[1])

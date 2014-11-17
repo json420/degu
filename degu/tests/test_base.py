@@ -1570,12 +1570,9 @@ class TestBody(TestCase):
 
         # body.closed is True:
         body.closed = True
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
@@ -1630,12 +1627,9 @@ class TestBody(TestCase):
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
         self.assertEqual(body._remaining, 0)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
 
         # Read it again, this time in parts:
         rfile = io.BytesIO(data)
@@ -1668,12 +1662,9 @@ class TestBody(TestCase):
         self.assertEqual(body.content_length, 1776)
         self.assertEqual(body._remaining, 0)
 
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read(17)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
 
         # Underflow error when trying to read all:
         rfile = io.BytesIO(data)
@@ -1717,12 +1708,9 @@ class TestBody(TestCase):
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 0)
         self.assertEqual(body._remaining, 0)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read(17)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
 
         # Test with random chunks:
         for i in range(25):
@@ -1739,12 +1727,9 @@ class TestBody(TestCase):
             self.assertEqual(rfile.tell(), len(data))
             self.assertEqual(body.content_length, len(data))
             self.assertEqual(body._remaining, 0)
-            with self.assertRaises(base.BodyClosedError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 body.read(17)
-            self.assertIs(cm.exception.body, body)
-            self.assertEqual(str(cm.exception),
-                'body already fully read: {!r}'.format(body)
-            )
+            self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
             self.assertEqual(rfile.read(), trailer)
 
         # Test when read size > MAX_READ_SIZE:
@@ -1769,12 +1754,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(), data)
 
@@ -1784,12 +1766,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [data[:69]])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), 69)
         self.assertEqual(rfile.read(), data[69:])
 
@@ -1799,12 +1778,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [data])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(rfile.read(), b'')
 
@@ -1830,12 +1806,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [data1, data2])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), b'')
 
@@ -1846,12 +1819,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [data1, data2, data])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), b'')
 
@@ -1862,12 +1832,9 @@ class TestBody(TestCase):
         self.assertEqual(list(body), [data1, data2, data[:-1]])
         self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
-        self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
-        )
+        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), data[-1:])
 
@@ -1910,11 +1877,10 @@ class TestChunkedBody(TestCase):
         # Test when closed:
         body = base.ChunkedBody(rfile)
         body.closed = True
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
+            'ChunkedBody.closed, already consumed'
         )
         self.assertEqual(rfile.tell(), 0)
         self.assertIs(rfile.closed, False)
@@ -1926,11 +1892,10 @@ class TestChunkedBody(TestCase):
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
+            'ChunkedBody.closed, already consumed'
         )
         self.assertEqual(rfile.read(), extra)
 
@@ -1959,11 +1924,10 @@ class TestChunkedBody(TestCase):
         # Test when closed:
         body = base.ChunkedBody(rfile)
         body.closed = True
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
+            'ChunkedBody.closed, already consumed'
         )
         self.assertEqual(rfile.tell(), 0)
         self.assertIs(rfile.closed, False)
@@ -1974,11 +1938,10 @@ class TestChunkedBody(TestCase):
         self.assertIs(body.closed, True)
         self.assertIs(rfile.closed, False)
         self.assertEqual(rfile.tell(), total)
-        with self.assertRaises(base.BodyClosedError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertIs(cm.exception.body, body)
         self.assertEqual(str(cm.exception),
-            'body already fully read: {!r}'.format(body)
+            'ChunkedBody.closed, already consumed'
         )
         self.assertEqual(rfile.read(), extra)
 

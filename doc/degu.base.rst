@@ -281,7 +281,7 @@ version.
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.BodyClosedError: body already fully read: ChunkedBody(<rfile>)
+    ValueError: ChunkedBody.closed, already consumed
 
     .. attribute:: chunked
 
