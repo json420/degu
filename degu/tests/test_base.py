@@ -209,15 +209,6 @@ class TestEmptyPreambleError(TestCase):
         self.assertEqual(str(e), 'stuff and junk')
 
 
-class TestOverFlowError(TestCase):
-    def test_init(self):
-        e = base.OverFlowError(20, 18)
-        self.assertIsInstance(e, Exception)
-        self.assertEqual(e.received, 20)
-        self.assertEqual(e.expected, 18)
-        self.assertEqual(str(e), 'received 20 bytes, expected 18')
-
-
 class FuzzTestFunctions(AlternatesTestCase):
     def test_read_preamble_p(self):
         self.fuzz(_basepy.read_preamble)

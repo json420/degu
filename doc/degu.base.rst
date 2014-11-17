@@ -468,19 +468,6 @@ Exceptions
     reason to use this exception directly.
 
 
-.. exception:: OverFlowError(received, expected)
-
-    Raised when less data is received than was expected.
-
-    .. attribute:: received
-
-        Number of bytes received
-
-    .. attribute:: expected
-
-        Number of bytes expected
-
-
 .. exception:: ChunkError
 
     Raise by :class:`ChunkedBodyIter` upon bad chunked-encoding semantics.
