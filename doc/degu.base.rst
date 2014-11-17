@@ -68,11 +68,11 @@ version.
     This uses the Degu reference implementation of the four IO abstraction
     classes:
 
-        * :class:`Body` class
-        * :class:`BodyIter` class
-        * :class:`ChunkedBody` class
-        * :class:`ChunkedBodyIter` class
-        
+        * :class:`Body`
+        * :class:`BodyIter`
+        * :class:`ChunkedBody`
+        * :class:`ChunkedBodyIter`
+
 
 
 :class:`Body`
@@ -492,18 +492,6 @@ Exceptions
     .. attribute:: expected
 
         Number of bytes expected
-
-
-.. exception:: BodyClosedError(body)
-
-    Raised when an HTTP body was already fully consumed.
-
-    .. attribute:: body
-
-        The Degu IO wrapper passed to the constructor.
-
-        This will be a :class:`Body`, :class:`BodyIter`, :class:`ChunkedBody`,
-        or :class:`ChunkedBodyIter` instance.
 
 
 .. exception:: ChunkError

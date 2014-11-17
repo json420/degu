@@ -229,15 +229,6 @@ class TestOverFlowError(TestCase):
         self.assertEqual(str(e), 'received 20 bytes, expected 18')
 
 
-class TestBodyClosedError(TestCase):
-    def test_init(self):
-        body = random_id()
-        e = base.BodyClosedError(body)
-        self.assertIsInstance(e, Exception)
-        self.assertIs(e.body, body)
-        self.assertEqual(str(e), 'body already fully read: {!r}'.format(body))
-
-
 class FuzzTestFunctions(AlternatesTestCase):
     def test_read_preamble_p(self):
         self.fuzz(_basepy.read_preamble)

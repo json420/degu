@@ -79,15 +79,6 @@ class ChunkError(Exception):
     pass
 
 
-class BodyClosedError(Exception):
-    """
-    Raised when trying to iterate through a closed request or response body.
-    """
-    def __init__(self, body):
-        self.body = body
-        super().__init__('body already fully read: {!r}'.format(body))
-
-
 def makefiles(sock):
     """
     Create (rfile, wfile) from a socket connection.
