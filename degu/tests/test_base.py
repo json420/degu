@@ -2072,6 +2072,7 @@ class TestBodyIter(TestCase):
         self.assertIs(body.source, source)
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.closed, False)
+        self.assertIs(body._started, False)
 
     def test_len(self):
         for content_length in (0, 17, 27, 37):
@@ -2090,10 +2091,21 @@ class TestBodyIter(TestCase):
         self.assertEqual(str(cm.exception), 'BodyIter.closed, already consumed')
         self.assertEqual(wfile._calls, [])
 
+        # Test when _started:
+        body = base.BodyIter(source, 17)
+        body._started = True
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'BodyIter._started')
+        self.assertIs(body.closed, False)
+        self.assertEqual(wfile._calls, [])
+
         # Should be closed after calling write_to():
         body = base.BodyIter(source, 17)
         wfile = DummyWriter()
         self.assertEqual(body.write_to(wfile), 17)
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, True)
         self.assertEqual(wfile._calls, [
             ('write', b'hello'),
@@ -2112,6 +2124,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 5 > 4')
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls, [])
 
@@ -2120,6 +2133,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 12 > 5')
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls, [('write', b'hello')])
 
@@ -2128,6 +2142,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 17 > 12')
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty')]
@@ -2138,6 +2153,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'overflow: 17 > 16')
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty')]
@@ -2150,6 +2166,7 @@ class TestBodyIter(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
         self.assertEqual(str(cm.exception), 'underflow: 17 < 18')
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, False)
         self.assertEqual(wfile._calls,
             [('write', b'hello'), ('write', b'naughty'), ('write', b'nurse')]
@@ -2163,6 +2180,7 @@ class TestBodyIter(TestCase):
         expected = [('write', data) for data in source]
         expected.append('flush')
         self.assertEqual(wfile._calls, expected)
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
@@ -2177,6 +2195,7 @@ class TestBodyIter(TestCase):
         expected = [('write', data) for data in source]
         expected.append('flush')
         self.assertEqual(wfile._calls, expected)
+        self.assertIs(body._started, True)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             body.write_to(wfile)
@@ -2388,7 +2407,7 @@ class TestChunkedBodyIter(TestCase):
         expected = ['flush']
         for chunk in source:
             expected.extend(
-                [('write', base.encode_chunk(chunk)), 'flush']
+                [('write', base._encode_chunk(chunk)), 'flush']
             )
         self.assertEqual(wfile._calls, expected)
 

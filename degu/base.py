@@ -285,47 +285,7 @@ class Body(_Body):
         self.closed = True
 
 
-class BodyIter:
-    chunked = False
-    __slots__ = ('source', 'content_length', 'closed')
 
-    def __init__(self, source, content_length):
-        if not isinstance(content_length, int):
-            raise TypeError(TYPE_ERROR.format(
-                'content_length', int, type(content_length), content_length)
-            )
-        if content_length < 0:
-            raise ValueError(
-                'content_length must be >= 0, got: {!r}'.format(content_length)
-            )
-        self.source = source
-        self.content_length = content_length
-        self.closed = False
-
-    def __len__(self):
-        return self.content_length
-
-    def write_to(self, wfile):
-        if self.closed is True:
-            raise ValueError('BodyIter.closed, already consumed')
-        assert self.closed is False
-        content_length = self.content_length
-        total = 0
-        for data in self.source:
-            total += len(data)
-            if total > content_length:
-                raise ValueError(
-                    'overflow: {} > {}'.format(total, content_length)
-                )
-            if wfile.write(data) != len(data):
-                raise Exception('wfile.write() returned wrong size written')
-        if total != content_length:
-            raise ValueError(
-                'underflow: {} < {}'.format(total, content_length)
-            )
-        wfile.flush()
-        self.closed = True
-        return total
 
 
 class _ChunkedBody:
@@ -376,6 +336,52 @@ class ChunkedBody(_ChunkedBody):
             raise BodyClosedError(self)
         while not self.closed:
             yield self.readchunk()
+
+
+class BodyIter:
+    chunked = False
+    __slots__ = ('source', 'content_length', 'closed', '_started')
+
+    def __init__(self, source, content_length):
+        if not isinstance(content_length, int):
+            raise TypeError(TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
+            )
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
+        self.source = source
+        self.content_length = content_length
+        self.closed = False
+        self._started = False
+
+    def __len__(self):
+        return self.content_length
+
+    def write_to(self, wfile):
+        if self.closed:
+            raise ValueError('BodyIter.closed, already consumed')
+        if self._started:
+            raise ValueError('BodyIter._started')
+        self._started = True
+        content_length = self.content_length
+        total = 0
+        for data in self.source:
+            total += len(data)
+            if total > content_length:
+                raise ValueError(
+                    'overflow: {} > {}'.format(total, content_length)
+                )
+            if wfile.write(data) != len(data):
+                raise Exception('wfile.write() returned wrong size written')
+        if total != content_length:
+            raise ValueError(
+                'underflow: {} < {}'.format(total, content_length)
+            )
+        wfile.flush()
+        self.closed = True
+        return total
 
 
 class ChunkedBodyIter:
