@@ -257,6 +257,24 @@ def _validate_session(session):
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
 
 
+def _reconstruct_uri(request):
+    uri = '/' + '/'.join(request['script'] + request['path'])
+    query = request['query']
+    if query is None:
+        return uri
+    return '?'.join([uri, query])
+
+
+def _check_uri_invariant(request):
+    uri = _reconstruct_uri(request)
+    if uri != request['uri']:
+        raise ValueError(
+            "reconstruct_uri(request) != request['uri']: {!r} != {!r}".format(
+                uri, request['uri']
+            )
+        )
+
+
 def _validate_request(bodies, request):
     """
     Validate the *request* argument.
@@ -272,6 +290,13 @@ def _validate_request(bodies, request):
     if not (request.get('body') is None or value in {'PUT', 'POST'}):
         raise ValueError(
             "{} cannot be {!r} when request['body'] is not None".format(label, value)
+        )
+
+    # request['uri']:
+    (label, value) = _get_path('request', request, 'uri')
+    if not isinstance(value, str):
+        raise TypeError(
+            TYPE_ERROR.format(label, str, type(value), value) 
         )
 
     # request['script']:
@@ -499,8 +524,10 @@ class Validator:
     def __call__(self, session, request, bodies):
         _validate_session(session)
         _validate_request(bodies, request)
+        _check_uri_invariant(request)
         request_body = request['body']
         response = self.app(session, request, bodies)
+        _check_uri_invariant(request)
         if request_body is not None and request_body.closed is not True:
             # request body was not fully consumed:
             raise ValueError(

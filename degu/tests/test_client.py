@@ -113,10 +113,10 @@ class TestFunctions(TestCase):
         )
  
         # The remaining test both build_client_sslctx() directly, and the
-        # pass-through from validate_client_sslctx():
+        # pass-through from _validate_client_sslctx():
         client_sslctx_funcs = (
             client.build_client_sslctx,
-            client.validate_client_sslctx,
+            client._validate_client_sslctx,
         )
 
         # Bad sslconfig['check_hostname'] type:
@@ -549,12 +549,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(r.body, base.Body)
         self.assertIs(r.body.rfile, rfile)
         self.assertIs(r.body.closed, False)
-        self.assertEqual(r.body.remaining, 17)
+        self.assertEqual(r.body._remaining, 17)
         self.assertEqual(rfile.tell(), len(lines))
         self.assertEqual(r.body.read(), data)
         self.assertEqual(rfile.tell(), len(lines) + len(data))
         self.assertIs(r.body.closed, True)
-        self.assertEqual(r.body.remaining, 0)
+        self.assertEqual(r.body._remaining, 0)
 
         # Like above, except this time for a HEAD request:
         rfile = io.BytesIO(lines + data)
@@ -608,13 +608,13 @@ class TestConnection(TestCase):
         self.assertIs(inst.base_headers, base_headers)
         self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
-        self.assertIs(inst.rfile, sock._rfile)
-        self.assertIs(inst.wfile, sock._wfile)
-        self.assertIsNone(inst.response_body)
+        self.assertIs(inst._rfile, sock._rfile)
+        self.assertIs(inst._wfile, sock._wfile)
+        self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, False)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
     def test_del(self):
@@ -641,14 +641,14 @@ class TestConnection(TestCase):
         self.assertIsNone(inst.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
         self.assertIsNone(inst.sock)
-        self.assertIsNone(inst.response_body)
+        self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, True)
 
         # Now when Connection.closed is True:
         self.assertIsNone(inst.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
         self.assertIsNone(inst.sock)
-        self.assertIsNone(inst.response_body)
+        self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, True)
 
     def test_request(self):
@@ -665,7 +665,7 @@ class TestConnection(TestCase):
         )
         self.assertEqual(sock._calls, [])
         self.assertIsNone(conn.sock)
-        self.assertIsNone(conn.response_body)
+        self.assertIsNone(conn._response_body)
         self.assertIs(conn.closed, True)
 
         # Test when the previous response body wasn't consumed:
@@ -675,7 +675,7 @@ class TestConnection(TestCase):
         sock = DummySocket()
         conn = client.Connection(sock, None, base.bodies)
         sock._calls.clear()
-        conn.response_body = DummyBody
+        conn._response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
             conn.request('GET', '/', {}, None)
         self.assertIs(cm.exception.body, DummyBody)
@@ -685,7 +685,7 @@ class TestConnection(TestCase):
         # Make sure Connection.close() was called:
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
         self.assertIsNone(conn.sock)
-        self.assertIsNone(conn.response_body)
+        self.assertIsNone(conn._response_body)
         self.assertIs(conn.closed, True)
 
     def get_subclass(self, marker):
@@ -793,7 +793,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(80, *address))
+                self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
@@ -821,7 +821,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(80, *address))
+                self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 17)
@@ -833,7 +833,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(80, *address))
+                self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 90)
@@ -880,11 +880,11 @@ class TestClient(TestCase):
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
-        self.assertIs(conn.rfile, sock._rfile)
-        self.assertIs(conn.wfile, sock._wfile)
+        self.assertIs(conn._rfile, sock._rfile)
+        self.assertIs(conn._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
         # Should return a new Connection instance each time:
@@ -894,13 +894,13 @@ class TestClient(TestCase):
         self.assertIs(conn2.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
-        self.assertIs(conn2.rfile, sock._rfile)
-        self.assertIs(conn2.wfile, sock._wfile)
+        self.assertIs(conn2._rfile, sock._rfile)
+        self.assertIs(conn2._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
 
@@ -976,7 +976,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(443, *address))
+                self.assertEqual(inst.host, client._build_host(443, *address))
                 self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
@@ -1023,7 +1023,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(443, *address))
+                self.assertEqual(inst.host, client._build_host(443, *address))
                 self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)
@@ -1037,7 +1037,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': mybodies})
             if isinstance(address, tuple):
-                self.assertEqual(inst.host, client.build_host(443, *address))
+                self.assertEqual(inst.host, client._build_host(443, *address))
                 self.assertIs(inst.ssl_host, address[0])
             else:
                 self.assertIsNone(inst.host)

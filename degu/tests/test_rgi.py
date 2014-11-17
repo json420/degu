@@ -92,6 +92,7 @@ def build_session(**kw):
 def build_request(**kw):
     request = {
         'method': 'POST',
+        'uri': '/foo/bar?stuff=junk',
         'script': ['foo'],
         'path': ['bar'],
         'query': 'stuff=junk',
@@ -462,6 +463,112 @@ class TestFunctions(TestCase):
             "session['requests'] must be >= 0; got -1"
         )
 
+    def test_reconstruct_uri(self):
+        # script, path, and query are all empty:
+        request = {'script': [], 'path': [], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/')
+        self.assertEqual(request, {'script': [], 'path': [], 'query': None})
+
+        # only script:
+        request = {'script': ['foo'], 'path': [], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo')
+        self.assertEqual(request,
+            {'script': ['foo'], 'path': [], 'query': None}
+        )
+        request = {'script': ['foo', ''], 'path': [], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
+        self.assertEqual(request,
+            {'script': ['foo', ''], 'path': [], 'query': None}
+        )
+        request = {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
+        self.assertEqual(request,
+            {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        )
+        request = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
+        self.assertEqual(request,
+            {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        )
+
+        # only path:
+        request = {'script': [], 'path': ['foo'], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo')
+        self.assertEqual(request,
+            {'script': [], 'path': ['foo'], 'query': None}
+        )
+        request = {'script': [], 'path': ['foo', ''], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
+        self.assertEqual(request,
+            {'script': [], 'path': ['foo', ''], 'query': None}
+        )
+        request = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
+        self.assertEqual(request,
+            {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        )
+        request = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
+        self.assertEqual(request,
+            {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        )
+
+        # only query:
+        request = {'script': [], 'path': [], 'query': 'hello'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/?hello')
+        self.assertEqual(request,
+            {'script': [], 'path': [], 'query': 'hello'}
+        )
+        request = {'script': [], 'path': [], 'query': 'stuff=junk'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/?stuff=junk')
+        self.assertEqual(request,
+            {'script': [], 'path': [], 'query': 'stuff=junk'}
+        )
+
+        # All of the above:
+        request = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?hello')
+        self.assertEqual(request,
+            {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        )
+        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?hello')
+        self.assertEqual(request,
+            {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        )
+        request = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?one=two')
+        self.assertEqual(request,
+            {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        )
+        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?one=two')
+        self.assertEqual(request,
+            {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        )
+
+    def test_check_uri_invariant(self):
+        request = {
+            'uri': '/foo/bar/baz?stuff=junk',
+            'script': [],
+            'path': ['foo', 'bar', 'baz'],
+            'query': 'stuff=junk',
+        }
+        self.assertIsNone(rgi._check_uri_invariant(request))
+
+        request = {
+            'uri': '/foo/bar/baz?stuff=junk',
+            'script': ['foo'],
+            'path': ['baz'],
+            'query': 'stuff=junk',
+        }
+        with self.assertRaises(ValueError) as cm:
+            rgi._check_uri_invariant(request)
+        self.assertEqual(str(cm.exception),
+            "reconstruct_uri(request) != request['uri']: "
+            "'/foo/baz?stuff=junk' != '/foo/bar/baz?stuff=junk'"
+        )
+
     def test_validate_request(self):
         # Validator.__call__() will pass in the *bodies* argument, by which the
         # the Body and ChunkedBody classes are exposed in a server-agnostic
@@ -485,6 +592,7 @@ class TestFunctions(TestCase):
 
         good = {
             'method': 'POST',
+            'uri': '/foo/bar?stuff=junk',
             'script': ['foo'],
             'path': ['bar'],
             'query': 'stuff=junk',
@@ -508,6 +616,15 @@ class TestFunctions(TestCase):
             rgi._validate_request(default_bodies, bad)
         self.assertEqual(str(cm.exception),
             "request['method']: value 'OPTIONS' not in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')"
+        )
+
+        # Bad request['uri'] type:
+        bad = deepcopy(good)
+        bad['uri'] = bad['uri'].encode()
+        with self.assertRaises(TypeError) as cm:
+            rgi._validate_request(default_bodies, bad)
+        self.assertEqual(str(cm.exception),
+            "request['uri']: need a <class 'str'>; got a <class 'bytes'>: b'/foo/bar?stuff=junk'"
         )
 
         # Bad request['script'] type:
@@ -812,6 +929,7 @@ class TestFunctions(TestCase):
 
         request = {
             'method': 'GET',
+            'uri': '/foo/bar?',
             'script': ['foo'],
             'path': ['bar'],
             'query': '',

@@ -68,17 +68,17 @@ version.
     This uses the Degu reference implementation of the four IO abstraction
     classes:
 
-        * :class:`Body` class
-        * :class:`BodyIter` class
-        * :class:`ChunkedBody` class
-        * :class:`ChunkedBodyIter` class
-        
+        * :class:`Body`
+        * :class:`BodyIter`
+        * :class:`ChunkedBody`
+        * :class:`ChunkedBodyIter`
+
 
 
 :class:`Body`
 '''''''''''''
 
-.. class:: Body(rfile, content_length, iosize=FILE_IO_BYTES)
+.. class:: Body(rfile, content_length, io_size=IO_SIZE)
 
     Represents an HTTP request or response body with a content-length.
 
@@ -107,19 +107,12 @@ version.
 
         The *content_length* passed to the constructor.
 
-    .. attribute:: iosize
+    .. attribute:: io_size
 
-        Value of optional *iosize* argument passed to the constructor.
+        Value of optional *io_size* argument passed to the constructor.
 
-        If *iosize* was not provided, it defaults to :data:`FILE_IO_BYTES` (1
+        If *io_size* was not provided, it defaults to :data:`IO_SIZE` (1
         MiB).
-
-    .. attribute:: remaining
-
-        Remaining bytes available for reading in the HTTP body.
-
-        This attribute is initially set to :attr:`Body.content_length`.  Once
-        the entire HTTP body has been read, this attribute will be ``0``.
 
     .. attribute:: chunked
 
@@ -142,7 +135,7 @@ version.
         Iterate through all the data in the HTTP body.
 
         This method will yield the entire HTTP body as a series of ``bytes``
-        instances each up to :attr:`Body.iosize` bytes in size.
+        instances each up to :attr:`Body.io_size` bytes in size.
 
         Note that you can only iterate through an :class:`Body` instance once.
 
@@ -170,11 +163,11 @@ version.
 
 .. class:: BodyIter(source, content_length)
 
-    Wraps an arbitrary iterable yielding a request or response body.
+    Wraps an iterable to construct an HTTP output body with a content-length.
 
-    This class allows an HTTP body to be piecewise generated on-the-fly, but
-    still with an explicit agreement about what the final content-length will
-    be.
+    This class allows an output HTTP body to be piecewise generated on-the-fly,
+    but still with an explicit agreement about what the final content-length
+    will be.
 
     On the client side, this can be used to generate the client request body.
 
@@ -183,37 +176,49 @@ version.
     Items in *source* can be of any size, including empty, as long as the total
     size matches the claimed *content_length*.  For example:
 
+    >>> import io
     >>> from degu.base import BodyIter
     >>> def generate_body():
-    ...     yield b'hello'
     ...     yield b''
+    ...     yield b'hello'
+    ...     yield b', '
     ...     yield b'world'
     ...
-    >>> body = BodyIter(generate_body(), 10)
-    >>> list(body)
-    [b'hello', b'', b'world']
+    >>> body = BodyIter(generate_body(), 12)
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)
+    12
+    >>> wfile.getvalue()
+    b'hello, world'
 
-    An :exc:`UnderFlowError` will be raised in the total produced by *source* is
-    less than *content_length*:
+    You can only call :meth:`BodyIter.write_to()` once.  Subsequent calls will
+    raise a ``ValueError``:
+    
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: BodyIter.closed, already consumed
+
+    A ``ValueError`` will be raised in the total produced by *source* is less
+    than *content_length*:
+
+    >>> body = BodyIter(generate_body(), 13)
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: underflow: 12 < 13
+
+    Likewise, a ``ValueError`` will be raised if the total produced by *source*
+    is greater than *content_length*:
 
     >>> body = BodyIter(generate_body(), 11)
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.UnderFlowError: received 10 bytes, expected 11
+    ValueError: overflow: 12 > 11
 
-    An :exc:`OverFlowError` will be raised in the total produced by *source* is
-    greater than *content_length*:
-
-    >>> body = BodyIter(generate_body(), 9)
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    degu.base.OverFlowError: received 10 bytes, expected 9
-
-    Note that you can only iterate through a :class:`BodyIter` once.  If you try
-    to iterate through it a further time, a :exc:`BodyClosedError` will be
-    raised.
 
     .. attribute:: source
 
@@ -226,6 +231,10 @@ version.
     .. attribute:: closed
 
         Initially ``False``, will be ``True`` after body is fully consumed.
+
+    .. method:: write_to(wfile)
+
+        Write to *wfile*.
 
 
 
@@ -272,7 +281,7 @@ version.
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.BodyClosedError: body already fully read: ChunkedBody(<rfile>)
+    ValueError: ChunkedBody.closed, already consumed
 
     .. attribute:: chunked
 
@@ -331,7 +340,7 @@ version.
 
 .. class:: ChunkedBodyIter(source)
 
-    Wraps an arbitrary iterable yielding chunks of a request or response body.
+    Wraps an interable to construct a chunk-encoded HTTP output body.
 
     This class allows a chunked-encoded HTTP body to be piecewise generated
     on-the-fly.
@@ -348,6 +357,7 @@ version.
 
     For example:
 
+    >>> import io
     >>> from degu.base import ChunkedBodyIter
     >>> def generate_chunked_body():
     ...     yield (None,            b'hello')
@@ -355,10 +365,21 @@ version.
     ...     yield (None,            b'')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)
-    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)
+    33
+    >>> wfile.getvalue()
+    b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n'
 
-    A :exc:`ChunkError` will be raised if the *data* in the final chunk isn't
+    You can only call :meth:`ChunkedBodyIter.write_to()` once.  Subsequent calls
+    will raise a ``ValueError``:
+
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+      ...
+    ValueError: ChunkedBodyIter.closed, already consumed
+
+    A ``ValueError`` will be raised if the *data* in the final chunk isn't
     empty:
 
     >>> def generate_chunked_body():
@@ -366,13 +387,14 @@ version.
     ...     yield (('foo', 'bar'),  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.ChunkError: final chunk data was not empty
+    ValueError: final chunk data was not empty
 
-    Likewise, a :exc:`ChunkError` will be raised if a chunk with empty *data*
-    is followed by a chunk with non-empty *data*:
+    Likewise, a ``ValueError`` will be raised if a chunk with empty *data* is
+    followed by a chunk with non-empty *data*:
 
     >>> def generate_chunked_body():
     ...     yield (None,  b'hello')
@@ -380,14 +402,11 @@ version.
     ...     yield (None,  b'world')
     ...
     >>> body = ChunkedBodyIter(generate_chunked_body())
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
+    >>> wfile = io.BytesIO()
+    >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    degu.base.ChunkError: non-empty chunk data after empty
-
-    Note that you can only iterate through a :class:`ChunkedBodyIter` once.  If
-    you try to iterate through it a further time, a :exc:`BodyClosedError` will
-    be raised.
+    ValueError: non-empty chunk data after empty
 
     .. attribute:: source
 
@@ -397,18 +416,38 @@ version.
 
         Initially ``False``, will be ``True`` after body is fully consumed.
 
+    .. method:: write_to(wfile)
+
+        Write to *wfile*.
+
 
 
 Constants
 ---------
 
-.. data:: FILE_IO_BYTES
+.. data:: MAX_READ_SIZE
 
-    An ``int`` containing the default read size used by :class:`Body.__iter__()`.
+    Max total read size (in bytes).
 
-    >>> import degu.base
-    >>> assert degu.base.FILE_IO_BYTES == 1048576  # 1 MiB
+    >>> from degu import base
+    >>> base.MAX_READ_SIZE  # 16 MiB
+    16777216
 
+.. data:: MAX_CHUNK_SIZE
+
+    Max total read size (in bytes).
+
+    >>> from degu import base
+    >>> base.MAX_CHUNK_SIZE  # 16 MiB
+    16777216
+
+.. data:: IO_SIZE
+
+    Default IO size for :class:`Body` (in bytes).
+
+    >>> from degu import base
+    >>> base.IO_SIZE  # 1 MiB
+    1048576
 
 
 
@@ -427,49 +466,6 @@ Exceptions
     ``http.client`` module in the standard Python3 library.  However, as
     :exc:`EmptyPreambleError` is a ``ConnectionError`` subclass, there is no
     reason to use this exception directly.
-
-
-.. exception:: UnderFlowError(received, expected)
-
-    Raised when less data is received than was expected.
-
-    .. attribute:: received
-
-        Number of bytes received
-
-    .. attribute:: expected
-
-        Number of bytes expected
-
-
-.. exception:: OverFlowError(received, expected)
-
-    Raised when less data is received than was expected.
-
-    .. attribute:: received
-
-        Number of bytes received
-
-    .. attribute:: expected
-
-        Number of bytes expected
-
-
-.. exception:: BodyClosedError(body)
-
-    Raised when an HTTP body was already fully consumed.
-
-    .. attribute:: body
-
-        The Degu IO wrapper passed to the constructor.
-
-        This will be a :class:`Body`, :class:`BodyIter`, :class:`ChunkedBody`,
-        or :class:`ChunkedBodyIter` instance.
-
-
-.. exception:: ChunkError
-
-    Raise by :class:`ChunkedBodyIter` upon bad chunked-encoding semantics.
 
 
 
