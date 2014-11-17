@@ -134,7 +134,27 @@ class AlternatesTestCase(FuzzTestCase):
             self.skipTest('cannot import `degu._base` C extension')
 
 
+MiB = 1024 * 1024
+
 class TestConstants(TestCase):
+    def check_power_of_two(self, name, size):
+        self.assertIsInstance(size, int, name)
+        self.assertGreaterEqual(size, 1024, name)
+        self.assertLessEqual(size, MiB * 32, name)
+        self.assertFalse(size & (size - 1),
+            '({}) {:d} is not a power of 2'.format(name, size)
+        )
+
+    def check_size_constant(self, name, min_size=4096, max_size=16777216):
+        self.check_power_of_two('min_size', min_size)
+        self.check_power_of_two('max_size', max_size)
+        self.assertEqual(name[-5:], '_SIZE', name)
+        self.assertTrue(name.isupper(), '{!r} not uppercase'.format(name))
+        size = getattr(base, name)
+        self.check_power_of_two(name, size)
+        self.assertGreaterEqual(size, min_size, name)
+        self.assertLessEqual(size, max_size, name)
+
     def test_MAX_LINE_BYTES(self):
         self.assertIsInstance(base.MAX_LINE_BYTES, int)
         self.assertGreaterEqual(base.MAX_LINE_BYTES, 1024)
@@ -146,23 +166,19 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base.MAX_HEADER_COUNT, 5)
         self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
 
-    def test_MAX_CHUNK_BYTES(self):
-        self.assertIsInstance(base.MAX_CHUNK_BYTES, int)
-        MiB = 1024 * 1024
-        self.assertEqual(base.MAX_CHUNK_BYTES % MiB, 0)
-        self.assertGreaterEqual(base.MAX_CHUNK_BYTES, MiB)
-        self.assertLessEqual(base.MAX_CHUNK_BYTES, MiB * 32)
+    def test_STREAM_BUFFER_SIZE(self):
+        self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
+        self.assertEqual(base.STREAM_BUFFER_SIZE % 4096, 0)
+        self.assertGreaterEqual(base.STREAM_BUFFER_SIZE, 4096)
 
-    def test_STREAM_BUFFER_BYTES(self):
-        self.assertIsInstance(base.STREAM_BUFFER_BYTES, int)
-        self.assertEqual(base.STREAM_BUFFER_BYTES % 4096, 0)
-        self.assertGreaterEqual(base.STREAM_BUFFER_BYTES, 4096)
+    def test_MAX_READ_SIZE(self):
+        self.check_size_constant('MAX_READ_SIZE')
 
-    def test_FILE_IO_BYTES(self):
-        self.assertIsInstance(base.FILE_IO_BYTES, int)
-        MiB = 1024 * 1024
-        self.assertEqual(base.FILE_IO_BYTES % MiB, 0)
-        self.assertGreaterEqual(base.FILE_IO_BYTES, MiB)
+    def test_MAX_CHUNK_SIZE(self):
+        self.check_size_constant('MAX_CHUNK_SIZE')
+
+    def test_IO_SIZE(self):
+        self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
         self.assertTrue(issubclass(base.BodiesAPI, tuple))
@@ -266,8 +282,8 @@ class TestFunctions(AlternatesTestCase):
         sock = DummySocket()
         self.assertEqual(base.makefiles(sock), (sock._rfile, sock._wfile))
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
     def check_parse_preamble(self, backend):
@@ -1221,7 +1237,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
-            'need 0 <= chunk_size <= {}; got -1'.format(base.MAX_CHUNK_BYTES)
+            'need 0 <= chunk_size <= {}; got -1'.format(base.MAX_CHUNK_SIZE)
         )
         self.assertEqual(rfile.tell(), 4)
         self.assertFalse(rfile.closed)
@@ -1229,13 +1245,13 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
         self.assertEqual(str(cm.exception),
-            'need 0 <= chunk_size <= {}; got -7777'.format(base.MAX_CHUNK_BYTES)
+            'need 0 <= chunk_size <= {}; got -7777'.format(base.MAX_CHUNK_SIZE)
         )
         self.assertEqual(rfile.tell(), 16)
         self.assertFalse(rfile.closed)
 
-        # Size > MAX_CHUNK_BYTES:
-        line = '{:x}\r\n'.format(base.MAX_CHUNK_BYTES + 1)
+        # Size > MAX_CHUNK_SIZE:
+        line = '{:x}\r\n'.format(base.MAX_CHUNK_SIZE + 1)
         rfile = io.BytesIO(line.encode('latin_1') + data)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
@@ -1245,8 +1261,8 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(rfile.tell(), len(line))
         self.assertFalse(rfile.closed)
 
-        # Size > MAX_CHUNK_BYTES, with extension:
-        line = '{:x};foo=bar\r\n'.format(base.MAX_CHUNK_BYTES + 1)
+        # Size > MAX_CHUNK_SIZE, with extension:
+        line = '{:x};foo=bar\r\n'.format(base.MAX_CHUNK_SIZE + 1)
         rfile = io.BytesIO(line.encode('latin_1') + data)
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
@@ -1305,7 +1321,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertFalse(rfile.closed)
 
         # Test max chunk size:
-        data = os.urandom(base.MAX_CHUNK_BYTES)
+        data = os.urandom(base.MAX_CHUNK_SIZE)
         line = '{:x}\r\n'.format(len(data))
         rfile = io.BytesIO()
         rfile.write(line.encode('latin_1'))
@@ -1316,7 +1332,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
 
         # Again, with extension:
-        data = os.urandom(base.MAX_CHUNK_BYTES)
+        data = os.urandom(base.MAX_CHUNK_SIZE)
         line = '{:x};foo=bar\r\n'.format(len(data))
         rfile = io.BytesIO()
         rfile.write(line.encode('latin_1'))
@@ -1345,8 +1361,8 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(rfile.tell(), 14)
 
     def test_write_chunk(self):
-        # len(data) > MAX_CHUNK_BYTES:
-        data = b'D' * (base.MAX_CHUNK_BYTES + 1)
+        # len(data) > MAX_CHUNK_SIZE:
+        data = b'D' * (base.MAX_CHUNK_SIZE + 1)
         wfile = io.BytesIO()
         chunk = (None, data)
         with self.assertRaises(ValueError) as cm:
@@ -1356,7 +1372,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(wfile.getvalue(), b'')
 
-        # len(data) > MAX_CHUNK_BYTES, but now with extension:
+        # len(data) > MAX_CHUNK_SIZE, but now with extension:
         wfile = io.BytesIO()
         chunk = (('foo', 'bar'), data)
         with self.assertRaises(ValueError) as cm:
@@ -1424,8 +1440,8 @@ class TestFunctions(AlternatesTestCase):
             fp.seek(0)
             self.assertEqual(base.read_chunk(fp), chunk)
 
-        # Make sure we can round-trip MAX_CHUNK_BYTES:
-        size = base.MAX_CHUNK_BYTES
+        # Make sure we can round-trip MAX_CHUNK_SIZE:
+        size = base.MAX_CHUNK_SIZE
         data = os.urandom(size)
         total = size + len('{:x}'.format(size)) + 4
         fp = io.BytesIO()
@@ -1489,26 +1505,26 @@ class TestBody(TestCase):
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, 17, 2048)
         self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got 2048'.format(base.MAX_READ_BYTES)
+            'need 4096 <= io_size <= {}; got 2048'.format(base.MAX_READ_SIZE)
         )
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, 17, 4095)
         self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got 4095'.format(base.MAX_READ_BYTES)
+            'need 4096 <= io_size <= {}; got 4095'.format(base.MAX_READ_SIZE)
         )
 
         # io_size too big:
-        size = base.MAX_READ_BYTES * 2
+        size = base.MAX_READ_SIZE * 2
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, 17, size)
         self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_BYTES, size)
+            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_SIZE, size)
         )
-        size = base.MAX_READ_BYTES + 1
+        size = base.MAX_READ_SIZE + 1
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, 17, size)
         self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_BYTES, size)
+            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_SIZE, size)
         )
 
         # io_size not a power of 2:
@@ -1530,13 +1546,13 @@ class TestBody(TestCase):
         self.assertIs(body.__class__.chunked, False)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 17)
-        self.assertIs(body.io_size, base.FILE_IO_BYTES)
+        self.assertIs(body.io_size, base.IO_SIZE)
         self.assertIs(body.closed, False)
         self.assertEqual(body._remaining, 17)
         self.assertEqual(repr(body), 'Body(<rfile>, 17)')
 
         # Now override io_size with a number of good values:
-        for size in (4096, 8192, 1048576, base.MAX_READ_BYTES):
+        for size in (4096, 8192, 1048576, base.MAX_READ_SIZE):
             body = base.Body(rfile, 17, size)
             self.assertIs(body.io_size, size)
             body = base.Body(rfile, 17, io_size=size)
@@ -1731,16 +1747,16 @@ class TestBody(TestCase):
             )
             self.assertEqual(rfile.read(), trailer)
 
-        # Test when read size > MAX_READ_BYTES:
+        # Test when read size > MAX_READ_SIZE:
         rfile = io.BytesIO()
-        content_length = base.MAX_READ_BYTES + 1
+        content_length = base.MAX_READ_SIZE + 1
         body = base.Body(rfile, content_length)
         self.assertIs(body.content_length, content_length)
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception),
-            'read size > MAX_READ_BYTES: {} > {}'.format(
-                content_length, base.MAX_READ_BYTES
+            'max read size exceeded: {} > {}'.format(
+                content_length, base.MAX_READ_SIZE
             )
         )
 
@@ -1805,10 +1821,10 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
-        # Make sure data is read in FILE_IO_BYTES chunks:
-        data1 = os.urandom(base.FILE_IO_BYTES)
-        data2 = os.urandom(base.FILE_IO_BYTES)
-        length = base.FILE_IO_BYTES * 2
+        # Make sure data is read in IO_SIZE chunks:
+        data1 = os.urandom(base.IO_SIZE)
+        data2 = os.urandom(base.IO_SIZE)
+        length = base.IO_SIZE * 2
         rfile = io.BytesIO(data1 + data2)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2])
@@ -1824,7 +1840,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with smaller final chunk:
-        length = base.FILE_IO_BYTES * 2 + len(data)
+        length = base.IO_SIZE * 2 + len(data)
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data])
@@ -1840,7 +1856,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with length 1 byte less than available:
-        length = base.FILE_IO_BYTES * 2 + len(data) - 1
+        length = base.IO_SIZE * 2 + len(data) - 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1]])
@@ -1856,7 +1872,7 @@ class TestBody(TestCase):
         self.assertEqual(rfile.read(), data[-1:])
 
         # Again, with length 1 byte *more* than available:
-        length = base.FILE_IO_BYTES * 2 + len(data) + 1
+        length = base.IO_SIZE * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         with self.assertRaises(base.UnderFlowError) as cm:
@@ -1872,35 +1888,13 @@ class TestBody(TestCase):
 
 class TestChunkedBody(TestCase):
     def test_init(self):
-        # No rfile.read attribute:
-        with self.assertRaises(AttributeError) as cm:
-            base.ChunkedBody('hello')
-        self.assertEqual(str(cm.exception),
-            "'str' object has no attribute 'read'"
-        )
-
-        # rfile.read isn't callable:
-        class Nope:
-            read = 'hello'
-
-        with self.assertRaises(TypeError) as cm:
-            base.ChunkedBody(Nope)
-        self.assertEqual(str(cm.exception),
-            'rfile.read is not callable: {!r}'.format(Nope)
-        )
-        nope = Nope()
-        with self.assertRaises(TypeError) as cm:
-            base.ChunkedBody(nope)
-        self.assertEqual(str(cm.exception),
-            'rfile.read is not callable: {!r}'.format(nope)
-        )
-
         # All good:
         rfile = io.BytesIO()
         body = base.ChunkedBody(rfile)
         self.assertIs(body.chunked, True)
-        self.assertIs(body.closed, False)
+        self.assertIs(body.__class__.chunked, True)
         self.assertIs(body.rfile, rfile)
+        self.assertIs(body.closed, False)
         self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
 
     def test_readchunk(self):
@@ -2003,7 +1997,7 @@ class TestChunkedBody(TestCase):
     def test_read(self):
         # Total read size too large:
         chunks = [
-            (None, b'A' * base.MAX_READ_BYTES),
+            (None, b'A' * base.MAX_READ_SIZE),
             (None, b'B'),
             (None, b''),
         ]
@@ -2015,13 +2009,13 @@ class TestChunkedBody(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception),
-            'read size > MAX_READ_BYTES: {:d} > {:d}'.format(
-                base.MAX_READ_BYTES + 1, base.MAX_READ_BYTES
+            'max read size exceeded: {:d} > {:d}'.format(
+                base.MAX_READ_SIZE + 1, base.MAX_READ_SIZE
             )
         )
 
         # Total read size too large:
-        size = base.MAX_READ_BYTES // 8
+        size = base.MAX_READ_SIZE // 8
         chunks = [
             (None, bytes([i]) * size) for i in b'ABCDEFGH'
         ]
@@ -2035,15 +2029,15 @@ class TestChunkedBody(TestCase):
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception),
-            'read size > MAX_READ_BYTES: {:d} > {:d}'.format(
-                base.MAX_READ_BYTES + 1, base.MAX_READ_BYTES
+            'max read size exceeded: {:d} > {:d}'.format(
+                base.MAX_READ_SIZE + 1, base.MAX_READ_SIZE
             )
         )
 
-        # A chunk is larger than MAX_CHUNK_BYTES:
+        # A chunk is larger than MAX_CHUNK_SIZE:
         chunks = [
             (None, b'A'),
-            (None, b'B' * (base.MAX_CHUNK_BYTES + 1)),
+            (None, b'B' * (base.MAX_CHUNK_SIZE + 1)),
             (None, b''),
         ]
         rfile = io.BytesIO()
@@ -2055,7 +2049,7 @@ class TestChunkedBody(TestCase):
             body.read()
         self.assertEqual(str(cm.exception),
             'need 0 <= chunk_size <= {}; got {}'.format(
-                base.MAX_CHUNK_BYTES, base.MAX_CHUNK_BYTES + 1
+                base.MAX_CHUNK_SIZE, base.MAX_CHUNK_SIZE + 1
             )
         )
 

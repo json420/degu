@@ -48,10 +48,10 @@ __all__ = (
 )
 
 
-MAX_READ_BYTES = 16777216  # 16 MiB
-MAX_CHUNK_BYTES = 16777216  # 16 MiB
-STREAM_BUFFER_BYTES = 65536  # 64 KiB
-FILE_IO_BYTES = 1048576  # 1 MiB
+MAX_READ_SIZE = 16777216  # 16 MiB
+MAX_CHUNK_SIZE = 16777216  # 16 MiB
+STREAM_BUFFER_SIZE = 65536  # 64 KiB
+IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -93,8 +93,8 @@ def makefiles(sock):
     Create (rfile, wfile) from a socket connection.
     """
     return (
-        sock.makefile('rb', buffering=STREAM_BUFFER_BYTES),
-        sock.makefile('wb', buffering=STREAM_BUFFER_BYTES)
+        sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
+        sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
     )
 
 
@@ -113,9 +113,9 @@ def read_chunk(rfile):
     if len(parts) > 2:
         raise ValueError('bad chunk size line: {!r}'.format(line))
     size = int(parts[0], 16)
-    if not (0 <= size <= MAX_CHUNK_BYTES):
+    if not (0 <= size <= MAX_CHUNK_SIZE):
         raise ValueError(
-            'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_BYTES, size)
+            'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_SIZE, size)
         )
     if len(parts) == 2:
         text = None
@@ -148,9 +148,9 @@ def _encode_chunk(chunk, check_size=True):
     (extension, data) = chunk
     assert extension is None or isinstance(extension, tuple)
     assert isinstance(data, bytes)
-    if check_size and len(data) > MAX_CHUNK_BYTES:
+    if check_size and len(data) > MAX_CHUNK_SIZE:
         raise ValueError(
-            'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
+            'need len(data) <= {}; got {}'.format(MAX_CHUNK_SIZE, len(data))
         )
     if extension is None:
         size_line = '{:x}\r\n'.format(len(data))
@@ -174,9 +174,9 @@ def write_chunk(wfile, chunk, check_size=True):
     (extension, data) = chunk
     assert extension is None or isinstance(extension, tuple)
     assert isinstance(data, bytes)
-    if check_size and len(data) > MAX_CHUNK_BYTES:
+    if check_size and len(data) > MAX_CHUNK_SIZE:
         raise ValueError(
-            'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
+            'need len(data) <= {}; got {}'.format(MAX_CHUNK_SIZE, len(data))
         )
     if extension is None:
         size_line = '{:x}\r\n'.format(len(data))
@@ -205,16 +205,16 @@ class Body:
                 'content_length must be >= 0, got: {!r}'.format(content_length)
             )
         if io_size is None:
-            io_size = FILE_IO_BYTES
+            io_size = IO_SIZE
         else:
             if not isinstance(io_size, int):
                 raise TypeError(
                     TYPE_ERROR.format('io_size', int, type(io_size), io_size)
                 )
-            if not (4096 <= io_size <= MAX_READ_BYTES):
+            if not (4096 <= io_size <= MAX_READ_SIZE):
                 raise ValueError(
                     'need 4096 <= io_size <= {}; got {}'.format(
-                        MAX_READ_BYTES, io_size
+                        MAX_READ_SIZE, io_size
                     )
                 )
             if io_size & (io_size - 1):
@@ -234,42 +234,6 @@ class Body:
 
     def __len__(self):
         return self.content_length
-
-    def read(self, size=None):
-        if self.closed:
-            raise BodyClosedError(self)
-        if self._remaining <= 0:
-            self.closed = True
-            return b''
-        if size is not None:
-            if not isinstance(size, int):
-                raise TypeError(
-                    TYPE_ERROR.format('size', int, type(size), size) 
-                )
-            if size < 0:
-                raise ValueError('size must be >= 0; got {!r}'.format(size))
-        read = (self._remaining if size is None else min(self._remaining, size))
-        if read > MAX_READ_BYTES:
-            raise ValueError(
-                'read size > MAX_READ_BYTES: {} > {}'.format(read, MAX_READ_BYTES)
-            )
-        data = self.rfile.read(read)
-        if len(data) != read:
-            # Security note: if application-level code is being overly general
-            # with their exception handling, they might continue to use a
-            # connection even after an UnderFlowError, which could create a
-            # request/response stream state inconsistency.  So in this
-            # circumstance, we close the rfile, but we do *not* set Body.closed
-            # to True (which means "fully consumed") because the body was not in
-            # fact fully read. 
-            self.rfile.close()
-            raise UnderFlowError(len(data), read)
-        self._remaining -= read
-        assert self._remaining >= 0
-        if size is None:
-            # Entire body was request at once, so close:
-            self.closed = True
-        return data
 
     def __iter__(self):
         if self.closed:
@@ -291,6 +255,42 @@ class Body:
             yield data
         self.closed = True
 
+    def read(self, size=None):
+        if self.closed:
+            raise BodyClosedError(self)
+        if self._remaining <= 0:
+            self.closed = True
+            return b''
+        if size is not None:
+            if not isinstance(size, int):
+                raise TypeError(
+                    TYPE_ERROR.format('size', int, type(size), size) 
+                )
+            if size < 0:
+                raise ValueError('size must be >= 0; got {!r}'.format(size))
+        read = (self._remaining if size is None else min(self._remaining, size))
+        if read > MAX_READ_SIZE:
+            raise ValueError(
+                'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
+            )
+        data = self.rfile.read(read)
+        if len(data) != read:
+            # Security note: if application-level code is being overly general
+            # with their exception handling, they might continue to use a
+            # connection even after an UnderFlowError, which could create a
+            # request/response stream state inconsistency.  So in this
+            # circumstance, we close the rfile, but we do *not* set Body.closed
+            # to True (which means "fully consumed") because the body was not in
+            # fact fully read. 
+            self.rfile.close()
+            raise UnderFlowError(len(data), read)
+        self._remaining -= read
+        assert self._remaining >= 0
+        if size is None:
+            # Entire body was request at once, so close:
+            self.closed = True
+        return data
+
     def write_to(self, wfile):
         total = sum(wfile.write(data) for data in self)
         assert total == self.content_length
@@ -298,22 +298,24 @@ class Body:
         return total
 
 
-class _ChunkedBody:
-    def write_to(self, wfile):
-        wfile.flush()  # Flush preamble before writting first chunk
-        return sum(write_chunk(wfile, chunk) for chunk in self) 
+class ChunkedBody:
+    chunked = True
+    __slots__ = ('rfile', 'closed')
 
-
-class ChunkedBody(_ChunkedBody):
     def __init__(self, rfile):
         if not callable(rfile.read):
             raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
-        self.chunked = True
-        self.closed = False
         self.rfile = rfile
+        self.closed = False
 
     def __repr__(self):
         return '{}(<rfile>)'.format(self.__class__.__name__)
+
+    def __iter__(self):
+        if self.closed:
+            raise BodyClosedError(self)
+        while not self.closed:
+            yield self.readchunk()
 
     def readchunk(self):
         if self.closed:
@@ -333,19 +335,17 @@ class ChunkedBody(_ChunkedBody):
         buf = bytearray()
         while not self.closed:
             buf.extend(self.readchunk()[1])
-            if len(buf) > MAX_READ_BYTES:
+            if len(buf) > MAX_READ_SIZE:
                 raise ValueError(
-                    'read size > MAX_READ_BYTES: {} > {}'.format(
-                        len(buf), MAX_READ_BYTES
+                    'max read size exceeded: {} > {}'.format(
+                        len(buf), MAX_READ_SIZE
                     )
                 )
         return bytes(buf)
 
-    def __iter__(self):
-        if self.closed:
-            raise BodyClosedError(self)
-        while not self.closed:
-            yield self.readchunk()
+    def write_to(self, wfile):
+        wfile.flush()  # Flush preamble before writting first chunk
+        return sum(write_chunk(wfile, chunk) for chunk in self) 
 
 
 class BodyIter:

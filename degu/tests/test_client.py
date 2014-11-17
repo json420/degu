@@ -613,8 +613,8 @@ class TestConnection(TestCase):
         self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, False)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
     def test_del(self):
@@ -883,8 +883,8 @@ class TestClient(TestCase):
         self.assertIs(conn._rfile, sock._rfile)
         self.assertIs(conn._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
         # Should return a new Connection instance each time:
@@ -897,10 +897,10 @@ class TestClient(TestCase):
         self.assertIs(conn2._rfile, sock._rfile)
         self.assertIs(conn2._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_BYTES}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_BYTES}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
 
