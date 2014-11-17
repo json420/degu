@@ -57,15 +57,6 @@ IO_SIZE = 1048576  # 1 MiB
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-class UnderFlowError(Exception):
-    def __init__(self, received, expected):
-        self.received = received
-        self.expected = expected
-        super().__init__(
-            'received {:d} bytes, expected {:d}'.format(received, expected)
-        )
-
-
 class OverFlowError(Exception):
     def __init__(self, received, expected):
         self.received = received

@@ -209,21 +209,10 @@ class TestEmptyPreambleError(TestCase):
         self.assertEqual(str(e), 'stuff and junk')
 
 
-class TestUnderFlowError(TestCase):
-    def test_init(self):
-        e = base.UnderFlowError(16, 17)
-        self.assertIsInstance(e, Exception)
-        self.assertNotIsInstance(e, base.OverFlowError)
-        self.assertEqual(e.received, 16)
-        self.assertEqual(e.expected, 17)
-        self.assertEqual(str(e), 'received 16 bytes, expected 17')
-
-
 class TestOverFlowError(TestCase):
     def test_init(self):
         e = base.OverFlowError(20, 18)
         self.assertIsInstance(e, Exception)
-        self.assertNotIsInstance(e, base.UnderFlowError)
         self.assertEqual(e.received, 20)
         self.assertEqual(e.expected, 18)
         self.assertEqual(str(e), 'received 20 bytes, expected 18')
