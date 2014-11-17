@@ -1447,48 +1447,21 @@ class TestFunctions(AlternatesTestCase):
 
 class TestBody(TestCase):
     def test_init(self):
-        # No rfile.read attribute:
-        with self.assertRaises(AttributeError) as cm:
-            base.Body('hello', None)
-        self.assertEqual(str(cm.exception),
-            "'str' object has no attribute 'read'"
-        )
+        rfile = io.BytesIO()
 
-        # rfile.read isn't callable:
-        class Nope:
-            read = 'hello'
-
-        with self.assertRaises(TypeError) as cm:
-            base.Body(Nope, None)
-        self.assertEqual(str(cm.exception),
-            'rfile.read is not callable: {!r}'.format(Nope)
-        )
-        nope = Nope()
-        with self.assertRaises(TypeError) as cm:
-            base.Body(nope, None)
-        self.assertEqual(str(cm.exception),
-            'rfile.read is not callable: {!r}'.format(nope)
-        )
-
-        # Create a good rfile:
-        data = os.urandom(69)
-        rfile = io.BytesIO(data)
-
-        # Good rfile with bad content_length type:
+        # Bad content_length type:
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17.0)
         self.assertEqual(str(cm.exception),
             base.TYPE_ERROR.format('content_length', int, float, 17.0)
         )
-        self.assertEqual(rfile.tell(), 0)
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, '17')
         self.assertEqual(str(cm.exception),
             base.TYPE_ERROR.format('content_length', int, str, '17')
         )
-        self.assertEqual(rfile.tell(), 0)
 
-        # Good rfile with bad content_length value:
+        # Bad content_length value:
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, -1)
         self.assertEqual(str(cm.exception),
@@ -1499,31 +1472,80 @@ class TestBody(TestCase):
         self.assertEqual(str(cm.exception),
             'content_length must be >= 0, got: -17'
         )
-        self.assertEqual(rfile.tell(), 0)
+
+        # Bad io_size type:
+        with self.assertRaises(TypeError) as cm:
+            base.Body(rfile, 17, '8192')
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('io_size', int, str, '8192')
+        )
+        with self.assertRaises(TypeError) as cm:
+            base.Body(rfile, 17, 8192.0)
+        self.assertEqual(str(cm.exception),
+            base.TYPE_ERROR.format('io_size', int, float, 8192.0)
+        )
+
+        # io_size too small:
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, 2048)
+        self.assertEqual(str(cm.exception),
+            'need 4096 <= io_size <= {}; got 2048'.format(base.MAX_READ_BYTES)
+        )
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, 4095)
+        self.assertEqual(str(cm.exception),
+            'need 4096 <= io_size <= {}; got 4095'.format(base.MAX_READ_BYTES)
+        )
+
+        # io_size too big:
+        size = base.MAX_READ_BYTES * 2
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, size)
+        self.assertEqual(str(cm.exception),
+            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_BYTES, size)
+        )
+        size = base.MAX_READ_BYTES + 1
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, size)
+        self.assertEqual(str(cm.exception),
+            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_BYTES, size)
+        )
+
+        # io_size not a power of 2:
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, 40960)
+        self.assertEqual(str(cm.exception),
+            'io_size must be a power of 2; got 40960'
+        )
+        # io_size not a power of 2:
+        with self.assertRaises(ValueError) as cm:
+            base.Body(rfile, 17, 4097)
+        self.assertEqual(str(cm.exception),
+            'io_size must be a power of 2; got 4097'
+        )
 
         # All good:
-        body = base.Body(rfile, len(data))
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
-        self.assertIs(body.rfile, rfile)
-        self.assertEqual(body.content_length, 69)
-        self.assertEqual(body.remaining, 69)
-        self.assertIs(body.iosize, base.FILE_IO_BYTES)
-        self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(rfile.read(), data)
-        self.assertEqual(repr(body), 'Body(<rfile>, 69)')
-
-        # Make sure there is no automagical checking of content_length against rfile:
-        rfile.seek(1)
         body = base.Body(rfile, 17)
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertIs(body.__class__.chunked, False)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 17)
+        self.assertIs(body.io_size, base.FILE_IO_BYTES)
+        self.assertIs(body.closed, False)
         self.assertEqual(body.remaining, 17)
-        self.assertEqual(rfile.tell(), 1)
-        self.assertEqual(rfile.read(), data[1:])
         self.assertEqual(repr(body), 'Body(<rfile>, 17)')
+
+        # Now override io_size with a number of good values:
+        for size in (4096, 8192, 1048576, base.MAX_READ_BYTES):
+            body = base.Body(rfile, 17, size)
+            self.assertIs(body.io_size, size)
+            body = base.Body(rfile, 17, io_size=size)
+            self.assertIs(body.io_size, size)
+
+    def test_len(self):
+        for content_length in (0, 17, 27, 37):
+            body = base.Body(io.BytesIO(), content_length)
+        self.assertEqual(len(body), content_length)
 
     def test_read(self):
         data = os.urandom(1776)

@@ -191,21 +191,10 @@ def write_chunk(wfile, chunk, check_size=True):
     return total
 
 
-class _Body:
-    def __len__(self):
-        return self.content_length
+class Body:
+    chunked = False
 
-    def write_to(self, wfile):
-        total = sum(wfile.write(data) for data in self)
-        assert total == self.content_length
-        wfile.flush()
-        return total
-
-
-class Body(_Body):
-    def __init__(self, rfile, content_length, iosize=None):
-        if not callable(rfile.read):
-            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
+    def __init__(self, rfile, content_length, io_size=None):
         if not isinstance(content_length, int):
             raise TypeError(TYPE_ERROR.format(
                 'content_length', int, type(content_length), content_length)
@@ -214,19 +203,37 @@ class Body(_Body):
             raise ValueError(
                 'content_length must be >= 0, got: {!r}'.format(content_length)
             )
-        self.chunked = False
-        self.closed = False
+        if io_size is None:
+            io_size = FILE_IO_BYTES
+        else:
+            if not isinstance(io_size, int):
+                raise TypeError(
+                    TYPE_ERROR.format('io_size', int, type(io_size), io_size)
+                )
+            if not (4096 <= io_size <= MAX_READ_BYTES):
+                raise ValueError(
+                    'need 4096 <= io_size <= {}; got {}'.format(
+                        MAX_READ_BYTES, io_size
+                    )
+                )
+            if io_size & (io_size - 1):
+                raise ValueError(
+                    'io_size must be a power of 2; got {}'.format(io_size)
+                )
         self.rfile = rfile
         self.content_length = content_length
+        self.io_size = io_size
         self.remaining = content_length
-        self.iosize = (FILE_IO_BYTES if iosize is None else iosize)
-        assert isinstance(self.iosize, int)
-        assert self.iosize >= 4096 and self.iosize % 4096 == 0
+        self.closed = False
+        self._started = False
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
             self.__class__.__name__, self.content_length
         )
+
+    def __len__(self):
+        return self.content_length
 
     def read(self, size=None):
         if self.closed:
@@ -271,10 +278,10 @@ class Body(_Body):
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
         self.remaining = 0
-        iosize = self.iosize
+        io_size = self.io_size
         read = self.rfile.read
         while remaining > 0:
-            readsize = min(remaining, iosize)
+            readsize = min(remaining, io_size)
             remaining -= readsize
             assert remaining >= 0
             data = read(readsize)
@@ -284,8 +291,11 @@ class Body(_Body):
             yield data
         self.closed = True
 
-
-
+    def write_to(self, wfile):
+        total = sum(wfile.write(data) for data in self)
+        assert total == self.content_length
+        wfile.flush()
+        return total
 
 
 class _ChunkedBody:
