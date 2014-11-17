@@ -1532,7 +1532,7 @@ class TestBody(TestCase):
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.io_size, base.FILE_IO_BYTES)
         self.assertIs(body.closed, False)
-        self.assertEqual(body.remaining, 17)
+        self.assertEqual(body._remaining, 17)
         self.assertEqual(repr(body), 'Body(<rfile>, 17)')
 
         # Now override io_size with a number of good values:
@@ -1564,7 +1564,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1776)
+        self.assertEqual(body._remaining, 1776)
 
         # Bad size type:
         body.closed = False
@@ -1577,7 +1577,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1776)
+        self.assertEqual(body._remaining, 1776)
         with self.assertRaises(TypeError) as cm:
             body.read('18')
         self.assertEqual(str(cm.exception),
@@ -1587,7 +1587,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1776)
+        self.assertEqual(body._remaining, 1776)
 
         # Bad size value:
         with self.assertRaises(ValueError) as cm:
@@ -1597,7 +1597,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1776)
+        self.assertEqual(body._remaining, 1776)
         with self.assertRaises(ValueError) as cm:
             body.read(-18)
         self.assertEqual(str(cm.exception), 'size must be >= 0; got -18')
@@ -1605,7 +1605,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1776)
+        self.assertEqual(body._remaining, 1776)
 
         # Now read it all at once:
         self.assertEqual(body.read(), data)
@@ -1613,7 +1613,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read()
         self.assertIs(cm.exception.body, body)
@@ -1629,28 +1629,28 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 17)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1759)
+        self.assertEqual(body._remaining, 1759)
 
         self.assertEqual(body.read(18), data[17:35])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 35)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 1741)
+        self.assertEqual(body._remaining, 1741)
 
         self.assertEqual(body.read(1741), data[35:])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
 
         self.assertEqual(body.read(1776), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
 
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read(17)
@@ -1681,7 +1681,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(body.content_length, 37)
-        self.assertEqual(body.remaining, 19)
+        self.assertEqual(body._remaining, 19)
         with self.assertRaises(base.UnderFlowError) as cm:
             body.read(19)
         self.assertEqual(cm.exception.received, 17)
@@ -1700,7 +1700,7 @@ class TestBody(TestCase):
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 0)
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         with self.assertRaises(base.BodyClosedError) as cm:
             body.read(17)
         self.assertIs(cm.exception.body, body)
@@ -1722,7 +1722,7 @@ class TestBody(TestCase):
             self.assertIs(body.closed, True)
             self.assertEqual(rfile.tell(), len(data))
             self.assertEqual(body.content_length, len(data))
-            self.assertEqual(body.remaining, 0)
+            self.assertEqual(body._remaining, 0)
             with self.assertRaises(base.BodyClosedError) as cm:
                 body.read(17)
             self.assertIs(cm.exception.body, body)
@@ -1751,7 +1751,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 0)
         self.assertEqual(list(body), [])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1766,7 +1766,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 69)
         self.assertEqual(list(body), [data[:69]])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1781,7 +1781,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 1776)
         self.assertEqual(list(body), [data])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1812,7 +1812,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data1 + data2)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1828,7 +1828,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)
@@ -1844,7 +1844,7 @@ class TestBody(TestCase):
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1]])
-        self.assertEqual(body.remaining, 0)
+        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(base.BodyClosedError) as cm:
             list(body)

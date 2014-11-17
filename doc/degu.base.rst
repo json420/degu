@@ -114,13 +114,6 @@ version.
         If *iosize* was not provided, it defaults to :data:`FILE_IO_BYTES` (1
         MiB).
 
-    .. attribute:: remaining
-
-        Remaining bytes available for reading in the HTTP body.
-
-        This attribute is initially set to :attr:`Body.content_length`.  Once
-        the entire HTTP body has been read, this attribute will be ``0``.
-
     .. attribute:: chunked
 
         Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.

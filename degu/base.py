@@ -193,6 +193,7 @@ def write_chunk(wfile, chunk, check_size=True):
 
 class Body:
     chunked = False
+    __slots__ = ('rfile', 'content_length', 'io_size', 'closed', '_remaining')
 
     def __init__(self, rfile, content_length, io_size=None):
         if not isinstance(content_length, int):
@@ -223,9 +224,8 @@ class Body:
         self.rfile = rfile
         self.content_length = content_length
         self.io_size = io_size
-        self.remaining = content_length
         self.closed = False
-        self._started = False
+        self._remaining = content_length
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -238,7 +238,7 @@ class Body:
     def read(self, size=None):
         if self.closed:
             raise BodyClosedError(self)
-        if self.remaining <= 0:
+        if self._remaining <= 0:
             self.closed = True
             return b''
         if size is not None:
@@ -248,7 +248,7 @@ class Body:
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
-        read = (self.remaining if size is None else min(self.remaining, size))
+        read = (self._remaining if size is None else min(self._remaining, size))
         if read > MAX_READ_BYTES:
             raise ValueError(
                 'read size > MAX_READ_BYTES: {} > {}'.format(read, MAX_READ_BYTES)
@@ -264,8 +264,8 @@ class Body:
             # fact fully read. 
             self.rfile.close()
             raise UnderFlowError(len(data), read)
-        self.remaining -= read
-        assert self.remaining >= 0
+        self._remaining -= read
+        assert self._remaining >= 0
         if size is None:
             # Entire body was request at once, so close:
             self.closed = True
@@ -274,10 +274,10 @@ class Body:
     def __iter__(self):
         if self.closed:
             raise BodyClosedError(self)
-        remaining = self.remaining
+        remaining = self._remaining
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
-        self.remaining = 0
+        self._remaining = 0
         io_size = self.io_size
         read = self.rfile.read
         while remaining > 0:

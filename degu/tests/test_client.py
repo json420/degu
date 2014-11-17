@@ -549,12 +549,12 @@ class TestFunctions(TestCase):
         self.assertIsInstance(r.body, base.Body)
         self.assertIs(r.body.rfile, rfile)
         self.assertIs(r.body.closed, False)
-        self.assertEqual(r.body.remaining, 17)
+        self.assertEqual(r.body._remaining, 17)
         self.assertEqual(rfile.tell(), len(lines))
         self.assertEqual(r.body.read(), data)
         self.assertEqual(rfile.tell(), len(lines) + len(data))
         self.assertIs(r.body.closed, True)
-        self.assertEqual(r.body.remaining, 0)
+        self.assertEqual(r.body._remaining, 0)
 
         # Like above, except this time for a HEAD request:
         rfile = io.BytesIO(lines + data)
