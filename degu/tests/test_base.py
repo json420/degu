@@ -1285,9 +1285,9 @@ class TestFunctions(AlternatesTestCase):
 
         # Not enough data:
         rfile = io.BytesIO(size + small_data + b'\r\n')
-        with self.assertRaises(base.UnderFlowError) as cm:
+        with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception), 'received 6668 bytes, expected 7777')
+        self.assertEqual(str(cm.exception), 'underflow: 6668 < 7777')
         self.assertEqual(rfile.tell(), 6674)
         self.assertFalse(rfile.closed)
 
@@ -1657,20 +1657,16 @@ class TestBody(TestCase):
             body.read(17)
         self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
 
-        # Underflow error when trying to read all:
+        # ValueError (underflow) when trying to read all:
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 1800)
-        with self.assertRaises(base.UnderFlowError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(cm.exception.received, 1776)
-        self.assertEqual(cm.exception.expected, 1800)
-        self.assertEqual(str(cm.exception),
-            'received 1776 bytes, expected 1800'
-        )
+        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1800')
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
-        # Underflow error when read in parts:
+        # ValueError (underflow) error when read in parts:
         data = os.urandom(35)
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 37)
@@ -1680,13 +1676,9 @@ class TestBody(TestCase):
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(body.content_length, 37)
         self.assertEqual(body._remaining, 19)
-        with self.assertRaises(base.UnderFlowError) as cm:
+        with self.assertRaises(ValueError) as cm:
             body.read(19)
-        self.assertEqual(cm.exception.received, 17)
-        self.assertEqual(cm.exception.expected, 19)
-        self.assertEqual(str(cm.exception),
-            'received 17 bytes, expected 19'
-        )
+        self.assertEqual(str(cm.exception), 'underflow: 17 < 19')
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
@@ -1778,13 +1770,9 @@ class TestBody(TestCase):
         # content_length=1777
         rfile = io.BytesIO(data)
         body = base.Body(rfile, 1777)
-        with self.assertRaises(base.UnderFlowError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(cm.exception.received, 1776)
-        self.assertEqual(cm.exception.expected, 1777)
-        self.assertEqual(str(cm.exception),
-            'received 1776 bytes, expected 1777'
-        )
+        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
@@ -1833,13 +1821,9 @@ class TestBody(TestCase):
         length = base.IO_SIZE * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = base.Body(rfile, length)
-        with self.assertRaises(base.UnderFlowError) as cm:
+        with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(cm.exception.received, 1776)
-        self.assertEqual(cm.exception.expected, 1777)
-        self.assertEqual(str(cm.exception),
-            'received 1776 bytes, expected 1777'
-        )
+        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 

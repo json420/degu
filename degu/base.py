@@ -124,7 +124,7 @@ def read_chunk(rfile):
         extension = None
     data = rfile.read(size)
     if len(data) != size:
-        raise UnderFlowError(len(data), size)
+        raise ValueError('underflow: {} < {}'.format(len(data), size))
     crlf = rfile.read(2)
     if crlf != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(crlf))
@@ -242,7 +242,9 @@ class Body:
             data = read(readsize)
             if len(data) != readsize:
                 self.rfile.close()
-                raise UnderFlowError(len(data), readsize)
+                raise ValueError(
+                    'underflow: {} < {}'.format(len(data), readsize)
+                )
             yield data
         self.closed = True
 
@@ -268,13 +270,15 @@ class Body:
         if len(data) != read:
             # Security note: if application-level code is being overly general
             # with their exception handling, they might continue to use a
-            # connection even after an UnderFlowError, which could create a
+            # connection even after an ValueError which could create a
             # request/response stream state inconsistency.  So in this
             # circumstance, we close the rfile, but we do *not* set Body.closed
             # to True (which means "fully consumed") because the body was not in
             # fact fully read. 
             self.rfile.close()
-            raise UnderFlowError(len(data), read)
+            raise ValueError(
+                'underflow: {} < {}'.format(len(data), read)
+            )
         self._remaining -= read
         assert self._remaining >= 0
         if size is None:
