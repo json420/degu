@@ -468,11 +468,6 @@ Exceptions
     reason to use this exception directly.
 
 
-.. exception:: ChunkError
-
-    Raise by :class:`ChunkedBodyIter` upon bad chunked-encoding semantics.
-
-
 
 Parsing functions
 -----------------

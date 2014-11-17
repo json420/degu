@@ -57,10 +57,6 @@ IO_SIZE = 1048576  # 1 MiB
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-class ChunkError(Exception):
-    pass
-
-
 def makefiles(sock):
     """
     Create (rfile, wfile) from a socket connection.
