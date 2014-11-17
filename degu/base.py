@@ -140,6 +140,28 @@ def read_chunk(rfile):
     return (extension, data)
 
 
+def _encode_chunk(chunk, check_size=True):
+    """
+    Internal API for unit testing.
+    """
+    assert isinstance(chunk, tuple)
+    (extension, data) = chunk
+    assert extension is None or isinstance(extension, tuple)
+    assert isinstance(data, bytes)
+    if check_size and len(data) > MAX_CHUNK_BYTES:
+        raise ValueError(
+            'need len(data) <= {}; got {}'.format(MAX_CHUNK_BYTES, len(data))
+        )
+    if extension is None:
+        size_line = '{:x}\r\n'.format(len(data))
+    else:
+        (key, value) = extension
+        assert isinstance(key, str)
+        assert isinstance(value, str)
+        size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
+    return b''.join([size_line.encode(), data, b'\r\n'])
+
+
 def write_chunk(wfile, chunk, check_size=True):
     """
     Write *chunk* to *wfile* using chunked transfer-encoding.
@@ -163,9 +185,7 @@ def write_chunk(wfile, chunk, check_size=True):
         assert isinstance(key, str)
         assert isinstance(value, str)
         size_line = '{:x};{}={}\r\n'.format(len(data), key, value)
-    total = wfile.write(size_line.encode('latin_1'))
-    total += wfile.write(data)
-    total += wfile.write(b'\r\n')
+    total = wfile.write(b''.join([size_line.encode(), data, b'\r\n']))
     # Flush buffer as it could be some time before the next chunk is available:
     wfile.flush()
     return total
@@ -266,6 +286,7 @@ class Body(_Body):
 
 
 class BodyIter:
+    chunked = False
     __slots__ = ('source', 'content_length', 'closed')
 
     def __init__(self, source, content_length):
@@ -357,10 +378,14 @@ class ChunkedBody(_ChunkedBody):
             yield self.readchunk()
 
 
-class ChunkedBodyIter(_ChunkedBody):
+class ChunkedBodyIter:
+    chunked = True
+    __slots__ = ('source', 'closed', '_started')
+
     def __init__(self, source):
         self.source = source
         self.closed = False
+        self._started = False
 
     def __iter__(self):
         if self.closed:
@@ -375,6 +400,26 @@ class ChunkedBodyIter(_ChunkedBody):
                 empty = True
         if not empty:
             raise ChunkError('final chunk data was not empty')
+
+    def write_to(self, wfile):
+        if self.closed:
+            raise ValueError('ChunkedBodyIter.closed, already consumed')
+        if self._started:
+            raise ValueError('ChunkedBodyIter._started')
+        self._started = True
+        wfile.flush()  # Flush preamble before writting first chunk
+        empty = False
+        total = 0
+        for chunk in self.source:
+            if empty:
+                raise ValueError('non-empty chunk data after empty')
+            total += write_chunk(wfile, chunk)
+            if not chunk[1]:  # Is chunk data empty?
+                empty = True
+        if not empty:
+            raise ValueError('final chunk data was not empty')
+        self.closed = True
+        return total
 
 
 # Used to expose the RGI IO wrappers:

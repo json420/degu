@@ -2067,6 +2067,8 @@ class TestBodyIter(TestCase):
         # All good:
         source = []
         body = base.BodyIter(source, 17)
+        self.assertIs(body.chunked, False)
+        self.assertIs(body.__class__.chunked, False)
         self.assertIs(body.source, source)
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.closed, False)
@@ -2185,8 +2187,11 @@ class TestChunkedBodyIter(TestCase):
     def test_init(self):
         source = []
         body = base.ChunkedBodyIter(source)
+        self.assertIs(body.chunked, True)
+        self.assertIs(body.__class__.chunked, True)
         self.assertIs(body.source, source)
         self.assertIs(body.closed, False)
+        self.assertIs(body._started, False)
 
     def test_iter(self):
         source = (
@@ -2271,4 +2276,119 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(str(cm.exception),
             'body already fully read: {!r}'.format(body)
         )
+
+    def test_write_to(self):
+        source = (
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b'nurse'),
+            (None, b''),
+        )
+
+        # Test when closed:
+        body = base.ChunkedBodyIter(source)
+        body.closed = True
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBodyIter.closed, already consumed'
+        )
+        self.assertEqual(wfile._calls, [])
+
+        # Test when _started:
+        body = base.ChunkedBodyIter(source)
+        body._started = True
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBodyIter._started'
+        )
+        self.assertEqual(wfile._calls, [])
+
+        # Should close after one call:
+        body = base.ChunkedBodyIter(source)
+        wfile = DummyWriter()
+        self.assertEqual(body.write_to(wfile), 37)
+        self.assertEqual(wfile._calls, ['flush',
+            ('write', b'5\r\nhello\r\n'), 'flush',
+            ('write', b'7\r\nnaughty\r\n'), 'flush',
+            ('write', b'5\r\nnurse\r\n'), 'flush',
+            ('write', b'0\r\n\r\n'), 'flush',
+        ])
+        self.assertIs(body._started, True)
+        self.assertIs(body.closed, True)
+        with self.assertRaises(base.BodyClosedError) as cm:
+            list(body)
+        self.assertIs(cm.exception.body, body)
+        self.assertEqual(str(cm.exception),
+            'body already fully read: {!r}'.format(body)
+        )
+
+        # Should raise a ValueError on an empty source:
+        body = base.ChunkedBodyIter([])
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
+        self.assertIs(body._started, True)
+        self.assertIs(body.closed, False)
+        self.assertEqual(wfile._calls, ['flush'])
+
+        # Should raise ValueError if final chunk isn't empty:
+        source = (
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b'nurse'),
+        )
+        body = base.ChunkedBodyIter(source)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'final chunk data was not empty')
+        self.assertIs(body._started, True)
+        self.assertIs(body.closed, False)
+        self.assertEqual(wfile._calls, ['flush',
+            ('write', b'5\r\nhello\r\n'), 'flush',
+            ('write', b'7\r\nnaughty\r\n'), 'flush',
+            ('write', b'5\r\nnurse\r\n'), 'flush',
+        ])
+
+        # Should raise a ValueError if empty chunk is followed by non-empty:
+        source = (
+            (None, b'hello'),
+            (None, b'naughty'),
+            (None, b''),
+            (None, b'nurse'),
+            (None, b''),
+        )
+        body = base.ChunkedBodyIter(source)
+        wfile = DummyWriter()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), 'non-empty chunk data after empty')
+        self.assertIs(body._started, True)
+        self.assertIs(body.closed, False)
+        self.assertEqual(wfile._calls, ['flush',
+            ('write', b'5\r\nhello\r\n'), 'flush',
+            ('write', b'7\r\nnaughty\r\n'), 'flush',
+            ('write', b'0\r\n\r\n'), 'flush',
+        ])
+
+        # Test with random data of varying sizes:
+        source = [(None, os.urandom(size)) for size in range(1, 51)]
+        random.shuffle(source)
+        source.append((None, b''))
+        body = base.ChunkedBodyIter(tuple(source))
+        wfile = DummyWriter()
+        self.assertEqual(body.write_to(wfile), 1565)
+        self.assertIs(body._started, True)
+        self.assertIs(body.closed, True)
+        expected = ['flush']
+        for chunk in source:
+            expected.extend(
+                [('write', base.encode_chunk(chunk)), 'flush']
+            )
+        self.assertEqual(wfile._calls, expected)
 
