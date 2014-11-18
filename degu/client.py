@@ -151,7 +151,7 @@ def _validate_client_sslctx(sslctx):
     return sslctx
 
 
-def validate_request(bodies, method, uri, headers, body):
+def _validate_request(bodies, method, uri, headers, body):
     # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
     if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
         raise ValueError('invalid method: {!r}'.format(method))
@@ -207,14 +207,14 @@ def validate_request(bodies, method, uri, headers, body):
         raise ValueError('cannot include body in a {} request'.format(method))
 
 
-def parse_status(line):
+def _parse_status(line):
     """
     Parse the status line.
 
     The return value will be a ``(status, reason)`` tuple, and the status will
     be converted into an integer:
 
-    >>> parse_status('HTTP/1.1 404 Not Found')
+    >>> _parse_status('HTTP/1.1 404 Not Found')
     (404, 'Not Found')
 
     """
@@ -229,7 +229,7 @@ def parse_status(line):
     return (status, reason)
 
 
-def write_request(wfile, method, uri, headers, body):
+def _write_request(wfile, method, uri, headers, body):
     # For performance, store these attributes in local variables:
     write = wfile.write
     flush = wfile.flush
@@ -256,9 +256,9 @@ def write_request(wfile, method, uri, headers, body):
     return total
 
 
-def read_response(rfile, bodies, method):
+def _read_response(rfile, bodies, method):
     (status_line, headers) = read_preamble(rfile)
-    (status, reason) = parse_status(status_line)
+    (status, reason) = _parse_status(status_line)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
@@ -277,7 +277,6 @@ class Connection:
     A `Connection` is stateful and is *not* thread-safe.
     """
 
-    # Easy way to slighty reduce per-connection memory overhead:
     __slots__ = (
         'sock', 'base_headers', 'bodies', '_rfile', '_wfile', '_response_body'
     )
@@ -315,9 +314,9 @@ class Connection:
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
-            validate_request(self.bodies, method, uri, headers, body)
-            write_request(self._wfile, method, uri, headers, body)
-            response = read_response(self._rfile, self.bodies, method)
+            _validate_request(self.bodies, method, uri, headers, body)
+            _write_request(self._wfile, method, uri, headers, body)
+            response = _read_response(self._rfile, self.bodies, method)
             self._response_body = response.body
             return response
         except Exception:
