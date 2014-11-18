@@ -28,7 +28,7 @@ from collections import namedtuple
 import os
 
 from .base import bodies as default_bodies
-from .base import TYPE_ERROR, makefiles, read_preamble
+from .base import _TYPE_ERROR, _makefiles, read_preamble
 
 
 Response = namedtuple('Response', 'status reason headers body')
@@ -78,7 +78,7 @@ def build_client_sslctx(sslconfig):
 
     if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+            _TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # In typical Degu P2P usage, hostname checking is meaningless because we
@@ -87,7 +87,7 @@ def build_client_sslctx(sslconfig):
     # to make *check_hostname* default to True:
     check_hostname = sslconfig.get('check_hostname', True)
     if not isinstance(check_hostname, bool):
-        raise TypeError(TYPE_ERROR.format(
+        raise TypeError(_TYPE_ERROR.format(
             "sslconfig['check_hostname']", bool, type(check_hostname), check_hostname
         ))
 
@@ -285,7 +285,7 @@ class Connection:
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
-        (self._rfile, self._wfile) = makefiles(sock)
+        (self._rfile, self._wfile) = _makefiles(sock)
         self._response_body = None  # Previous Body(), ChunkedBody(), or None
 
     def __del__(self):
@@ -377,15 +377,15 @@ def _build_host(default_port, host, port, *extra):
     """
     if not isinstance(default_port, int):
         raise TypeError(
-            TYPE_ERROR.format('default_port', int, type(default_port), default_port)
+            _TYPE_ERROR.format('default_port', int, type(default_port), default_port)
         )
     if not isinstance(host, str):
         raise TypeError(
-            TYPE_ERROR.format('host', str, type(host), host)
+            _TYPE_ERROR.format('host', str, type(host), host)
         )
     if not isinstance(port, int):
         raise TypeError(
-            TYPE_ERROR.format('port', int, type(port), port)
+            _TYPE_ERROR.format('port', int, type(port), port)
         )
     for arg in extra:
         assert isinstance(arg, int)
@@ -431,7 +431,7 @@ class Client:
                 )
         else:
             raise TypeError(
-                TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
+                _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         if not set(options).issubset(self.__class__._allowed_options):
             cls = self.__class__

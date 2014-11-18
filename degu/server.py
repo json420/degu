@@ -29,7 +29,7 @@ import threading
 import os
 
 from .base import bodies as default_bodies
-from .base import TYPE_ERROR, makefiles, read_preamble
+from .base import _TYPE_ERROR, _makefiles, read_preamble
 
 
 log = logging.getLogger()
@@ -62,7 +62,7 @@ def build_server_sslctx(sslconfig):
 
     if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+            _TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # For safety and clarity, force all paths to be absolute, normalized paths:
@@ -216,7 +216,7 @@ def _write_response(wfile, status, reason, headers, body):
 
 
 def _handle_requests(app, sock, max_requests, session, bodies):
-    (rfile, wfile) = makefiles(sock)
+    (rfile, wfile) = _makefiles(sock)
     assert session['requests'] == 0
     requests = 0
     while _handle_one(app, rfile, wfile, session, bodies) is True:
@@ -324,7 +324,7 @@ class Server:
             family = socket.AF_UNIX
         else:
             raise TypeError(
-                TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
+                _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
 
         # app:

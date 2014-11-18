@@ -30,7 +30,7 @@ import socket
 import ssl
 
 from .helpers import DummySocket, FuzzTestCase
-from degu.base import TYPE_ERROR
+from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
 from degu import base, client
@@ -109,7 +109,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.build_client_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
+            _TYPE_ERROR.format('sslconfig', dict, str, 'bad')
         )
  
         # The remaining test both build_client_sslctx() directly, and the
@@ -124,7 +124,7 @@ class TestFunctions(TestCase):
             with self.assertRaises(TypeError) as cm:
                 func({'check_hostname': 0})
             self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format("sslconfig['check_hostname']", bool, int, 0)
+                _TYPE_ERROR.format("sslconfig['check_hostname']", bool, int, 0)
             )
 
         # sslconfig['key_file'] without sslconfig['cert_file']:
@@ -768,7 +768,7 @@ class TestClient(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.Client(1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
@@ -951,7 +951,7 @@ class TestSSLClient(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.SSLClient(sslctx, 1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:

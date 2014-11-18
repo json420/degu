@@ -249,9 +249,9 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test_makefiles(self):
+    def test__makefiles(self):
         sock = DummySocket()
-        self.assertEqual(base.makefiles(sock), (sock._rfile, sock._wfile))
+        self.assertEqual(base._makefiles(sock), (sock._rfile, sock._wfile))
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
@@ -1440,12 +1440,12 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, float, 17.0)
+            base._TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, '17')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, str, '17')
+            base._TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Bad content_length value:
@@ -1464,12 +1464,12 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17, '8192')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('io_size', int, str, '8192')
+            base._TYPE_ERROR.format('io_size', int, str, '8192')
         )
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17, 8192.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('io_size', int, float, 8192.0)
+            base._TYPE_ERROR.format('io_size', int, float, 8192.0)
         )
 
         # io_size too small:
@@ -1555,7 +1555,7 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             body.read(18.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('size', int, float, 18.0)
+            base._TYPE_ERROR.format('size', int, float, 18.0)
         )
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
@@ -1565,7 +1565,7 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             body.read('18')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('size', int, str, '18')
+            base._TYPE_ERROR.format('size', int, str, '18')
         )
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
@@ -1978,12 +1978,12 @@ class TestBodyIter(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.BodyIter([], 17.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, float, 17.0)
+            base._TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
             base.BodyIter([], '17')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, str, '17')
+            base._TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Good source with bad content_length value:

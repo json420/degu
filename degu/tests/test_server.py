@@ -40,7 +40,7 @@ import degu
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
-from degu.base import TYPE_ERROR
+from degu.base import _TYPE_ERROR
 from degu import rgi, base, server
 
 
@@ -65,7 +65,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.build_server_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
+            _TYPE_ERROR.format('sslconfig', dict, str, 'bad')
         )
 
         # The remaining test both build_server_sslctx() directly, and the
@@ -640,7 +640,7 @@ class TestServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.Server(1234, good_app)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
@@ -807,7 +807,7 @@ class TestSSLServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, 1234, good_app)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
