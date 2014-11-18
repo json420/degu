@@ -25,10 +25,10 @@ HTTP client.
 
 import socket
 from collections import namedtuple
-from os import path
+import os
 
 from .base import bodies as default_bodies
-from .base import TYPE_ERROR, makefiles, read_preamble
+from .base import _TYPE_ERROR, _makefiles, read_preamble
 
 
 Response = namedtuple('Response', 'status reason headers body')
@@ -78,7 +78,7 @@ def build_client_sslctx(sslconfig):
 
     if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+            _TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
 
     # In typical Degu P2P usage, hostname checking is meaningless because we
@@ -87,7 +87,7 @@ def build_client_sslctx(sslconfig):
     # to make *check_hostname* default to True:
     check_hostname = sslconfig.get('check_hostname', True)
     if not isinstance(check_hostname, bool):
-        raise TypeError(TYPE_ERROR.format(
+        raise TypeError(_TYPE_ERROR.format(
             "sslconfig['check_hostname']", bool, type(check_hostname), check_hostname
         ))
 
@@ -101,7 +101,7 @@ def build_client_sslctx(sslconfig):
     for key in ('ca_file', 'ca_path', 'cert_file', 'key_file'):
         if key in sslconfig:
             value = sslconfig[key]
-            if value != path.abspath(value):
+            if value != os.path.abspath(value):
                 raise ValueError(
                     'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
@@ -151,7 +151,7 @@ def _validate_client_sslctx(sslctx):
     return sslctx
 
 
-def validate_request(bodies, method, uri, headers, body):
+def _validate_request(bodies, method, uri, headers, body):
     # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
     if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
         raise ValueError('invalid method: {!r}'.format(method))
@@ -207,14 +207,14 @@ def validate_request(bodies, method, uri, headers, body):
         raise ValueError('cannot include body in a {} request'.format(method))
 
 
-def parse_status(line):
+def _parse_status(line):
     """
     Parse the status line.
 
     The return value will be a ``(status, reason)`` tuple, and the status will
     be converted into an integer:
 
-    >>> parse_status('HTTP/1.1 404 Not Found')
+    >>> _parse_status('HTTP/1.1 404 Not Found')
     (404, 'Not Found')
 
     """
@@ -229,7 +229,7 @@ def parse_status(line):
     return (status, reason)
 
 
-def write_request(wfile, method, uri, headers, body):
+def _write_request(wfile, method, uri, headers, body):
     # For performance, store these attributes in local variables:
     write = wfile.write
     flush = wfile.flush
@@ -256,9 +256,9 @@ def write_request(wfile, method, uri, headers, body):
     return total
 
 
-def read_response(rfile, bodies, method):
+def _read_response(rfile, bodies, method):
     (status_line, headers) = read_preamble(rfile)
-    (status, reason) = parse_status(status_line)
+    (status, reason) = _parse_status(status_line)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
@@ -277,7 +277,6 @@ class Connection:
     A `Connection` is stateful and is *not* thread-safe.
     """
 
-    # Easy way to slighty reduce per-connection memory overhead:
     __slots__ = (
         'sock', 'base_headers', 'bodies', '_rfile', '_wfile', '_response_body'
     )
@@ -286,7 +285,7 @@ class Connection:
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
-        (self._rfile, self._wfile) = makefiles(sock)
+        (self._rfile, self._wfile) = _makefiles(sock)
         self._response_body = None  # Previous Body(), ChunkedBody(), or None
 
     def __del__(self):
@@ -315,9 +314,9 @@ class Connection:
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
-            validate_request(self.bodies, method, uri, headers, body)
-            write_request(self._wfile, method, uri, headers, body)
-            response = read_response(self._rfile, self.bodies, method)
+            _validate_request(self.bodies, method, uri, headers, body)
+            _write_request(self._wfile, method, uri, headers, body)
+            response = _read_response(self._rfile, self.bodies, method)
             self._response_body = response.body
             return response
         except Exception:
@@ -378,15 +377,15 @@ def _build_host(default_port, host, port, *extra):
     """
     if not isinstance(default_port, int):
         raise TypeError(
-            TYPE_ERROR.format('default_port', int, type(default_port), default_port)
+            _TYPE_ERROR.format('default_port', int, type(default_port), default_port)
         )
     if not isinstance(host, str):
         raise TypeError(
-            TYPE_ERROR.format('host', str, type(host), host)
+            _TYPE_ERROR.format('host', str, type(host), host)
         )
     if not isinstance(port, int):
         raise TypeError(
-            TYPE_ERROR.format('port', int, type(port), port)
+            _TYPE_ERROR.format('port', int, type(port), port)
         )
     for arg in extra:
         assert isinstance(arg, int)
@@ -426,13 +425,13 @@ class Client:
         elif isinstance(address, (str, bytes)):
             self._family = socket.AF_UNIX
             host = None
-            if isinstance(address, str) and path.abspath(address) != address:
+            if isinstance(address, str) and os.path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
                 )
         else:
             raise TypeError(
-                TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
+                _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
         if not set(options).issubset(self.__class__._allowed_options):
             cls = self.__class__

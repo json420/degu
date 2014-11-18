@@ -40,9 +40,6 @@ ADDRESS_CONSTANTS = (
     IPv4_ANY,
 )
 
-# Provide very clear TypeError messages:
-TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
 
 def _run_server(q, address, build_func, *build_args, **options):
     try:
@@ -90,7 +87,9 @@ def _start_sslserver(sslconfig, address, build_func, *build_args, **options):
     import multiprocessing
     if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+            '{}: need a {!r}; got a {!r}: {!r}'.format(
+                'sslconfig', dict, type(sslconfig), sslconfig
+            )
         )
     q = multiprocessing.Queue()
     process = multiprocessing.Process(

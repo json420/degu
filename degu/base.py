@@ -26,23 +26,23 @@ Common HTTP parser and IO abstractions used by server and client.
 from collections import namedtuple
 try:
     from ._base import (
-        MAX_LINE_BYTES,
-        MAX_HEADER_COUNT,
+        _MAX_LINE_SIZE,
+        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 except ImportError:
     from ._basepy import (
-        MAX_LINE_BYTES,
-        MAX_HEADER_COUNT,
+        _MAX_LINE_SIZE,
+        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 
 
 __all__ = (
-    'MAX_LINE_BYTES',
-    'MAX_HEADER_COUNT',
+    '_MAX_LINE_SIZE',
+    '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
 )
@@ -54,10 +54,10 @@ STREAM_BUFFER_SIZE = 65536  # 64 KiB
 IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
-TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+_TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-def makefiles(sock):
+def _makefiles(sock):
     """
     Create (rfile, wfile) from a socket connection.
     """
@@ -75,7 +75,7 @@ def read_chunk(rfile):
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
-    line = rfile.readline(MAX_LINE_BYTES)
+    line = rfile.readline(_MAX_LINE_SIZE)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
     parts = line[:-2].split(b';')
@@ -166,7 +166,7 @@ class Body:
 
     def __init__(self, rfile, content_length, io_size=None):
         if not isinstance(content_length, int):
-            raise TypeError(TYPE_ERROR.format(
+            raise TypeError(_TYPE_ERROR.format(
                 'content_length', int, type(content_length), content_length)
             )
         if content_length < 0:
@@ -178,7 +178,7 @@ class Body:
         else:
             if not isinstance(io_size, int):
                 raise TypeError(
-                    TYPE_ERROR.format('io_size', int, type(io_size), io_size)
+                    _TYPE_ERROR.format('io_size', int, type(io_size), io_size)
                 )
             if not (4096 <= io_size <= MAX_READ_SIZE):
                 raise ValueError(
@@ -235,7 +235,7 @@ class Body:
         if size is not None:
             if not isinstance(size, int):
                 raise TypeError(
-                    TYPE_ERROR.format('size', int, type(size), size) 
+                    _TYPE_ERROR.format('size', int, type(size), size) 
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
@@ -327,7 +327,7 @@ class BodyIter:
 
     def __init__(self, source, content_length):
         if not isinstance(content_length, int):
-            raise TypeError(TYPE_ERROR.format(
+            raise TypeError(_TYPE_ERROR.format(
                 'content_length', int, type(content_length), content_length)
             )
         if content_length < 0:

@@ -24,8 +24,8 @@
 #include <Python.h>
 
 
-#define MAX_LINE_BYTES 4096
-#define MAX_HEADER_COUNT 20
+#define _MAX_LINE_SIZE 4096
+#define _MAX_HEADER_COUNT 20
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -455,7 +455,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
     /* Read and decode the first preamble line */
-    _READLINE(args_size_max, MAX_LINE_BYTES)
+    _READLINE(args_size_max, _MAX_LINE_SIZE)
     if (line_len <= 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         goto error;
@@ -471,8 +471,8 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
     /* Read, parse, and decode the header lines */
     _SET(headers, PyDict_New())
-    for (i=0; i<MAX_HEADER_COUNT; i++) {
-        _READLINE(args_size_max, MAX_LINE_BYTES)
+    for (i=0; i<_MAX_HEADER_COUNT; i++) {
+        _READLINE(args_size_max, _MAX_LINE_SIZE)
         _CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_len == 2) {
             goto done;  // Stop on the first empty CRLF terminated line
@@ -526,13 +526,13 @@ degu_read_preamble(PyObject *self, PyObject *args)
         }
     }
 
-    /* If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+    /* If we reach this point, we've already read _MAX_HEADER_COUNT headers, so 
      * we just need to check for the final CRLF preamble terminator:
      */
     _READLINE(args_size_two, 2)
     if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
-            "too many headers (> %u)", MAX_HEADER_COUNT
+            "too many headers (> %u)", _MAX_HEADER_COUNT
         );
         goto error;
     }
@@ -608,8 +608,8 @@ PyInit__base(void)
     }
 
     /* Init integer constants */
-    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
-    PyModule_AddIntMacro(module, MAX_LINE_BYTES);
+    PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
+    PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
@@ -625,8 +625,8 @@ PyInit__base(void)
     _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
 
-    /* Init pre-built global args tuple for rfile.readline(MAX_LINE_BYTES) */
-    _SET(int_size_max, PyObject_GetAttrString(module, "MAX_LINE_BYTES"))    
+    /* Init pre-built global args tuple for rfile.readline(_MAX_LINE_SIZE) */
+    _SET(int_size_max, PyObject_GetAttrString(module, "_MAX_LINE_SIZE"))    
     _SET(args_size_max, PyTuple_Pack(1, int_size_max))
     Py_CLEAR(int_size_max);
 

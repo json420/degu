@@ -33,7 +33,7 @@ import itertools
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase
 from degu.sslhelpers import random_id
-from degu.base import MAX_LINE_BYTES
+from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
 
 
@@ -155,16 +155,16 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(size, min_size, name)
         self.assertLessEqual(size, max_size, name)
 
-    def test_MAX_LINE_BYTES(self):
-        self.assertIsInstance(base.MAX_LINE_BYTES, int)
-        self.assertGreaterEqual(base.MAX_LINE_BYTES, 1024)
-        self.assertEqual(base.MAX_LINE_BYTES % 1024, 0)
-        self.assertLessEqual(base.MAX_LINE_BYTES, 8192)
+    def test__MAX_LINE_SIZE(self):
+        self.assertIsInstance(base._MAX_LINE_SIZE, int)
+        self.assertGreaterEqual(base._MAX_LINE_SIZE, 1024)
+        self.assertEqual(base._MAX_LINE_SIZE % 1024, 0)
+        self.assertLessEqual(base._MAX_LINE_SIZE, 8192)
 
-    def test_MAX_HEADER_COUNT(self):
-        self.assertIsInstance(base.MAX_HEADER_COUNT, int)
-        self.assertGreaterEqual(base.MAX_HEADER_COUNT, 5)
-        self.assertLessEqual(base.MAX_HEADER_COUNT, 20)
+    def test__MAX_HEADER_COUNT(self):
+        self.assertIsInstance(base._MAX_HEADER_COUNT, int)
+        self.assertGreaterEqual(base._MAX_HEADER_COUNT, 5)
+        self.assertLessEqual(base._MAX_HEADER_COUNT, 20)
 
     def test_STREAM_BUFFER_SIZE(self):
         self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
@@ -249,9 +249,9 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test_makefiles(self):
+    def test__makefiles(self):
         sock = DummySocket()
-        self.assertEqual(base.makefiles(sock), (sock._rfile, sock._wfile))
+        self.assertEqual(base._makefiles(sock), (sock._rfile, sock._wfile))
         self.assertEqual(sock._calls, [
             ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
@@ -389,7 +389,7 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         # `rfile.readline()` doesn't return bytes:
@@ -402,7 +402,7 @@ class TestFunctions(AlternatesTestCase):
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -417,14 +417,14 @@ class TestFunctions(AlternatesTestCase):
             'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         )
 
         # `rfile.readline()` returns more than *size* bytes:
-        lines = [b'D' * (backend.MAX_LINE_BYTES - 1) + b'\r\n']
+        lines = [b'D' * (backend._MAX_LINE_SIZE - 1) + b'\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
@@ -433,7 +433,7 @@ class TestFunctions(AlternatesTestCase):
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -453,7 +453,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -468,7 +468,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -485,7 +485,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -495,7 +495,7 @@ class TestFunctions(AlternatesTestCase):
         # `rfile.readline()` returns more than *size* bytes:
         lines = [
             random_line(),
-            b'D' * (backend.MAX_LINE_BYTES - 1) + b'\r\n',
+            b'D' * (backend._MAX_LINE_SIZE - 1) + b'\r\n',
         ]
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
@@ -506,7 +506,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -520,7 +520,7 @@ class TestFunctions(AlternatesTestCase):
         # Exception raised inside call to `rfile.readline()`:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT - 1)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT - 1)
         )
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
@@ -530,14 +530,14 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         # `rfile.readline()` doesn't return bytes:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT - 1)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT - 1)
         )
         lines.append(random_header_line().decode())
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -549,7 +549,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -558,7 +558,7 @@ class TestFunctions(AlternatesTestCase):
 
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT - 1)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT - 1)
         )
         lines.append(UserBytes(random_header_line()))
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -570,7 +570,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -580,9 +580,9 @@ class TestFunctions(AlternatesTestCase):
         # `rfile.readline()` returns more than *size* bytes:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT - 1)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT - 1)
         )
-        lines.append(b'D' * (backend.MAX_LINE_BYTES - 1) + b'\r\n')
+        lines.append(b'D' * (backend._MAX_LINE_SIZE - 1) + b'\r\n')
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
@@ -592,7 +592,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -607,7 +607,7 @@ class TestFunctions(AlternatesTestCase):
         # Exception raised inside call to `rfile.readline()`:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
@@ -617,7 +617,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
             + [2]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -625,7 +625,7 @@ class TestFunctions(AlternatesTestCase):
         # `rfile.readline()` doesn't return bytes:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         lines.append('\r\n')
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -637,7 +637,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
             + [2]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -647,7 +647,7 @@ class TestFunctions(AlternatesTestCase):
 
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         lines.append(UserBytes(b'\r\n'))
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -659,7 +659,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
             + [2]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -670,7 +670,7 @@ class TestFunctions(AlternatesTestCase):
         # `rfile.readline()` returns more than *size* bytes:
         lines = [random_line()]
         lines.extend(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         lines.append(b'D\r\n')
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -682,7 +682,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)]
+            [backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)]
             + [2]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -702,7 +702,7 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -717,7 +717,7 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble(rfile)
         self.assertEqual(str(cm.exception), "bad line termination: b'o\\n'")
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -732,7 +732,7 @@ class TestFunctions(AlternatesTestCase):
             backend.read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'first preamble line is empty')
         self.assertEqual(rfile._lines, [])
-        self.assertEqual(rfile._calls, [backend.MAX_LINE_BYTES])
+        self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
             tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
@@ -751,7 +751,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -770,7 +770,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -789,7 +789,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -823,7 +823,7 @@ class TestFunctions(AlternatesTestCase):
                     )
                     self.assertEqual(rfile._lines, [])
                     self.assertEqual(rfile._calls,
-                        [backend.MAX_LINE_BYTES for i in range(len(lines))]
+                        [backend._MAX_LINE_SIZE for i in range(len(lines))]
                     )
                     self.assertEqual(sys.getrefcount(rfile), 2)
                     self.assertEqual(counts,
@@ -848,7 +848,7 @@ class TestFunctions(AlternatesTestCase):
                 )
             self.assertEqual(rfile._lines, [])
             self.assertEqual(rfile._calls,
-                [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+                [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
             )
             self.assertEqual(sys.getrefcount(rfile), 2)
             self.assertEqual(counts,
@@ -867,7 +867,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(3)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -884,7 +884,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), 'negative content-length: -17')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(3)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -901,7 +901,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(3)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -924,7 +924,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(3)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -948,7 +948,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(4)]
+            [backend._MAX_LINE_SIZE for i in range(4)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -972,7 +972,7 @@ class TestFunctions(AlternatesTestCase):
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(4)]
+            [backend._MAX_LINE_SIZE for i in range(4)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -982,7 +982,7 @@ class TestFunctions(AlternatesTestCase):
         # Too many headers:
         first_line = random_line()
         header_lines = tuple(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         lines = [first_line]
         lines.extend(header_lines)
@@ -993,11 +993,11 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             backend.read_preamble(rfile)
         self.assertEqual(str(cm.exception),
-            'too many headers (> {!r})'.format(backend.MAX_HEADER_COUNT)
+            'too many headers (> {!r})'.format(backend._MAX_HEADER_COUNT)
         )
         self.assertEqual(rfile._lines, [])
         calls = [
-            backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)
+            backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)
         ]
         calls.append(2)
         self.assertEqual(rfile._calls, calls)
@@ -1018,7 +1018,7 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(sys.getrefcount(headers), 2)
             self.assertEqual(rfile._lines, [])
             self.assertEqual(rfile._calls,
-                [backend.MAX_LINE_BYTES for i in range(3)]
+                [backend._MAX_LINE_SIZE for i in range(3)]
             )
             self.assertEqual(sys.getrefcount(rfile), 2)
             self.assertEqual(counts,
@@ -1040,7 +1040,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(sys.getrefcount(headers), 2)
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES, backend.MAX_LINE_BYTES]
+            [backend._MAX_LINE_SIZE, backend._MAX_LINE_SIZE]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1066,7 +1066,7 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(sys.getrefcount(kv[1]), 3)
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend.MAX_LINE_BYTES for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(3)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1083,10 +1083,10 @@ class TestFunctions(AlternatesTestCase):
             header_line[:-2].split(b': ')[1].decode('latin_1')
         )
 
-        # MAX_HEADER_COUNT:
+        # _MAX_HEADER_COUNT:
         first_line = random_line()
         header_lines = tuple(
-            random_header_line() for i in range(backend.MAX_HEADER_COUNT)
+            random_header_line() for i in range(backend._MAX_HEADER_COUNT)
         )
         lines = [first_line]
         lines.extend(header_lines)
@@ -1102,7 +1102,7 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(sys.getrefcount(kv[1]), 3)
         self.assertEqual(rfile._lines, [])
         calls = [
-            backend.MAX_LINE_BYTES for i in range(backend.MAX_HEADER_COUNT + 1)
+            backend._MAX_LINE_SIZE for i in range(backend._MAX_HEADER_COUNT + 1)
         ]
         calls.append(2)
         self.assertEqual(rfile._calls, calls)
@@ -1128,8 +1128,8 @@ class TestFunctions(AlternatesTestCase):
         self.check_read_preamble(_base)
 
     def test_read_chunk(self):
-        data = (b'D' * 7777)  # Longer than MAX_LINE_BYTES
-        small_data = (b'd' * 6666)  # Still longer than MAX_LINE_BYTES
+        data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
+        small_data = (b'd' * 6666)  # Still longer than _MAX_LINE_SIZE
         termed = data + b'\r\n'
         self.assertEqual(len(termed), 7779)
         size = b'1e61\r\n'
@@ -1142,7 +1142,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             "bad chunk size termination: b'DD'"
         )
-        self.assertEqual(rfile.tell(), MAX_LINE_BYTES)
+        self.assertEqual(rfile.tell(), _MAX_LINE_SIZE)
         self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:
@@ -1440,12 +1440,12 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, float, 17.0)
+            base._TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, '17')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, str, '17')
+            base._TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Bad content_length value:
@@ -1464,12 +1464,12 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17, '8192')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('io_size', int, str, '8192')
+            base._TYPE_ERROR.format('io_size', int, str, '8192')
         )
         with self.assertRaises(TypeError) as cm:
             base.Body(rfile, 17, 8192.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('io_size', int, float, 8192.0)
+            base._TYPE_ERROR.format('io_size', int, float, 8192.0)
         )
 
         # io_size too small:
@@ -1555,7 +1555,7 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             body.read(18.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('size', int, float, 18.0)
+            base._TYPE_ERROR.format('size', int, float, 18.0)
         )
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
@@ -1565,7 +1565,7 @@ class TestBody(TestCase):
         with self.assertRaises(TypeError) as cm:
             body.read('18')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('size', int, str, '18')
+            base._TYPE_ERROR.format('size', int, str, '18')
         )
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
@@ -1978,12 +1978,12 @@ class TestBodyIter(TestCase):
         with self.assertRaises(TypeError) as cm:
             base.BodyIter([], 17.0)
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, float, 17.0)
+            base._TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
             base.BodyIter([], '17')
         self.assertEqual(str(cm.exception),
-            base.TYPE_ERROR.format('content_length', int, str, '17')
+            base._TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Good source with bad content_length value:

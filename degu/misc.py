@@ -34,7 +34,7 @@ import json
 from hashlib import sha1
 import multiprocessing
 
-from .base import TYPE_ERROR
+from .base import _TYPE_ERROR
 from .server import Server, SSLServer
 from .sslhelpers import PKI
 
@@ -151,7 +151,7 @@ def _start_server(address, app, **options):
 def _start_sslserver(sslconfig, address, app, **options):
     if not isinstance(sslconfig, dict):
         raise TypeError(
-            TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
+            _TYPE_ERROR.format('sslconfig', dict, type(sslconfig), sslconfig)
         )
     queue = multiprocessing.Queue()
     process = multiprocessing.Process(

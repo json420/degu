@@ -30,7 +30,7 @@ import socket
 import ssl
 
 from .helpers import DummySocket, FuzzTestCase
-from degu.base import TYPE_ERROR
+from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
 from degu import base, client
@@ -98,9 +98,9 @@ class TestUnconsumedResponseError(TestCase):
 
 
 class FuzzTestFunctions(FuzzTestCase):
-    def test_read_response(self):
+    def test__read_response(self):
         for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
-            self.fuzz(client.read_response, base.bodies, method)
+            self.fuzz(client._read_response, base.bodies, method)
 
 
 class TestFunctions(TestCase):
@@ -109,7 +109,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.build_client_sslctx('bad')
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('sslconfig', dict, str, 'bad')
+            _TYPE_ERROR.format('sslconfig', dict, str, 'bad')
         )
  
         # The remaining test both build_client_sslctx() directly, and the
@@ -124,7 +124,7 @@ class TestFunctions(TestCase):
             with self.assertRaises(TypeError) as cm:
                 func({'check_hostname': 0})
             self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format("sslconfig['check_hostname']", bool, int, 0)
+                _TYPE_ERROR.format("sslconfig['check_hostname']", bool, int, 0)
             )
 
         # sslconfig['key_file'] without sslconfig['cert_file']:
@@ -245,7 +245,7 @@ class TestFunctions(TestCase):
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, True)
 
-    def test_validate_request(self):
+    def test__validate_request(self):
         # Pre-build all valid types of length-encoded bodies:
         data = os.urandom(17)
         length_bodies = (
@@ -263,13 +263,13 @@ class TestFunctions(TestCase):
 
         # Bad method:
         with self.assertRaises(ValueError) as cm:
-            client.validate_request(base.bodies, 'get', '/foo', {}, None)
+            client._validate_request(base.bodies, 'get', '/foo', {}, None)
         self.assertEqual(str(cm.exception), "invalid method: 'get'")
 
         # Non-casefolded header name:
         headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request(base.bodies, 'GET', '/foo', headers, None)
+            client._validate_request(base.bodies, 'GET', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "non-casefolded header name: 'Content-Type'"
         )
@@ -277,7 +277,7 @@ class TestFunctions(TestCase):
         # Body is None but content-length header included:
         headers = {'content-length': 17}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request(base.bodies, 'POST', '/foo', headers, None)
+            client._validate_request(base.bodies, 'POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "headers['content-length'] included when body is None"
         )
@@ -285,7 +285,7 @@ class TestFunctions(TestCase):
         # Body is None but transfer-encoding header included:
         headers = {'transfer-encoding': 'chunked'}
         with self.assertRaises(ValueError) as cm:
-            client.validate_request(base.bodies, 'POST', '/foo', headers, None)
+            client._validate_request(base.bodies, 'POST', '/foo', headers, None)
         self.assertEqual(str(cm.exception),
             "headers['transfer-encoding'] included when body is None"
         )
@@ -293,7 +293,7 @@ class TestFunctions(TestCase):
         # Bad body type:
         headers = {'content-type': 'text/plain'}
         with self.assertRaises(TypeError) as cm:
-            client.validate_request(base.bodies, 'GET', '/foo', headers, 'hello')
+            client._validate_request(base.bodies, 'GET', '/foo', headers, 'hello')
         self.assertEqual(str(cm.exception),
             "bad request body type: <class 'str'>"
         )
@@ -302,7 +302,7 @@ class TestFunctions(TestCase):
         for body in length_bodies:
             headers = {'transfer-encoding': 'chunked'}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
                 "headers['transfer-encoding'] with length-encoded body"
             )
@@ -314,7 +314,7 @@ class TestFunctions(TestCase):
         for body in length_bodies:
             headers = {'content-length': 16}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
                 "headers['content-length'] != len(body): 16 != 17"
             )
@@ -324,7 +324,7 @@ class TestFunctions(TestCase):
         for body in chunked_bodies:
             headers = {'content-length': 5}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
                 "headers['content-length'] with chunk-encoded body"
             )
@@ -336,7 +336,7 @@ class TestFunctions(TestCase):
         for body in chunked_bodies:
             headers = {'transfer-encoding': 'clumped'}
             with self.assertRaises(ValueError) as cm:
-                client.validate_request(base.bodies, 'POST', '/foo', headers, body)
+                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
             self.assertEqual(str(cm.exception),
                 "headers['transfer-encoding'] is invalid: 'clumped'"
             )
@@ -346,7 +346,7 @@ class TestFunctions(TestCase):
         for body in (length_bodies + chunked_bodies):
             for method in ('GET', 'HEAD', 'DELETE'):
                 with self.assertRaises(ValueError) as cm:
-                    client.validate_request(base.bodies, method, '/foo', {}, body)
+                    client._validate_request(base.bodies, method, '/foo', {}, body)
                 self.assertEqual(str(cm.exception),
                     'cannot include body in a {} request'.format(method)
                 )
@@ -355,7 +355,7 @@ class TestFunctions(TestCase):
         for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
             headers = {}
             self.assertIsNone(
-                client.validate_request(base.bodies, method, '/foo', headers, None)
+                client._validate_request(base.bodies, method, '/foo', headers, None)
             )
             self.assertEqual(headers, {})
 
@@ -364,7 +364,7 @@ class TestFunctions(TestCase):
             for body in length_bodies:
                 headers = {}
                 self.assertIsNone(
-                    client.validate_request(base.bodies, method, '/foo', headers, body)
+                    client._validate_request(base.bodies, method, '/foo', headers, body)
                 )
                 self.assertEqual(headers, {'content-length': 17})
 
@@ -373,75 +373,75 @@ class TestFunctions(TestCase):
             for body in chunked_bodies:
                 headers = {}
                 self.assertIsNone(
-                    client.validate_request(base.bodies, method, '/foo', headers, body)
+                    client._validate_request(base.bodies, method, '/foo', headers, body)
                 )
                 self.assertEqual(headers, {'transfer-encoding': 'chunked'})
 
-    def test_parse_status(self):
+    def test__parse_status(self):
         # Not enough spaces:
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 200OK')
+            client._parse_status('HTTP/1.1 200OK')
         self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
 
         # Bad protocol:
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.0 200 OK')
+            client._parse_status('HTTP/1.0 200 OK')
         self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
 
         # Status not an int:
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 17.9 OK')
+            client._parse_status('HTTP/1.1 17.9 OK')
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 10: '17.9'"
         )
 
         # Status outside valid range:
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 99 OK')
+            client._parse_status('HTTP/1.1 99 OK')
         self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 99')
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 600 OK')
+            client._parse_status('HTTP/1.1 600 OK')
         self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 600')
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 -200 OK')
+            client._parse_status('HTTP/1.1 -200 OK')
         self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got -200')
 
         # Empty reason:
         with self.assertRaises(ValueError) as cm:
-            client.parse_status('HTTP/1.1 200 ')
+            client._parse_status('HTTP/1.1 200 ')
         self.assertEqual(str(cm.exception), 'empty reason')
 
         # A gew good static values:
-        self.assertEqual(client.parse_status('HTTP/1.1 200 OK'),
+        self.assertEqual(client._parse_status('HTTP/1.1 200 OK'),
             (200, 'OK')
         )
-        self.assertEqual(client.parse_status('HTTP/1.1 404 Not Found'),
+        self.assertEqual(client._parse_status('HTTP/1.1 404 Not Found'),
             (404, 'Not Found')
         )
-        self.assertEqual(client.parse_status('HTTP/1.1 505 HTTP Version Not Supported'),
+        self.assertEqual(client._parse_status('HTTP/1.1 505 HTTP Version Not Supported'),
             (505, 'HTTP Version Not Supported')
         )
 
         # Go through a bunch O permutations:
         for i in range(100, 600):
             self.assertEqual(
-                client.parse_status('HTTP/1.1 {:d} Foo'.format(i)),
+                client._parse_status('HTTP/1.1 {:d} Foo'.format(i)),
                 (i, 'Foo')
             )
             self.assertEqual(
-                client.parse_status('HTTP/1.1 {:d} Foo Bar'.format(i)),
+                client._parse_status('HTTP/1.1 {:d} Foo Bar'.format(i)),
                 (i, 'Foo Bar')
             )
             self.assertEqual(
-                client.parse_status('HTTP/1.1 {:d} Foo Bar Baz'.format(i)),
+                client._parse_status('HTTP/1.1 {:d} Foo Bar Baz'.format(i)),
                 (i, 'Foo Bar Baz')
             )
 
-    def test_write_request(self):
+    def test__write_request(self):
         # Empty headers, no body:
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', {}, None),
+            client._write_request(wfile, 'GET', '/', {}, None),
             18
         )
         self.assertEqual(wfile.tell(), 18)
@@ -451,7 +451,7 @@ class TestFunctions(TestCase):
         headers = {'foo': 17}  # Make sure to test with int header value
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, None),
+            client._write_request(wfile, 'GET', '/', headers, None),
             27
         )
         self.assertEqual(wfile.tell(), 27)
@@ -463,7 +463,7 @@ class TestFunctions(TestCase):
         headers = {'foo': 17, 'bar': 'baz'}
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, None),
+            client._write_request(wfile, 'GET', '/', headers, None),
             37
         )
         self.assertEqual(wfile.tell(), 37)
@@ -474,7 +474,7 @@ class TestFunctions(TestCase):
         # body is bytes:
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, b'hello'),
+            client._write_request(wfile, 'GET', '/', headers, b'hello'),
             42
         )
         self.assertEqual(wfile.tell(), 42)
@@ -486,7 +486,7 @@ class TestFunctions(TestCase):
         body = bytearray(b'hello')
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, body),
+            client._write_request(wfile, 'GET', '/', headers, body),
             42
         )
         self.assertEqual(wfile.tell(), 42)
@@ -499,7 +499,7 @@ class TestFunctions(TestCase):
         body = base.Body(rfile, 5)
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, body),
+            client._write_request(wfile, 'GET', '/', headers, body),
             42
         )
         self.assertEqual(rfile.tell(), 5)
@@ -513,7 +513,7 @@ class TestFunctions(TestCase):
         body = base.ChunkedBody(rfile)
         wfile = io.BytesIO()
         self.assertEqual(
-            client.write_request(wfile, 'GET', '/', headers, body),
+            client._write_request(wfile, 'GET', '/', headers, body),
             52
         )
         self.assertEqual(rfile.tell(), 15)
@@ -522,14 +522,14 @@ class TestFunctions(TestCase):
             b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
 
-    def test_read_response(self):
+    def test__read_response(self):
         # No headers, no body:
         lines = ''.join([
             'HTTP/1.1 200 OK\r\n',
             '\r\n',
         ]).encode('latin_1')
         rfile = io.BytesIO(lines)
-        r = client.read_response(rfile, base.bodies, 'GET')
+        r = client._read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {}, None))
 
@@ -541,7 +541,7 @@ class TestFunctions(TestCase):
         ]).encode('latin_1')
         data = os.urandom(17)
         rfile = io.BytesIO(lines + data)
-        r = client.read_response(rfile, base.bodies, 'GET')
+        r = client._read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -558,7 +558,7 @@ class TestFunctions(TestCase):
 
         # Like above, except this time for a HEAD request:
         rfile = io.BytesIO(lines + data)
-        r = client.read_response(rfile, base.bodies, 'HEAD')
+        r = client._read_response(rfile, base.bodies, 'HEAD')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
 
@@ -577,7 +577,7 @@ class TestFunctions(TestCase):
             total += base.write_chunk(rfile, (None, chunk))
         self.assertEqual(rfile.tell(), total)
         rfile.seek(0)
-        r = client.read_response(rfile, base.bodies, 'GET')
+        r = client._read_response(rfile, base.bodies, 'GET')
         self.assertIsInstance(r, client.Response)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -768,7 +768,7 @@ class TestClient(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.Client(1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
@@ -951,7 +951,7 @@ class TestSSLClient(TestCase):
         with self.assertRaises(TypeError) as cm:
             client.SSLClient(sslctx, 1234)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
+            _TYPE_ERROR.format('address', (tuple, str, bytes), int, 1234)
         )
 
         # Wrong number of items in address tuple:
