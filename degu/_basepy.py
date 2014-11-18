@@ -67,13 +67,13 @@ import re
 
 __all__ = (
     'MAX_LINE_BYTES',
-    'MAX_HEADER_COUNT',
+    '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
 )
 
 MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
-MAX_HEADER_COUNT = 20
+_MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
@@ -185,7 +185,7 @@ def _read_preamble(rfile):
         raise ValueError('first preamble line is empty')
     first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
     headers = {}
-    for i in range(MAX_HEADER_COUNT):
+    for i in range(_MAX_HEADER_COUNT):
         line = _READLINE(readline, MAX_LINE_BYTES)
         if line[-2:] != b'\r\n':
             raise ValueError(
@@ -209,7 +209,7 @@ def _read_preamble(rfile):
                 'duplicate header: {!r}'.format(line)
             )
     if _READLINE(readline, 2) != b'\r\n':
-        raise ValueError('too many headers (> {})'.format(MAX_HEADER_COUNT))
+        raise ValueError('too many headers (> {})'.format(_MAX_HEADER_COUNT))
     return (first_line, headers)
 
 

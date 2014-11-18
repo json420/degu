@@ -25,7 +25,7 @@
 
 
 #define MAX_LINE_BYTES 4096
-#define MAX_HEADER_COUNT 20
+#define _MAX_HEADER_COUNT 20
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -471,7 +471,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
     /* Read, parse, and decode the header lines */
     _SET(headers, PyDict_New())
-    for (i=0; i<MAX_HEADER_COUNT; i++) {
+    for (i=0; i<_MAX_HEADER_COUNT; i++) {
         _READLINE(args_size_max, MAX_LINE_BYTES)
         _CHECK_LINE_TERMINATION("bad header line termination: %R")
         if (line_len == 2) {
@@ -526,13 +526,13 @@ degu_read_preamble(PyObject *self, PyObject *args)
         }
     }
 
-    /* If we reach this point, we've already read MAX_HEADER_COUNT headers, so 
+    /* If we reach this point, we've already read _MAX_HEADER_COUNT headers, so 
      * we just need to check for the final CRLF preamble terminator:
      */
     _READLINE(args_size_two, 2)
     if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
         PyErr_Format(PyExc_ValueError,
-            "too many headers (> %u)", MAX_HEADER_COUNT
+            "too many headers (> %u)", _MAX_HEADER_COUNT
         );
         goto error;
     }
@@ -608,7 +608,7 @@ PyInit__base(void)
     }
 
     /* Init integer constants */
-    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
+    PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, MAX_LINE_BYTES);
 
     /* Init EmptyPreambleError exception */

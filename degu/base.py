@@ -27,14 +27,14 @@ from collections import namedtuple
 try:
     from ._base import (
         MAX_LINE_BYTES,
-        MAX_HEADER_COUNT,
+        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 except ImportError:
     from ._basepy import (
         MAX_LINE_BYTES,
-        MAX_HEADER_COUNT,
+        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
@@ -42,7 +42,7 @@ except ImportError:
 
 __all__ = (
     'MAX_LINE_BYTES',
-    'MAX_HEADER_COUNT',
+    '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
 )
