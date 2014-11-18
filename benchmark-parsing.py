@@ -8,9 +8,9 @@ gc.enable()
 from io import BytesIO
 
 from degu._base import parse_preamble
-from degu.base import read_preamble, write_chunk
-from degu.client import parse_status, write_request
-from degu.server import parse_request, read_request, write_response
+from degu.base import bodies, read_preamble, write_chunk
+from degu.client import _parse_status, _write_request
+from degu.server import _read_request, _write_response
 
 line = (b'L' *  50) + b'\\r\\n'
 assert line.endswith(b'\\r\\n')
@@ -29,7 +29,7 @@ headers = {
 }
 
 fp = BytesIO()
-write_request(fp, 'POST', '/foo/bar?stuff=junk', headers, None)
+_write_request(fp, 'POST', '/foo/bar?stuff=junk', headers, None)
 request_preamble = fp.getvalue()
 assert request_preamble.endswith(b'\\r\\n\\r\\n'), request_preamble
 preamble = request_preamble[:-4]
@@ -86,15 +86,14 @@ run('parse_preamble(preamble)')
 run("parse_preamble(b'hello\\r\\ncontent-length: 17')")
 run("parse_preamble(b'hello\\r\\ntransfer-encoding: chunked')")
 run('read_preamble(BytesIO(request_preamble))')
-run('read_request(BytesIO(request_preamble))')
-run("parse_request('POST /foo/bar?stuff=junk HTTP/1.1')")
-run("parse_status('HTTP/1.1 404 Not Found')")
+run('_read_request(BytesIO(request_preamble), bodies)')
+run("_parse_status('HTTP/1.1 404 Not Found')")
 
 print('\nHigh-level formatters:')
-run("write_response(wfile, 200, 'OK', headers, b'hello, world')")
-run("write_request(wfile, 'PUT', '/foo/bar?stuff=junk', headers, b'hello, world')")
-run("write_chunk(wfile, data)")
-run("write_chunk(wfile, data, ('foo', 'bar'))")
+run("_write_response(wfile, 200, 'OK', headers, b'hello, world')")
+run("_write_request(wfile, 'PUT', '/foo/bar?stuff=junk', headers, b'hello, world')")
+run("write_chunk(wfile, (None, data))")
+run("write_chunk(wfile, (('foo', 'bar'), data))")
 
 print('-' * 80)
 
