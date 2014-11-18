@@ -107,7 +107,7 @@ def build_server_sslctx(sslconfig):
     return sslctx
 
 
-def validate_server_sslctx(sslctx):
+def _validate_server_sslctx(sslctx):
     # Lazily import `ssl` module to be memory friendly when SSL isn't needed:
     import ssl
 
@@ -135,7 +135,7 @@ def validate_server_sslctx(sslctx):
     return sslctx
 
 
-def read_request(rfile, bodies):
+def _read_request(rfile, bodies):
     # Read the entire request preamble:
     (request_line, headers) = read_preamble(rfile)
 
@@ -188,7 +188,7 @@ def read_request(rfile, bodies):
     }
 
 
-def write_response(wfile, status, reason, headers, body):
+def _write_response(wfile, status, reason, headers, body):
     # For performance, store these attributes in local variables:
     write = wfile.write
     flush = wfile.flush
@@ -215,11 +215,11 @@ def write_response(wfile, status, reason, headers, body):
     return total
 
 
-def handle_requests(app, sock, max_requests, session, bodies):
+def _handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = makefiles(sock)
     assert session['requests'] == 0
     requests = 0
-    while handle_one(app, rfile, wfile, session, bodies) is True:
+    while _handle_one(app, rfile, wfile, session, bodies) is True:
         requests += 1
         session['requests'] = requests
         if requests >= max_requests:
@@ -230,9 +230,9 @@ def handle_requests(app, sock, max_requests, session, bodies):
     wfile.close()  # Will block till write buffer is flushed
 
 
-def handle_one(app, rfile, wfile, session, bodies):
+def _handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
-    request = read_request(rfile, bodies)
+    request = _read_request(rfile, bodies)
     request_method = request['method']
     request_body = request['body']
 
@@ -289,7 +289,7 @@ def handle_one(app, rfile, wfile, session, bodies):
         )
 
     # Write response
-    write_response(wfile, status, reason, headers, body)
+    _write_response(wfile, status, reason, headers, body)
 
     # Possibly close the connection:
     if status >= 400 and status not in {404, 409, 412}:
@@ -371,7 +371,7 @@ class Server:
         timeout = self.timeout
         bodies = self.bodies
         listensock = self.sock
-        worker = self.worker
+        worker = self._worker
         while True:
             (sock, address) = listensock.accept()
             # Denial of Service note: when we already have max_connections, we
@@ -392,11 +392,11 @@ class Server:
                 except OSError:
                     pass
 
-    def worker(self, semaphore, max_requests, bodies, sock, address):
+    def _worker(self, semaphore, max_requests, bodies, sock, address):
         session = {'client': address, 'requests': 0}
         log.info('Connection from %r', address)
         try:
-            self.handler(sock, max_requests, session, bodies)
+            self._handler(sock, max_requests, session, bodies)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
                 session.get('requests'), address, e
@@ -410,16 +410,16 @@ class Server:
                 pass
             semaphore.release()
 
-    def handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session, bodies):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            handle_requests(self.app, sock, max_requests, session, bodies)
+            _handle_requests(self.app, sock, max_requests, session, bodies)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
 
 class SSLServer(Server):
     def __init__(self, sslctx, address, app, **options):
-        self.sslctx = validate_server_sslctx(sslctx)
+        self.sslctx = _validate_server_sslctx(sslctx)
         super().__init__(address, app, **options)
 
     def __repr__(self):
@@ -427,11 +427,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session, bodies):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super().handler(sock, max_requests, session, bodies)
+        super()._handler(sock, max_requests, session, bodies)
 
