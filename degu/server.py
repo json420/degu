@@ -26,7 +26,7 @@ HTTP server.
 import socket
 import logging
 import threading
-from os import path
+import os
 
 from .base import bodies as default_bodies
 from .base import TYPE_ERROR, makefiles, read_preamble
@@ -69,7 +69,7 @@ def build_server_sslctx(sslconfig):
     for key in ('cert_file', 'key_file', 'ca_file', 'ca_path'):
         if key in sslconfig:
             value = sslconfig[key]
-            if value != path.abspath(value):
+            if value != os.path.abspath(value):
                 raise ValueError(
                     'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
@@ -154,7 +154,7 @@ def read_request(rfile, bodies):
         raise ValueError('bad request uri: {!r}'.format(uri))
     if path_str[:1] != '/' or '//' in path_str:
         raise ValueError('bad request path: {!r}'.format(path_str))
-    path_list = ([] if path_str == '/' else path_str[1:].split('/'))
+    path = ([] if path_str == '/' else path_str[1:].split('/'))
 
     # Only one dictionary lookup for content-length:
     content_length = headers.get('content-length')
@@ -181,7 +181,7 @@ def read_request(rfile, bodies):
         'method': method,
         'uri': uri,
         'script': [],
-        'path': path_list,
+        'path': path,
         'query': query,
         'headers': headers,
         'body': body,
@@ -315,7 +315,7 @@ class Server:
                     'address: must have 2 or 4 items; got {!r}'.format(address)
                 )
         elif isinstance(address, str):
-            if path.abspath(address) != address:
+            if os.path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
                 )

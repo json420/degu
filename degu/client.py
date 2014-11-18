@@ -25,7 +25,7 @@ HTTP client.
 
 import socket
 from collections import namedtuple
-from os import path
+import os
 
 from .base import bodies as default_bodies
 from .base import TYPE_ERROR, makefiles, read_preamble
@@ -101,7 +101,7 @@ def build_client_sslctx(sslconfig):
     for key in ('ca_file', 'ca_path', 'cert_file', 'key_file'):
         if key in sslconfig:
             value = sslconfig[key]
-            if value != path.abspath(value):
+            if value != os.path.abspath(value):
                 raise ValueError(
                     'sslconfig[{!r}] is not an absulute, normalized path: {!r}'.format(
                         key, value
@@ -426,7 +426,7 @@ class Client:
         elif isinstance(address, (str, bytes)):
             self._family = socket.AF_UNIX
             host = None
-            if isinstance(address, str) and path.abspath(address) != address:
+            if isinstance(address, str) and os.path.abspath(address) != address:
                 raise ValueError(
                     'address: bad socket filename: {!r}'.format(address)
                 )
