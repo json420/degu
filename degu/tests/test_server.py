@@ -260,7 +260,7 @@ class TestFunctions(TestCase):
         self.assertIs(server._validate_server_sslctx(sslctx), sslctx)
 
     def test__read_request(self):
-        longline = (b'D' * (base.MAX_LINE_BYTES - 1)) + b'\r\n'
+        longline = (b'D' * (base._MAX_LINE_SIZE - 1)) + b'\r\n'
 
         # No data:
         rfile = io.BytesIO()
@@ -280,7 +280,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad line termination: b'D\\r'")
-        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES)
+        self.assertEqual(rfile.tell(), base._MAX_LINE_SIZE)
         self.assertEqual(rfile.read(), b'\n')
 
         # LF but no proceeding CR:
@@ -304,7 +304,7 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception), "bad header line termination: b'D\\r'")
-        self.assertEqual(rfile.tell(), base.MAX_LINE_BYTES + 19)
+        self.assertEqual(rfile.tell(), base._MAX_LINE_SIZE + 19)
         self.assertEqual(rfile.read(), b'\n')
 
         # 1st header line has LF but no proceeding CR:

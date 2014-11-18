@@ -66,13 +66,13 @@ implementations correctly using the same incorrect tables.
 import re
 
 __all__ = (
-    'MAX_LINE_BYTES',
+    '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
 )
 
-MAX_LINE_BYTES = 4096  # Max length of line in HTTP preamble, including CRLF
+_MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
@@ -125,7 +125,7 @@ def _READLINE(readline, maxsize):
     of the dramatically higher-performance C implementation (aka, the
     implementation you actually want to use).
     """
-    assert isinstance(maxsize, int) and maxsize in (MAX_LINE_BYTES, 2)
+    assert isinstance(maxsize, int) and maxsize in (_MAX_LINE_SIZE, 2)
     line = readline(maxsize)
     if type(line) is not bytes:
         raise TypeError(
@@ -176,7 +176,7 @@ def _read_preamble(rfile):
     readline = rfile.readline
     if not callable(readline):
         raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, MAX_LINE_BYTES)
+    line = _READLINE(readline, _MAX_LINE_SIZE)
     if not line:
         raise EmptyPreambleError('HTTP preamble is empty')
     if line[-2:] != b'\r\n':
@@ -186,7 +186,7 @@ def _read_preamble(rfile):
     first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
     headers = {}
     for i in range(_MAX_HEADER_COUNT):
-        line = _READLINE(readline, MAX_LINE_BYTES)
+        line = _READLINE(readline, _MAX_LINE_SIZE)
         if line[-2:] != b'\r\n':
             raise ValueError(
                 'bad header line termination: {!r}'.format(line[-2:])

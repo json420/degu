@@ -35,7 +35,7 @@ import string
 
 from degu import tables
 from degu.sslhelpers import random_id
-from degu.base import MAX_LINE_BYTES
+from degu.base import _MAX_LINE_SIZE
 
 
 random = SystemRandom()
@@ -185,13 +185,13 @@ class FuzzTestCase(TestCase):
         should never read more than 4096 bytes.
         """
         for i in range(1000):
-            data = os.urandom(MAX_LINE_BYTES * 2)
+            data = os.urandom(_MAX_LINE_SIZE * 2)
             rfile = io.BytesIO(data)
             self.assertEqual(sys.getrefcount(rfile), 2)
             with self.assertRaises(ValueError):
                 func(rfile, *args)
             self.assertGreaterEqual(rfile.tell(), 1)
-            self.assertLessEqual(rfile.tell(), MAX_LINE_BYTES)
+            self.assertLessEqual(rfile.tell(), _MAX_LINE_SIZE)
             # Make sure refcount is still correct (especially important for
             # testing C extensions):
             self.assertEqual(sys.getrefcount(rfile), 2)

@@ -26,14 +26,14 @@ Common HTTP parser and IO abstractions used by server and client.
 from collections import namedtuple
 try:
     from ._base import (
-        MAX_LINE_BYTES,
+        _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
     )
 except ImportError:
     from ._basepy import (
-        MAX_LINE_BYTES,
+        _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
         read_preamble,
@@ -41,7 +41,7 @@ except ImportError:
 
 
 __all__ = (
-    'MAX_LINE_BYTES',
+    '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'read_preamble',
@@ -75,7 +75,7 @@ def read_chunk(rfile):
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
-    line = rfile.readline(MAX_LINE_BYTES)
+    line = rfile.readline(_MAX_LINE_SIZE)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
     parts = line[:-2].split(b';')
