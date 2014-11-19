@@ -97,6 +97,10 @@ Breaking API changes:
 
 Other changes:
 
+    *   Clarify and document the preferred approach for implementing high-level,
+        domain-specific wrappers atop the Degu client API; see
+        :ref:`high-level-client-API` for details.
+
     *   :class:`degu.client.Connection` now has shortcuts for the five supported
         HTTP request methods:
 
