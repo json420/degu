@@ -48,7 +48,6 @@ Contents:
     degu.misc
     degu.util
     degu.rgi
-    degu.jsonclient
     rgi
     security
     changelog

@@ -710,16 +710,16 @@ Also see the server :ref:`server-options`.
 
 .. _high-level-client-API:
 
-High-level client API
----------------------
+High-level client APIs
+----------------------
 
 :mod:`degu.client` aims to be as high-level as possible while still being
 completely generic.  As such, the Degu client API is quite low-level.
 
 Rather than trying to build a *moderately* high-level API (at the expense of
-being universal), the preferred Degu pattern is:
+being truly universal), the preferred Degu pattern is:
 
-    1.  Use the low-level, universal Degu client API whenever reasonable
+    1.  Use the low-level, generic Degu client API whenever reasonable
 
     2.  Otherwise use Degu as a building block for *extremely* high-level,
         domain-specific wrappers that exactly capture a specific pattern without
