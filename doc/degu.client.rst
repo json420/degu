@@ -713,33 +713,34 @@ Also see the server :ref:`server-options`.
 High-level client API
 ---------------------
 
-:mod:`degu.client` is a low-level API aimed at exposing complete HTTP client
-semantics, with neither fanfare nor magic.  As such, :mod:`degu.client` is
-sometimes lower-level than you'll want for a given scenario.
+:mod:`degu.client` aims to be as high-level as possible while still being
+completely generic.  As such, the Degu client API is quite low-level.
 
-Although high-level APIs like the excellent `Requests`_ library can make certain
-patterns extremely succinct, they generally do so at the expense of making other
-patterns more complex, and sometimes making still other patterns impossible.
+Rather than trying to build a *moderately* high-level API (at the expense of
+being universal), the preferred Degu pattern is:
 
-Rather than making you choose between a low-level (but universal) API and a
-high-level (but insufficiently  generic) API for all your HTTP client needs, the
-"Degu way" is to build high-level, domain-specific APIs as needed, and to
-otherwise use the low-level :mod:`degu.client` API.
+    1.  Use the low-level, universal Degu client API whenever reasonable
 
-When implementing high-level, domain-specific APIs, the recommended Degu
-approach is modeled after the `io`_ module in the Python standard library.
+    2.  Otherwise use Degu as a building block for *extremely* high-level,
+        domain-specific wrappers that exactly capture a specific pattern without
+        having to make any compromises for the sake of generality
+
+An application might use a number of these high-level, domain-specific wrappers,
+each to capture one of a number of specialized use-cases.
+
+The recommended way to implement such a high-level wrapper is modeled after the
+`io`_ module in the Python standard library.
 
 The Degu equivalent of the *Raw I/O* layer in the `io`_ module is provided by
 the "raw" client classes (:class:`Client` and :class:`SSLClient`), plus the
 "raw" connection class (:class:`Connection`).
 
 It's best to implement your high-level, domain-specific API as a pair of classes
-that wrap these "raw" objects.  This is the Degu equivalent of the high-level
-*Text I/O* and *Binary I/O* layers in the `io`_ module.
+that wrap these raw objects.  Such wrappers are the Degu equivalent of the
+high-level *Text I/O* and *Binary I/O* layers in the `io`_ module.
 
-Your high-level client class should take the "raw" client object as its first
-argument, and should implement an equivalent to :meth:`Client.connect()`, for
-example:
+Your client wrapper should take the raw client object as its first argument, and
+should implement an equivalent to :meth:`Client.connect()`:
 
 >>> class MyClient:
 ...     def __init__(self, client):
@@ -748,12 +749,15 @@ example:
 ...     def connect(self, bodies=None):
 ...         conn = self.client.connect(bodies=bodies)
 ...         return MyConnection(conn)
-... 
+...
 
-Your high-level connection class should take the "raw" connection object as its
-first argument, should implement equivalents to :attr:`Connection.closed` and
-:meth:`Connection.close()`, and should otherwise implement your domain-specific
-API, for example:
+(Note that such a wrapper is completely abstracted from how its *client*
+argument was constructed.  The *client* could be a :class:`Client`, an
+:class:`SSLClient`, or any other object providing the needed API.)
+
+Your connection wrapper should take the raw connection object as its first
+argument, and should implement an equivalent to :attr:`Connection.closed` and
+:meth:`Connection.close()`:
 
 >>> class MyConnection:
 ...     def __init__(self, conn):
@@ -766,28 +770,38 @@ API, for example:
 ...     def close(self):
 ...         return self.conn.close()
 ... 
-...     def post(self, uri, headers, body):
-...         return self.conn.request('POST', uri, headers, body)
+...     def request(method, uri, headers, body):
+...         response = self.conn.request(method, uri, headers, body)
+...         if not (200 <= response.status <= 299):
+...             raise Exception(
+...                 '{:d} {}'.format(response.status, response.reason)
+...             )
+...         return response
 ... 
 ...     def put(self, uri, headers, body):
-...         return self.conn.request('PUT', uri, headers, body)
+...         return self.request('PUT', uri, headers, body)
+... 
+...     def post(self, uri, headers, body):
+...         return self.request('POST', uri, headers, body)
 ... 
 ...     def get(self, uri, headers):
-...         return self.conn.request('GET', uri, headers, None)
-... 
-...     def delete(self, uri, headers):
-...         return self.conn.request('DELETE', uri, headers, None)
+...         return self.request('GET', uri, headers, None)
 ... 
 ...     def head(self, uri, headers):
-...         return self.conn.request('HEAD', uri, headers, None)
+...         return self.request('HEAD', uri, headers, None)
+... 
+...     def delete(self, uri, headers):
+...         return self.request('DELETE', uri, headers, None)
 ... 
 
-Arguably the above ``post()``, ``put()``, ``get()``, ``delete()``, and
-``head()`` shortcut methods aren't useful enough to justify the custom
-``MyConnection`` API, but it still illustrates the general approach.
+The ``MyConnection.request()`` method above demonstrates a feature that can be
+extremely useful for the end-point client consumer: automatically raising an
+exception when the request didn't return a ``2xx`` HTTP response status.
 
-For a more realistic example of a high-level, domain-specific client API, see
-:mod:`degu.jsonclient`.
+But it likewise demonstrates why even this seemingly innocent high-level
+behavior is totally inappropriate for the generic Degu client API.  When
+implementing a reverse-proxy, a central focus for Degu, you want to simply relay
+the upstream HTTP response without transformation or interpretation.
 
 
 
@@ -934,5 +948,4 @@ For example:
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
 
-.. _`Requests`: http://docs.python-requests.org/en/latest/
 .. _`io`: https://docs.python.org/3/library/io.html
