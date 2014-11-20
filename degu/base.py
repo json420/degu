@@ -132,10 +132,12 @@ def _encode_chunk(chunk, check_size=True):
     return b''.join([size_line.encode(), data, b'\r\n'])
 
 
-# FIXME: Add optional max_size=None keyword argument
-def write_chunk(wfile, chunk, check_size=True):
+def write_chunk(wfile, chunk, max_size=None):
     """
     Write *chunk* to *wfile* using chunked transfer-encoding.
+
+    Warning: the optional *max_size* keyword argument isn't yet part of the
+    stable API, might go away or change in behavior.
 
     See "Chunked Transfer Coding":
 
@@ -145,9 +147,11 @@ def write_chunk(wfile, chunk, check_size=True):
     (extension, data) = chunk
     assert extension is None or isinstance(extension, tuple)
     assert isinstance(data, bytes)
-    if check_size and len(data) > MAX_CHUNK_SIZE:
+    if max_size is None:
+        max_size = MAX_CHUNK_SIZE
+    if len(data) > max_size:
         raise ValueError(
-            'need len(data) <= {}; got {}'.format(MAX_CHUNK_SIZE, len(data))
+            'need len(data) <= {}; got {}'.format(max_size, len(data))
         )
     if extension is None:
         size_line = '{:x}\r\n'.format(len(data))

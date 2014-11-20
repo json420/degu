@@ -1953,14 +1953,15 @@ class TestChunkedBody(TestCase):
         )
 
         # A chunk is larger than MAX_CHUNK_SIZE:
+        pretent_max_size = base.MAX_CHUNK_SIZE + 1
         chunks = [
             (None, b'A'),
-            (None, b'B' * (base.MAX_CHUNK_SIZE + 1)),
+            (None, b'B' * pretent_max_size),
             (None, b''),
         ]
         rfile = io.BytesIO()
         for chunk in chunks:
-            base.write_chunk(rfile, chunk, check_size=False)
+            base.write_chunk(rfile, chunk, max_size=pretent_max_size)
         rfile.seek(0)
         body = base.ChunkedBody(rfile)
         with self.assertRaises(ValueError) as cm:
