@@ -210,12 +210,12 @@ class TestEmptyPreambleError(TestCase):
 
 
 class FuzzTestFunctions(AlternatesTestCase):
-    def test_read_preamble_p(self):
-        self.fuzz(_basepy.read_preamble)
+    def test__read_preamble_p(self):
+        self.fuzz(_basepy._read_preamble)
 
-    def test_read_preamble_c(self):
+    def test__read_preamble_c(self):
         self.skip_if_no_c_ext()
-        self.fuzz(_base.read_preamble)
+        self.fuzz(_base._read_preamble)
 
     def test_read_chunk(self):
         self.fuzz(base.read_chunk)
@@ -298,7 +298,7 @@ class TestFunctions(AlternatesTestCase):
         self.skip_if_no_c_ext()
         self.check_parse_preamble(_base)
 
-    def check_read_preamble(self, backend):
+    def check__read_preamble(self, backend):
         self.assertIn(backend, (_basepy, _base))
 
         # Bad bytes in preamble first line:
@@ -307,7 +307,7 @@ class TestFunctions(AlternatesTestCase):
                 data = bad + b'\r\nFoo: Bar\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)
                 with self.assertRaises(ValueError) as cm:
-                    backend.read_preamble(rfile)
+                    backend._read_preamble(rfile)
                 self.assertEqual(str(cm.exception),
                     'bad bytes in first line: {!r}'.format(bad)
                 )
@@ -320,7 +320,7 @@ class TestFunctions(AlternatesTestCase):
                 data = b'da first line\r\n' + bad + b': Bar\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)
                 with self.assertRaises(ValueError) as cm:
-                    backend.read_preamble(rfile)
+                    backend._read_preamble(rfile)
                 self.assertEqual(str(cm.exception),
                     'bad bytes in header name: {!r}'.format(bad)
                 )
@@ -333,25 +333,25 @@ class TestFunctions(AlternatesTestCase):
                 data = b'da first line\r\nFoo: ' + bad + b'\r\nstuff: Junk\r\n\r\n'
                 rfile = io.BytesIO(data)
                 with self.assertRaises(ValueError) as cm:
-                    backend.read_preamble(rfile)
+                    backend._read_preamble(rfile)
                 self.assertEqual(str(cm.exception),
                     'bad bytes in header value: {!r}'.format(bad)
                 )
                 self.assertEqual(sys.getrefcount(rfile), 2)
                 self.assertEqual(rfile.tell(), size + 22)
 
-        # Test number of arguments read_preamble() takes:
+        # Test number of arguments _read_preamble() takes:
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble()
+            backend._read_preamble()
         self.assertIn(str(cm.exception), {
-            'read_preamble() takes exactly 1 argument (0 given)',
-            "read_preamble() missing 1 required positional argument: 'rfile'"
+            '_read_preamble() takes exactly 1 argument (0 given)',
+            "_read_preamble() missing 1 required positional argument: 'rfile'"
         })
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble('foo', 'bar')
+            backend._read_preamble('foo', 'bar')
         self.assertIn(str(cm.exception), {
-            'read_preamble() takes exactly 1 argument (2 given)',
-            'read_preamble() takes 1 positional argument but 2 were given'
+            '_read_preamble() takes exactly 1 argument (2 given)',
+            '_read_preamble() takes 1 positional argument but 2 were given'
         })
 
         class Bad1:
@@ -364,7 +364,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = Bad1()
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(AttributeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             "'Bad1' object has no attribute 'readline'"
         )
@@ -374,7 +374,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = Bad2()
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'rfile.readline is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -386,7 +386,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile([])
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(IndexError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
@@ -397,7 +397,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
@@ -412,7 +412,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
@@ -428,7 +428,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
@@ -449,7 +449,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(IndexError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -462,7 +462,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
@@ -479,7 +479,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
@@ -500,7 +500,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
@@ -526,7 +526,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(IndexError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -543,7 +543,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
@@ -564,7 +564,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
@@ -586,7 +586,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 4097 bytes, expected at most 4096'
         )
@@ -613,7 +613,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(IndexError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'pop from empty list')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -631,7 +631,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(str, bytes)
         )
@@ -653,7 +653,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(TypeError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned {!r}, should return {!r}'.format(UserBytes, bytes)
         )
@@ -676,7 +676,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'rfile.readline() returned 3 bytes, expected at most 2'
         )
@@ -699,7 +699,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(backend.EmptyPreambleError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
@@ -714,7 +714,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), "bad line termination: b'o\\n'")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
@@ -729,7 +729,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'first preamble line is empty')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls, [backend._MAX_LINE_SIZE])
@@ -747,7 +747,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), "bad header line termination: b''")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -764,7 +764,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             "bad header line termination: b'\\n'"
         )
@@ -783,7 +783,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             "bad header line termination: b'6\\n'"
         )
@@ -817,7 +817,7 @@ class TestFunctions(AlternatesTestCase):
                     rfile = DummyFile(lines.copy())
                     self.assertEqual(sys.getrefcount(rfile), 2)
                     with self.assertRaises(ValueError) as cm:
-                        backend.read_preamble(rfile)
+                        backend._read_preamble(rfile)
                     self.assertEqual(str(cm.exception),
                         'header line too short: {!r}'.format(badline)
                     )
@@ -837,7 +837,7 @@ class TestFunctions(AlternatesTestCase):
             rfile = DummyFile(lines.copy())
             self.assertEqual(sys.getrefcount(rfile), 2)
             with self.assertRaises(ValueError) as cm:
-                backend.read_preamble(rfile)
+                backend._read_preamble(rfile)
             if len(bad) < 6:
                 self.assertEqual(str(cm.exception),
                     'header line too short: {!r}'.format(bad)
@@ -861,7 +861,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             "invalid literal for int() with base 10: '16.9'"
         )
@@ -880,7 +880,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), 'negative content-length: -17')
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -897,7 +897,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
@@ -918,7 +918,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             "duplicate header: b'Content-Type: text/plain\\r\\n'"
         )
@@ -942,7 +942,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
         )
@@ -966,7 +966,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
         )
@@ -991,7 +991,7 @@ class TestFunctions(AlternatesTestCase):
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
-            backend.read_preamble(rfile)
+            backend._read_preamble(rfile)
         self.assertEqual(str(cm.exception),
             'too many headers (> {!r})'.format(backend._MAX_HEADER_COUNT)
         )
@@ -1013,7 +1013,7 @@ class TestFunctions(AlternatesTestCase):
             counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
             rfile = DummyFile(lines.copy())
             self.assertEqual(sys.getrefcount(rfile), 2)
-            (first, headers) = backend.read_preamble(rfile)
+            (first, headers) = backend._read_preamble(rfile)
             self.assertEqual(sys.getrefcount(first), 2)
             self.assertEqual(sys.getrefcount(headers), 2)
             self.assertEqual(rfile._lines, [])
@@ -1035,7 +1035,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
-        (first, headers) = backend.read_preamble(rfile)
+        (first, headers) = backend._read_preamble(rfile)
         self.assertEqual(sys.getrefcount(first), 2)
         self.assertEqual(sys.getrefcount(headers), 2)
         self.assertEqual(rfile._lines, [])
@@ -1058,7 +1058,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
-        (first, headers) = backend.read_preamble(rfile)
+        (first, headers) = backend._read_preamble(rfile)
         self.assertEqual(sys.getrefcount(first), 2)
         self.assertEqual(sys.getrefcount(headers), 2)
         for kv in headers.items():
@@ -1094,7 +1094,7 @@ class TestFunctions(AlternatesTestCase):
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
-        (first, headers) = backend.read_preamble(rfile)
+        (first, headers) = backend._read_preamble(rfile)
         self.assertEqual(sys.getrefcount(first), 2)
         self.assertEqual(sys.getrefcount(headers), 2)
         for kv in headers.items():
@@ -1120,12 +1120,12 @@ class TestFunctions(AlternatesTestCase):
             self.assertIsInstance(value, str)
             self.assertEqual(value, line[:-2].split(b': ')[1].decode('latin_1'))
 
-    def test_read_preamble_p(self):
-        self.check_read_preamble(_basepy)
+    def test__read_preamble_p(self):
+        self.check__read_preamble(_basepy)
 
-    def test_read_preamble_c(self):
+    def test__read_preamble_c(self):
         self.skip_if_no_c_ext()
-        self.check_read_preamble(_base)
+        self.check__read_preamble(_base)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
@@ -1953,14 +1953,15 @@ class TestChunkedBody(TestCase):
         )
 
         # A chunk is larger than MAX_CHUNK_SIZE:
+        pretent_max_size = base.MAX_CHUNK_SIZE + 1
         chunks = [
             (None, b'A'),
-            (None, b'B' * (base.MAX_CHUNK_SIZE + 1)),
+            (None, b'B' * pretent_max_size),
             (None, b''),
         ]
         rfile = io.BytesIO()
         for chunk in chunks:
-            base.write_chunk(rfile, chunk, check_size=False)
+            base.write_chunk(rfile, chunk, max_size=pretent_max_size)
         rfile.seek(0)
         body = base.ChunkedBody(rfile)
         with self.assertRaises(ValueError) as cm:

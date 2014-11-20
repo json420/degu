@@ -1,34 +1,93 @@
-:mod:`degu.base` --- IO abstractions, parser
-============================================
+:mod:`degu.base` --- Bodies API, parser, formatter
+==================================================
 
 .. module:: degu.base
-   :synopsis: common HTTP parser and IO abstractions
+   :synopsis: HTTP bodies API, parser, formatter
 
-This module provides IO abstractions used by both :mod:`degu.server` and
+:mod:`degu.base` provides IO abstractions used by both :mod:`degu.server` and
 :mod:`degu.client` to represent HTTP request and response bodies.  This API is
 exposed via the :attr:`bodies` attribute, which is a :class:`BodiesAPI`
 instance.
 
-This module also provides the shared HTTP parser used by the :mod:`degu.server`
-and :mod:`degu.client`.
+This module also provides the shared HTTP parser and formatter used by the Degu
+server and client.
 
-.. warning::
+However, aside from :func:`read_chunk()` and :func:`write_chunk()`, the parsing
+and formatting API is still private, for Degu internal use only, with no
+commitment to backward API compatibility.
 
-    At this time, the HTTP parser is internal API only meant for use by Degu,
-    not something 3rd party applications should consider using.
+But the parsing and formatting API isn't something 3rd-party applications need
+to use directly.  It's just something that will *eventually* be exposed as part
+of the stable Degu API, largely because it can be handy for unit testing and, if
+nothing else, helpful in understanding how Degu is implemented.
 
-    Aspects of parser are documented to help you understand how Degu handles
-    HTTP headers, and likewise how Degu handles HTTP chunked transfer-encoding.
+Some :mod:`degu.base` functionality is already implemented in a high-performance
+`C extension`_, with a pure-Python reference implementation of the same to help
+verify the correctness of the C extension.
 
-    But please don't mistake them being documented as any commitment to API
-    stability.
+Over time, most (if not all) of :mod:`degu.base` will be implemented in C, again
+with a pure-Python reference implementation to help verify the correctness of
+the C implementation.
 
-Overtime time, most all :degu.base will have a C implementation for production
-use, plus a Python reference implementation to help clarify the design and
-validate the correctness of the C implementation.
 
-This work has just started.  Thus far only :func:`read_preamble()` has a C
-version.
+
+Exceptions
+----------
+
+.. exception:: EmptyPreambleError
+
+    Raised when ``b''`` is returned when reading the HTTP preamble.
+
+    This is a ``ConnectionError`` subclass.  When no data is received when
+    trying to read the request or response preamble, this typically means the
+    connection was closed on the other end.
+
+    This exception is inspired by the `BadStatusLine`_ exception in the
+    ``http.client`` module in the standard Python3 library.  However, as
+    :exc:`EmptyPreambleError` is a ``ConnectionError`` subclass, there is no
+    reason to use this exception directly.
+
+    Instead just except a ``ConnectionError``, as this also captures other
+    scenarios that your application will want to treat as equivalent (all
+    being interpreted as "oops, the connection to the other endpoint was
+    closed").
+
+    For example::
+
+        try:
+            response = conn.request('GET', '/foo/bar', {}, None)
+        except ConnectionError:
+            pass  # Retry?  Give up?  Your choice!
+
+
+
+Constants
+---------
+
+.. data:: MAX_READ_SIZE
+
+    Max total read size (in bytes).
+
+    >>> from degu import base
+    >>> base.MAX_READ_SIZE  # 16 MiB
+    16777216
+
+.. data:: MAX_CHUNK_SIZE
+
+    Max total read size (in bytes).
+
+    >>> from degu import base
+    >>> base.MAX_CHUNK_SIZE  # 16 MiB
+    16777216
+
+.. data:: IO_SIZE
+
+    Default IO size for :class:`Body` (in bytes).
+
+    >>> from degu import base
+    >>> base.IO_SIZE  # 1 MiB
+    1048576
+
 
 
 
@@ -422,126 +481,8 @@ version.
 
 
 
-Constants
----------
-
-.. data:: MAX_READ_SIZE
-
-    Max total read size (in bytes).
-
-    >>> from degu import base
-    >>> base.MAX_READ_SIZE  # 16 MiB
-    16777216
-
-.. data:: MAX_CHUNK_SIZE
-
-    Max total read size (in bytes).
-
-    >>> from degu import base
-    >>> base.MAX_CHUNK_SIZE  # 16 MiB
-    16777216
-
-.. data:: IO_SIZE
-
-    Default IO size for :class:`Body` (in bytes).
-
-    >>> from degu import base
-    >>> base.IO_SIZE  # 1 MiB
-    1048576
-
-
-
-Exceptions
-----------
-
-.. exception:: EmptyPreambleError
-
-    Raised by :func:`read_preamble()` when no data is received.
-
-    This is a ``ConnectionError`` subclass.  When no data is received when
-    trying to read the request or response preamble, this typically means the
-    connection was closed on the other end.
-
-    This exception is inspired by the `BadStatusLine`_ exception in the
-    ``http.client`` module in the standard Python3 library.  However, as
-    :exc:`EmptyPreambleError` is a ``ConnectionError`` subclass, there is no
-    reason to use this exception directly.
-
-
-
-Parsing functions
------------------
-
-
-.. function:: read_preamble(rfile)
-
-    Read the HTTP request or response preamble, do low-level parsing.
-
-    The return value will be a ``(first_line, headers)`` tuple.
-
-    ``first_line`` will be an ``str`` containing either the request line (when
-    used on the server side) or the status line (when used on the client side).
-
-    ``headers`` will be ``dict`` mapping header names to header values, and the
-    header names will be case-folded (lowercase).  For example:
-
-    >>> from io import BytesIO
-    >>> from degu.base import read_preamble
-    >>> rfile = BytesIO(b'first\r\nContent-Type: text/plain\r\n\r\n')
-    >>> read_preamble(rfile)
-    ('first', {'content-type': 'text/plain'})
-
-    Although allowed by HTTP/1.1 (but seldom used in practice), this function
-    does not permit multiple occurrences of the same header name:
-
-    >>> rfile = BytesIO(b'first\r\ncontent-type: foo\r\nContent-Type: bar\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: duplicate header: b'Content-Type: bar\r\n'
-
-    If a Content-Length header is included, its value will be parsed into an
-    ``int`` and validated:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: 1776\r\n\r\n')
-    >>> read_preamble(rfile)
-    ('first', {'content-length': 1776})
-
-    A ``ValueError`` is raised if the Content-Length can't be parsed into an
-    integer:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: E81F3B\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: invalid literal for int() with base 10: 'E81F3B'
-
-    Likewise, a ``ValueError`` is raised if the Content-Length is negative:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: -42\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: negative content-length: -42
-
-    If a Transfer-Encoding header is included, this functions will raise a
-    ``ValueError`` if the value is anything other than ``'chunked'``.
-
-    >>> rfile = BytesIO(b'first\r\nTransfer-Encoding: clumped\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: bad transfer-encoding: 'clumped'
-
-    Finally, this function will also raise a ``ValueError`` if both
-    Content-Length and Transfer-Encoding headers are included:
-
-    >>> rfile = BytesIO(b'first\r\nTransfer-Encoding: chunked\r\nContent-Length: 1776\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: cannot have both content-length and transfer-encoding headers
-
+Parsing/formatting
+------------------
 
 .. function:: read_chunk(rfile)
 
@@ -609,3 +550,4 @@ Parsing functions
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
 .. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
+.. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c

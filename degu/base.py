@@ -29,14 +29,14 @@ try:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
+        _read_preamble,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
+        _read_preamble,
     )
 
 
@@ -44,7 +44,7 @@ __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    'read_preamble',
+    '_read_preamble',
 )
 
 
@@ -67,6 +67,7 @@ def _makefiles(sock):
     )
 
 
+# FIXME: Add optional max_size=None keyword argument
 def read_chunk(rfile):
     """
     Read a chunk from a chunk-encoded request or response body.
@@ -131,9 +132,12 @@ def _encode_chunk(chunk, check_size=True):
     return b''.join([size_line.encode(), data, b'\r\n'])
 
 
-def write_chunk(wfile, chunk, check_size=True):
+def write_chunk(wfile, chunk, max_size=None):
     """
     Write *chunk* to *wfile* using chunked transfer-encoding.
+
+    Warning: the optional *max_size* keyword argument isn't yet part of the
+    stable API, might go away or change in behavior.
 
     See "Chunked Transfer Coding":
 
@@ -143,9 +147,11 @@ def write_chunk(wfile, chunk, check_size=True):
     (extension, data) = chunk
     assert extension is None or isinstance(extension, tuple)
     assert isinstance(data, bytes)
-    if check_size and len(data) > MAX_CHUNK_SIZE:
+    if max_size is None:
+        max_size = MAX_CHUNK_SIZE
+    if len(data) > max_size:
         raise ValueError(
-            'need len(data) <= {}; got {}'.format(MAX_CHUNK_SIZE, len(data))
+            'need len(data) <= {}; got {}'.format(max_size, len(data))
         )
     if extension is None:
         size_line = '{:x}\r\n'.format(len(data))
@@ -226,20 +232,23 @@ class Body:
             yield data
         self.closed = True
 
+    # FIXME: Add 2nd, max_size=None optional keyword argument
     def read(self, size=None):
         if self.closed:
             raise ValueError('Body.closed, already consumed')
         if self._remaining <= 0:
             self.closed = True
             return b''
-        if size is not None:
+        if size is None:
+            read = self._remaining
+        else:
             if not isinstance(size, int):
                 raise TypeError(
                     _TYPE_ERROR.format('size', int, type(size), size) 
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
-        read = (self._remaining if size is None else min(self._remaining, size))
+            read = min(self._remaining, size)
         if read > MAX_READ_SIZE:
             raise ValueError(
                 'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
@@ -260,7 +269,7 @@ class Body:
         self._remaining -= read
         assert self._remaining >= 0
         if size is None:
-            # Entire body was request at once, so close:
+            # Entire body was read at once, so close:
             self.closed = True
         return data
 
@@ -290,6 +299,7 @@ class ChunkedBody:
         while not self.closed:
             yield self.readchunk()
 
+    # FIXME: Add optional max_size=None keyword argument
     def readchunk(self):
         if self.closed:
             raise ValueError('ChunkedBody.closed, already consumed')
@@ -302,6 +312,7 @@ class ChunkedBody:
             self.closed = True
         return (extension, data)
 
+    # FIXME: Add optional size=None, max_size=None keyword arguments
     def read(self, size=None):
         if self.closed:
             raise ValueError('ChunkedBody.closed, already consumed')

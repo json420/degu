@@ -1,4 +1,4 @@
 include COPYING COPYING.LESSER
-include benchmark.py benchmark-parsing.py benchmark-ssl.py run-echo-app.py
+include benchmark.py benchmark-parsing.py benchmark-ssl.py
 include doc/*
 include doc/_static/*

@@ -18,17 +18,17 @@ Breaking API changes:
 
             (extension, data)
 
-        This was the one place where the Degu API wasn't faithful to the HTTP
-        wire format (the chunk *extension*, when present, is contained in the
-        chunk size line, prior to the actual chunk *data*).
+        This was the one place where the Degu API wasn't faithful to the order
+        in the HTTP wire format (the chunk *extension*, when present, is
+        contained in the chunk size line, prior to the actual chunk *data*).
 
         As before, the *extension* will be ``None`` when there is no extension
         for a specific chunk::
 
             (None, b'hello, world')
 
-        And *extension* will be a ``(key, value)`` tuple when a specific chunk
-        does contain an optional per-chunk extension::
+        And the *extension* will be a ``(key, value)`` tuple when a specific
+        chunk does contain an optional per-chunk extension::
 
             (('foo', 'bar'), b'hello, world')
 
@@ -49,11 +49,32 @@ Breaking API changes:
             chunk = read_chunk(rfile)
             write_chunk(wfile, chunk)
 
-    *   :meth:`degu.base.ChunkedBody.read()` now returns ``bytes`` instead of
-        a ``bytearray``
+    *   :meth:`degu.base.Body.read()` will now raise a ``ValueError`` if the
+        resulting read would exceed :attr:`degu.base.MAX_READ_SIZE` (currently
+        16 MiB); this is to prevent unbounded resource usage when no *size* is
+        provided, a common pattern when a relatively small input body is
+        expected, for example::
+
+            doc = json.loads(body.read().decode())
+
+    *   :meth:`degu.base.ChunkedBody.read()` will likewise now raise a
+        ``ValueError`` when the accumulated size of chunks read thus far exceeds
+        :attr:`degu.base.MAX_READ_SIZE`; this is to prevent unbounded resource
+        usage for the same pattern above, which is especially important as the
+        total size of a chunk-encoded input body can't be determined in advance.
+
+        Note that in the near future :meth:`degu.base.ChunkedBody.read()` will
+        accept an optional *size* argument, which can be done without breaking
+        backward compatibility.  Once this happens, it will exactly match the
+        semantics of of :meth:`degu.base.Body.read()`, and will meet standard
+        Python file-like API exceptions.
+
+    *   :meth:`degu.base.ChunkedBody.read()` now returns a ``bytes`` instance
+        instead of a ``bytearray``, to match standard Python file-like API
+        expectations.
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
-        difference between *no* query vs merely an *empty* query.
+        difference between "no query" vs merely an "empty query".
 
         When there is *no* query, ``request['query']`` will now be ``None``
         (whereas previously it would be ``''``).  For example::
@@ -78,13 +99,34 @@ Breaking API changes:
                 'body': None,
             }
 
-        The change means it's now possible to exactly reconstructed the original
-        URI from the *script*, *path*, and *query* components.
+        This change means it's now possible to exactly reconstructed the
+        original URI from the ``request['script']``, ``request['path']``, and
+        ``request['query']`` components.
 
     *   :func:`degu.util.relative_uri()` and :func:`degu.util.absolute_uri()`
         now preserve the difference between *no* query vs merely an *empty*
         query, can always reconstruct a lossless relative URI, or a lossless
         absolute URI, respectively.
+
+    *   :meth:`degu.rgi.Validator.__call__()` now requires that
+        ``request['uri']`` be present and be a ``str`` instance; it also
+        enforces an invariant condition between ``request['script']``,
+        ``request['path']``, and ``request['query']`` on the one hand, and
+        ``request['uri']`` on the other::
+
+            _reconstruct_uri(request) == request['uri']
+
+        This invariant condition is initially checked to ensure that the RGI
+        server correctly parsed the URI and that any path shifting was done
+        correctly by (possible) upstream middleware; then this invariant
+        condition is again checked after calling the downstream ``app()``
+        request handler, to make sure that any path shifting was done correctly
+        by (possible) downstream middleware.
+
+    *   Demote ``read_preamble()`` function in :mod:`degu.base` to internal,
+        private use API, as it isn't expected to be part of the eventual public
+        parsing API (it will be replaced by some other equivalent once the C
+        backend is complete).
 
     *   :class:`degu.client.Client` no longer accepts the *Connection* keyword
         option, no longer has the ``Client.Connection`` attribute; the idea
@@ -160,6 +202,11 @@ Other changes:
         *max_connections* limit has been reached, the new implementation also
         now rate-limits the handling of new connections to one attempt every 2
         seconds (to mitigate Denial of Service attacks).
+
+    *   Build the ``degu._base`` `C extension`_ with "-std=gnu11" as this will
+        soon be the GCC default and we don't necessarily want to make a
+        commitment to it working with older standards (although it currently
+        does and this wont likely change anytime soon).
 
 
 
@@ -833,3 +880,4 @@ Two things motivated these breaking API changes:
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
+.. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
