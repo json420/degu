@@ -112,15 +112,19 @@ Breaking API changes:
         ``request['uri']`` be present and be a ``str`` instance; it also
         enforces an invariant condition between ``request['script']``,
         ``request['path']``, and ``request['query']`` on the one hand, and
-        ``request['uri']`` on the other; this invariant condition is initially
-        checked to ensure that the RGI server correctly parsed the URI and that
-        any path shifting was correctly done by upstream middleware, and then
-        this invariant condition is checked again after calling its ``app()``
-        request handler to make sure than any path shifting was done correctly
-        by downstream middleware and the downstream application.
+        ``request['uri']`` on the other::
+
+            _reconstruct_uri(request) == request['uri']
+
+        This invariant condition is initially checked to ensure that the RGI
+        server correctly parsed the URI and that any path shifting was done
+        correctly by (possible) upstream middleware; then this invariant
+        condition is again checked after calling the downstream ``app()``
+        request handler, to make sure that any path shifting was done correctly
+        by (possible) downstream middleware.
 
     *   Demote ``read_preamble()`` function in :mod:`degu.base` to internal,
-        private use API, as it isn't expected to be part of the final, public
+        private use API, as it isn't expected to be part of the eventual public
         parsing API (it will be replaced by some other equivalent once the C
         backend is complete).
 
