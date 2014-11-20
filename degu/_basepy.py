@@ -68,8 +68,8 @@ import re
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
+    '_read_preamble',
     'EmptyPreambleError',
-    'read_preamble',
 )
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
@@ -172,7 +172,7 @@ def parse_preamble(preamble):
     return (first_line, headers)
 
 
-def _read_preamble(rfile):
+def __read_preamble(rfile):
     readline = rfile.readline
     if not callable(readline):
         raise TypeError('rfile.readline is not callable')
@@ -213,8 +213,8 @@ def _read_preamble(rfile):
     return (first_line, headers)
 
 
-def read_preamble(rfile):
-    (first_line, headers) = _read_preamble(rfile)
+def _read_preamble(rfile):
+    (first_line, headers) = __read_preamble(rfile)
     if 'content-length' in headers:
         headers['content-length'] = int(headers['content-length'])
         if headers['content-length'] < 0:

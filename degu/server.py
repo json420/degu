@@ -29,7 +29,7 @@ import threading
 import os
 
 from .base import bodies as default_bodies
-from .base import _TYPE_ERROR, _makefiles, read_preamble
+from .base import _TYPE_ERROR, _makefiles, _read_preamble
 
 
 log = logging.getLogger()
@@ -137,7 +137,7 @@ def _validate_server_sslctx(sslctx):
 
 def _read_request(rfile, bodies):
     # Read the entire request preamble:
-    (request_line, headers) = read_preamble(rfile)
+    (request_line, headers) = _read_preamble(rfile)
 
     # Parse the request line:
     (method, uri, protocol) = request_line.split()

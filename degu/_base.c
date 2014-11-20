@@ -410,7 +410,7 @@ degu_parse_preamble(PyObject *self, PyObject *args)
 
 
 /*
- * C implementation of `degu.base.read_preamble()`.
+ * C implementation of `degu.base._read_preamble()`.
  */
 static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
@@ -434,7 +434,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
     const uint8_t *line_buf, *buf;
     uint8_t i;
 
-    if (!PyArg_ParseTuple(args, "O:read_preamble", &rfile)) {
+    if (!PyArg_ParseTuple(args, "O:_read_preamble", &rfile)) {
         return NULL;
     }
 
@@ -583,7 +583,7 @@ cleanup:
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
-    {"read_preamble", degu_read_preamble, METH_VARARGS, "read_preamble(rfile)"},
+    {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {NULL, NULL, 0, NULL}
 };
 

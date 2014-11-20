@@ -456,7 +456,7 @@ Exceptions
 
 .. exception:: EmptyPreambleError
 
-    Raised by :func:`read_preamble()` when no data is received.
+    Raised when ``b''`` is returned when reading the HTTP preamble.
 
     This is a ``ConnectionError`` subclass.  When no data is received when
     trying to read the request or response preamble, this typically means the
@@ -471,77 +471,6 @@ Exceptions
 
 Parsing functions
 -----------------
-
-
-.. function:: read_preamble(rfile)
-
-    Read the HTTP request or response preamble, do low-level parsing.
-
-    The return value will be a ``(first_line, headers)`` tuple.
-
-    ``first_line`` will be an ``str`` containing either the request line (when
-    used on the server side) or the status line (when used on the client side).
-
-    ``headers`` will be ``dict`` mapping header names to header values, and the
-    header names will be case-folded (lowercase).  For example:
-
-    >>> from io import BytesIO
-    >>> from degu.base import read_preamble
-    >>> rfile = BytesIO(b'first\r\nContent-Type: text/plain\r\n\r\n')
-    >>> read_preamble(rfile)
-    ('first', {'content-type': 'text/plain'})
-
-    Although allowed by HTTP/1.1 (but seldom used in practice), this function
-    does not permit multiple occurrences of the same header name:
-
-    >>> rfile = BytesIO(b'first\r\ncontent-type: foo\r\nContent-Type: bar\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: duplicate header: b'Content-Type: bar\r\n'
-
-    If a Content-Length header is included, its value will be parsed into an
-    ``int`` and validated:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: 1776\r\n\r\n')
-    >>> read_preamble(rfile)
-    ('first', {'content-length': 1776})
-
-    A ``ValueError`` is raised if the Content-Length can't be parsed into an
-    integer:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: E81F3B\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: invalid literal for int() with base 10: 'E81F3B'
-
-    Likewise, a ``ValueError`` is raised if the Content-Length is negative:
-
-    >>> rfile = BytesIO(b'first\r\nContent-Length: -42\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: negative content-length: -42
-
-    If a Transfer-Encoding header is included, this functions will raise a
-    ``ValueError`` if the value is anything other than ``'chunked'``.
-
-    >>> rfile = BytesIO(b'first\r\nTransfer-Encoding: clumped\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: bad transfer-encoding: 'clumped'
-
-    Finally, this function will also raise a ``ValueError`` if both
-    Content-Length and Transfer-Encoding headers are included:
-
-    >>> rfile = BytesIO(b'first\r\nTransfer-Encoding: chunked\r\nContent-Length: 1776\r\n\r\n')
-    >>> read_preamble(rfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: cannot have both content-length and transfer-encoding headers
-
 
 .. function:: read_chunk(rfile)
 

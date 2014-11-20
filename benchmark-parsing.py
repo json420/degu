@@ -8,7 +8,7 @@ gc.enable()
 from io import BytesIO
 
 from degu._base import parse_preamble
-from degu.base import bodies, read_preamble, write_chunk
+from degu.base import bodies, _read_preamble, write_chunk
 from degu.client import _parse_status, _write_request
 from degu.server import _read_request, _write_response
 
@@ -85,7 +85,7 @@ print('\nHigh-level parsers:')
 run('parse_preamble(preamble)')
 run("parse_preamble(b'hello\\r\\ncontent-length: 17')")
 run("parse_preamble(b'hello\\r\\ntransfer-encoding: chunked')")
-run('read_preamble(BytesIO(request_preamble))')
+run('_read_preamble(BytesIO(request_preamble))')
 run('_read_request(BytesIO(request_preamble), bodies)')
 run("_parse_status('HTTP/1.1 404 Not Found')")
 

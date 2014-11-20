@@ -29,14 +29,14 @@ try:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
+        _read_preamble,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        read_preamble,
+        _read_preamble,
     )
 
 
@@ -44,7 +44,7 @@ __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    'read_preamble',
+    '_read_preamble',
 )
 
 

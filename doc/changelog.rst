@@ -66,11 +66,12 @@ Breaking API changes:
         Note that in the near future :meth:`degu.base.ChunkedBody.read()` will
         accept an optional *size* argument, which can be done without breaking
         backward compatibility.  Once this happens, it will exactly match the
-        semantics of of :meth:`degu.base.Body.read()`, and meet standard Python
-        file-like API exceptions.
+        semantics of of :meth:`degu.base.Body.read()`, and will meet standard
+        Python file-like API exceptions.
 
-    *   :meth:`degu.base.ChunkedBody.read()` now returns ``bytes`` instead of
-        a ``bytearray``, to match standard Python file-like API expectations
+    *   :meth:`degu.base.ChunkedBody.read()` now returns a ``bytes`` instance
+        instead of a ``bytearray``, to match standard Python file-like API
+        expectations.
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
         difference between *no* query vs merely an *empty* query.
@@ -99,12 +100,18 @@ Breaking API changes:
             }
 
         The change means it's now possible to exactly reconstructed the original
-        URI from the *script*, *path*, and *query* components.
+        URI from the ``request['script']``, ``request['path']``, and
+        ``request['query']`` components.
 
     *   :func:`degu.util.relative_uri()` and :func:`degu.util.absolute_uri()`
         now preserve the difference between *no* query vs merely an *empty*
         query, can always reconstruct a lossless relative URI, or a lossless
         absolute URI, respectively.
+
+    *   Demote ``read_preamble()`` function in :mod:`degu.base` to internal,
+        private use API, as it isn't expected to be part of the final, public
+        parsing API (it will be replaced by some other equivalent once the C
+        backend is complete).
 
     *   :class:`degu.client.Client` no longer accepts the *Connection* keyword
         option, no longer has the ``Client.Connection`` attribute; the idea
