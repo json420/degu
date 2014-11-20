@@ -18,9 +18,9 @@ Breaking API changes:
 
             (extension, data)
 
-        This was the one place where the Degu API wasn't faithful to the HTTP
-        wire format (the chunk *extension*, when present, is contained in the
-        chunk size line, prior to the actual chunk *data*).
+        This was the one place where the Degu API wasn't faithful to the order
+        in the HTTP wire format (the chunk *extension*, when present, is
+        contained in the chunk size line, prior to the actual chunk *data*).
 
         As before, the *extension* will be ``None`` when there is no extension
         for a specific chunk::
@@ -99,8 +99,8 @@ Breaking API changes:
                 'body': None,
             }
 
-        The change means it's now possible to exactly reconstructed the original
-        URI from the ``request['script']``, ``request['path']``, and
+        This change means it's now possible to exactly reconstructed the
+        original URI from the ``request['script']``, ``request['path']``, and
         ``request['query']`` components.
 
     *   :func:`degu.util.relative_uri()` and :func:`degu.util.absolute_uri()`
