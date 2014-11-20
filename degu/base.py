@@ -67,6 +67,7 @@ def _makefiles(sock):
     )
 
 
+# FIXME: Add optional max_size=None keyword argument
 def read_chunk(rfile):
     """
     Read a chunk from a chunk-encoded request or response body.
@@ -131,6 +132,7 @@ def _encode_chunk(chunk, check_size=True):
     return b''.join([size_line.encode(), data, b'\r\n'])
 
 
+# FIXME: Add optional max_size=None keyword argument
 def write_chunk(wfile, chunk, check_size=True):
     """
     Write *chunk* to *wfile* using chunked transfer-encoding.
@@ -226,6 +228,7 @@ class Body:
             yield data
         self.closed = True
 
+    # FIXME: Add 2nd, max_size=None optional keyword argument
     def read(self, size=None):
         if self.closed:
             raise ValueError('Body.closed, already consumed')
@@ -292,6 +295,7 @@ class ChunkedBody:
         while not self.closed:
             yield self.readchunk()
 
+    # FIXME: Add optional max_size=None keyword argument
     def readchunk(self):
         if self.closed:
             raise ValueError('ChunkedBody.closed, already consumed')
@@ -304,6 +308,7 @@ class ChunkedBody:
             self.closed = True
         return (extension, data)
 
+    # FIXME: Add optional size=None, max_size=None keyword arguments
     def read(self, size=None):
         if self.closed:
             raise ValueError('ChunkedBody.closed, already consumed')
