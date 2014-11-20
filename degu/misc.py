@@ -28,50 +28,16 @@ footprint lower.
 """
 
 import tempfile
-from os import path
+import os
 import shutil
-import json
-from hashlib import sha1
 import multiprocessing
 
 from .base import _TYPE_ERROR
+from .sslhelpers import PKI as _PKI
 from .server import Server, SSLServer
-from .sslhelpers import PKI
 
 
-JSON_TYPES = (dict, list, tuple, str, int, float, bool, type(None))
-
-
-def get_value(value):
-    if isinstance(value, JSON_TYPES):
-        return value
-    return repr(value)
-
-
-def echo_app(session, request, bodies):
-    obj = {
-        'bodies': repr(bodies),
-        'session': {},
-        'request': {},
-    }
-    for (key, value) in session.items():
-        obj['session'][key] = get_value(value)
-    for (key, value) in request.items():
-        obj['request'][key] = get_value(value)
-    if request['body'] is not None:
-        data = obj['body'].read()
-        obj['echo.content_sha1'] = sha1(data).hexdigest()
-    body = json.dumps(obj, sort_keys=True, indent=4).encode()
-    headers = {
-        'content-type': 'application/json',
-        'content-length': len(body),
-    }
-    if request['method'] == 'HEAD':
-        return (200, 'OK', headers, None)
-    return (200, 'OK', headers, body)
-
-
-class TempPKI(PKI):
+class TempPKI(_PKI):
     def __init__(self, client_pki=True, bits=1024):
         # To make unit testing faster, we use 1024 bit keys by default, but this
         # is not the size you should use in production
@@ -90,7 +56,7 @@ class TempPKI(PKI):
             self.issue_cert(self.client_id, self.client_ca_id)
 
     def __del__(self):
-        if path.isdir(self.ssldir):
+        if os.path.isdir(self.ssldir):
             shutil.rmtree(self.ssldir)
 
     @property

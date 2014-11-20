@@ -74,7 +74,6 @@ def run_pyflakes3():
         'benchmark.py',
         'benchmark-parsing.py',
         'benchmark-ssl.py',
-        'run-echo-app.py',
     ]
     args = [path.join(TREE, name) for name in names]
     run_under_same_interpreter('flakes', script, args)
