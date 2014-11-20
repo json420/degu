@@ -122,7 +122,10 @@ setup(
     ext_modules=[
         Extension('degu._base',
             sources=['degu/_base.c'],
-            extra_compile_args=['-Werror'],  # Make all warnings into errors 
+            extra_compile_args=[
+                '-Werror',  # Make all warnings into errors
+                '-std=gnu11',  # Soon to be gcc default
+            ],
         ),
     ],
     cmdclass={

@@ -203,6 +203,11 @@ Other changes:
         now rate-limits the handling of new connections to one attempt every 2
         seconds (to mitigate Denial of Service attacks).
 
+    *   Build the ``degu._base`` `C extension`_ with "-std=gnu11" as this will
+        soon be the GCC default and we don't necessarily want to make a
+        commitment to it working with older standards (although it currently
+        does and this wont likely change anytime soon).
+
 
 
 0.10 (October 2014)
@@ -875,3 +880,4 @@ Two things motivated these breaking API changes:
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
+.. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
