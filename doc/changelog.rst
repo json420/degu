@@ -27,8 +27,8 @@ Breaking API changes:
 
             (None, b'hello, world')
 
-        And *extension* will be a ``(key, value)`` tuple when a specific chunk
-        does contain an optional per-chunk extension::
+        And the *extension* will be a ``(key, value)`` tuple when a specific
+        chunk does contain an optional per-chunk extension::
 
             (('foo', 'bar'), b'hello, world')
 
@@ -74,7 +74,7 @@ Breaking API changes:
         expectations.
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
-        difference between *no* query vs merely an *empty* query.
+        difference between "no query" vs merely an "empty query".
 
         When there is *no* query, ``request['query']`` will now be ``None``
         (whereas previously it would be ``''``).  For example::
@@ -107,6 +107,17 @@ Breaking API changes:
         now preserve the difference between *no* query vs merely an *empty*
         query, can always reconstruct a lossless relative URI, or a lossless
         absolute URI, respectively.
+
+    *   :meth:`degu.rgi.Validator.__call__()` now requires that
+        ``request['uri']`` be present and be a ``str`` instance; it also
+        enforces an invariant condition between ``request['script']``,
+        ``request['path']``, and ``request['query']`` on the one hand, and
+        ``request['uri']`` on the other; this invariant condition is initially
+        checked to ensure that the RGI server correctly parsed the URI and that
+        any path shifting was correctly done by upstream middleware, and then
+        this invariant condition is checked again after calling its ``app()``
+        request handler to make sure than any path shifting was done correctly
+        by downstream middleware and the downstream application.
 
     *   Demote ``read_preamble()`` function in :mod:`degu.base` to internal,
         private use API, as it isn't expected to be part of the final, public
