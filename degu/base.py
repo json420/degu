@@ -232,14 +232,16 @@ class Body:
         if self._remaining <= 0:
             self.closed = True
             return b''
-        if size is not None:
+        if size is None:
+            read = self._remaining
+        else:
             if not isinstance(size, int):
                 raise TypeError(
                     _TYPE_ERROR.format('size', int, type(size), size) 
                 )
             if size < 0:
                 raise ValueError('size must be >= 0; got {!r}'.format(size))
-        read = (self._remaining if size is None else min(self._remaining, size))
+            read = min(self._remaining, size)
         if read > MAX_READ_SIZE:
             raise ValueError(
                 'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
@@ -260,7 +262,7 @@ class Body:
         self._remaining -= read
         assert self._remaining >= 0
         if size is None:
-            # Entire body was request at once, so close:
+            # Entire body was read at once, so close:
             self.closed = True
         return data
 

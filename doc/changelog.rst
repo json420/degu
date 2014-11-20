@@ -49,8 +49,28 @@ Breaking API changes:
             chunk = read_chunk(rfile)
             write_chunk(wfile, chunk)
 
+    *   :meth:`degu.base.Body.read()` will now raise a ``ValueError`` if the
+        resulting read would exceed :attr:`degu.base.MAX_READ_SIZE` (currently
+        16 MiB); this is to prevent unbounded resource usage when no *size* is
+        provided, a common pattern when a relatively small input body is
+        expected, for example::
+
+            doc = json.loads(body.read().decode())
+
+    *   :meth:`degu.base.ChunkedBody.read()` will likewise now raise a
+        ``ValueError`` when the accumulated size of chunks read thus far exceeds
+        :attr:`degu.base.MAX_READ_SIZE`; this is to prevent unbounded resource
+        usage for the same pattern above, which is especially important as the
+        total size of a chunk-encoded input body can't be determined in advance.
+
+        Note that in the near future :meth:`degu.base.ChunkedBody.read()` will
+        accept an optional *size* argument, which can be done without breaking
+        backward compatibility.  Once this happens, it will exactly match the
+        semantics of of :meth:`degu.base.Body.read()`, and meet standard Python
+        file-like API exceptions.
+
     *   :meth:`degu.base.ChunkedBody.read()` now returns ``bytes`` instead of
-        a ``bytearray``
+        a ``bytearray``, to match standard Python file-like API expectations
 
     *   Fix ambiguity in RGI ``request['query']`` so that it can represent the
         difference between *no* query vs merely an *empty* query.
