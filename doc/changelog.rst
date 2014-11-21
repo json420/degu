@@ -4,8 +4,23 @@ Changelog
 0.11 (unreleased)
 -------------------
 
-This *may* end up being the API stable Degu 1.0 release ``:D``
+`Download Degu 0.11`_
 
+Degu is now *tentatively* API-stable.
+
+Although no further backward incompatible changes are currently expected on the
+way to the 1.0 release, it seems prudent to allow another release or two for
+feedback and refinement, and for potential breaking API changes if deemed
+absolutely essential.
+
+If you were waiting for the API-stable release to experiment with Degu, now is
+definitely the time to jump in, as `your feedback`_ can help better tune Degu
+for your use-case.
+
+It's quite possible that there will be no breaking API changes whatsoever
+between Degu 0.11 and Degu 1.0, but even if there are, and even if those
+breaking changes happen to effect your application, they will be subtle changes
+that require only minimal porting effort.
 
 Breaking API changes:
 
@@ -870,6 +885,8 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
+
+.. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
 .. _`Download Degu 0.10`: https://launchpad.net/degu/+milestone/0.10
 .. _`Download Degu 0.9`: https://launchpad.net/degu/+milestone/0.9
 .. _`Download Degu 0.8`: https://launchpad.net/degu/+milestone/0.8
@@ -881,3 +898,4 @@ Two things motivated these breaking API changes:
 .. _`io`: https://docs.python.org/3/library/io.html
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
+.. _`your feedback`: https://bugs.launchpad.net/degu
