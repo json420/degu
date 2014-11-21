@@ -3,17 +3,21 @@ Degu
 
 `Degu`_ is an embedded HTTP server and client library for Python3.
 
-It can be used to implement network-transparent services, whether the other
-endpoint is in the cloud, on the localnet, on the localhost, or even on
-the localhost using HTTP over ``AF_UNIX``.
+It can be used to build network-transparent services, whether the other endpoint
+is in the cloud, on the local network, on the localhost, or even on the
+localhost using HTTP over ``AF_UNIX``.
 
-It's especially well suited for implementing REST APIs for device-to-device
-communication.
+Degu is especially well suited for implementing REST APIs for device-to-device
+communication.  It's a building block for future stuff, your vehicle into bold,
+uncharted territory.
 
-Degu is a building block for future stuff, your vehicle into bold, uncharted
-territory.
+.. note::
 
-It includes:
+    Degu is now *tentatively* API-stable.  So it's a great time to jump in and
+    `give feedback!`_  But there's still a chance that there will be minor
+    breaking changes on the way to the API-stable 1.0 release.
+
+Degu includes:
 
     *   **A lightweight HTTP server** that's easy to embed within applications
 
@@ -70,4 +74,5 @@ Contents:
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
 .. _`Python 3.4`: https://docs.python.org/3/
+.. _`give feedback!`: https://bugs.launchpad.net/degu
 
