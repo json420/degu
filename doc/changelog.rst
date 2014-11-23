@@ -6,8 +6,8 @@ Changelog
 
 
 
-0.11 (November)
----------------
+0.11 (November 2014)
+--------------------
 
 `Download Degu 0.11`_
 
