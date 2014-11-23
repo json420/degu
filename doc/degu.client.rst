@@ -742,24 +742,24 @@ high-level *Text I/O* and *Binary I/O* layers in the `io`_ module.
 Your client wrapper should take the raw client object as its first argument, and
 should implement an equivalent to :meth:`Client.connect()`:
 
->>> class MyClient:
+>>> class ClientWrapper:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
 ...     def connect(self, bodies=None):
 ...         conn = self.client.connect(bodies=bodies)
-...         return MyConnection(conn)
+...         return ConnectionWrapper(conn)
 ...
 
-(Note that such a wrapper is completely abstracted from how its *client*
-argument was constructed.  The *client* could be a :class:`Client`, an
+(Note that such a wrapper is nicely abstracted from how its *client* argument
+was constructed.  The *client* could be a :class:`Client`, an
 :class:`SSLClient`, or any other object providing the needed API.)
 
 Your connection wrapper should take the raw connection object as its first
 argument, and should implement an equivalent to :attr:`Connection.closed` and
 :meth:`Connection.close()`:
 
->>> class MyConnection:
+>>> class ConnectionWrapper:
 ...     def __init__(self, conn):
 ...         self.conn = conn
 ... 
@@ -794,8 +794,8 @@ argument, and should implement an equivalent to :attr:`Connection.closed` and
 ...         return self.request('DELETE', uri, headers, None)
 ... 
 
-The ``MyConnection.request()`` method above demonstrates a feature that can be
-extremely useful for the end-point client consumer: automatically raising an
+The ``ConnectionWrapper.request()`` method above demonstrates a feature that can
+be extremely useful for the end-point client consumer: automatically raising an
 exception when the request didn't return a ``2xx`` HTTP response status.
 
 But it likewise demonstrates why even this seemingly innocent high-level
