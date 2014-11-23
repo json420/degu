@@ -1,5 +1,5 @@
-degu (0.11.0~pre0) utopic; urgency=low
+degu (0.11.0) utopic; urgency=low
 
-  * Upstream pre-release
+  * Upstream release
 
- -- Jason Gerard DeRose <jderose@novacut.com>  Mon, 03 Nov 2014 17:19:47 -0700
+ -- Jason Gerard DeRose <jderose@novacut.com>  Sat, 22 Nov 2014 21:56:14 -0700
