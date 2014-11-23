@@ -1,4 +1,10 @@
-degu (0.11.0) utopic; urgency=low
+degu (0.12.0~alpha) trusty; urgency=low
+
+  * Daily WIP for 0.12
+
+ -- Jason Gerard DeRose <jderose@novacut.com>  Sun, 23 Nov 2014 12:04:47 -0700
+
+degu (0.11.0) trusty; urgency=low
 
   * Upstream release
 
