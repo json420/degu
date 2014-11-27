@@ -43,6 +43,7 @@ static PyObject *str_chunked = NULL;            //  'chunked'
 #define POST "POST"
 #define HEAD "HEAD"
 #define DELETE "DELETE"
+#define CONTENT_LENGTH "content-length"
 
 static PyObject *str_GET = NULL;     // 'GET'
 static PyObject *str_PUT = NULL;     // 'PUT'
@@ -422,7 +423,13 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
             PyObject *tmp = NULL;
             _SET(tmp, PyLong_FromUnicodeObject(value, 10))
             _RESET(value, tmp)
-            if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
+            int overflow = -2;
+            long size = PyLong_AsLongAndOverflow(value, &overflow);
+            if (overflow != 0) {
+                PyErr_Format(PyExc_ValueError, "content-length too large: %R", value);
+                goto error;
+            }
+            if (size < 0) {
                 PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
                 goto error;
             }
