@@ -234,7 +234,7 @@ degu_parse_method(PyObject *self, PyObject *args)
  * Return value will be an `str` instance, or NULL when there was an error.
  */
 static PyObject *
-_decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *format)
+_decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *format)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -369,7 +369,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     }
 
     _SET(first_line,
-        _decode(line_len, line_buf, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len, _VALUES, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -411,10 +411,10 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 
         /* Decode & case-fold the header name */
         _RESET(key,
-            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
+            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
         )
         _RESET(value,
-            _decode(value_len, sep + 2, _VALUES, "bad bytes in header value: %R")
+            _decode(sep + 2, value_len, _VALUES, "bad bytes in header value: %R")
         )
         if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
             has_content_length = 1;
@@ -538,7 +538,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(first_line,
-        _decode(line_len - 2, line_buf, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len - 2, _VALUES, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -583,12 +583,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
         /* Decode & case-fold the header key */
         _RESET(key,
-            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
+            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
         )
 
         /* Decode the header value */
         _RESET(value,
-            _decode(value_len, buf, _VALUES, "bad bytes in header value: %R")
+            _decode(buf, value_len, _VALUES, "bad bytes in header value: %R")
         )
 
         /* Store in headers dict, make sure it's not a duplicate key */
