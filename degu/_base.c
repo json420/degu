@@ -37,6 +37,7 @@ static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 
+#define CRLF "\r\n"
 #define GET "GET"
 #define PUT "PUT"
 #define POST "POST"
@@ -334,7 +335,7 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
  * _CHECK_LINE_TERMINATION() macro: ensure the line ends with ``b'\r\n'``.
  */
 #define _CHECK_LINE_TERMINATION(format) \
-    if (line_len < 2 || memcmp(line_buf + (line_len - 2), "\r\n", 2) != 0) { \
+    if (line_len < 2 || memcmp(line_buf + (line_len - 2), CRLF, 2) != 0) { \
         PyObject *_crlf = PySequence_GetSlice(line, _START(line_len), line_len); \
         if (_crlf == NULL) { \
             goto error; \
@@ -362,7 +363,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 
     line_buf = preamble_buf;
     line_len = preamble_len;
-    crlf = memmem(line_buf, line_len, "\r\n", 2);
+    crlf = memmem(line_buf, line_len, CRLF, 2);
     if (crlf != NULL) {
         line_len = crlf - line_buf;
     }
@@ -376,7 +377,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     while (crlf != NULL) {
         line_buf = crlf + 2;
         line_len = preamble_len - (line_buf - preamble_buf);
-        crlf = memmem(line_buf, line_len, "\r\n", 2);
+        crlf = memmem(line_buf, line_len, CRLF, 2);
         if (crlf != NULL) {
             line_len = crlf - line_buf;
         }
@@ -601,7 +602,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
      * we just need to check for the final CRLF preamble terminator:
      */
     _READLINE(args_size_two, 2)
-    if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
+    if (line_len != 2 || memcmp(line_buf, CRLF, 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", _MAX_HEADER_COUNT
         );
