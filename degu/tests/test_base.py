@@ -257,6 +257,41 @@ class TestFunctions(AlternatesTestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
+    def check_parse_method(self, backend):
+        for method in ('GET', 'PUT', 'POST', 'HEAD', 'DELETE'):
+            expected = getattr(backend, method)
+
+            # Input is str:
+            result = backend.parse_method(method)
+            self.assertEqual(result, method)
+            self.assertIs(result, expected)
+
+            # Input is bytes:
+            result = backend.parse_method(method.encode())
+            self.assertEqual(result, method)
+            self.assertIs(result, expected)
+
+            # Lowercase str:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(method.lower())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method.lower().encode())
+            )
+
+            # Lowercase bytes:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(method.lower().encode())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method.lower().encode())
+            )
+
+    def test_parse_method_p(self):
+        self.check_parse_method(_basepy)
+
+    def test_parse_method_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_method(_base)
+
     def check_parse_preamble(self, backend):
         self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
         self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),

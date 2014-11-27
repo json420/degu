@@ -37,6 +37,19 @@ static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 
+#define GET "GET"
+#define PUT "PUT"
+#define POST "POST"
+#define HEAD "HEAD"
+#define DELETE "DELETE"
+
+static PyObject *str_GET = NULL;     // 'GET'
+static PyObject *str_PUT = NULL;     // 'PUT'
+static PyObject *str_POST = NULL;    // 'POST'
+static PyObject *str_HEAD = NULL;    // 'HEAD'
+static PyObject *str_DELETE = NULL;  // 'DELETE'
+
+
 /*
  * Pre-built args tuples for PyObject_Call() when calling rfile.readline().
  *
@@ -150,6 +163,68 @@ static const uint8_t _KEYS[256] = {
 };
 
 
+static void
+_value_error(const uint8_t *buf, const size_t len, const char *format)
+{
+    PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
+    if (tmp != NULL) {
+        PyErr_Format(PyExc_ValueError, format, tmp);
+    }
+    Py_CLEAR(tmp);
+}
+
+
+static PyObject *
+_parse_method(const uint8_t *buf, const size_t len)
+{
+    PyObject *method = NULL;
+
+    if (len == 3) {
+        if (memcmp(buf, GET, 3) == 0) {
+            method = str_GET;
+        }
+        else if (memcmp(buf, PUT, 3) == 0) {
+            method = str_PUT;
+        }
+    }
+    else if (len == 4) {
+        if (memcmp(buf, POST, 4) == 0) {
+            method = str_POST;
+        }
+        else if (memcmp(buf, HEAD, 4) == 0) {
+            method = str_HEAD;
+        }
+    }
+    else if (len == 6) {
+        if (memcmp(buf, DELETE, 6) == 0) {
+            method = str_DELETE;
+        }
+    }
+
+    if (method == NULL) {
+        _value_error(buf, len, "bad HTTP method: %R");
+    }
+    else {
+        Py_INCREF(method);
+    }
+    return method;
+}
+
+
+static PyObject *
+degu_parse_method(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_method(buf, len);
+}
+
+
+
 /*
  * _decode(): validate against *table*, possibly case-fold.
  *
@@ -178,11 +253,7 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         if (r != 255) {
             Py_FatalError("internal error in `_decode()`");
         }
-        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
-        if (tmp != NULL) {
-            PyErr_Format(PyExc_ValueError, format, tmp);
-        }
-        Py_CLEAR(tmp);
+        _value_error(buf, len, format);
     }
     return dst;
 }
@@ -579,9 +650,9 @@ cleanup:
 }
 
 
-
 /* module init */
 static struct PyMethodDef degu_functions[] = {
+    {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {NULL, NULL, 0, NULL}
@@ -594,6 +665,7 @@ static struct PyModuleDef degu = {
     -1,
     degu_functions
 };
+
 
 PyMODINIT_FUNC
 PyInit__base(void)
@@ -610,6 +682,20 @@ PyInit__base(void)
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
+
+#define _ADD_MODULE_STRING(pyobj, name) \
+    _SET(pyobj, PyUnicode_InternFromString(name)) \
+    Py_INCREF(pyobj); \
+    if (PyModule_AddObject(module, name, pyobj) != 0) { \
+        goto error; \
+    }
+
+    /* Init string constants */
+    _ADD_MODULE_STRING(str_GET,    GET)
+    _ADD_MODULE_STRING(str_PUT,    PUT)
+    _ADD_MODULE_STRING(str_POST,   POST)
+    _ADD_MODULE_STRING(str_HEAD,   HEAD)
+    _ADD_MODULE_STRING(str_DELETE, DELETE)
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,

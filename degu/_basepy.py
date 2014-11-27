@@ -80,6 +80,29 @@ MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 _RE_KEYS = re.compile('^[-1-9a-z]+$')
 
 
+GET = 'GET'
+PUT = 'PUT'
+POST = 'POST'
+HEAD = 'HEAD'
+DELETE = 'DELETE'
+
+
+def parse_method(method):
+    if isinstance(method, str):
+        method = method.encode()
+    if method == b'GET':
+        return GET
+    if method == b'PUT':
+        return PUT
+    if method == b'POST':
+        return POST
+    if method == b'HEAD':
+        return HEAD
+    if method == b'DELETE':
+        return DELETE
+    raise ValueError('bad HTTP method: {!r}'.format(method))
+
+
 def _decode_value(src, message):
     """
     Used to decode and validate header values, plus the preamble first line.
