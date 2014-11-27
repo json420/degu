@@ -285,6 +285,44 @@ class TestFunctions(AlternatesTestCase):
                 'bad HTTP method: {!r}'.format(method.lower().encode())
             )
 
+        # Static bad methods:
+        bad_methods = (
+            'OPTIONS',
+            'TRACE',
+            'CONNECT',
+            'FOO',
+            'BAR',
+            'COPY',
+            'FOUR',
+            'SIXSIX',
+            'FOOBAR',
+            '',
+        )
+        for bad in bad_methods:
+            # Bad str:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(bad)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(bad.encode())
+            )
+
+            # Bad bytes:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(bad.encode())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(bad.encode())
+            )
+
+        # Random bad bytes:
+        for size in range(1, 20):
+            for i in range(100):
+                bad = os.urandom(size)
+                with self.assertRaises(ValueError) as cm:
+                    backend.parse_method(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad HTTP method: {!r}'.format(bad)
+                )
+
     def test_parse_method_p(self):
         self.check_parse_method(_basepy)
 
