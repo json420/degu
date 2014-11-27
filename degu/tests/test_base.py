@@ -257,6 +257,79 @@ class TestFunctions(AlternatesTestCase):
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
+    def check_parse_method(self, backend):
+        for method in ('GET', 'PUT', 'POST', 'HEAD', 'DELETE'):
+            expected = getattr(backend, method)
+
+            # Input is str:
+            result = backend.parse_method(method)
+            self.assertEqual(result, method)
+            self.assertIs(result, expected)
+
+            # Input is bytes:
+            result = backend.parse_method(method.encode())
+            self.assertEqual(result, method)
+            self.assertIs(result, expected)
+
+            # Lowercase str:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(method.lower())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method.lower().encode())
+            )
+
+            # Lowercase bytes:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(method.lower().encode())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method.lower().encode())
+            )
+
+        # Static bad methods:
+        bad_methods = (
+            'OPTIONS',
+            'TRACE',
+            'CONNECT',
+            'FOO',
+            'BAR',
+            'COPY',
+            'FOUR',
+            'SIXSIX',
+            'FOOBAR',
+            '',
+        )
+        for bad in bad_methods:
+            # Bad str:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(bad)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(bad.encode())
+            )
+
+            # Bad bytes:
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_method(bad.encode())
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(bad.encode())
+            )
+
+        # Random bad bytes:
+        for size in range(1, 20):
+            for i in range(100):
+                bad = os.urandom(size)
+                with self.assertRaises(ValueError) as cm:
+                    backend.parse_method(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad HTTP method: {!r}'.format(bad)
+                )
+
+    def test_parse_method_p(self):
+        self.check_parse_method(_basepy)
+
+    def test_parse_method_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_method(_base)
+
     def check_parse_preamble(self, backend):
         self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
         self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),

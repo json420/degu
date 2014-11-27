@@ -37,6 +37,21 @@ static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 
+#define CRLF "\r\n"
+#define GET "GET"
+#define PUT "PUT"
+#define POST "POST"
+#define HEAD "HEAD"
+#define DELETE "DELETE"
+#define CONTENT_LENGTH "content-length"
+
+static PyObject *str_GET = NULL;     // 'GET'
+static PyObject *str_PUT = NULL;     // 'PUT'
+static PyObject *str_POST = NULL;    // 'POST'
+static PyObject *str_HEAD = NULL;    // 'HEAD'
+static PyObject *str_DELETE = NULL;  // 'DELETE'
+
+
 /*
  * Pre-built args tuples for PyObject_Call() when calling rfile.readline().
  *
@@ -150,6 +165,68 @@ static const uint8_t _KEYS[256] = {
 };
 
 
+static void
+_value_error(const uint8_t *buf, const size_t len, const char *format)
+{
+    PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
+    if (tmp != NULL) {
+        PyErr_Format(PyExc_ValueError, format, tmp);
+    }
+    Py_CLEAR(tmp);
+}
+
+
+static PyObject *
+_parse_method(const uint8_t *buf, const size_t len)
+{
+    PyObject *method = NULL;
+
+    if (len == 3) {
+        if (memcmp(buf, GET, 3) == 0) {
+            method = str_GET;
+        }
+        else if (memcmp(buf, PUT, 3) == 0) {
+            method = str_PUT;
+        }
+    }
+    else if (len == 4) {
+        if (memcmp(buf, POST, 4) == 0) {
+            method = str_POST;
+        }
+        else if (memcmp(buf, HEAD, 4) == 0) {
+            method = str_HEAD;
+        }
+    }
+    else if (len == 6) {
+        if (memcmp(buf, DELETE, 6) == 0) {
+            method = str_DELETE;
+        }
+    }
+
+    if (method == NULL) {
+        _value_error(buf, len, "bad HTTP method: %R");
+    }
+    else {
+        Py_INCREF(method);
+    }
+    return method;
+}
+
+
+static PyObject *
+degu_parse_method(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_method(buf, len);
+}
+
+
+
 /*
  * _decode(): validate against *table*, possibly case-fold.
  *
@@ -158,7 +235,7 @@ static const uint8_t _KEYS[256] = {
  * Return value will be an `str` instance, or NULL when there was an error.
  */
 static PyObject *
-_decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *format)
+_decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *format)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -178,11 +255,7 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
         if (r != 255) {
             Py_FatalError("internal error in `_decode()`");
         }
-        PyObject *tmp = PyBytes_FromStringAndSize((char *)buf, len);
-        if (tmp != NULL) {
-            PyErr_Format(PyExc_ValueError, format, tmp);
-        }
-        Py_CLEAR(tmp);
+        _value_error(buf, len, format);
     }
     return dst;
 }
@@ -263,7 +336,7 @@ _decode(const size_t len, const uint8_t *buf, const uint8_t *table, const char *
  * _CHECK_LINE_TERMINATION() macro: ensure the line ends with ``b'\r\n'``.
  */
 #define _CHECK_LINE_TERMINATION(format) \
-    if (line_len < 2 || memcmp(line_buf + (line_len - 2), "\r\n", 2) != 0) { \
+    if (line_len < 2 || memcmp(line_buf + (line_len - 2), CRLF, 2) != 0) { \
         PyObject *_crlf = PySequence_GetSlice(line, _START(line_len), line_len); \
         if (_crlf == NULL) { \
             goto error; \
@@ -291,13 +364,13 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 
     line_buf = preamble_buf;
     line_len = preamble_len;
-    crlf = memmem(line_buf, line_len, "\r\n", 2);
+    crlf = memmem(line_buf, line_len, CRLF, 2);
     if (crlf != NULL) {
         line_len = crlf - line_buf;
     }
 
     _SET(first_line,
-        _decode(line_len, line_buf, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len, _VALUES, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -305,7 +378,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     while (crlf != NULL) {
         line_buf = crlf + 2;
         line_len = preamble_len - (line_buf - preamble_buf);
-        crlf = memmem(line_buf, line_len, "\r\n", 2);
+        crlf = memmem(line_buf, line_len, CRLF, 2);
         if (crlf != NULL) {
             line_len = crlf - line_buf;
         }
@@ -339,10 +412,10 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 
         /* Decode & case-fold the header name */
         _RESET(key,
-            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
+            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
         )
         _RESET(value,
-            _decode(value_len, sep + 2, _VALUES, "bad bytes in header value: %R")
+            _decode(sep + 2, value_len, _VALUES, "bad bytes in header value: %R")
         )
         if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
             has_content_length = 1;
@@ -350,7 +423,13 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
             PyObject *tmp = NULL;
             _SET(tmp, PyLong_FromUnicodeObject(value, 10))
             _RESET(value, tmp)
-            if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
+            int overflow = -2;
+            long size = PyLong_AsLongAndOverflow(value, &overflow);
+            if (overflow != 0) {
+                PyErr_Format(PyExc_ValueError, "content-length too large: %R", value);
+                goto error;
+            }
+            if (size < 0) {
                 PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
                 goto error;
             }
@@ -466,7 +545,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(first_line,
-        _decode(line_len - 2, line_buf, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len - 2, _VALUES, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -511,12 +590,12 @@ degu_read_preamble(PyObject *self, PyObject *args)
 
         /* Decode & case-fold the header key */
         _RESET(key,
-            _decode(key_len, line_buf, _KEYS, "bad bytes in header name: %R")
+            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
         )
 
         /* Decode the header value */
         _RESET(value,
-            _decode(value_len, buf, _VALUES, "bad bytes in header value: %R")
+            _decode(buf, value_len, _VALUES, "bad bytes in header value: %R")
         )
 
         /* Store in headers dict, make sure it's not a duplicate key */
@@ -530,7 +609,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
      * we just need to check for the final CRLF preamble terminator:
      */
     _READLINE(args_size_two, 2)
-    if (line_len != 2 || memcmp(line_buf, "\r\n", 2) != 0) {
+    if (line_len != 2 || memcmp(line_buf, CRLF, 2) != 0) {
         PyErr_Format(PyExc_ValueError,
             "too many headers (> %u)", _MAX_HEADER_COUNT
         );
@@ -579,9 +658,9 @@ cleanup:
 }
 
 
-
 /* module init */
 static struct PyMethodDef degu_functions[] = {
+    {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {NULL, NULL, 0, NULL}
@@ -594,6 +673,7 @@ static struct PyModuleDef degu = {
     -1,
     degu_functions
 };
+
 
 PyMODINIT_FUNC
 PyInit__base(void)
@@ -610,6 +690,20 @@ PyInit__base(void)
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
+
+#define _ADD_MODULE_STRING(pyobj, name) \
+    _SET(pyobj, PyUnicode_InternFromString(name)) \
+    Py_INCREF(pyobj); \
+    if (PyModule_AddObject(module, name, pyobj) != 0) { \
+        goto error; \
+    }
+
+    /* Init string constants */
+    _ADD_MODULE_STRING(str_GET,    GET)
+    _ADD_MODULE_STRING(str_PUT,    PUT)
+    _ADD_MODULE_STRING(str_POST,   POST)
+    _ADD_MODULE_STRING(str_HEAD,   HEAD)
+    _ADD_MODULE_STRING(str_DELETE, DELETE)
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
