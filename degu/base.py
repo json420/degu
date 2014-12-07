@@ -30,6 +30,7 @@ try:
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
         _read_preamble,
+        format_request_preamble,
     )
 except ImportError:
     from ._basepy import (
@@ -37,6 +38,7 @@ except ImportError:
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
         _read_preamble,
+        format_request_preamble,
     )
 
 
@@ -45,6 +47,7 @@ __all__ = (
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     '_read_preamble',
+    'format_request_preamble',
 )
 
 
