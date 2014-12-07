@@ -31,6 +31,7 @@ try:
         EmptyPreambleError,
         _read_preamble,
         format_request_preamble,
+        format_response_preamble,
     )
 except ImportError:
     from ._basepy import (
@@ -39,6 +40,7 @@ except ImportError:
         EmptyPreambleError,
         _read_preamble,
         format_request_preamble,
+        format_response_preamble,
     )
 
 
@@ -48,6 +50,7 @@ __all__ = (
     'EmptyPreambleError',
     '_read_preamble',
     'format_request_preamble',
+    'format_response_preamble',
 )
 
 

@@ -81,8 +81,6 @@ run("_basepy.format_response_preamble(200, 'OK', {'content-length': 17})")
 run("_base.format_response_preamble(200, 'OK', headers)")
 run("_basepy.format_response_preamble(200, 'OK', headers)")
 
-raise SystemExit()
-
 print('\nFormatting and encoding:')
 run("'HTTP/1.1 {} {}\\r\\n'.format(404, 'Not Found')")
 run("'{} {} HTTP/1.1\\r\\n'.format('GET', '/foo/bar?stuff=junk')")

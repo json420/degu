@@ -365,16 +365,14 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
 
 
 static inline int
-_parse_header_line(uint8_t *buf, const size_t len, PyObject *headers)
+_parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
 {
-    uint8_t *sep = NULL;
-    uint8_t *key_buf, *val_buf;
+    const uint8_t *sep = NULL;
+    const uint8_t *key_buf, *val_buf;
     size_t key_len, val_len;
     PyObject *key = NULL;
     PyObject *val = NULL;
     PyObject *tmp = NULL;
-    uint8_t r;
-    size_t i;
     int flags = 0;
 
     sep = memmem(buf, len, SEP, 2);
@@ -388,18 +386,13 @@ _parse_header_line(uint8_t *buf, const size_t len, PyObject *headers)
     val_len = len - key_len - 2;
 
     /* Casefold and validate header name in place */
-    for (r = i = 0; i < key_len; i++) {
-        r |= key_buf[i] = _KEYS[key_buf[i]];
-    }
-    if (r & 128) {
-        if (r != 255) {
-            Py_FatalError("internal error in `_parse_header_line()`");
-        }
-        _value_error(key_buf, key_len, "bad bytes in header name: %R");
-    }
+    _SET(key,
+        _decode(key_buf, key_len, _KEYS, "bad bytes in header name: %R")
+    )
+    key_buf =  PyUnicode_1BYTE_DATA(key);
 
     if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
-        _SET_AND_INC(key, str_content_length)
+        _REPLACE(key, str_content_length)
         _SET(tmp,
             _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
         )
@@ -422,14 +415,11 @@ _parse_header_line(uint8_t *buf, const size_t len, PyObject *headers)
             goto error;
 
         }
-        _SET_AND_INC(key, str_transfer_encoding)
+        _REPLACE(key, str_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
         flags = TRANSFER_ENCODING_BIT;
     }
     else {
-        _SET(key,
-            PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, key_buf, key_len)
-        )
         _SET(val,
             _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
         )
@@ -504,7 +494,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
             goto error;
         }
 
-        newflags = _parse_header_line((uint8_t *)line_buf, line_len, headers);
+        newflags = _parse_header_line(line_buf, line_len, headers);
         if (newflags < 0) {
             goto error;
         }
