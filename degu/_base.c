@@ -27,16 +27,6 @@
 #define _MAX_LINE_SIZE 4096
 #define _MAX_HEADER_COUNT 20
 
-/* `degu.base.EmptyPreambleError` */
-static PyObject *degu_EmptyPreambleError = NULL;
-
-/* Pre-built global Python `int` and `str` objects for performance */
-static PyObject *int_zero = NULL;               //  0
-static PyObject *str_readline = NULL;           //  'readline'
-static PyObject *str_content_length = NULL;     //  'content-length'
-static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
-static PyObject *str_chunked = NULL;            //  'chunked'
-
 #define CRLF "\r\n"
 #define SEP ": "
 #define GET "GET"
@@ -51,6 +41,17 @@ static PyObject *str_chunked = NULL;            //  'chunked'
 #define CONTENT_LENGTH_BIT    1
 #define TRANSFER_ENCODING_BIT 2
 
+/* `degu.base.EmptyPreambleError` */
+static PyObject *degu_EmptyPreambleError = NULL;
+
+/* Pre-built global Python `int` and `str` objects for performance */
+static PyObject *int_zero = NULL;               //  0
+static PyObject *str_readline = NULL;           //  'readline'
+static PyObject *str_content_length = NULL;     //  'content-length'
+static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
+static PyObject *str_chunked = NULL;            //  'chunked'
+static PyObject *str_empty = NULL;              //  ''
+static PyObject *str_crlf = NULL;               //  '\r\n'
 
 static PyObject *str_GET = NULL;     // 'GET'
 static PyObject *str_PUT = NULL;     // 'PUT'
@@ -542,6 +543,85 @@ degu_parse_preamble(PyObject *self, PyObject *args)
 }
 
 
+static PyObject *
+degu_format_request_preamble(PyObject *self, PyObject *args)
+{
+    PyObject *method, *uri, *headers, *key, *val;
+    Py_ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of request preamble */
+    PyObject *ret = NULL;  /* bytes version of request preamble */
+
+    if (!PyArg_ParseTuple(args, "UUO:format_request_preamble", &method, &uri, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("%S %S HTTP/1.1\r\n\r\n", method, uri))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S: %S\r\n\r\n",
+                    method, uri, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("%S %S HTTP/1.1\r\n", method, uri)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
+}
+
+
 
 /*
  * C implementation of `degu.base._read_preamble()`.
@@ -718,6 +798,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
+    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS, "format_request_preamble(headers)"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -770,9 +851,11 @@ PyInit__base(void)
     /* Init global Python `int` and `str` objects we need for performance */
     _SET(int_zero, PyLong_FromLong(0))
     _SET(str_readline, PyUnicode_InternFromString("readline"))
-    _SET(str_content_length, PyUnicode_InternFromString("content-length"))
-    _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
+    _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
+    _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
+    _SET(str_empty, PyUnicode_InternFromString(""))
+    _SET(str_crlf, PyUnicode_InternFromString(CRLF))
 
     /* Init pre-built global args tuple for rfile.readline(_MAX_LINE_SIZE) */
     _SET(int_size_max, PyObject_GetAttrString(module, "_MAX_LINE_SIZE"))    

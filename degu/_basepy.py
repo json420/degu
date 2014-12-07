@@ -291,5 +291,14 @@ class Reader:
         index = self.buf.find(b'\r\n\r\n')
         if 0 < index < self.stop:
             pass
-        
+
+
+def format_request_preamble(method, uri, headers):
+    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
+    if headers:
+        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
+        header_lines.sort()
+        lines.extend(header_lines)
+    lines.append('\r\n')
+    return ''.join(lines).encode()
 

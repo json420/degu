@@ -330,6 +330,56 @@ class TestFunctions(AlternatesTestCase):
         self.skip_if_no_c_ext()
         self.check_parse_method(_base)
 
+    def check_format_request_preamble(self, backend):
+        # No headers:
+        self.assertEqual(
+            backend.format_request_preamble('GET', '/foo', {}),
+            b'GET /foo HTTP/1.1\r\n\r\n'
+        )
+
+        # One header:
+        headers = {'content-length': 1776}
+        self.assertEqual(
+            backend.format_request_preamble('PUT', '/foo', headers),
+            b'PUT /foo HTTP/1.1\r\ncontent-length: 1776\r\n\r\n'
+        )
+        headers = {'transfer-encoding': 'chunked'}
+        self.assertEqual(
+            backend.format_request_preamble('POST', '/foo', headers),
+            b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n'
+        )
+
+        # Two headers:
+        headers = {'content-length': 1776, 'a': 'A'}
+        self.assertEqual(
+            backend.format_request_preamble('PUT', '/foo', headers),
+            b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\n\r\n'
+        )
+        headers = {'transfer-encoding': 'chunked', 'z': 'Z'}
+        self.assertEqual(
+            backend.format_request_preamble('POST', '/foo', headers),
+            b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
+        )
+
+        # Three headers:
+        headers = {'content-length': 1776, 'a': 'A', 'z': 'Z'}
+        self.assertEqual(
+            backend.format_request_preamble('PUT', '/foo', headers),
+            b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\nz: Z\r\n\r\n'
+        )
+        headers = {'transfer-encoding': 'chunked', 'z': 'Z', 'a': 'A'}
+        self.assertEqual(
+            backend.format_request_preamble('POST', '/foo', headers),
+            b'POST /foo HTTP/1.1\r\na: A\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
+        )
+
+    def test_format_request_preamble_py(self):
+        self.check_format_request_preamble(_basepy)
+
+    def test_format_request_preamble_c(self):
+        self.skip_if_no_c_ext()
+        self.check_format_request_preamble(_base)
+
     def check_parse_preamble(self, backend):
         self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
         self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),
