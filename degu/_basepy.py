@@ -304,7 +304,7 @@ def format_request_preamble(method, uri, headers):
 
 
 def format_response_preamble(status, reason, headers):
-    lines = ['{} {} HTTP/1.1\r\n'.format(status, reason)]
+    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
     if headers:
         header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
         header_lines.sort()
