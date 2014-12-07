@@ -189,20 +189,15 @@ def _read_request(rfile, bodies):
 
 
 def _write_response(wfile, status, reason, headers, body):
-    # For performance, store these attributes in local variables:
-    write = wfile.write
-    flush = wfile.flush
-    
     preamble = format_response_preamble(status, reason, headers)
-    total = write(preamble)
-
-    # Write the body:
     if body is None:
-        flush()
+        total = wfile.write(preamble)
+        wfile.flush()
     elif isinstance(body, (bytes, bytearray)):
-        total += write(body)
-        flush()
+        total = wfile.write(preamble + body)
+        wfile.flush()
     else:
+        total = wfile.write(preamble)
         total += body.write_to(wfile)          
     return total
 
