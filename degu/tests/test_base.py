@@ -332,15 +332,15 @@ class TestFunctions(AlternatesTestCase):
 
     def check_format_request_preamble(self, backend):
         # Too few arguments:
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_request_preamble()
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_request_preamble('GET')
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_request_preamble('GET', '/foo')
 
         # Too many arguments:
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_request_preamble('GET', '/foo', {}, None)
 
         # No headers:
@@ -394,15 +394,15 @@ class TestFunctions(AlternatesTestCase):
 
     def check_format_response_preamble(self, backend):
         # Too few arguments:
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_response_preamble()
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_response_preamble(200)
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_response_preamble(200, 'OK')
 
         # Too many arguments:
-        with self.assertRaises(TypeError) as cm:
+        with self.assertRaises(TypeError):
             backend.format_response_preamble('200', 'OK', {}, None)
 
         # No headers:
