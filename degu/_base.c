@@ -622,6 +622,85 @@ cleanup:
 }
 
 
+static PyObject *
+degu_format_response_preamble(PyObject *self, PyObject *args)
+{
+    PyObject *status, *reason, *headers, *key, *val;
+    Py_ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of response preamble */
+    PyObject *ret = NULL;  /* bytes version of response preamble */
+
+    if (!PyArg_ParseTuple(args, "OUO:format_response_preamble", &status, &reason, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n\r\n", status, reason))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S: %S\r\n\r\n",
+                    status, reason, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n", status, reason)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
+}
+
+
 
 /*
  * C implementation of `degu.base._read_preamble()`.
@@ -798,7 +877,10 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
-    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS, "format_request_preamble(headers)"},
+    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
+        "format_request_preamble(method, uri, headers)"},
+    {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,
+        "format_response_preamble(status, reason, headers)"},
     {NULL, NULL, 0, NULL}
 };
 

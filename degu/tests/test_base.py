@@ -331,6 +331,18 @@ class TestFunctions(AlternatesTestCase):
         self.check_parse_method(_base)
 
     def check_format_request_preamble(self, backend):
+        # Too few arguments:
+        with self.assertRaises(TypeError) as cm:
+            backend.format_request_preamble()
+        with self.assertRaises(TypeError) as cm:
+            backend.format_request_preamble('GET')
+        with self.assertRaises(TypeError) as cm:
+            backend.format_request_preamble('GET', '/foo')
+
+        # Too many arguments:
+        with self.assertRaises(TypeError) as cm:
+            backend.format_request_preamble('GET', '/foo', {}, None)
+
         # No headers:
         self.assertEqual(
             backend.format_request_preamble('GET', '/foo', {}),

@@ -65,13 +65,22 @@ def run(statement, K=100):
     print('{:>12,}: {}'.format(rate, statement))
     return rate
 
-print('\nHigh-level formatters:')
+print('\nFormatting request preamble:')
 run("_base.format_request_preamble('GET', '/foo', {})")
 run("_basepy.format_request_preamble('GET', '/foo', {})")
 run("_base.format_request_preamble('PUT', '/foo', {'content-length': 17})")
 run("_basepy.format_request_preamble('PUT', '/foo', {'content-length': 17})")
 run("_base.format_request_preamble('PUT', '/foo', headers)")
 run("_basepy.format_request_preamble('PUT', '/foo', headers)")
+
+print('\nFormatting response preamble:')
+run("_base.format_response_preamble(200, 'OK', {})")
+run("_basepy.format_response_preamble(200, 'OK', {})")
+run("_base.format_response_preamble(200, 'OK', {'content-length': 17})")
+run("_basepy.format_response_preamble(200, 'OK', {'content-length': 17})")
+run("_base.format_response_preamble(200, 'OK', headers)")
+run("_basepy.format_response_preamble(200, 'OK', headers)")
+
 raise SystemExit()
 
 print('\nFormatting and encoding:')
