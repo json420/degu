@@ -7,6 +7,7 @@ gc.enable()
 
 from io import BytesIO
 
+from degu import _base, _basepy
 from degu._base import parse_preamble
 from degu.base import bodies, _read_preamble, write_chunk
 from degu.client import _parse_status, _write_request
@@ -64,16 +65,21 @@ def run(statement, K=100):
     print('{:>12,}: {}'.format(rate, statement))
     return rate
 
+print('\nFormatting request preamble:')
+run("_base.format_request_preamble('GET', '/foo', {})")
+run("_basepy.format_request_preamble('GET', '/foo', {})")
+run("_base.format_request_preamble('PUT', '/foo', {'content-length': 17})")
+run("_basepy.format_request_preamble('PUT', '/foo', {'content-length': 17})")
+run("_base.format_request_preamble('PUT', '/foo', headers)")
+run("_basepy.format_request_preamble('PUT', '/foo', headers)")
 
-print('Decoding:')
-run("line.decode('latin_1')")
-run("line.decode('ascii')")
-run("line.decode()")
-
-print('\nSplit performance:')
-run("(method, uri, protocol) = 'GET /foo/bar?stuff=junk HTTP/1.1'.split()")
-run("(protocol, status, reason) = 'HTTP/1.1 404 Not Found'.split(' ', 2)")
-run("(key, value) = 'Content-Length: 1234567'.split(': ')")
+print('\nFormatting response preamble:')
+run("_base.format_response_preamble(200, 'OK', {})")
+run("_basepy.format_response_preamble(200, 'OK', {})")
+run("_base.format_response_preamble(200, 'OK', {'content-length': 17})")
+run("_basepy.format_response_preamble(200, 'OK', {'content-length': 17})")
+run("_base.format_response_preamble(200, 'OK', headers)")
+run("_basepy.format_response_preamble(200, 'OK', headers)")
 
 print('\nFormatting and encoding:')
 run("'HTTP/1.1 {} {}\\r\\n'.format(404, 'Not Found')")

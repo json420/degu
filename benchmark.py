@@ -43,11 +43,7 @@ response_body = json.dumps({'pong': pong}).encode()
 def ping_pong_app(session, request, bodies):
     request['body'].read()
     #assert json.loads(data.decode()) == {'ping': ping}
-    headers = {
-        'content-type': 'application/json',
-        'server': agent,
-    }
-    return (200, 'OK', headers, response_body)
+    return (200, 'OK', {}, response_body)
 
 
 if args.unix:
@@ -58,19 +54,13 @@ else:
 server = TempServer(address, ping_pong_app, max_requests=args.requests)
 client = Client(server.address)
 
-
-headers = {
-    'accept': 'application/json',
-    'content-type': 'application/json',
-    'user-agent': agent
-}
 count = args.requests
 deltas = []
 for i in range(50):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
-        conn.request('POST', '/', headers, request_body).body.read()
+        conn.request('POST', '/', {}, request_body).body.read()
         #assert json.loads(data.decode()) == {'pong': pong}
     deltas.append(time.monotonic() - start)
     conn.close()

@@ -27,6 +27,20 @@
 #define _MAX_LINE_SIZE 4096
 #define _MAX_HEADER_COUNT 20
 
+#define CRLF "\r\n"
+#define SEP ": "
+#define GET "GET"
+#define PUT "PUT"
+#define POST "POST"
+#define HEAD "HEAD"
+#define DELETE "DELETE"
+#define CONTENT_LENGTH "content-length"
+#define TRANSFER_ENCODING "transfer-encoding"
+#define CHUNKED "chunked"
+
+#define CONTENT_LENGTH_BIT    1
+#define TRANSFER_ENCODING_BIT 2
+
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
 
@@ -36,14 +50,8 @@ static PyObject *str_readline = NULL;           //  'readline'
 static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
-
-#define CRLF "\r\n"
-#define GET "GET"
-#define PUT "PUT"
-#define POST "POST"
-#define HEAD "HEAD"
-#define DELETE "DELETE"
-#define CONTENT_LENGTH "content-length"
+static PyObject *str_empty = NULL;              //  ''
+static PyObject *str_crlf = NULL;               //  '\r\n'
 
 static PyObject *str_GET = NULL;     // 'GET'
 static PyObject *str_PUT = NULL;     // 'PUT'
@@ -282,6 +290,11 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
     }
 
 
+#define _SET_AND_INC(pyobj, source) \
+    _SET(pyobj, source) \
+    Py_INCREF(pyobj);
+
+
 /*
  * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
  *
@@ -347,20 +360,101 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
     }
 
 
+#define _LENMEMCMP(a_buf, a_len, b_buf, b_len) \
+    (a_len == b_len && memcmp(a_buf, b_buf, a_len) == 0)
+
+
+static inline int
+_parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
+{
+    const uint8_t *sep = NULL;
+    const uint8_t *key_buf, *val_buf;
+    size_t key_len, val_len;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+    PyObject *tmp = NULL;
+    int flags = 0;
+
+    sep = memmem(buf, len, SEP, 2);
+    if (sep == NULL || sep < buf + 1 || sep > buf + len - 3) {
+        _value_error(buf, len, "bad header line: %R");
+        goto error;
+    }
+    key_buf = buf;
+    key_len = sep - buf;
+    val_buf = sep + 2;
+    val_len = len - key_len - 2;
+
+    /* Casefold and validate header name in place */
+    _SET(key,
+        _decode(key_buf, key_len, _KEYS, "bad bytes in header name: %R")
+    )
+    key_buf =  PyUnicode_1BYTE_DATA(key);
+
+    if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
+        _REPLACE(key, str_content_length)
+        _SET(tmp,
+            _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
+        )
+        _SET(val, PyLong_FromUnicodeObject(tmp, 10))
+        int overflow = -2;
+        long size = PyLong_AsLongAndOverflow(val, &overflow);
+        if (overflow != 0) {
+            PyErr_Format(PyExc_ValueError, "content-length too large: %R", tmp);
+            goto error;
+        }
+        if (size < 0) {
+            PyErr_Format(PyExc_ValueError, "negative content-length: %R", val);
+            goto error;
+        }
+        flags = CONTENT_LENGTH_BIT;
+    }
+    else if (_LENMEMCMP(key_buf, key_len, TRANSFER_ENCODING, 17)) {
+        if (! _LENMEMCMP(val_buf, val_len, CHUNKED, 7)) {
+            _value_error(val_buf, val_len, "bad transfer-encoding: %R");
+            goto error;
+
+        }
+        _REPLACE(key, str_transfer_encoding)
+        _SET_AND_INC(val, str_chunked)
+        flags = TRANSFER_ENCODING_BIT;
+    }
+    else {
+        _SET(val,
+            _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
+        )
+    }
+
+    /* Store in headers dict, make sure it's not a duplicate key */
+    if (PyDict_SetDefault(headers, key, val) != val) {
+        PyErr_Format(PyExc_ValueError, "duplicate header: %R: %R", key, val);
+        goto error;
+    }
+    goto cleanup;
+
+error:  
+    flags = -1;
+
+cleanup:
+    Py_CLEAR(key);
+    Py_CLEAR(val);
+    Py_CLEAR(tmp);
+    return flags;
+
+}
+
+
 static PyObject *
 _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
 {
-    const uint8_t *line_buf, *crlf, *sep;
-    size_t line_len, key_len, value_len;
+    const uint8_t *line_buf, *crlf;
+    size_t line_len;
     PyObject *first_line = NULL;
     PyObject *headers = NULL;
-    PyObject *key = NULL;
-    PyObject *value = NULL;
-    PyObject *line = NULL;
     PyObject *ret = NULL;
 
-    uint8_t has_content_length = 0;
-    uint8_t has_transfer_encoding = 0;
+    uint8_t flags = 0;
+    int newflags;
 
     line_buf = preamble_buf;
     line_len = preamble_len;
@@ -396,63 +490,18 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
          * implementation isn't well behaved when (haystacklen < needlelen).
          */
         if (line_len < 4) {
-            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
-            PyErr_Format(PyExc_ValueError, "header line too short: %R", line);
+            _value_error(line_buf, line_len, "header line too short: %R");
             goto error;
         }
 
-        sep = memmem(line_buf, line_len, ": ", 2);
-        if (sep == NULL || sep < line_buf + 1 || sep > line_buf + line_len - 3) {
-            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
-            PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
+        newflags = _parse_header_line(line_buf, line_len, headers);
+        if (newflags < 0) {
             goto error;
         }
-        key_len = sep - line_buf;
-        value_len = line_len - key_len - 2;
-
-        /* Decode & case-fold the header name */
-        _RESET(key,
-            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
-        )
-        _RESET(value,
-            _decode(sep + 2, value_len, _VALUES, "bad bytes in header value: %R")
-        )
-        if (key_len == 14 && memcmp(PyUnicode_1BYTE_DATA(key), "content-length", 14) == 0) {
-            has_content_length = 1;
-            _REPLACE(key, str_content_length)
-            PyObject *tmp = NULL;
-            _SET(tmp, PyLong_FromUnicodeObject(value, 10))
-            _RESET(value, tmp)
-            int overflow = -2;
-            long size = PyLong_AsLongAndOverflow(value, &overflow);
-            if (overflow != 0) {
-                PyErr_Format(PyExc_ValueError, "content-length too large: %R", value);
-                goto error;
-            }
-            if (size < 0) {
-                PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
-                goto error;
-            }
-        }
-        else if (key_len == 17 && memcmp(PyUnicode_1BYTE_DATA(key), "transfer-encoding", 17) == 0) {
-            has_transfer_encoding = 1;
-            _REPLACE(key, str_transfer_encoding)
-            if (value_len != 7 || memcmp(PyUnicode_1BYTE_DATA(value), "chunked", 7) != 0) {
-                PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", value);
-                goto error;
-            }
-            _REPLACE(value, str_chunked)
-        }
-
-        /* Store in headers dict, make sure it's not a duplicate key */
-        if (PyDict_SetDefault(headers, key, value) != value) {
-            _SET(line, PyBytes_FromStringAndSize((char *)line_buf, line_len))
-            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
-            goto error;
-        }
+        flags |= newflags;
     }
 
-    if (has_content_length && has_transfer_encoding) {
+    if (flags == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
@@ -467,9 +516,6 @@ error:
 cleanup:
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);
-    Py_CLEAR(value);
-    Py_CLEAR(line);
     return ret;
 }
 
@@ -484,6 +530,164 @@ degu_parse_preamble(PyObject *self, PyObject *args)
         return NULL;
     }
     return _parse_preamble(buf, len);   
+}
+
+
+static PyObject *
+degu_format_request_preamble(PyObject *self, PyObject *args)
+{
+    PyObject *method, *uri, *headers, *key, *val;
+    Py_ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of request preamble */
+    PyObject *ret = NULL;  /* bytes version of request preamble */
+
+    if (!PyArg_ParseTuple(args, "UUO:format_request_preamble", &method, &uri, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("%S %S HTTP/1.1\r\n\r\n", method, uri))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S: %S\r\n\r\n",
+                    method, uri, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("%S %S HTTP/1.1\r\n", method, uri)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
+}
+
+
+static PyObject *
+degu_format_response_preamble(PyObject *self, PyObject *args)
+{
+    PyObject *status, *reason, *headers, *key, *val;
+    Py_ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of response preamble */
+    PyObject *ret = NULL;  /* bytes version of response preamble */
+
+    if (!PyArg_ParseTuple(args, "OUO:format_response_preamble", &status, &reason, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n\r\n", status, reason))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S: %S\r\n\r\n",
+                    status, reason, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n", status, reason)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
 }
 
 
@@ -663,6 +867,10 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
+    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
+        "format_request_preamble(method, uri, headers)"},
+    {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,
+        "format_response_preamble(status, reason, headers)"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -715,9 +923,11 @@ PyInit__base(void)
     /* Init global Python `int` and `str` objects we need for performance */
     _SET(int_zero, PyLong_FromLong(0))
     _SET(str_readline, PyUnicode_InternFromString("readline"))
-    _SET(str_content_length, PyUnicode_InternFromString("content-length"))
-    _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
+    _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
+    _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
+    _SET(str_empty, PyUnicode_InternFromString(""))
+    _SET(str_crlf, PyUnicode_InternFromString(CRLF))
 
     /* Init pre-built global args tuple for rfile.readline(_MAX_LINE_SIZE) */
     _SET(int_size_max, PyObject_GetAttrString(module, "_MAX_LINE_SIZE"))    

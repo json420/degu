@@ -29,7 +29,7 @@ import threading
 import os
 
 from .base import bodies as default_bodies
-from .base import _TYPE_ERROR, _makefiles, _read_preamble
+from .base import _TYPE_ERROR, _makefiles, _read_preamble, format_response_preamble
 
 
 log = logging.getLogger()
@@ -189,28 +189,15 @@ def _read_request(rfile, bodies):
 
 
 def _write_response(wfile, status, reason, headers, body):
-    # For performance, store these attributes in local variables:
-    write = wfile.write
-    flush = wfile.flush
-
-    # Write the first line:
-    total = write('HTTP/1.1 {} {}\r\n'.format(status, reason).encode())
-
-    # Write the header lines:
-    header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-    header_lines.sort()
-    total += write(''.join(header_lines).encode())
-
-    # Write the final preamble CRLF terminator:
-    total += write(b'\r\n')
-
-    # Write the body:
+    preamble = format_response_preamble(status, reason, headers)
     if body is None:
-        flush()
+        total = wfile.write(preamble)
+        wfile.flush()
     elif isinstance(body, (bytes, bytearray)):
-        total += write(body)
-        flush()
+        total = wfile.write(preamble + body)
+        wfile.flush()
     else:
+        total = wfile.write(preamble)
         total += body.write_to(wfile)          
     return total
 

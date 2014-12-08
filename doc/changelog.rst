@@ -4,6 +4,16 @@ Changelog
 0.12 (unreleased)
 -----------------
 
+Performance improvements:
+
+    *   ``benchmark.py`` is now on average around 9% faster for ``AF_INET6`` and
+        around 19% faster for ``AF_UNIX``; this improvement is due to new C
+        extensions for formatting and encoding the HTTP request and response
+        preamble; note that ``benchmark.py`` has been tweaked to be more
+        representative of idiomatic Degu use (very few headers), so to compare 
+        performance with Degu 0.11, you'll need to copy the ``benchmark.py``
+        script from the Degu 0.12 source tree.
+
 
 
 0.11 (November 2014)
