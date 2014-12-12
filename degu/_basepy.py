@@ -165,6 +165,42 @@ def _READLINE(readline, maxsize):
     return line
 
 
+def parse_response_line(line):
+    if len(line) < 15:
+        raise ValueError('response line too short: {!r}'.format(line))
+    if line[0:9] != b'HTTP/1.1 ' or line[12:13] != b' ':
+        raise ValueError('bad response line: {!r}'.format(line))
+
+    # status:
+    status = None
+    try:
+        status = int(line[9:12])
+    except ValueError:
+        pass
+    if status is None or not (100 <= status <= 599):
+        raise ValueError('bad status in response line: {!r}'.format(line))
+
+    # reason:
+    reason = _decode_value(line[13:], 'bad reason in response line: {!r}')
+
+    # Return (status, reason) 2-tuple:
+    return (status, reason)
+
+
+def _fast_parse_response_line(line):
+    """
+    Reference for how fast a pure-Python request line parser can be.
+
+    As this function does *not* properly validate the request line, it's not a
+    fair comparison.  But it still provides an interesting performance reality
+    check for the C implementation.
+
+    WARNING: This function has gaping security problems and should *never* be
+    used in production!
+    """
+    return (int(line[9:12]), line[13:].decode())
+
+
 def parse_preamble(preamble):
     (first_line, *header_lines) = preamble.split(b'\r\n')
     first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')

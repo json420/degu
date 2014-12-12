@@ -316,6 +316,91 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
     Py_INCREF(pyobj);
 
 
+static PyObject *
+_parse_response_line(const uint8_t *buf, const size_t len)
+{
+    PyObject *status = NULL;
+    PyObject *reason = NULL;
+    PyObject *ret = NULL;
+    uint8_t d;
+    uint8_t err;
+    unsigned long accum;
+
+    /* Reject any response line shorter than 15 bytes:
+     *
+     *     "HTTP/1.1 200 OK"[0:15]
+     *      ^^^^^^^^^^^^^^^
+     */
+    if (len < 15) {
+        _value_error(buf, len, "response line too short: %R");
+        return NULL;
+    }
+
+    /* protocol, spaces:
+     *
+     *     "HTTP/1.1 200 OK"[0:9]
+     *      ^^^^^^^^^
+     *
+     *     "HTTP/1.1 200 OK"[12:13]
+     *                  ^
+     */
+    if (memcmp(buf, "HTTP/1.1 ", 9) != 0 || buf[12] != ' ') {
+        _value_error(buf, len, "bad response line: %R");
+        return NULL;
+    }
+
+    /* status:
+     *
+     *     "HTTP/1.1 200 OK"[9:12]
+     *               ^^^
+     */
+    d = buf[ 9];    err =  (d < 48 || d > 57);    accum =  (d - 48) * 100;
+    d = buf[10];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
+    d = buf[11];    err |= (d < 48 || d > 57);    accum += (d - 48);
+    if (err || accum < 100 || accum > 599) {
+        _value_error(buf, len, "bad status in response line: %R");
+        return NULL;
+    }
+    _SET(status, PyLong_FromUnsignedLong(accum))
+
+    /* reason:
+     *
+     *     "HTTP/1.1 200 OK"[13:]
+     *                   ^^
+     */
+    _SET(reason,
+        _decode(buf + 13, len - 13, _VALUES, "bad reason in response line: %R")
+    )
+
+    /* Build (status, reason) tuple */
+    ret = PyTuple_Pack(2, status, reason);
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(status);
+    Py_CLEAR(reason);
+    return ret;
+}
+
+
+static PyObject *
+parse_response_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_response_line(buf, len);
+}
+
+
+
+
 /*
  * _READLINE() macro: read the next line in the preamble using rfile.readline().
  */
@@ -865,6 +950,8 @@ cleanup:
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_response_line", parse_response_line, METH_VARARGS,
+        "parse_response_line(line)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,

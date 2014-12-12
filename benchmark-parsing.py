@@ -65,6 +65,17 @@ def run(statement, K=100):
     print('{:>12,}: {}'.format(rate, statement))
     return rate
 
+
+print('\nSimple parsers:')
+run("_base.parse_response_line(b'HTTP/1.1 200 OK')")
+run("_base.parse_response_line(b'HTTP/1.1 404 Not Found')")
+run("_basepy.parse_response_line(b'HTTP/1.1 200 OK')")
+run("_basepy.parse_response_line(b'HTTP/1.1 404 Not Found')")
+run("_basepy._fast_parse_response_line(b'HTTP/1.1 200 OK')")
+run("_basepy._fast_parse_response_line(b'HTTP/1.1 404 Not Found')")
+
+raise SystemExit()
+
 print('\nFormatting request preamble:')
 run("_base.format_request_preamble('GET', '/foo', {})")
 run("_basepy.format_request_preamble('GET', '/foo', {})")

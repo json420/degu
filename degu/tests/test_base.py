@@ -323,12 +323,67 @@ class TestFunctions(AlternatesTestCase):
                     'bad HTTP method: {!r}'.format(bad)
                 )
 
-    def test_parse_method_p(self):
+    def test_parse_method_py(self):
         self.check_parse_method(_basepy)
 
     def test_parse_method_c(self):
         self.skip_if_no_c_ext()
         self.check_parse_method(_base)
+
+    def check_parse_response_line(self, backend):
+        self.assertIn(backend, (_base, _basepy))
+        parse_response_line = backend.parse_response_line
+
+        # request line is too short:
+        line  = b'HTTP/1.1 200 OK'
+        for stop in range(15):
+            short = line[:stop]
+            self.assertTrue(0 <= len(short) <= 14)
+            with self.assertRaises(ValueError) as cm:
+                parse_response_line(short)
+            self.assertEqual(str(cm.exception),
+                'response line too short: {!r}'.format(short)
+            )
+
+        # Double confirm when len(line) is 0:
+        with self.assertRaises(ValueError) as cm:
+            parse_response_line(b'')
+        self.assertEqual(str(cm.exception),
+            "response line too short: b''"
+        )
+
+        # Double confirm when len(line) is 14:
+        short = line[:14]
+        self.assertEqual(len(short), 14)
+        with self.assertRaises(ValueError) as cm:
+            parse_response_line(short)
+        self.assertEqual(str(cm.exception),
+            "response line too short: b'HTTP/1.1 200 O'"
+        )
+
+        # Confirm valid minimum response line is 15 bytes in length:
+        self.assertEqual(len(line), 15)
+        self.assertEqual(parse_response_line(line), (200, 'OK'))
+
+        # Test all status in range 000-999, plus a few valid reasons:
+        for status in range(1000):
+            for reason in ('OK', 'Not Found', 'Enhance Your Calm'):
+                line = 'HTTP/1.1 {:03d} {}'.format(status, reason).encode()
+                if 100 <= status <= 599:
+                    self.assertEqual(parse_response_line(line), (status, reason))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_response_line(line)
+                    self.assertEqual(str(cm.exception),
+                        'bad status in response line: {!r}'.format(line)
+                    )
+
+    def test_parse_response_line_py(self):
+        self.check_parse_response_line(_base)
+
+    def test_parse_response_line_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_response_line(_base)
 
     def check_format_request_preamble(self, backend):
         # Too few arguments:
