@@ -378,8 +378,15 @@ class TestFunctions(AlternatesTestCase):
                         'bad status in response line: {!r}'.format(line)
                     )
 
+        # Test fast-path when reason is 'OK':
+        for status in range(200, 600):
+            line = 'HTTP/1.1 {} OK'.format(status).encode()
+            tup = parse_response_line(line)
+            self.assertEqual(tup, (status, 'OK'))
+            self.assertIs(tup[1], backend.OK)
+
     def test_parse_response_line_py(self):
-        self.check_parse_response_line(_base)
+        self.check_parse_response_line(_basepy)
 
     def test_parse_response_line_c(self):
         self.skip_if_no_c_ext()

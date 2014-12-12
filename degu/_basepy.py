@@ -85,6 +85,7 @@ PUT = 'PUT'
 POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
+OK = 'OK'
 
 
 def parse_method(method):
@@ -181,24 +182,13 @@ def parse_response_line(line):
         raise ValueError('bad status in response line: {!r}'.format(line))
 
     # reason:
-    reason = _decode_value(line[13:], 'bad reason in response line: {!r}')
+    if line[13:] == b'OK':
+        reason = OK
+    else:
+        reason = _decode_value(line[13:], 'bad reason in response line: {!r}')
 
     # Return (status, reason) 2-tuple:
     return (status, reason)
-
-
-def _fast_parse_response_line(line):
-    """
-    Reference for how fast a pure-Python request line parser can be.
-
-    As this function does *not* properly validate the request line, it's not a
-    fair comparison.  But it still provides an interesting performance reality
-    check for the C implementation.
-
-    WARNING: This function has gaping security problems and should *never* be
-    used in production!
-    """
-    return (int(line[9:12]), line[13:].decode())
 
 
 def parse_preamble(preamble):

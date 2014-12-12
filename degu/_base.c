@@ -34,6 +34,7 @@
 #define POST "POST"
 #define HEAD "HEAD"
 #define DELETE "DELETE"
+#define OK "OK"
 #define CONTENT_LENGTH "content-length"
 #define TRANSFER_ENCODING "transfer-encoding"
 #define CHUNKED "chunked"
@@ -53,11 +54,12 @@ static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_empty = NULL;              //  ''
 static PyObject *str_crlf = NULL;               //  '\r\n'
 
-static PyObject *str_GET = NULL;     // 'GET'
-static PyObject *str_PUT = NULL;     // 'PUT'
-static PyObject *str_POST = NULL;    // 'POST'
-static PyObject *str_HEAD = NULL;    // 'HEAD'
+static PyObject *str_GET    = NULL;  // 'GET'
+static PyObject *str_PUT    = NULL;  // 'PUT'
+static PyObject *str_POST   = NULL;  // 'POST'
+static PyObject *str_HEAD   = NULL;  // 'HEAD'
 static PyObject *str_DELETE = NULL;  // 'DELETE'
+static PyObject *str_OK     = NULL;  // 'OK'
 
 
 /*
@@ -368,9 +370,15 @@ _parse_response_line(const uint8_t *buf, const size_t len)
      *     "HTTP/1.1 200 OK"[13:]
      *                   ^^
      */
-    _SET(reason,
-        _decode(buf + 13, len - 13, _VALUES, "bad reason in response line: %R")
-    )
+    if (len == 15 && memcmp(buf + 13, OK, 2) == 0) {
+        /* Fast-path for when reason is "OK" */
+        _SET_AND_INC(reason, str_OK)
+    }
+    else {
+        _SET(reason,
+            _decode(buf + 13, len - 13, _VALUES, "bad reason in response line: %R")
+        )
+    }
 
     /* Build (status, reason) tuple */
     ret = PyTuple_Pack(2, status, reason);
@@ -999,6 +1007,7 @@ PyInit__base(void)
     _ADD_MODULE_STRING(str_POST,   POST)
     _ADD_MODULE_STRING(str_HEAD,   HEAD)
     _ADD_MODULE_STRING(str_DELETE, DELETE)
+    _ADD_MODULE_STRING(str_OK, OK)
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
