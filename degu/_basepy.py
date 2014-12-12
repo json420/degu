@@ -85,6 +85,7 @@ PUT = 'PUT'
 POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
+OK = 'OK'
 
 
 def parse_method(method):
@@ -163,6 +164,31 @@ def _READLINE(readline, maxsize):
             )
         )
     return line
+
+
+def parse_response_line(line):
+    if len(line) < 15:
+        raise ValueError('response line too short: {!r}'.format(line))
+    if line[0:9] != b'HTTP/1.1 ' or line[12:13] != b' ':
+        raise ValueError('bad response line: {!r}'.format(line))
+
+    # status:
+    status = None
+    try:
+        status = int(line[9:12])
+    except ValueError:
+        pass
+    if status is None or not (100 <= status <= 599):
+        raise ValueError('bad status in response line: {!r}'.format(line))
+
+    # reason:
+    if line[13:] == b'OK':
+        reason = OK
+    else:
+        reason = _decode_value(line[13:], 'bad reason in response line: {!r}')
+
+    # Return (status, reason) 2-tuple:
+    return (status, reason)
 
 
 def parse_preamble(preamble):

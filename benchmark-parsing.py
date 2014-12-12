@@ -7,8 +7,13 @@ gc.enable()
 
 from io import BytesIO
 
+from degu._base import (
+    parse_preamble,
+    parse_response_line,
+    parse_method,
+)
+
 from degu import _base, _basepy
-from degu._base import parse_preamble
 from degu.base import bodies, _read_preamble, write_chunk
 from degu.client import _parse_status, _write_request
 from degu.server import _read_request, _write_response
@@ -52,18 +57,28 @@ class wfile:
 
 
 def run_iter(statement, n):
-    for i in range(20):
+    for i in range(10):
         t = timeit.Timer(statement, setup)
         yield t.timeit(n)
 
 
-def run(statement, K=100):
+def run(statement, K=150):
     n = K * 1000
-    # Choose fastest of 20 runs:
+    # Choose fastest of 10 runs:
     elapsed = min(run_iter(statement, n))
     rate = int(n / elapsed)
     print('{:>12,}: {}'.format(rate, statement))
     return rate
+
+
+print('\nSimple parsers:')
+run("parse_response_line(b'HTTP/1.1 200 OK')")
+run("parse_response_line(b'HTTP/1.1 404 Not Found')")
+run("parse_method(b'GET')")
+run("parse_method(b'PUT')")
+run("parse_method(b'POST')")
+run("parse_method(b'HEAD')")
+run("parse_method(b'DELETE')")
 
 print('\nFormatting request preamble:')
 run("_base.format_request_preamble('GET', '/foo', {})")
