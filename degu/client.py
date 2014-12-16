@@ -396,7 +396,7 @@ class Client:
     """
 
     _default_port = 80  # Needed to contruct the default host header
-    _allowed_options = ('host', 'timeout', 'bodies')
+    _allowed_options = ('host', 'timeout', 'bodies', 'on_connect')
 
     def __init__(self, address, **options):
         if isinstance(address, tuple):  
@@ -429,12 +429,21 @@ class Client:
                 )
             )
         self.address = address
+
+        # Options:
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
         self.timeout = options.get('timeout', 90)
+        self.on_connect = options.get('on_connect')
         assert self.host is None or isinstance(self.host, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
+        if not (self.on_connect is None or callable(self.on_connect)):
+            raise TypeError(
+                'on_connect: not callable: {!r}'.format(self.on_connect)
+            )
+
+        # Base headers:
         self._base_headers = ({'host': self.host} if self.host else None)
 
     def __repr__(self):
@@ -451,7 +460,10 @@ class Client:
     def connect(self, bodies=None):
         if bodies is None:
             bodies = self.bodies
-        return Connection(self.create_socket(), self._base_headers, bodies)
+        conn = Connection(self.create_socket(), self._base_headers, bodies)
+        if self.on_connect is None or self.on_connect(conn) is True:
+            return conn
+        raise ValueError('on_connect() did not return True')
 
 
 class SSLClient(Client):
