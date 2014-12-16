@@ -399,6 +399,7 @@ class Client:
     _allowed_options = ('host', 'timeout', 'bodies', 'on_connect')
 
     def __init__(self, address, **options):
+        # address:
         if isinstance(address, tuple):  
             if len(address) == 4:
                 self._family = socket.AF_INET6
@@ -420,6 +421,9 @@ class Client:
             raise TypeError(
                 _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
             )
+        self.address = address
+
+        # options:
         if not set(options).issubset(self.__class__._allowed_options):
             cls = self.__class__
             unsupported = sorted(set(options) - set(cls._allowed_options))
@@ -428,9 +432,6 @@ class Client:
                     cls.__name__, ', '.join(unsupported)
                 )
             )
-        self.address = address
-
-        # Options:
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
@@ -443,7 +444,7 @@ class Client:
                 'on_connect: not callable: {!r}'.format(self.on_connect)
             )
 
-        # Base headers:
+        # Build _base_headers:
         self._base_headers = ({'host': self.host} if self.host else None)
 
     def __repr__(self):
