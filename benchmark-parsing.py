@@ -10,6 +10,7 @@ from io import BytesIO
 from degu._base import (
     parse_preamble,
     parse_response_line,
+    parse_request_line,
     parse_method,
 )
 
@@ -74,6 +75,8 @@ def run(statement, K=150):
 print('\nSimple parsers:')
 run("parse_response_line(b'HTTP/1.1 200 OK')")
 run("parse_response_line(b'HTTP/1.1 404 Not Found')")
+run("parse_request_line(b'GET / HTTP/1.1')")
+run("parse_request_line(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_method(b'GET')")
 run("parse_method(b'PUT')")
 run("parse_method(b'POST')")

@@ -236,7 +236,6 @@ degu_parse_method(PyObject *self, PyObject *args)
 }
 
 
-
 /*
  * _decode(): validate against *table*, possibly case-fold.
  *
@@ -407,6 +406,92 @@ parse_response_line(PyObject *self, PyObject *args)
 }
 
 
+static PyObject *
+_parse_request_line_inner(const uint8_t *buf, const size_t len)
+{
+    PyObject *method = NULL;
+    PyObject *uri = NULL;
+    PyObject *ret = NULL;
+    uint8_t *sep, *uri_buf;
+    size_t method_len, uri_len;
+
+    /* Search for method terminating space, plus start of uri:
+     *
+     *     "GET /"
+     *         ^^
+     */
+    sep = memmem(buf, len, " /", 2);
+    if (sep == NULL) {
+        _value_error(buf, len, "bad inner request line: %R");
+        return NULL;
+    }
+
+    method_len = sep - buf;
+    uri_buf = sep + 1;
+    uri_len = len - (uri_buf - buf);
+
+    _SET(method, _parse_method(buf, method_len))
+    _SET(uri,
+        _decode(uri_buf, uri_len, _VALUES, "bad uri in request line: %R")
+    )
+
+    /* Build (method, uri) tuple */
+    ret = PyTuple_Pack(2, method, uri);
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(method);
+    Py_CLEAR(uri);
+    return ret;
+}
+
+
+static PyObject *
+_parse_request_line(const uint8_t *buf, const size_t len)
+{
+    /* Reject any request line shorter than 14 bytes:
+     *
+     *     "GET / HTTP/1.1"[0:14]
+     *      ^^^^^^^^^^^^^^
+     */
+    if (len < 14) {
+        _value_error(buf, len, "request line too short: %R");
+        return NULL;
+    }
+
+    /* verify final 9 bytes (protocol):
+     *
+     *     "GET / HTTP/1.1"[-9:]
+     *           ^^^^^^^^^
+     */
+    if (memcmp(buf + (len - 9), " HTTP/1.1", 9) != 0) {
+        _value_error(buf, len, "bad protocol in request line: %R");
+        return NULL;
+    }
+
+    /* _parse_request_line_inner() will handle the rest:
+     *
+     *     "GET / HTTP/1.1"[-9:]
+     *      ^^^^^
+     */
+    return _parse_request_line_inner(buf, len - 9);
+}
+
+
+static PyObject *
+parse_request_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_request_line", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_request_line(buf, len);
+}
 
 
 /*
@@ -960,6 +1045,8 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_response_line", parse_response_line, METH_VARARGS,
         "parse_response_line(line)"},
+    {"parse_request_line", parse_request_line, METH_VARARGS,
+        "parse_request_line(line)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
