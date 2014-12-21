@@ -635,6 +635,8 @@ class TestFunctions(AlternatesTestCase):
 
     def check_parse_preamble(self, backend):
         self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
+        parse_preamble = backend.parse_preamble
+
         self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),
             ('Foo', {'bar': 'Baz'})
         )
@@ -666,6 +668,27 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             "bad bytes in header value: b'Baz\\x00'"
         )
+
+        # content-length larger than 9007199254740992:
+        value = 9007199254740992
+        for gv in (0, 17, value, value - 1, value - 17):
+            buf = 'GET / HTTP/1.1\r\nContent-Length: {:d}'.format(gv).encode()
+            self.assertEqual(parse_preamble(buf),
+                ('GET / HTTP/1.1', {'content-length': gv})
+            )
+        with self.assertRaises(ValueError) as cm:
+            parse_preamble(b'GET / HTTP/1.1\r\nContent-Length: 09007199254740992')
+        self.assertEqual(str(cm.exception),
+            "content-length too long: b'0900719925474099'..."
+        )
+        for i in range(1, 101):
+            bv = value + i
+            buf = 'GET / HTTP/1.1\r\nContent-Length: {:d}'.format(bv).encode()
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_preamble(buf)
+            self.assertEqual(str(cm.exception),
+                'content-length value too large: {:d}'.format(bv)
+            )
 
     def test_parse_preamble_p(self):
         self.check_parse_preamble(_basepy)

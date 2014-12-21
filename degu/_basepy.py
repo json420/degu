@@ -203,12 +203,25 @@ def parse_preamble(preamble):
             raise ValueError(
                 'duplicate header: {!r}'.format(line)
             )
-    if 'content-length' in headers:
-        headers['content-length'] = int(headers['content-length'])
-        if headers['content-length'] < 0:
+    cl = headers.get('content-length')
+    if cl is not None:
+        if len(cl) > 16:
             raise ValueError(
-                'negative content-length: {!r}'.format(headers['content-length'])
-            ) 
+                'content-length too long: {!r}...'.format(cl[:16].encode())
+            )
+        try:
+            value = int(cl)
+        except ValueError:
+            value = None
+        if value is None or value < 0:
+            raise ValueError(
+                'bad bytes in content-length: {!r}'.format(cl)
+            )
+        if value > 9007199254740992:
+            raise ValueError(
+                'content-length value too large: {!r}'.format(value)
+            )
+        headers['content-length'] = value
         if 'transfer-encoding' in headers:
             raise ValueError(
                 'cannot have both content-length and transfer-encoding headers'
