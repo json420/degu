@@ -213,28 +213,6 @@ def _validate_request(bodies, method, uri, headers, body):
         raise ValueError('cannot include body in a {} request'.format(method))
 
 
-def _parse_status(line):
-    """
-    Parse the status line.
-
-    The return value will be a ``(status, reason)`` tuple, and the status will
-    be converted into an integer:
-
-    >>> _parse_status('HTTP/1.1 404 Not Found')
-    (404, 'Not Found')
-
-    """
-    (protocol, status, reason) = line.split(' ', 2)
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
-    status = int(status)
-    if not (100 <= status <= 599):
-        raise ValueError('need 100 <= status <= 599; got {}'.format(status))
-    if not reason:
-        raise ValueError('empty reason')
-    return (status, reason)
-
-
 def _write_request(wfile, method, uri, headers, body):
     preamble = format_request_preamble(method, uri, headers)
     if body is None:
