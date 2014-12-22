@@ -167,6 +167,9 @@ def _READLINE(readline, maxsize):
 
 
 def parse_response_line(line):
+    if isinstance(line, str):
+        line = line.encode()
+
     if len(line) < 15:
         raise ValueError('response line too short: {!r}'.format(line))
     if line[0:9] != b'HTTP/1.1 ' or line[12:13] != b' ':
