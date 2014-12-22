@@ -28,7 +28,13 @@ from collections import namedtuple
 import os
 
 from .base import bodies as default_bodies
-from .base import _TYPE_ERROR, _makefiles, _read_preamble, format_request_preamble
+from .base import (
+    _TYPE_ERROR,
+    _makefiles,
+    _read_preamble,
+    format_request_preamble,
+    parse_response_line,
+)
 
 
 Response = namedtuple('Response', 'status reason headers body')
@@ -244,8 +250,8 @@ def _write_request(wfile, method, uri, headers, body):
 
 
 def _read_response(rfile, bodies, method):
-    (status_line, headers) = _read_preamble(rfile)
-    (status, reason) = _parse_status(status_line)
+    (line, headers) = _read_preamble(rfile)
+    (status, reason) = parse_response_line(line)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:

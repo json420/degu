@@ -32,6 +32,7 @@ try:
         _read_preamble,
         format_request_preamble,
         format_response_preamble,
+        parse_response_line,
     )
 except ImportError:
     from ._basepy import (
@@ -41,6 +42,7 @@ except ImportError:
         _read_preamble,
         format_request_preamble,
         format_response_preamble,
+        parse_response_line,
     )
 
 
@@ -51,6 +53,7 @@ __all__ = (
     '_read_preamble',
     'format_request_preamble',
     'format_response_preamble',
+    'parse_response_line',
 )
 
 
