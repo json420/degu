@@ -1256,18 +1256,18 @@ class TestFunctions(AlternatesTestCase):
             )
 
         # Bad Content-Length:
-        lines = [random_line(), b'Content-Length: 16.9\r\n', b'\r\n']
+        lines = [random_line(), b'Content-Length: 16.9\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
         self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 10: '16.9'"
+            "bad bytes in content-length: b'16.9'"
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1275,16 +1275,18 @@ class TestFunctions(AlternatesTestCase):
         )
 
         # Negative Content-Length:
-        lines = [random_line(), b'Content-Length: -17\r\n', b'\r\n']
+        lines = [random_line(), b'Content-Length: -17\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
-        self.assertEqual(str(cm.exception), 'negative content-length: -17')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in content-length: b'-17'"
+        )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1292,16 +1294,16 @@ class TestFunctions(AlternatesTestCase):
         )
 
         # Bad Transfer-Encoding:
-        lines = [random_line(), b'Transfer-Encoding: clumped\r\n', b'\r\n']
+        lines = [random_line(), b'Transfer-Encoding: clumped\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
-        self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
+        self.assertEqual(str(cm.exception), "bad transfer-encoding: b'clumped'")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1320,7 +1322,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
         self.assertEqual(str(cm.exception),
-            "duplicate header: b'Content-Type: text/plain\\r\\n'"
+            "duplicate header: b'Content-Type: text/plain'"
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,

@@ -77,8 +77,8 @@ _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
-_RE_KEYS = re.compile('^[-1-9a-z]+$')
-
+_RE_KEYS = re.compile('^[-0-9a-z]+$')
+_RE_CONTENT_LENGTH = re.compile(b'^[0-9]+$')
 
 GET = 'GET'
 PUT = 'PUT'
@@ -249,23 +249,49 @@ def __read_preamble(rfile):
     headers = {}
     for i in range(_MAX_HEADER_COUNT):
         line = _READLINE(readline, _MAX_LINE_SIZE)
-        if line[-2:] != b'\r\n':
-            raise ValueError(
-                'bad header line termination: {!r}'.format(line[-2:])
-            )
-        if len(line) == 2:  # Stop on the first empty CRLF terminated line
+        crlf = line[-2:]
+        if crlf != b'\r\n':
+            raise ValueError('bad header line termination: {!r}'.format(crlf))
+        if line == b'\r\n':  # Stop on the first empty CRLF terminated line
             return (first_line, headers)
         if len(line) < 6:
             raise ValueError('header line too short: {!r}'.format(line))
+        assert line[-2:] == b'\r\n'
+        line = line[:-2]
         try:
-            (key, value) = line[:-2].split(b': ', 1)
+            (key, value) = line.split(b': ', 1)
         except ValueError:
             key = None
             value = None
         if not (key and value):
             raise ValueError('bad header line: {!r}'.format(line))
-        key = _decode_key(key, 'bad bytes in header name: {!r}')
-        value = _decode_value(value, 'bad bytes in header value: {!r}')
+        if key.lower() == b'content-length':
+            cl = None
+            if _RE_CONTENT_LENGTH.match(value):
+                try:
+                    cl = int(value)
+                except ValueError:
+                    pass
+            if cl is None or cl < 0:
+                raise ValueError(
+                    'bad bytes in content-length: {!r}'.format(value)
+                )
+            if cl > 9007199254740992:
+                raise ValueError(
+                    'content-length value too large: {!r}'.format(cl)
+                )
+            key = 'content-length'
+            value = cl
+        elif key.lower() == b'transfer-encoding':
+            if value != b'chunked':
+                raise ValueError(
+                    'bad transfer-encoding: {!r}'.format(value)
+                )
+            key = 'transfer-encoding'
+            value = 'chunked'
+        else:
+            key = _decode_key(key, 'bad bytes in header name: {!r}')
+            value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
                 'duplicate header: {!r}'.format(line)
@@ -277,21 +303,10 @@ def __read_preamble(rfile):
 
 def _read_preamble(rfile):
     (first_line, headers) = __read_preamble(rfile)
-    if 'content-length' in headers:
-        headers['content-length'] = int(headers['content-length'])
-        if headers['content-length'] < 0:
-            raise ValueError(
-                'negative content-length: {!r}'.format(headers['content-length'])
-            ) 
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                'cannot have both content-length and transfer-encoding headers'
-            )
-    elif 'transfer-encoding' in headers:
-        if headers['transfer-encoding'] != 'chunked':
-            raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
-            )
+    if 'content-length' in headers and 'transfer-encoding' in headers:
+        raise ValueError(
+            'cannot have both content-length and transfer-encoding headers'
+        )
     return (first_line, headers)
 
 
