@@ -689,6 +689,13 @@ class TestFunctions(AlternatesTestCase):
             self.assertEqual(str(cm.exception),
                 'content-length value too large: {:d}'.format(bv)
             )
+        bv = int('9' * 16)
+        buf = 'GET / HTTP/1.1\r\nContent-Length: {:d}'.format(bv).encode()
+        with self.assertRaises(ValueError) as cm:
+            backend.parse_preamble(buf)
+        self.assertEqual(str(cm.exception),
+            'content-length value too large: {:d}'.format(bv)
+        )
 
     def test_parse_preamble_p(self):
         self.check_parse_preamble(_basepy)

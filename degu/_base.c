@@ -335,7 +335,7 @@ static PyObject *
 _parse_content_length(const uint8_t *buf, const size_t len)
 {
     uint64_t accum;
-    uint8_t d, err;
+    uint8_t err, d;
     size_t i;
 
     if (len < 1) {
@@ -359,12 +359,12 @@ _parse_content_length(const uint8_t *buf, const size_t len)
     }
     if (accum > (uint64_t)MAX_CL_VALUE) {
         PyErr_Format(PyExc_ValueError,
-            "content-length value too large: %lu", accum
+            "content-length value too large: %llu", accum
         );
         return NULL;
     }
 
-    return PyLong_FromUnsignedLong(accum);
+    return PyLong_FromUnsignedLongLong(accum);
 }
 
 
