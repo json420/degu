@@ -377,66 +377,6 @@ class TestFunctions(TestCase):
                 )
                 self.assertEqual(headers, {'transfer-encoding': 'chunked'})
 
-    def test__parse_status(self):
-        # Not enough spaces:
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 200OK')
-        self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
-
-        # Bad protocol:
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.0 200 OK')
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
-
-        # Status not an int:
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 17.9 OK')
-        self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 10: '17.9'"
-        )
-
-        # Status outside valid range:
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 99 OK')
-        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 99')
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 600 OK')
-        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got 600')
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 -200 OK')
-        self.assertEqual(str(cm.exception), 'need 100 <= status <= 599; got -200')
-
-        # Empty reason:
-        with self.assertRaises(ValueError) as cm:
-            client._parse_status('HTTP/1.1 200 ')
-        self.assertEqual(str(cm.exception), 'empty reason')
-
-        # A gew good static values:
-        self.assertEqual(client._parse_status('HTTP/1.1 200 OK'),
-            (200, 'OK')
-        )
-        self.assertEqual(client._parse_status('HTTP/1.1 404 Not Found'),
-            (404, 'Not Found')
-        )
-        self.assertEqual(client._parse_status('HTTP/1.1 505 HTTP Version Not Supported'),
-            (505, 'HTTP Version Not Supported')
-        )
-
-        # Go through a bunch O permutations:
-        for i in range(100, 600):
-            self.assertEqual(
-                client._parse_status('HTTP/1.1 {:d} Foo'.format(i)),
-                (i, 'Foo')
-            )
-            self.assertEqual(
-                client._parse_status('HTTP/1.1 {:d} Foo Bar'.format(i)),
-                (i, 'Foo Bar')
-            )
-            self.assertEqual(
-                client._parse_status('HTTP/1.1 {:d} Foo Bar Baz'.format(i)),
-                (i, 'Foo Bar Baz')
-            )
-
     def test__write_request(self):
         # Empty headers, no body:
         wfile = io.BytesIO()

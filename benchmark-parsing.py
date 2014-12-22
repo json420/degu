@@ -16,7 +16,7 @@ from degu._base import (
 
 from degu import _base, _basepy
 from degu.base import bodies, _read_preamble, write_chunk
-from degu.client import _parse_status, _write_request
+from degu.client import _write_request
 from degu.server import _read_request, _write_response
 
 line = (b'L' *  50) + b'\\r\\n'
@@ -111,7 +111,6 @@ run("parse_preamble(b'hello\\r\\ncontent-length: 17')")
 run("parse_preamble(b'hello\\r\\ntransfer-encoding: chunked')")
 run('_read_preamble(BytesIO(request_preamble))')
 run('_read_request(BytesIO(request_preamble), bodies)')
-run("_parse_status('HTTP/1.1 404 Not Found')")
 
 print('\nHigh-level formatters:')
 run("_write_response(wfile, 200, 'OK', headers, b'hello, world')")

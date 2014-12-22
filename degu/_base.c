@@ -27,6 +27,10 @@
 #define _MAX_LINE_SIZE 4096
 #define _MAX_HEADER_COUNT 20
 
+// Constraints for the content-length value:
+#define MAX_CL_LEN 16
+#define MAX_CL_VALUE 9007199254740992
+
 #define CRLF "\r\n"
 #define SEP ": "
 #define GET "GET"
@@ -317,6 +321,53 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
     Py_INCREF(pyobj);
 
 
+/*
+ * _parse_content_length(): strictly parse `buf` to build a `PyLongObject`.
+ *
+ * This is largely to work-around shortcomings in the CPython C API, which
+ * has `PyLong_FromString()`, but no `PyLong_FromStringAndSize()`.  This
+ * allows us to more strictly parse a content-length header value, and without
+ * building an intermediate `PyUnicodeObject` (which carries a fairly large
+ * performance hit.
+ *
+ */
+static PyObject *
+_parse_content_length(const uint8_t *buf, const size_t len)
+{
+    uint64_t accum;
+    uint8_t err, d;
+    size_t i;
+
+    if (len < 1) {
+        PyErr_SetString(PyExc_ValueError, "content-length value is empty");
+        return NULL; 
+    }
+    if (len > MAX_CL_LEN) {
+        _value_error(buf, MAX_CL_LEN, "content-length too long: %R...");
+        return NULL; 
+    }
+
+    for (accum = err = i = 0; i < len; i++) {
+        accum *= 10;
+        d = buf[i];
+        err |= (d < 48 || d > 57);
+        accum += (d - 48);
+    }
+    if (err) {
+        _value_error(buf, len, "bad bytes in content-length: %R");
+        return NULL;
+    }
+    if (accum > (uint64_t)MAX_CL_VALUE) {
+        PyErr_Format(PyExc_ValueError,
+            "content-length value too large: %llu", accum
+        );
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLongLong(accum);
+}
+
+
 static PyObject *
 _parse_response_line(const uint8_t *buf, const size_t len)
 {
@@ -355,7 +406,7 @@ _parse_response_line(const uint8_t *buf, const size_t len)
      *     "HTTP/1.1 200 OK"[9:12]
      *               ^^^
      */
-    d = buf[ 9];    err =  (d < 48 || d > 57);    accum =  (d - 48) * 100;
+    d = buf[ 9];    err =  (d < 49 || d > 57);    accum =  (d - 48) * 100;
     d = buf[10];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
     d = buf[11];    err |= (d < 48 || d > 57);    accum += (d - 48);
     if (err || accum < 100 || accum > 599) {
@@ -542,7 +593,7 @@ parse_request_line(PyObject *self, PyObject *args)
     (a_len == b_len && memcmp(a_buf, b_buf, a_len) == 0)
 
 
-static inline int
+static int
 _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
 {
     const uint8_t *sep = NULL;
@@ -550,7 +601,6 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     size_t key_len, val_len;
     PyObject *key = NULL;
     PyObject *val = NULL;
-    PyObject *tmp = NULL;
     int flags = 0;
 
     sep = memmem(buf, len, SEP, 2);
@@ -571,27 +621,13 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
 
     if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
         _REPLACE(key, str_content_length)
-        _SET(tmp,
-            _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
-        )
-        _SET(val, PyLong_FromUnicodeObject(tmp, 10))
-        int overflow = -2;
-        long size = PyLong_AsLongAndOverflow(val, &overflow);
-        if (overflow != 0) {
-            PyErr_Format(PyExc_ValueError, "content-length too large: %R", tmp);
-            goto error;
-        }
-        if (size < 0) {
-            PyErr_Format(PyExc_ValueError, "negative content-length: %R", val);
-            goto error;
-        }
+        _SET(val, _parse_content_length(val_buf, val_len))
         flags = CONTENT_LENGTH_BIT;
     }
     else if (_LENMEMCMP(key_buf, key_len, TRANSFER_ENCODING, 17)) {
         if (! _LENMEMCMP(val_buf, val_len, CHUNKED, 7)) {
             _value_error(val_buf, val_len, "bad transfer-encoding: %R");
             goto error;
-
         }
         _REPLACE(key, str_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
@@ -605,7 +641,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
 
     /* Store in headers dict, make sure it's not a duplicate key */
     if (PyDict_SetDefault(headers, key, val) != val) {
-        PyErr_Format(PyExc_ValueError, "duplicate header: %R: %R", key, val);
+        _value_error(buf, len, "duplicate header: %R");
         goto error;
     }
     goto cleanup;
@@ -616,7 +652,6 @@ error:
 cleanup:
     Py_CLEAR(key);
     Py_CLEAR(val);
-    Py_CLEAR(tmp);
     return flags;
 
 }
@@ -876,24 +911,23 @@ cleanup:
 static PyObject *
 degu_read_preamble(PyObject *self, PyObject *args)
 {
-    /* Borrowed references we don't need to decrement */
+    /* Borrowed reference we don't need to decrement */
     PyObject *rfile = NULL;
-    PyObject *borrowed = NULL;
 
     /* Owned references we need to decrement in "cleanup" when != NULL */
     PyObject *readline = NULL;
     PyObject *line = NULL;
     PyObject *first_line = NULL;
     PyObject *headers = NULL;
-    PyObject *key = NULL;
-    PyObject *value = NULL;
 
     /* Return value is a ``(first_line, headers)`` tuple */
     PyObject *ret = NULL;
 
-    size_t line_len, key_len, value_len;
-    const uint8_t *line_buf, *buf;
+    size_t line_len = 0;
+    const uint8_t *line_buf = NULL;
     uint8_t i;
+    uint8_t flags = 0;
+    int newflags;
 
     if (!PyArg_ParseTuple(args, "O:_read_preamble", &rfile)) {
         return NULL;
@@ -943,48 +977,22 @@ degu_read_preamble(PyObject *self, PyObject *args)
          * one byte in length.  This means that the shortest valid header line
          * (including the CRLF) is six bytes in length:
          *
-         *      line| k: vRN  <-- "RN" means "\r\n", the CRLF terminator
-         *    offset| 012345
-         *      size| 123456
+         *      line| k: vNL
+         *    offset| 0123
+         *      size| 1234
          *
-         * So when (line_len < 6), there's no reason to proceed.  This
-         * short-circuiting is also a bit safer just in case a given `memmem()`
-         * implementation isn't well behaved when (haystacklen < needlelen).
+         * So when (line_len < 6), there's no reason to proceed.
          */
         if (line_len < 6) {
             PyErr_Format(PyExc_ValueError, "header line too short: %R", line);
             goto error;
         }
 
-        /* Find the ": " so we can split the line into a header key and value.
-         *
-         * Security note: we must be very careful with the pointer maths here!
-         */
-        line_len -= 2;  // Now we want the line length minus the CRLF
-        buf = memmem(line_buf, line_len, ": ", 2);
-        if (buf == NULL || buf < line_buf + 1 || buf > line_buf + line_len - 3) {
-            PyErr_Format(PyExc_ValueError, "bad header line: %R", line);
+        newflags = _parse_header_line(line_buf, line_len - 2, headers);
+        if (newflags < 0) {
             goto error;
         }
-        key_len = buf - line_buf;
-        value_len = line_len - key_len - 2;
-        buf += 2;  // Move the pointer to the first byte in the header value
-
-        /* Decode & case-fold the header key */
-        _RESET(key,
-            _decode(line_buf, key_len, _KEYS, "bad bytes in header name: %R")
-        )
-
-        /* Decode the header value */
-        _RESET(value,
-            _decode(buf, value_len, _VALUES, "bad bytes in header value: %R")
-        )
-
-        /* Store in headers dict, make sure it's not a duplicate key */
-        if (PyDict_SetDefault(headers, key, value) != value) {
-            PyErr_Format(PyExc_ValueError, "duplicate header: %R", line);
-            goto error;
-        }
+        flags |= newflags;
     }
 
     /* If we reach this point, we've already read _MAX_HEADER_COUNT headers, so 
@@ -999,29 +1007,11 @@ degu_read_preamble(PyObject *self, PyObject *args)
     }
 
 done:
-    if (PyDict_Contains(headers, str_content_length)) {
-        if (PyDict_Contains(headers, str_transfer_encoding)) {
-            PyErr_SetString(PyExc_ValueError, 
-                "cannot have both content-length and transfer-encoding headers"
-            );
-            goto error;
-        }
-        _SET(borrowed, PyDict_GetItemWithError(headers, str_content_length))
-        _RESET(value, PyLong_FromUnicodeObject(borrowed, 10))
-        if (PyObject_RichCompareBool(value, int_zero, Py_LT) > 0) {
-            PyErr_Format(PyExc_ValueError, "negative content-length: %R", value);
-            goto error;
-        }
-        if (PyDict_SetItem(headers, str_content_length, value) != 0) {
-            goto error;
-        }
-    }
-    else if (PyDict_Contains(headers, str_transfer_encoding)) {
-        _SET(borrowed, PyDict_GetItemWithError(headers, str_transfer_encoding))
-        if (PyUnicode_Compare(borrowed, str_chunked) != 0) {
-            PyErr_Format(PyExc_ValueError, "bad transfer-encoding: %R", borrowed);
-            goto error;
-        }
+    if (flags == 3) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error;
     }
     ret = PyTuple_Pack(2, first_line, headers);
     goto cleanup;
@@ -1034,8 +1024,6 @@ cleanup:
     Py_CLEAR(line);
     Py_CLEAR(first_line);
     Py_CLEAR(headers);
-    Py_CLEAR(key);
-    Py_CLEAR(value);
     return ret;  
 }
 

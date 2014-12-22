@@ -134,6 +134,7 @@ setup(
             sources=['degu/_base.c'],
             extra_compile_args=[
                 '-Werror',  # Make all warnings into errors
+                '-pedantic-errors',
                 '-std=gnu11',  # Soon to be gcc default
             ],
         ),

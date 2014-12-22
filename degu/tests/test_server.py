@@ -387,7 +387,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz\\r\\n'")
+        self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz'")
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\nbody')
 
@@ -411,7 +411,7 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nFoo: bar\r\nfoo: baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "duplicate header: b'foo: baz\\r\\n'")
+        self.assertEqual(str(cm.exception), "duplicate header: b'foo: baz'")
         self.assertEqual(rfile.tell(), 36)
         self.assertEqual(rfile.read(), b'\r\nbody')
 
@@ -420,30 +420,30 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 10: '16.9'"
+            "bad bytes in content-length: b'16.9'"
         )
-        self.assertEqual(rfile.tell(), 40)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(rfile.tell(), 38)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Content-Length is negative:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nContent-Length: -17\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
-            'negative content-length: -17'
+            "bad bytes in content-length: b'-17'"
         )
-        self.assertEqual(rfile.tell(), 39)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(rfile.tell(), 37)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Bad Transfer-Encoding:
         rfile = io.BytesIO(b'GET / HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
-            "bad transfer-encoding: 'CHUNKED'"
+            "bad transfer-encoding: b'CHUNKED'"
         )
-        self.assertEqual(rfile.tell(), 46)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(rfile.tell(), 44)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Content-Length with Transfer-Encoding:
         rfile = io.BytesIO(

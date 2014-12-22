@@ -635,6 +635,8 @@ class TestFunctions(AlternatesTestCase):
 
     def check_parse_preamble(self, backend):
         self.assertEqual(backend.parse_preamble(b'Foo'), ('Foo', {}))
+        parse_preamble = backend.parse_preamble
+
         self.assertEqual(backend.parse_preamble(b'Foo\r\nBar: Baz'),
             ('Foo', {'bar': 'Baz'})
         )
@@ -665,6 +667,33 @@ class TestFunctions(AlternatesTestCase):
             backend.parse_preamble(b'Foo\r\nBar: Baz\x00')
         self.assertEqual(str(cm.exception),
             "bad bytes in header value: b'Baz\\x00'"
+        )
+
+        # content-length larger than 9007199254740992:
+        value = 9007199254740992
+        for gv in (0, 17, value, value - 1, value - 17):
+            buf = 'GET / HTTP/1.1\r\nContent-Length: {:d}'.format(gv).encode()
+            self.assertEqual(parse_preamble(buf),
+                ('GET / HTTP/1.1', {'content-length': gv})
+            )
+        with self.assertRaises(ValueError) as cm:
+            parse_preamble(b'GET / HTTP/1.1\r\nContent-Length: 09007199254740992')
+        self.assertEqual(str(cm.exception),
+            "content-length too long: b'0900719925474099'..."
+        )
+        for i in range(1, 101):
+            bv = value + i
+            buf = 'GET / HTTP/1.1\r\nContent-Length: {:d}'.format(bv).encode()
+            with self.assertRaises(ValueError) as cm:
+                backend.parse_preamble(buf)
+            self.assertEqual(str(cm.exception),
+                'content-length value too large: {:d}'.format(bv)
+            )
+        buf = b'GET / HTTP/1.1\r\nContent-Length: 9999999999999999'
+        with self.assertRaises(ValueError) as cm:
+            backend.parse_preamble(buf)
+        self.assertEqual(str(cm.exception),
+            'content-length value too large: 9999999999999999'
         )
 
     def test_parse_preamble_p(self):
@@ -1233,18 +1262,18 @@ class TestFunctions(AlternatesTestCase):
             )
 
         # Bad Content-Length:
-        lines = [random_line(), b'Content-Length: 16.9\r\n', b'\r\n']
+        lines = [random_line(), b'Content-Length: 16.9\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
         self.assertEqual(str(cm.exception),
-            "invalid literal for int() with base 10: '16.9'"
+            "bad bytes in content-length: b'16.9'"
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1252,16 +1281,18 @@ class TestFunctions(AlternatesTestCase):
         )
 
         # Negative Content-Length:
-        lines = [random_line(), b'Content-Length: -17\r\n', b'\r\n']
+        lines = [random_line(), b'Content-Length: -17\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
-        self.assertEqual(str(cm.exception), 'negative content-length: -17')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in content-length: b'-17'"
+        )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1269,16 +1300,16 @@ class TestFunctions(AlternatesTestCase):
         )
 
         # Bad Transfer-Encoding:
-        lines = [random_line(), b'Transfer-Encoding: clumped\r\n', b'\r\n']
+        lines = [random_line(), b'Transfer-Encoding: clumped\r\n']
         counts = tuple(sys.getrefcount(lines[i]) for i in range(len(lines)))
         rfile = DummyFile(lines.copy())
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
-        self.assertEqual(str(cm.exception), "bad transfer-encoding: 'clumped'")
+        self.assertEqual(str(cm.exception), "bad transfer-encoding: b'clumped'")
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,
-            [backend._MAX_LINE_SIZE for i in range(3)]
+            [backend._MAX_LINE_SIZE for i in range(2)]
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
         self.assertEqual(counts,
@@ -1297,7 +1328,7 @@ class TestFunctions(AlternatesTestCase):
         with self.assertRaises(ValueError) as cm:
             read_preamble(rfile)
         self.assertEqual(str(cm.exception),
-            "duplicate header: b'Content-Type: text/plain\\r\\n'"
+            "duplicate header: b'Content-Type: text/plain'"
         )
         self.assertEqual(rfile._lines, [])
         self.assertEqual(rfile._calls,

@@ -28,7 +28,13 @@ from collections import namedtuple
 import os
 
 from .base import bodies as default_bodies
-from .base import _TYPE_ERROR, _makefiles, _read_preamble, format_request_preamble
+from .base import (
+    _TYPE_ERROR,
+    _makefiles,
+    _read_preamble,
+    format_request_preamble,
+    parse_response_line,
+)
 
 
 Response = namedtuple('Response', 'status reason headers body')
@@ -207,28 +213,6 @@ def _validate_request(bodies, method, uri, headers, body):
         raise ValueError('cannot include body in a {} request'.format(method))
 
 
-def _parse_status(line):
-    """
-    Parse the status line.
-
-    The return value will be a ``(status, reason)`` tuple, and the status will
-    be converted into an integer:
-
-    >>> _parse_status('HTTP/1.1 404 Not Found')
-    (404, 'Not Found')
-
-    """
-    (protocol, status, reason) = line.split(' ', 2)
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
-    status = int(status)
-    if not (100 <= status <= 599):
-        raise ValueError('need 100 <= status <= 599; got {}'.format(status))
-    if not reason:
-        raise ValueError('empty reason')
-    return (status, reason)
-
-
 def _write_request(wfile, method, uri, headers, body):
     preamble = format_request_preamble(method, uri, headers)
     if body is None:
@@ -244,8 +228,8 @@ def _write_request(wfile, method, uri, headers, body):
 
 
 def _read_response(rfile, bodies, method):
-    (status_line, headers) = _read_preamble(rfile)
-    (status, reason) = _parse_status(status_line)
+    (line, headers) = _read_preamble(rfile)
+    (status, reason) = parse_response_line(line)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
