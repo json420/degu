@@ -29,7 +29,12 @@ import threading
 import os
 
 from .base import bodies as default_bodies
-from .base import _TYPE_ERROR, _makefiles, _read_preamble, format_response_preamble
+from .base import (
+    _TYPE_ERROR,
+    _makefiles,
+    _read_request_preamble,
+    format_response_preamble,
+)
 
 
 log = logging.getLogger()
@@ -136,15 +141,8 @@ def _validate_server_sslctx(sslctx):
 
 
 def _read_request(rfile, bodies):
-    # Read the entire request preamble:
-    (request_line, headers) = _read_preamble(rfile)
+    (method, uri, headers) = _read_request_preamble(rfile)
 
-    # Parse the request line:
-    (method, uri, protocol) = request_line.split()
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ValueError('bad HTTP method: {!r}'.format(method))
-    if protocol != 'HTTP/1.1':
-        raise ValueError('bad HTTP protocol: {!r}'.format(protocol))
     uri_parts = uri.split('?')
     if len(uri_parts) == 2:
         (path_str, query) = uri_parts

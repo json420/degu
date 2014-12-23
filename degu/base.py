@@ -29,20 +29,20 @@ try:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        _read_preamble,
+        _read_response_preamble,
+        _read_request_preamble,
         format_request_preamble,
         format_response_preamble,
-        parse_response_line,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        _read_preamble,
+        _read_request_preamble,
+        _read_response_preamble,
         format_request_preamble,
         format_response_preamble,
-        parse_response_line,
     )
 
 
@@ -50,10 +50,10 @@ __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
-    '_read_preamble',
+    '_read_response_preamble',
+    '_read_request_preamble',
     'format_request_preamble',
     'format_response_preamble',
-    'parse_response_line',
 )
 
 

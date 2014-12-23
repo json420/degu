@@ -31,9 +31,8 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    _read_preamble,
+    _read_response_preamble,
     format_request_preamble,
-    parse_response_line,
 )
 
 
@@ -228,8 +227,7 @@ def _write_request(wfile, method, uri, headers, body):
 
 
 def _read_response(rfile, bodies, method):
-    (line, headers) = _read_preamble(rfile)
-    (status, reason) = parse_response_line(line)
+    (status, reason, headers) = _read_response_preamble(rfile)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:

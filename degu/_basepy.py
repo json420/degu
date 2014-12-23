@@ -80,6 +80,10 @@ MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 _RE_KEYS = re.compile('^[-0-9a-z]+$')
 _RE_CONTENT_LENGTH = re.compile(b'^[0-9]+$')
 
+_URI = frozenset(
+    b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
+)
+
 GET = 'GET'
 PUT = 'PUT'
 POST = 'POST'
@@ -130,6 +134,14 @@ def _decode_key(src, message):
     if text is None or not _RE_KEYS.match(text):
         raise ValueError(message.format(src))
     return text
+
+
+def _decode_uri(src):
+    if _URI.issuperset(src):
+        return src.decode()
+    raise ValueError(
+        'bad uri in request line: {!r}'.format(src)
+    )
 
 
 class EmptyPreambleError(ConnectionError):
@@ -194,6 +206,23 @@ def parse_response_line(line):
     return (status, reason)
 
 
+def parse_request_line(line):
+    if isinstance(line, str):
+        line = line.encode()
+    if len(line) < 14:
+        raise ValueError('request line too short: {!r}'.format(line))
+    if line[-9:] != b' HTTP/1.1':
+        raise ValueError('bad protocol in request line: {!r}'.format(line))
+    line = line[:-9]
+    items = line.split(b' /', 1)
+    if len(items) < 2:
+        raise ValueError('bad inner request line: {!r}'.format(line))
+    return (
+        parse_method(items[0]),
+        _decode_uri( b'/' + items[1])
+    )
+
+
 def parse_preamble(preamble):
     (first_line, *header_lines) = preamble.split(b'\r\n')
     first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')
@@ -237,18 +266,7 @@ def parse_preamble(preamble):
     return (first_line, headers)
 
 
-def __read_preamble(rfile):
-    readline = rfile.readline
-    if not callable(readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, _MAX_LINE_SIZE)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
+def __read_headers(readline):
     headers = {}
     for i in range(_MAX_HEADER_COUNT):
         line = _READLINE(readline, _MAX_LINE_SIZE)
@@ -256,7 +274,7 @@ def __read_preamble(rfile):
         if crlf != b'\r\n':
             raise ValueError('bad header line termination: {!r}'.format(crlf))
         if line == b'\r\n':  # Stop on the first empty CRLF terminated line
-            return (first_line, headers)
+            return headers
         if len(line) < 6:
             raise ValueError('header line too short: {!r}'.format(line))
         assert line[-2:] == b'\r\n'
@@ -301,6 +319,22 @@ def __read_preamble(rfile):
             )
     if _READLINE(readline, 2) != b'\r\n':
         raise ValueError('too many headers (> {})'.format(_MAX_HEADER_COUNT))
+    return headers
+
+
+def __read_preamble(rfile):
+    readline = rfile.readline
+    if not callable(readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _READLINE(readline, _MAX_LINE_SIZE)
+    if not line:
+        raise EmptyPreambleError('HTTP preamble is empty')
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
+    first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
+    headers = __read_headers(readline)
     return (first_line, headers)
 
 
@@ -311,6 +345,46 @@ def _read_preamble(rfile):
             'cannot have both content-length and transfer-encoding headers'
         )
     return (first_line, headers)
+
+
+def _read_response_preamble(rfile):
+    readline = rfile.readline
+    if not callable(readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _READLINE(readline, _MAX_LINE_SIZE)
+    if not line:
+        raise EmptyPreambleError('HTTP preamble is empty')
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
+    (status, reason) = parse_response_line(line[:-2])
+    headers = __read_headers(readline)
+    if 'content-length' in headers and 'transfer-encoding' in headers:
+        raise ValueError(
+            'cannot have both content-length and transfer-encoding headers'
+        )
+    return (status, reason, headers)
+
+
+def _read_request_preamble(rfile):
+    readline = rfile.readline
+    if not callable(readline):
+        raise TypeError('rfile.readline is not callable')
+    line = _READLINE(readline, _MAX_LINE_SIZE)
+    if not line:
+        raise EmptyPreambleError('HTTP preamble is empty')
+    if line[-2:] != b'\r\n':
+        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
+    if len(line) == 2:
+        raise ValueError('first preamble line is empty')
+    (method, uri) = parse_request_line(line[:-2])
+    headers = __read_headers(readline)
+    if 'content-length' in headers and 'transfer-encoding' in headers:
+        raise ValueError(
+            'cannot have both content-length and transfer-encoding headers'
+        )
+    return (method, uri, headers)
 
 
 class Reader:

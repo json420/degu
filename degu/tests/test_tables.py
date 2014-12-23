@@ -45,6 +45,12 @@ class TestConstants(TestCase):
         self.assertEqual(max(tables.KEYS), ord('z'))
         self.assertEqual(len(tables.KEYS), 63)
 
+    def test_URI(self):
+        self.check_allowed(tables.URI)
+        self.assertEqual(min(tables.URI), ord('%'))
+        self.assertEqual(max(tables.URI), ord('~'))
+        self.assertEqual(len(tables.URI), 73)
+
     def test_VALUES(self):
         self.check_allowed(tables.VALUES)
         for i in range(128):

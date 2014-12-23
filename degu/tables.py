@@ -32,9 +32,21 @@ Or print the Python tables like this::
 
 """
 
+DIGIT_BIT = 1
+ALPHA_BIT = 2
+DASH_BIT  = 4
+
+DIGIT = b'0123456789'
+ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+DASH  = b'-'
+
+
+
 KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 VALUES = bytes(sorted(KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
+
+URI = bytes(sorted(KEYS + b'%&+./:=?_~'))
 
 
 def iter_definition(allowed, casefold):
@@ -51,6 +63,7 @@ def iter_definition(allowed, casefold):
 # These are table "definitions", not the actual tables:
 KEYS_DEF = tuple(iter_definition(KEYS, True))
 VALUES_DEF = tuple(iter_definition(VALUES, False))
+URI_DEF = tuple(iter_definition(URI, False))
 
 
 def format_values(line):
@@ -94,7 +107,7 @@ def iter_lines(definition, comment):
 
 def iter_c(name, definition):
     yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(definition))
-    yield from iter_lines(definition, '//')
+    yield from iter_lines(definition, ' //')
     yield '};'
 
 
@@ -115,10 +128,14 @@ if __name__ == '__main__':
     iter_x = (iter_p if args.p else iter_c)
 
     print('')
-    for line in iter_x('DEGU_VALUES', VALUES_DEF):
+    for line in iter_x('_VALUES', VALUES_DEF):
         print(line)
 
     print('')
-    for line in iter_x('DEGU_KEYS', KEYS_DEF):
+    for line in iter_x('_URI', URI_DEF):
+        print(line)
+
+    print('')
+    for line in iter_x('_KEYS', KEYS_DEF):
         print(line)
 

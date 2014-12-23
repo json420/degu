@@ -327,35 +327,39 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET /fooHTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), 'need more than 2 values to unpack')
-        self.assertEqual(rfile.tell(), 20)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception),
+            "bad protocol in request line: b'GET /fooHTTP/1.1'"
+        )
+        self.assertEqual(rfile.tell(), 18)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Request line has too many items to split:
         rfile = io.BytesIO(b'GET /foo /bar HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
         self.assertEqual(str(cm.exception),
-            'too many values to unpack (expected 3)'
+            "bad uri in request line: b'/foo /bar'"
         )
-        self.assertEqual(rfile.tell(), 26)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(rfile.tell(), 24)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Bad method:
         rfile = io.BytesIO(b'OPTIONS /foo HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "bad HTTP method: 'OPTIONS'")
-        self.assertEqual(rfile.tell(), 25)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception), "bad HTTP method: b'OPTIONS'")
+        self.assertEqual(rfile.tell(), 23)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Bad protocol:
         rfile = io.BytesIO(b'GET /foo HTTP/1.0\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "bad HTTP protocol: 'HTTP/1.0'")
-        self.assertEqual(rfile.tell(), 21)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception),
+            "bad protocol in request line: b'GET /foo HTTP/1.0'"
+        )
+        self.assertEqual(rfile.tell(), 19)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # Too many ? in uri:
         rfile = io.BytesIO(b'GET /foo?bar=baz?stuff=junk HTTP/1.1\r\n\r\nbody')
@@ -371,9 +375,11 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET foo/bar?baz HTTP/1.1\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "bad request path: 'foo/bar'")
-        self.assertEqual(rfile.tell(), 28)
-        self.assertEqual(rfile.read(), b'body')
+        self.assertEqual(str(cm.exception),
+            "bad inner request line: b'GET foo/bar?baz'"
+        )
+        self.assertEqual(rfile.tell(), 26)
+        self.assertEqual(rfile.read(), b'\r\nbody')
 
         # uri path contains a double //:
         rfile = io.BytesIO(b'GET /foo//bar?baz HTTP/1.1\r\n\r\nbody')

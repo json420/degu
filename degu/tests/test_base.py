@@ -502,7 +502,6 @@ class TestFunctions(AlternatesTestCase):
                     parse_request_line(bad)
 
     def test_parse_request_line_py(self):
-        self.skipTest('fixme')
         self.check_parse_request_line(_basepy)
 
     def test_parse_request_line_c(self):
