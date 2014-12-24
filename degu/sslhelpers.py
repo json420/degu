@@ -46,7 +46,6 @@ RFC-3548 Base32 encoding in that context.
 
 import os
 from os import path
-import stat
 from subprocess import check_output
 from hashlib import sha512
 from base64 import b32encode
@@ -202,12 +201,22 @@ def get_rsa_pubkey(key_file):
     ])
 
 
+def _get_csr_pubkey(csr_data):
+    cmd = ['openssl', 'req', '-pubkey', '-noout']
+    return check_output(cmd, input=csr_data)
+
+
 def get_csr_pubkey(csr_file):
     return check_output(['openssl', 'req',
         '-pubkey',
         '-noout',
         '-in', csr_file,
     ])  
+
+
+def _get_cert_pubkey(cert_data):
+    cmd = ['openssl', 'x509', '-pubkey', '-noout']
+    return check_output(cmd, input=cert_data)
 
 
 def get_cert_pubkey(cert_file):
@@ -218,28 +227,14 @@ def get_cert_pubkey(cert_file):
     ])
 
 
-def ensuredir(d):
-    try:
-        os.mkdir(d)
-    except OSError:
-        mode = os.lstat(d).st_mode
-        if not stat.S_ISDIR(mode):
-            raise ValueError('not a directory: {!r}'.format(d))
-
-
 class PKI:
+    __slots__ = ('ssldir',)
+
     def __init__(self, ssldir):
         self.ssldir = ssldir
-        self.tmpdir = path.join(ssldir, 'tmp')
-        ensuredir(self.tmpdir)
-        self.user = None
-        self.machine = None
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.ssldir)
-
-    def random_tmp(self):
-        return path.join(self.tmpdir, random_id())
 
     def path(self, _id, ext):
         return path.join(self.ssldir, '.'.join([_id, ext]))

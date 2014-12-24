@@ -90,6 +90,14 @@ class TestSSLFunctions(TestCase):
         self.assertLess(path.getsize(key), max(sizes) + 25)
         os.remove(key)
 
+    def test__create_ca(self):
+        key_data = sslhelpers._create_key(1024)
+        pubkey_data = sslhelpers.get_pubkey(key_data)
+        tmp = TempDir()
+        key_file = tmp.write(key_data, 'foo.key')
+        ca_data = sslhelpers._create_ca(key_file, '/CN=foo')
+        self.assertEqual(sslhelpers._get_cert_pubkey(ca_data), pubkey_data)
+
     def test_create_ca(self):
         tmp = TempDir()
         foo_key = tmp.join('foo.key')
@@ -98,6 +106,14 @@ class TestSSLFunctions(TestCase):
         self.assertFalse(path.exists(foo_ca))
         sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
         self.assertGreater(path.getsize(foo_ca), 0)
+
+    def test__create_csr(self):
+        key = sslhelpers._create_key(1024)
+        pubkey = sslhelpers.get_pubkey(key)
+        tmp = TempDir()
+        key_file = tmp.write(key, 'foo.key')
+        csr = sslhelpers._create_csr(key_file, '/CN=foo')
+        self.assertEqual(sslhelpers._get_csr_pubkey(csr), pubkey)
 
     def test_create_csr(self):
         tmp = TempDir()
@@ -163,17 +179,6 @@ class TestPKI(TestCase):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         self.assertIs(pki.ssldir, tmp.dir)
-        self.assertEqual(pki.tmpdir, tmp.join('tmp'))
-
-        # Test when tmpdir already exists
-        pki = sslhelpers.PKI(tmp.dir)
-
-    def test_random_tmp(self):
-        tmp = TempDir()
-        pki = sslhelpers.PKI(tmp.dir)
-        filename = pki.random_tmp()
-        self.assertEqual(path.dirname(filename), tmp.join('tmp'))
-        self.assertEqual(len(path.basename(filename)), 24)
 
     def test_path(self):
         tmp = TempDir()
@@ -196,11 +201,7 @@ class TestPKI(TestCase):
         tmp = TempDir()
         pki = sslhelpers.PKI(tmp.dir)
         _id = pki.create_key(bits=1024)
-        self.assertEqual(os.listdir(pki.tmpdir), [])
-        self.assertEqual(
-            set(os.listdir(pki.ssldir)),
-            set(['tmp', _id + '.key'])
-        )
+        self.assertEqual(os.listdir(pki.ssldir), [ _id + '.key'])
         key_file = path.join(pki.ssldir, _id + '.key')
         data = sslhelpers.get_rsa_pubkey(key_file)
         self.assertEqual(_id, sslhelpers.hash_pubkey(data))
@@ -213,10 +214,9 @@ class TestPKI(TestCase):
         self.assertFalse(path.exists(ca_file))
         self.assertEqual(pki.create_ca(_id), ca_file)
         self.assertTrue(path.isfile(ca_file))
-        self.assertEqual(os.listdir(pki.tmpdir), [])
         self.assertEqual(
             set(os.listdir(pki.ssldir)),
-            set(['tmp', _id + '.key', _id + '.ca'])
+            set([_id + '.key', _id + '.ca'])
         )
 
     def test_create_csr(self):
@@ -227,10 +227,9 @@ class TestPKI(TestCase):
         self.assertFalse(path.exists(csr_file))
         self.assertEqual(pki.create_csr(_id), csr_file)
         self.assertTrue(path.isfile(csr_file))
-        self.assertEqual(os.listdir(pki.tmpdir), [])
         self.assertEqual(
             set(os.listdir(pki.ssldir)),
-            set(['tmp', _id + '.key', _id + '.csr'])
+            set([_id + '.key', _id + '.csr'])
         )
 
     def test_issue_cert(self):
@@ -251,11 +250,9 @@ class TestPKI(TestCase):
         self.assertFalse(path.exists(cert_file))
         self.assertEqual(pki.issue_cert(cert_id, ca_id), cert_file)
         self.assertGreater(path.getsize(cert_file), 0)
-        self.assertEqual(os.listdir(pki.tmpdir), [])
         self.assertEqual(
             set(os.listdir(pki.ssldir)),
             set([
-                'tmp',
                 ca_id + '.key',
                 ca_id + '.ca',
                 ca_id + '.srl',
