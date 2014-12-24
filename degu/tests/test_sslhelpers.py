@@ -70,7 +70,7 @@ class TestSSLFunctions(TestCase):
         csr = sslhelpers.create_csr(key_file, '/CN=foo')
         self.assertEqual(sslhelpers._get_csr_pubkey(csr), pubkey)
 
-    def test__issue_cert(self):
+    def test_issue_cert(self):
         tmp = TempDir()
 
         foo_key_file = tmp.join('foo.key')
@@ -88,7 +88,7 @@ class TestSSLFunctions(TestCase):
         bar_csr = sslhelpers.create_csr(bar_key_file, '/CN=bar')
         sslhelpers.safe_write(bar_csr_file, bar_csr)
 
-        bar_cert = sslhelpers._issue_cert(
+        bar_cert = sslhelpers.issue_cert(
             bar_csr_file, foo_ca_file, foo_key_file, foo_srl_file
         )
         self.assertEqual(

@@ -141,7 +141,7 @@ def create_csr(key_file, subject):
     ])
 
 
-def _issue_cert(csr_file, ca_file, key_file, srl_file):
+def issue_cert(csr_file, ca_file, key_file, srl_file):
     """
     Create a signed certificate from a certificate signing request.
     """
@@ -235,7 +235,7 @@ class PKI:
         ca_file = self.path(ca_id, 'ca')
         key_file = self.path(ca_id, 'key')
         srl_file = self.path(ca_id, 'srl')
-        cert_data = _issue_cert(csr_file, ca_file, key_file, srl_file)
+        cert_data = issue_cert(csr_file, ca_file, key_file, srl_file)
         cert_file = self.path(_id, 'cert')
         safe_write(cert_file, cert_data)
         return cert_file
