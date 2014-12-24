@@ -1,0 +1,101 @@
+Degu
+====
+
+Degu is an embedded HTTP server and client library for Python3.
+
+It can be used to build network-transparent services, whether the other endpoint
+is in the cloud, on the local network, on the localhost, or even on the
+localhost using HTTP over ``AF_UNIX``.
+
+Degu is especially well suited for implementing REST APIs for device-to-device
+communication (Internet of Things).  It's a building block for future stuff,
+your vehicle into bold, uncharted territory.
+
+Degu is licensed `LGPLv3+`_ and requires `Python 3.4`_ or newer.
+
+Other noteworthy features:
+
+    *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
+        the optional per-chunk *extension*
+
+    *   Degu fully exposes IPv6 address semantics, including the *scopeid*
+        needed for IPv6 link-local addresses
+
+    *   Degu transparently supports ``AF_INET``, ``AF_INET6``, and ``AF_UNIX``,
+        all via a single *address* argument used uniformly by the server and
+        client
+
+    *   Degu provides a safe and opinionated API for using TLSv1.2, with a
+        particular focus on using client certificates to authenticate incoming
+        TCP connections
+
+
+Examples
+--------
+
+This is a trivial *REST Gateway Interface* (RGI) server application:
+
+>>> def app(session, request, bodies):
+...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
+...
+
+Run the above *app* in a throw-away server listening on a random port:
+
+>>> from degu.misc import TempServer
+>>> server = TempServer(('127.0.0.1', 0), app)
+
+Create a client for making connections to the above server:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+(The ``server.address`` attribute will include the random port assigned by the
+kernel.)
+
+Now create a connection and make a request:
+
+>>> conn = client.connect()
+>>> conn.request('PUT', '/hello', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+Likewise, use the ``client.put()`` shortcut method to make the same ``'PUT'``
+request again:
+
+>>> conn.put('/hello', {}, None)
+Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
+
+
+Degu resources
+-----------------
+
+    *   `Documentation`_
+    *   `Report a bug`_
+    *   `Browse the source`_
+    *   `Launchpad project`_
+
+
+A Novacut component
+-------------------
+
+Degu is being developed as part of the `Novacut`_ project. Packages are
+available for `Ubuntu`_ in the `Novacut Stable Releases PPA`_ and the
+`Novacut Daily Builds PPA`_.
+
+If you have questions or need help getting started with Degu, please stop
+by the `#novacut`_ IRC channel on freenode.
+
+
+.. _`LGPLv3+`: https://www.gnu.org/licenses/lgpl-3.0.html
+.. _`Python 3.4`: https://docs.python.org/3.4/
+
+.. _`Documentation`: http://docs.novacut.com/degu/index.html
+.. _`Report a bug`: https://bugs.launchpad.net/degu
+.. _`Browse the source`: http://bazaar.launchpad.net/~dmedia/degu/trunk/files
+.. _`Launchpad project`: https://launchpad.net/degu
+
+.. _`Novacut`: https://launchpad.net/novacut
+.. _`Ubuntu`: http://www.ubuntu.com/
+.. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/ubuntu/stable
+.. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/ubuntu/daily
+.. _`#novacut`: https://webchat.freenode.net/?channels=novacut
+

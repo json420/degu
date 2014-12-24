@@ -40,15 +40,8 @@ from degu.tests.run import run_tests
 
 
 TREE = path.dirname(path.abspath(__file__))
-LONG_DESCRIPTION = """An embedded HTTP server and client library for Python3.
-
-Degu can be used to build network-transparent services, whether the other
-endpoint is in the cloud, on the local network, on the localhost, or even on the
-localhost using HTTP over AF_UNIX.
-
-Degu is especially well suited for implementing REST APIs for device-to-device
-communication.  It's a building block for future stuff, your vehicle into bold,
-uncharted territory."""
+with open(path.join(TREE, 'README'), 'r') as fp:
+    LONG_DESCRIPTION = fp.read()
 
 
 def run_under_same_interpreter(opname, script, args):
