@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--unix', action='store_true', default=False,
     help='Use AF_UNIX instead of AF_INET6'
 )
-parser.add_argument('--requests', type=int, default=5000,
+parser.add_argument('--requests', type=int, default=10000,
     help='number of requests per connection'
 )
 args = parser.parse_args()
@@ -56,7 +56,7 @@ client = Client(server.address)
 
 count = args.requests
 deltas = []
-for i in range(50):
+for i in range(10):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
