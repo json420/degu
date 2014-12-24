@@ -417,7 +417,7 @@ class Client:
         self.options = options
         self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
-        self.timeout = options.get('timeout', 90)
+        self.timeout = options.get('timeout', 60)
         self.on_connect = options.get('on_connect')
         assert self.host is None or isinstance(self.host, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
@@ -446,6 +446,7 @@ class Client:
         conn = Connection(self.create_socket(), self._base_headers, bodies)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
+        conn.close()
         raise ValueError('on_connect() did not return True')
 
 

@@ -4,15 +4,76 @@ Changelog
 0.12 (unreleased)
 -----------------
 
+`Download Degu 0.12`_
+
 Performance improvements:
 
-    *   ``benchmark.py`` is now on average around 9% faster for ``AF_INET6`` and
-        around 19% faster for ``AF_UNIX``; this improvement is due to new C
-        extensions for formatting and encoding the HTTP request and response
-        preamble; note that ``benchmark.py`` has been tweaked to be more
-        representative of idiomatic Degu use (very few headers), so to compare 
-        performance with Degu 0.11, you'll need to copy the ``benchmark.py``
-        script from the Degu 0.12 source tree.
+    *   ``benchmark.py`` is now on average around 24% faster for ``AF_INET6``
+        and around 31% faster for ``AF_UNIX`` (as measured on an Intel
+        i7-4900MQ).
+
+        This performance increase is due to new C extensions for formatting the
+        HTTP request and response preambles, and due to some new C parsing
+        helpers.
+
+        Note that ``benchmark.py`` has been tweaked to be more representative of
+        idiomatic Degu use (very few headers), and also tweaked to deliver more
+        consistent results, so to compare performance with Degu 0.11, you'll
+        need to copy the ``benchmark.py`` script from the Degu 0.12 source tree.
+
+
+Other changes:
+
+    *   The :class:`degu.client.Client` *timeout* option now defaults to ``60``
+        seconds (previously the default was ``90`` seconds).
+
+    *   :class:`degu.client.Client` now supports a tentative *on_connect*
+        option, which will become the client-side equivalent of
+        ``app.on_connect()``.
+
+        .. warning::
+
+            This client-side *on_connect* option isn't yet part of the stable
+            API and might still undergo breaking changes before taking its final
+            form!
+
+        Still, `your feedback`_ is welcome!  If you want to experiment with the
+        tentative API, your *on_connect* option must be a callable accepting a
+        single argument, something like this::
+
+            def on_connect(conn):
+                # Do something interesting when using SSL?
+                der_encoded_cert = conn.sock.getpeercert(True)
+
+                # Or perform special per-connection authentication?
+                response = conn.post('/_authenticate', {}, my_special_token)
+                if response.status != 200:
+                    raise Exception('could not authenticate')
+
+                return True  # Must return True to accept connection
+
+        The *conn* argument will be the :class:`degu.client.Connection` created
+        by :meth:`degu.client.Client.connect()`.
+
+        If your *on_connect* handler does not return ``True``, the connection is
+        closed and a ``ValueError`` is raised.
+
+        When provided, an *on_connect* handler is called after
+        :meth:`degu.client.Client.connect()` has created the new
+        :class:`degu.client.Connection`, but before this new connection is
+        returned.
+
+        As hinted at in the above example, one of the interesting use-cases
+        being explored is that your *on_connect* handler could itself make one
+        or more requests to perform special per-connection authentication or
+        negotiation as required by the server, before the connection is returned
+        to the consumer.  The goal is to keep the end consumer of the connection
+        completely abstracted from whether an *on_connect* handler is being
+        used, and completely abstracted from what such an *on_connect* handler
+        might have done.
+
+        But again, fair warning: there may still be backward-incompatible API
+        changes when it comes to this tentative client *on_connect* option!
 
 
 
@@ -901,6 +962,7 @@ Two things motivated these breaking API changes:
 
 
 
+.. _`Download Degu 0.12`: https://launchpad.net/degu/+milestone/0.12
 .. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
 .. _`Download Degu 0.10`: https://launchpad.net/degu/+milestone/0.10
 .. _`Download Degu 0.9`: https://launchpad.net/degu/+milestone/0.9

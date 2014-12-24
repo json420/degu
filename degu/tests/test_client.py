@@ -736,7 +736,7 @@ class TestClient(TestCase):
                 self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -746,7 +746,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -755,7 +755,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -780,7 +780,7 @@ class TestClient(TestCase):
                 self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, my_bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -790,7 +790,7 @@ class TestClient(TestCase):
                 self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -807,7 +807,7 @@ class TestClient(TestCase):
                 self.assertEqual(inst.host, client._build_host(80, *address))
             else:
                 self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
@@ -987,7 +987,7 @@ class TestSSLClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -997,7 +997,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -1006,7 +1006,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -1016,7 +1016,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'ssl_host': my_ssl_host})
             self.assertIs(inst.ssl_host, my_ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -1025,7 +1025,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'ssl_host': None})
             self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -1054,7 +1054,7 @@ class TestSSLClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, my_bodies)
             self.assertIsNone(inst.on_connect)
 
@@ -1073,7 +1073,7 @@ class TestSSLClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
@@ -1085,7 +1085,7 @@ class TestSSLClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 90)
+            self.assertEqual(inst.timeout, 60)
             self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
