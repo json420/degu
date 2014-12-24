@@ -33,29 +33,29 @@ from degu import sslhelpers
 
 
 class TestSSLFunctions(TestCase):
-    def test__create_key(self):
+    def test_create_key(self):
         # 1024 bit:
-        key_data = sslhelpers._create_key(1024)
+        key_data = sslhelpers.create_key(1024)
         self.assertIn(len(key_data), [883, 887, 891])
         sslhelpers.get_pubkey(key_data)
 
         # 2048 bit:
-        key_data = sslhelpers._create_key(2048)
+        key_data = sslhelpers.create_key(2048)
         self.assertIn(len(key_data), [1671, 1675, 1679])
         sslhelpers.get_pubkey(key_data)
 
         # 3072 bit:
-        key_data = sslhelpers._create_key(3072)
+        key_data = sslhelpers.create_key(3072)
         self.assertIn(len(key_data), [2455, 2459])
         sslhelpers.get_pubkey(key_data)
 
         # 4096 bit:
-        key_data = sslhelpers._create_key(4096)
+        key_data = sslhelpers.create_key(4096)
         self.assertIn(len(key_data), [3239, 3243, 3247])
         sslhelpers.get_pubkey(key_data)
 
     def test__create_ca(self):
-        key_data = sslhelpers._create_key(1024)
+        key_data = sslhelpers.create_key(1024)
         pubkey_data = sslhelpers.get_pubkey(key_data)
         tmp = TempDir()
         key_file = tmp.write(key_data, 'foo.key')
@@ -63,7 +63,7 @@ class TestSSLFunctions(TestCase):
         self.assertEqual(sslhelpers._get_cert_pubkey(ca_data), pubkey_data)
 
     def test__create_csr(self):
-        key = sslhelpers._create_key(1024)
+        key = sslhelpers.create_key(1024)
         pubkey = sslhelpers.get_pubkey(key)
         tmp = TempDir()
         key_file = tmp.write(key, 'foo.key')
@@ -76,14 +76,14 @@ class TestSSLFunctions(TestCase):
         foo_key_file = tmp.join('foo.key')
         foo_ca_file = tmp.join('foo.ca')
         foo_srl_file = tmp.join('foo.srl')
-        foo_key = sslhelpers._create_key(1024)
+        foo_key = sslhelpers.create_key(1024)
         sslhelpers.safe_write(foo_key_file, foo_key)
         foo_ca = sslhelpers._create_ca(foo_key_file, '/CN=foo')
         sslhelpers.safe_write(foo_ca_file, foo_ca)
 
         bar_key_file = tmp.join('bar.key')
         bar_csr_file = tmp.join('bar.csr')
-        bar_key = sslhelpers._create_key(1024)
+        bar_key = sslhelpers.create_key(1024)
         sslhelpers.safe_write(bar_key_file, bar_key)
         bar_csr = sslhelpers._create_csr(bar_key_file, '/CN=bar')
         sslhelpers.safe_write(bar_csr_file, bar_csr)
