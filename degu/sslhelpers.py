@@ -127,7 +127,7 @@ def create_ca(key_file, subject):
     ])
 
 
-def _create_csr(key_file, subject):
+def create_csr(key_file, subject):
     """
     Create a certificate signing request.
 
@@ -225,7 +225,7 @@ class PKI:
     def create_csr(self, _id):
         key_file = self.path(_id, 'key')
         subject = make_subject(_id)
-        csr_data = _create_csr(key_file, subject)
+        csr_data = create_csr(key_file, subject)
         csr_file = self.path(_id, 'csr')
         safe_write(csr_file, csr_data)
         return csr_file
