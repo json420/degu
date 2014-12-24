@@ -104,6 +104,9 @@ def make_subject(cn):
 
 
 def _create_key(bits):
+    """
+    Generate new RSA keypair.
+    """
     assert bits in (1024, 2048, 3072, 4096)
     return check_output(['openssl', 'genrsa', str(bits)])
 
@@ -114,10 +117,6 @@ def create_key(dst_file, bits=4096):
     """
     key_data = _create_key(bits)
     safe_write(dst_file, key_data)
-
-
-def get_pubkey(key_data):
-    return check_output(['openssl', 'rsa', '-pubout'], input=key_data)
 
 
 def _create_ca(key_file, subject):
@@ -186,12 +185,8 @@ def _issue_cert(csr_file, ca_file, key_file, srl_file):
     ])
 
 
-def issue_cert(csr_file, ca_file, key_file, srl_file, dst_file):
-    """
-    Create a signed certificate from a certificate signing request.
-    """
-    cert_data = _issue_cert(csr_file, ca_file, key_file, srl_file)
-    safe_write(dst_file, cert_data)
+def get_pubkey(key_data):
+    return check_output(['openssl', 'rsa', '-pubout'], input=key_data)
 
 
 def get_rsa_pubkey(key_file):

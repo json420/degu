@@ -124,54 +124,31 @@ class TestSSLFunctions(TestCase):
         sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
         self.assertGreater(path.getsize(bar_csr), 0)
 
-    def test_issue_cert(self):
+    def test__issue_cert(self):
         tmp = TempDir()
 
-        foo_key = tmp.join('foo.key')
-        foo_ca = tmp.join('foo.ca')
-        foo_srl = tmp.join('foo.srl')
-        sslhelpers.create_key(foo_key, bits=1024)
-        sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
+        foo_key_file = tmp.join('foo.key')
+        foo_ca_file = tmp.join('foo.ca')
+        foo_srl_file = tmp.join('foo.srl')
+        foo_key = sslhelpers._create_key(1024)
+        sslhelpers.safe_write(foo_key_file, foo_key)
+        foo_ca = sslhelpers._create_ca(foo_key_file, '/CN=foo')
+        sslhelpers.safe_write(foo_ca_file, foo_ca)
 
-        bar_key = tmp.join('bar.key')
-        bar_csr = tmp.join('bar.csr')
-        bar_cert = tmp.join('bar.cert')
-        sslhelpers.create_key(bar_key, bits=1024)
-        sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
+        bar_key_file = tmp.join('bar.key')
+        bar_csr_file = tmp.join('bar.csr')
+        bar_key = sslhelpers._create_key(1024)
+        sslhelpers.safe_write(bar_key_file, bar_key)
+        bar_csr = sslhelpers._create_csr(bar_key_file, '/CN=bar')
+        sslhelpers.safe_write(bar_csr_file, bar_csr)
 
-        files = (foo_srl, bar_cert)
-        for f in files:
-            self.assertFalse(path.exists(f))
-        sslhelpers.issue_cert(bar_csr, foo_ca, foo_key, foo_srl, bar_cert)
-        for f in files:
-            self.assertGreater(path.getsize(f), 0)
-
-    def test_get_cert_pubkey(self):
-        tmp = TempDir()
-
-        # Create CA
-        foo_key = tmp.join('foo.key')
-        foo_ca = tmp.join('foo.ca')
-        foo_srl = tmp.join('foo.srl')
-        sslhelpers.create_key(foo_key, bits=1024)
-        foo_pubkey = sslhelpers.get_rsa_pubkey(foo_key)
-        sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
-
-        # Create CSR and issue cert
-        bar_key = tmp.join('bar.key')
-        bar_csr = tmp.join('bar.csr')
-        bar_cert = tmp.join('bar.cert')
-        sslhelpers.create_key(bar_key, bits=1024)
-        bar_pubkey = sslhelpers.get_rsa_pubkey(bar_key)
-        sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
-        sslhelpers.issue_cert(bar_csr, foo_ca, foo_key, foo_srl, bar_cert)
-
-        # Now compare
-        os.remove(foo_key)
-        os.remove(bar_key)
-        self.assertEqual(sslhelpers.get_cert_pubkey(foo_ca), foo_pubkey)
-        self.assertEqual(sslhelpers.get_csr_pubkey(bar_csr), bar_pubkey)
-        self.assertEqual(sslhelpers.get_cert_pubkey(bar_cert), bar_pubkey)
+        bar_cert = sslhelpers._issue_cert(
+            bar_csr_file, foo_ca_file, foo_key_file, foo_srl_file
+        )
+        self.assertEqual(
+            sslhelpers._get_cert_pubkey(bar_cert),
+            sslhelpers.get_pubkey(bar_key)
+        )
 
 
 class TestPKI(TestCase):
