@@ -115,15 +115,6 @@ class TestSSLFunctions(TestCase):
         csr = sslhelpers._create_csr(key_file, '/CN=foo')
         self.assertEqual(sslhelpers._get_csr_pubkey(csr), pubkey)
 
-    def test_create_csr(self):
-        tmp = TempDir()
-        bar_key = tmp.join('bar.key')
-        bar_csr = tmp.join('bar.csr')
-        sslhelpers.create_key(bar_key, bits=1024)
-        self.assertFalse(path.exists(bar_csr))
-        sslhelpers.create_csr(bar_key, '/CN=bar', bar_csr)
-        self.assertGreater(path.getsize(bar_csr), 0)
-
     def test__issue_cert(self):
         tmp = TempDir()
 

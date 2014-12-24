@@ -159,16 +159,6 @@ def _create_csr(key_file, subject):
     ])
 
 
-def create_csr(key_file, subject, dst_file):
-    """
-    Create a certificate signing request.
-
-    *subject* should be an str in the form ``'/CN=foo'``.
-    """
-    csr_data = _create_csr(key_file, subject)
-    safe_write(dst_file, csr_data)
-
-
 def _issue_cert(csr_file, ca_file, key_file, srl_file):
     """
     Create a signed certificate from a certificate signing request.
