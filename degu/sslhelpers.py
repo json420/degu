@@ -111,7 +111,7 @@ def create_key(bits):
     return check_output(['openssl', 'genrsa', str(bits)])
 
 
-def _create_ca(key_file, subject):
+def create_ca(key_file, subject):
     """
     Create a self-signed X509 certificate authority.
 
@@ -217,7 +217,7 @@ class PKI:
     def create_ca(self, _id):
         key_file = self.path(_id, 'key')
         subject = make_subject(_id)
-        ca_data = _create_ca(key_file, subject)
+        ca_data = create_ca(key_file, subject)
         ca_file = self.path(_id, 'ca')
         safe_write(ca_file, ca_data)
         return ca_file
