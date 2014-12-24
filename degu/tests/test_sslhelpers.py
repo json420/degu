@@ -54,42 +54,6 @@ class TestSSLFunctions(TestCase):
         self.assertIn(len(key_data), [3239, 3243, 3247])
         sslhelpers.get_pubkey(key_data)
 
-    def test_create_key(self):
-        tmp = TempDir()
-        key = tmp.join('key.pem')
-
-        # bits=1024
-        sizes = [883, 887, 891]
-        sslhelpers.create_key(key, bits=1024)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-
-        # bits=2048
-        sizes = [1671, 1675, 1679]
-        sslhelpers.create_key(key, bits=2048)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-
-        # bits=3072
-        sizes = [2455, 2459]
-        sslhelpers.create_key(key, bits=3072)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-
-        # bits=4096 (default)
-        sizes = [3239, 3243, 3247]
-        sslhelpers.create_key(key)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-        sslhelpers.create_key(key, bits=4096)
-        self.assertLess(min(sizes) - 25, path.getsize(key))
-        self.assertLess(path.getsize(key), max(sizes) + 25)
-        os.remove(key)
-
     def test__create_ca(self):
         key_data = sslhelpers._create_key(1024)
         pubkey_data = sslhelpers.get_pubkey(key_data)

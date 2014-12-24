@@ -111,14 +111,6 @@ def _create_key(bits):
     return check_output(['openssl', 'genrsa', str(bits)])
 
 
-def create_key(dst_file, bits=4096):
-    """
-    Create an RSA keypair and save it to *dst_file*.
-    """
-    key_data = _create_key(bits)
-    safe_write(dst_file, key_data)
-
-
 def _create_ca(key_file, subject):
     """
     Create a self-signed X509 certificate authority.
