@@ -135,16 +135,6 @@ def _create_ca(key_file, subject):
     ])
 
 
-def create_ca(key_file, subject, dst_file):
-    """
-    Create a self-signed X509 certificate authority.
-
-    *subject* should be an str in the form ``'/CN=foo'``.
-    """
-    ca_data = _create_ca(key_file, subject)
-    safe_write(dst_file, ca_data)
-
-
 def _create_csr(key_file, subject):
     """
     Create a certificate signing request.

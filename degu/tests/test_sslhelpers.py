@@ -98,15 +98,6 @@ class TestSSLFunctions(TestCase):
         ca_data = sslhelpers._create_ca(key_file, '/CN=foo')
         self.assertEqual(sslhelpers._get_cert_pubkey(ca_data), pubkey_data)
 
-    def test_create_ca(self):
-        tmp = TempDir()
-        foo_key = tmp.join('foo.key')
-        foo_ca = tmp.join('foo.ca')
-        sslhelpers.create_key(foo_key, bits=1024)
-        self.assertFalse(path.exists(foo_ca))
-        sslhelpers.create_ca(foo_key, '/CN=foo', foo_ca)
-        self.assertGreater(path.getsize(foo_ca), 0)
-
     def test__create_csr(self):
         key = sslhelpers._create_key(1024)
         pubkey = sslhelpers.get_pubkey(key)
