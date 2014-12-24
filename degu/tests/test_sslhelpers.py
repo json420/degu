@@ -33,6 +33,27 @@ from degu import sslhelpers
 
 
 class TestSSLFunctions(TestCase):
+    def test__create_key(self):
+        # 1024 bit:
+        key_data = sslhelpers._create_key(1024)
+        self.assertIn(len(key_data), [883, 887, 891])
+        sslhelpers.get_pubkey(key_data)
+
+        # 2048 bit:
+        key_data = sslhelpers._create_key(2048)
+        self.assertIn(len(key_data), [1671, 1675, 1679])
+        sslhelpers.get_pubkey(key_data)
+
+        # 3072 bit:
+        key_data = sslhelpers._create_key(3072)
+        self.assertIn(len(key_data), [2455, 2459])
+        sslhelpers.get_pubkey(key_data)
+
+        # 4096 bit:
+        key_data = sslhelpers._create_key(4096)
+        self.assertIn(len(key_data), [3239, 3243, 3247])
+        sslhelpers.get_pubkey(key_data)
+
     def test_create_key(self):
         tmp = TempDir()
         key = tmp.join('key.pem')
@@ -109,7 +130,7 @@ class TestSSLFunctions(TestCase):
         for f in files:
             self.assertGreater(path.getsize(f), 0)
 
-    def test_get_pubkey(self):
+    def test_get_cert_pubkey(self):
         tmp = TempDir()
 
         # Create CA
@@ -132,9 +153,9 @@ class TestSSLFunctions(TestCase):
         # Now compare
         os.remove(foo_key)
         os.remove(bar_key)
-        self.assertEqual(sslhelpers.get_pubkey(foo_ca), foo_pubkey)
+        self.assertEqual(sslhelpers.get_cert_pubkey(foo_ca), foo_pubkey)
         self.assertEqual(sslhelpers.get_csr_pubkey(bar_csr), bar_pubkey)
-        self.assertEqual(sslhelpers.get_pubkey(bar_cert), bar_pubkey)
+        self.assertEqual(sslhelpers.get_cert_pubkey(bar_cert), bar_pubkey)
 
 
 class TestPKI(TestCase):

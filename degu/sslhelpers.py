@@ -47,12 +47,18 @@ RFC-3548 Base32 encoding in that context.
 import os
 from os import path
 import stat
-from subprocess import check_call, check_output
+from subprocess import check_output
 from hashlib import sha512
 from base64 import b32encode
 
 
 DAYS = 365 * 10  # Valid for 10 years
+
+
+def safe_write(filename, data):
+    with open(filename, 'xb', 0) as fp:
+        os.chmod(fp.fileno(), 0o400)
+        fp.write(data)
 
 
 def b32enc(data):
@@ -98,16 +104,36 @@ def make_subject(cn):
     return '/CN={}'.format(cn)
 
 
+def _create_key(bits):
+    assert bits in (1024, 2048, 3072, 4096)
+    return check_output(['openssl', 'genrsa', str(bits)])
+
+
 def create_key(dst_file, bits=4096):
     """
     Create an RSA keypair and save it to *dst_file*.
     """
-    assert isinstance(bits, int)
-    assert bits % 1024 == 0
-    assert bits >= 1024
-    check_call(['openssl', 'genrsa',
-        '-out', dst_file,
-        str(bits)
+    key_data = _create_key(bits)
+    safe_write(dst_file, key_data)
+
+
+def get_pubkey(key_data):
+    return check_output(['openssl', 'rsa', '-pubout'], input=key_data)
+
+
+def _create_ca(key_file, subject):
+    """
+    Create a self-signed X509 certificate authority.
+
+    *subject* should be an str in the form ``'/CN=foo'``.
+    """
+    return check_output(['openssl', 'req',
+        '-new',
+        '-x509',
+        '-sha384',
+        '-days', str(DAYS),
+        '-key', key_file,
+        '-subj', subject,
     ])
 
 
@@ -117,14 +143,21 @@ def create_ca(key_file, subject, dst_file):
 
     *subject* should be an str in the form ``'/CN=foo'``.
     """
-    check_call(['openssl', 'req',
+    ca_data = _create_ca(key_file, subject)
+    safe_write(dst_file, ca_data)
+
+
+def _create_csr(key_file, subject):
+    """
+    Create a certificate signing request.
+
+    *subject* should be an str in the form ``'/CN=foo'``.
+    """
+    return check_output(['openssl', 'req',
         '-new',
-        '-x509',
         '-sha384',
-        '-days', str(DAYS),
         '-key', key_file,
         '-subj', subject,
-        '-out', dst_file,
     ])
 
 
@@ -134,20 +167,15 @@ def create_csr(key_file, subject, dst_file):
 
     *subject* should be an str in the form ``'/CN=foo'``.
     """
-    check_call(['openssl', 'req',
-        '-new',
-        '-sha384',
-        '-key', key_file,
-        '-subj', subject,
-        '-out', dst_file,
-    ])
+    csr_data = _create_csr(key_file, subject)
+    safe_write(dst_file, csr_data)
 
 
-def issue_cert(csr_file, ca_file, key_file, srl_file, dst_file):
+def _issue_cert(csr_file, ca_file, key_file, srl_file):
     """
     Create a signed certificate from a certificate signing request.
     """
-    check_call(['openssl', 'x509',
+    return check_output(['openssl', 'x509',
         '-req',
         '-sha384',
         '-days', str(DAYS),
@@ -156,8 +184,15 @@ def issue_cert(csr_file, ca_file, key_file, srl_file, dst_file):
         '-CA', ca_file,
         '-CAkey', key_file,
         '-CAserial', srl_file,
-        '-out', dst_file
     ])
+
+
+def issue_cert(csr_file, ca_file, key_file, srl_file, dst_file):
+    """
+    Create a signed certificate from a certificate signing request.
+    """
+    cert_data = _issue_cert(csr_file, ca_file, key_file, srl_file)
+    safe_write(dst_file, cert_data)
 
 
 def get_rsa_pubkey(key_file):
@@ -175,7 +210,7 @@ def get_csr_pubkey(csr_file):
     ])  
 
 
-def get_pubkey(cert_file):
+def get_cert_pubkey(cert_file):
     return check_output(['openssl', 'x509',
         '-pubkey',
         '-noout',
@@ -210,40 +245,37 @@ class PKI:
         return path.join(self.ssldir, '.'.join([_id, ext]))
 
     def create_key(self, bits=4096):
-        tmp_file = self.random_tmp()
-        create_key(tmp_file, bits)
-        _id = hash_pubkey(get_rsa_pubkey(tmp_file))
+        key_data = _create_key(bits)
+        pubkey_data = get_pubkey(key_data)
+        _id = hash_pubkey(pubkey_data)    
         key_file = self.path(_id, 'key')
-        os.rename(tmp_file, key_file)
+        safe_write(key_file, key_data)
         return _id
 
     def create_ca(self, _id):
         key_file = self.path(_id, 'key')
         subject = make_subject(_id)
-        tmp_file = self.random_tmp()
+        ca_data = _create_ca(key_file, subject)
         ca_file = self.path(_id, 'ca')
-        create_ca(key_file, subject, tmp_file)
-        os.rename(tmp_file, ca_file)
+        safe_write(ca_file, ca_data)
         return ca_file
 
     def create_csr(self, _id):
         key_file = self.path(_id, 'key')
         subject = make_subject(_id)
-        tmp_file = self.random_tmp()
+        csr_data = _create_csr(key_file, subject)
         csr_file = self.path(_id, 'csr')
-        create_csr(key_file, subject, tmp_file)
-        os.rename(tmp_file, csr_file)
+        safe_write(csr_file, csr_data)
         return csr_file
 
     def issue_cert(self, _id, ca_id):
         csr_file = self.path(_id, 'csr')
-        tmp_file = self.random_tmp()
-        cert_file = self.path(_id, 'cert')
         ca_file = self.path(ca_id, 'ca')
         key_file = self.path(ca_id, 'key')
         srl_file = self.path(ca_id, 'srl')
-        issue_cert(csr_file, ca_file, key_file, srl_file, tmp_file)
-        os.rename(tmp_file, cert_file)
+        cert_data = _issue_cert(csr_file, ca_file, key_file, srl_file)
+        cert_file = self.path(_id, 'cert')
+        safe_write(cert_file, cert_data)
         return cert_file
 
     def get_server_sslconfig(self, server_id, client_ca_id):
