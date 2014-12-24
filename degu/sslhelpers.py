@@ -161,37 +161,14 @@ def get_pubkey(key_data):
     return check_output(['openssl', 'rsa', '-pubout'], input=key_data)
 
 
-def get_rsa_pubkey(key_file):
-    return check_output(['openssl', 'rsa',
-        '-pubout',
-        '-in', key_file,
-    ])
-
-
-def _get_csr_pubkey(csr_data):
+def get_csr_pubkey(csr_data):
     cmd = ['openssl', 'req', '-pubkey', '-noout']
     return check_output(cmd, input=csr_data)
 
 
-def get_csr_pubkey(csr_file):
-    return check_output(['openssl', 'req',
-        '-pubkey',
-        '-noout',
-        '-in', csr_file,
-    ])  
-
-
-def _get_cert_pubkey(cert_data):
+def get_cert_pubkey(cert_data):
     cmd = ['openssl', 'x509', '-pubkey', '-noout']
     return check_output(cmd, input=cert_data)
-
-
-def get_cert_pubkey(cert_file):
-    return check_output(['openssl', 'x509',
-        '-pubkey',
-        '-noout',
-        '-in', cert_file,
-    ])
 
 
 class PKI:

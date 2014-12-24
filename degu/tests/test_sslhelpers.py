@@ -60,7 +60,7 @@ class TestSSLFunctions(TestCase):
         tmp = TempDir()
         key_file = tmp.write(key_data, 'foo.key')
         ca_data = sslhelpers.create_ca(key_file, '/CN=foo')
-        self.assertEqual(sslhelpers._get_cert_pubkey(ca_data), pubkey_data)
+        self.assertEqual(sslhelpers.get_cert_pubkey(ca_data), pubkey_data)
 
     def test_create_csr(self):
         key = sslhelpers.create_key(1024)
@@ -68,7 +68,7 @@ class TestSSLFunctions(TestCase):
         tmp = TempDir()
         key_file = tmp.write(key, 'foo.key')
         csr = sslhelpers.create_csr(key_file, '/CN=foo')
-        self.assertEqual(sslhelpers._get_csr_pubkey(csr), pubkey)
+        self.assertEqual(sslhelpers.get_csr_pubkey(csr), pubkey)
 
     def test_issue_cert(self):
         tmp = TempDir()
@@ -92,7 +92,7 @@ class TestSSLFunctions(TestCase):
             bar_csr_file, foo_ca_file, foo_key_file, foo_srl_file
         )
         self.assertEqual(
-            sslhelpers._get_cert_pubkey(bar_cert),
+            sslhelpers.get_cert_pubkey(bar_cert),
             sslhelpers.get_pubkey(bar_key)
         )
 
@@ -126,8 +126,9 @@ class TestPKI(TestCase):
         _id = pki.create_key(bits=1024)
         self.assertEqual(os.listdir(pki.ssldir), [ _id + '.key'])
         key_file = path.join(pki.ssldir, _id + '.key')
-        data = sslhelpers.get_rsa_pubkey(key_file)
-        self.assertEqual(_id, sslhelpers.hash_pubkey(data))
+        key_data = open(key_file, 'rb').read()
+        pubkey_data = sslhelpers.get_pubkey(key_data)
+        self.assertEqual(_id, sslhelpers.hash_pubkey(pubkey_data))
 
     def test_create_ca(self):
         tmp = TempDir()
