@@ -334,14 +334,11 @@ non-negative ``int``.
 
 
 
-TCP connection handler
-----------------------
+Handling connections
+--------------------
 
 If an RGI application has a callable ``on_connect`` attribute, it will be
-passed two arguments when handling connections: a *sock* and a *session*.
-
-The *sock* will be either a ``socket.socket`` instance or an ``ssl.SSLSocket``
-instance.
+passed two arguments when handling connections: a *session* and a *sock*.
 
 The *session* will be a ``dict`` containing the per-connection environment
 already created by the server, which will be a subset of the equivalent
@@ -359,6 +356,9 @@ The *session* argument will look something like this::
         'ssl_compression': None,
         'ssl_cipher': ('ECDHE-RSA-AES256-GCM-SHA384', 'TLSv1/SSLv3', 256),
     }
+
+The *sock* will be either a ``socket.socket`` instance or an ``ssl.SSLSocket``
+instance.
 
 When needed, the ``on_connect()`` connection-handler can add additional
 information to the *session* ``dict``, and this same *session* ``dict``
