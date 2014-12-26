@@ -78,7 +78,6 @@ _MAX_HEADER_COUNT = 20
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
 _RE_KEYS = re.compile('^[-0-9a-z]+$')
-_RE_CONTENT_LENGTH = re.compile(b'^[0-9]+$')
 
 _URI = frozenset(
     b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
@@ -262,23 +261,7 @@ def parse_preamble(preamble):
             )
     cl = headers.get('content-length')
     if cl is not None:
-        if len(cl) > 16:
-            raise ValueError(
-                'content-length too long: {!r}...'.format(cl[:16].encode())
-            )
-        try:
-            value = int(cl)
-        except ValueError:
-            value = None
-        if value is None or value < 0:
-            raise ValueError(
-                'bad bytes in content-length: {!r}'.format(cl)
-            )
-        if value > 9007199254740992:
-            raise ValueError(
-                'content-length value too large: {!r}'.format(value)
-            )
-        headers['content-length'] = value
+        headers['content-length'] = parse_content_length(cl.encode())
         if 'transfer-encoding' in headers:
             raise ValueError(
                 'cannot have both content-length and transfer-encoding headers'
@@ -312,22 +295,8 @@ def __read_headers(readline):
         if not (key and value):
             raise ValueError('bad header line: {!r}'.format(line))
         if key.lower() == b'content-length':
-            cl = None
-            if _RE_CONTENT_LENGTH.match(value):
-                try:
-                    cl = int(value)
-                except ValueError:
-                    pass
-            if cl is None or cl < 0:
-                raise ValueError(
-                    'bad bytes in content-length: {!r}'.format(value)
-                )
-            if cl > 9007199254740992:
-                raise ValueError(
-                    'content-length value too large: {!r}'.format(cl)
-                )
             key = 'content-length'
-            value = cl
+            value = parse_content_length(value)
         elif key.lower() == b'transfer-encoding':
             if value != b'chunked':
                 raise ValueError(
