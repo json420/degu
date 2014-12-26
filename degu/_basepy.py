@@ -63,8 +63,6 @@ implementations correctly using the same incorrect tables.
 ``str.isprintable()`` is an especially handy gem in this respect.
 """
 
-import re
-
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
@@ -77,7 +75,9 @@ _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
-_RE_KEYS = re.compile('^[-0-9a-z]+$')
+_KEYS = frozenset(
+    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+)
 
 _URI = frozenset(
     b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
@@ -122,18 +122,13 @@ def _decode_value(src, message):
     return text
 
 
-def _decode_key(src, message):
+def _decode_key(buf):
     """
     Used to decode, validate, and case-fold header keys.
     """
-    text = None
-    try:
-        text = src.decode('ascii').lower()
-    except ValueError:
-        pass
-    if text is None or not _RE_KEYS.match(text):
-        raise ValueError(message.format(src))
-    return text
+    if _KEYS.issuperset(buf):
+        return buf.decode('ascii').lower()
+    raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
 
 def _decode_uri(src):
@@ -253,7 +248,7 @@ def parse_preamble(preamble):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
-        key = _decode_key(key, 'bad bytes in header name: {!r}')
+        key = _decode_key(key)
         value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
@@ -305,7 +300,7 @@ def __read_headers(readline):
             key = 'transfer-encoding'
             value = 'chunked'
         else:
-            key = _decode_key(key, 'bad bytes in header name: {!r}')
+            key = _decode_key(key)
             value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(

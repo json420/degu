@@ -89,7 +89,6 @@ static PyObject *args_size_max = NULL;  //  (4096,)
  * SPACE 32 00100000  b' '
  * VAL   64 01000000  b'"\',;[]'
  */
-
 #define DIGIT_MASK  254  // 11111110  ~(DIGIT)
 #define PATH_MASK   248  // 11111000  ~(DIGIT|ALPHA|PATH)
 #define QUERY_MASK  240  // 11110000  ~(DIGIT|ALPHA|PATH|QUERY)
@@ -279,6 +278,9 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *fo
     uint8_t c, bits;
     size_t i;
 
+    if (mask == 0 || (mask & 1) != 0) {
+        Py_FatalError("internal error in `_decode()`: bad mask");
+    }
     dst = PyUnicode_New(len, 127);
     if (dst == NULL) {
         return NULL;
