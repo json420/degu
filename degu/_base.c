@@ -50,7 +50,7 @@
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
 
-/* Pre-built global Python `int` and `str` objects for performance */
+/* Pre-built global Python object for performance */
 static PyObject *int_zero = NULL;               //  0
 static PyObject *str_readline = NULL;           //  'readline'
 static PyObject *str_content_length = NULL;     //  'content-length'
@@ -58,26 +58,14 @@ static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_empty = NULL;              //  ''
 static PyObject *str_crlf = NULL;               //  '\r\n'
-
 static PyObject *str_GET    = NULL;  // 'GET'
 static PyObject *str_PUT    = NULL;  // 'PUT'
 static PyObject *str_POST   = NULL;  // 'POST'
 static PyObject *str_HEAD   = NULL;  // 'HEAD'
 static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
-
-
-/*
- * Pre-built args tuples for PyObject_Call() when calling rfile.readline().
- *
- * This makes read_preamble() about 18% faster compared to when it previously
- * used PyObject_CallFunctionObjArgs() with pre-built `int` objects.
- *
- * See the _READLINE() macro for details.
- */ 
 static PyObject *args_size_two = NULL;  //  (2,)
 static PyObject *args_size_max = NULL;  //  (4096,)
-
 
 
 /*
@@ -180,6 +168,57 @@ static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
 };
+
+
+/*
+ * _SET() macro: assign a PyObject pointer.
+ *
+ * Use this when you're assuming *pyobj* has been initialized to NULL.
+ *
+ * This macro will call Py_FatalError() if *pyobj* does not start equal to NULL
+ * (a sign that perhaps you should be using the _RESET() macro instead).
+ *
+ * If *source* returns NULL, this macro will `goto error`, so it can only be
+ * used within a function with an appropriate "error" label.
+ */
+#define _SET(pyobj, source) \
+    if (pyobj != NULL) { \
+        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
+    } \
+    pyobj = (source); \
+    if (pyobj == NULL) { \
+        goto error; \
+    }
+
+
+#define _SET_AND_INC(pyobj, source) \
+    _SET(pyobj, source) \
+    Py_INCREF(pyobj);
+
+
+/*
+ * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
+ *
+ * Use this to decrement the current object pointed to by *pyobj*, and then
+ * assign it to the PyObject pointer returned by *source*.
+ *
+ * If *source* returns NULL, this macro will `goto error`, so it can only be
+ * used within a function with an appropriate "error" label.
+ */
+#define _RESET(pyobj, source) \
+    Py_CLEAR(pyobj); \
+    pyobj = source; \
+    if (pyobj == NULL) { \
+        goto error; \
+    }
+
+#define _REPLACE(pyobj, source) \
+    _RESET(pyobj, source) \
+    Py_INCREF(pyobj);
+
+
+#define _LENMEMCMP(a_buf, a_len, b_buf, b_len) \
+    (a_len == b_len && memcmp(a_buf, b_buf, a_len) == 0)
 
 
 static void
@@ -301,52 +340,6 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *fo
 }
 
 
-/*
- * _SET() macro: assign a PyObject pointer.
- *
- * Use this when you're assuming *pyobj* has been initialized to NULL.
- *
- * This macro will call Py_FatalError() if *pyobj* does not start equal to NULL
- * (a sign that perhaps you should be using the _RESET() macro instead).
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
- */
-#define _SET(pyobj, source) \
-    if (pyobj != NULL) { \
-        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
-    } \
-    pyobj = (source); \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-
-#define _SET_AND_INC(pyobj, source) \
-    _SET(pyobj, source) \
-    Py_INCREF(pyobj);
-
-
-/*
- * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
- *
- * Use this to decrement the current object pointed to by *pyobj*, and then
- * assign it to the PyObject pointer returned by *source*.
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
- */
-#define _RESET(pyobj, source) \
-    Py_CLEAR(pyobj); \
-    pyobj = source; \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-#define _REPLACE(pyobj, source) \
-    _RESET(pyobj, source) \
-    Py_INCREF(pyobj);
-
 
 /*
  * _parse_content_length(): strictly parse `buf` to build a `PyLongObject`.
@@ -355,7 +348,10 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *fo
  * has `PyLong_FromString()`, but no `PyLong_FromStringAndSize()`.  This
  * allows us to more strictly parse a content-length header value, and without
  * building an intermediate `PyUnicodeObject` (which carries a fairly large
- * performance hit.
+ * performance hit).
+ *
+ * This function doesn't allow leading or trailing whitespace, nor does it
+ * allow leading zeros (except in the special case when buf == b'0').
  *
  */
 static PyObject *
@@ -661,8 +657,7 @@ cleanup:
     }
 
 
-#define _LENMEMCMP(a_buf, a_len, b_buf, b_len) \
-    (a_len == b_len && memcmp(a_buf, b_buf, a_len) == 0)
+
 
 
 static int
