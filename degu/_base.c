@@ -365,14 +365,13 @@ _parse_content_length(const uint8_t *buf, const size_t len)
     size_t i;
 
     if (len < 1) {
-        PyErr_SetString(PyExc_ValueError, "content-length value is empty");
+        PyErr_SetString(PyExc_ValueError, "content-length is empty");
         return NULL; 
     }
     if (len > MAX_CL_LEN) {
         _value_error(buf, MAX_CL_LEN, "content-length too long: %R...");
         return NULL; 
     }
-
     for (i = 0; i < len; i++) {
         accum *= 10;
         c = buf[i];
@@ -384,6 +383,10 @@ _parse_content_length(const uint8_t *buf, const size_t len)
     }
     if ((bits & DIGIT_MASK) != 0) {
         _value_error(buf, len, "bad bytes in content-length: %R");
+        return NULL;
+    }
+    if (buf[0] == 48 && len != 1) {
+        _value_error(buf, len, "content-length has leading zero: %R");
         return NULL;
     }
     if (accum > (uint64_t)MAX_CL_VALUE) {

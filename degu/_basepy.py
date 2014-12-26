@@ -83,6 +83,7 @@ _RE_CONTENT_LENGTH = re.compile(b'^[0-9]+$')
 _URI = frozenset(
     b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
 )
+_DIGIT = frozenset(b'0123456789')
 
 GET = 'GET'
 PUT = 'PUT'
@@ -142,6 +143,30 @@ def _decode_uri(src):
     raise ValueError(
         'bad uri in request line: {!r}'.format(src)
     )
+
+
+def parse_content_length(buf):
+    assert isinstance(buf, bytes)
+    if len(buf) < 1:
+        raise ValueError('content-length is empty')
+    if len(buf) > 16:
+        raise ValueError(
+            'content-length too long: {!r}...'.format(buf[:16])
+        )
+    if not _DIGIT.issuperset(buf):
+        raise ValueError(
+            'bad bytes in content-length: {!r}'.format(buf)
+        )
+    if buf[0:1] == b'0' and buf != b'0':
+        raise ValueError(
+            'content-length has leading zero: {!r}'.format(buf)
+        )
+    value = int(buf)
+    if value > 9007199254740992:
+        raise ValueError(
+            'content-length value too large: {!r}'.format(value)
+        )
+    return value
 
 
 class EmptyPreambleError(ConnectionError):
