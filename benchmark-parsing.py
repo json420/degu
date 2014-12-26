@@ -12,10 +12,11 @@ from degu._base import (
     parse_response_line,
     parse_request_line,
     parse_method,
+    parse_content_length,
 )
 
 from degu import _base, _basepy
-from degu.base import bodies, _read_preamble, write_chunk
+from degu.base import bodies, write_chunk
 from degu.client import _write_request
 from degu.server import _read_request, _write_response
 
@@ -63,7 +64,7 @@ def run_iter(statement, n):
         yield t.timeit(n)
 
 
-def run(statement, K=150):
+def run(statement, K=750):
     n = K * 1000
     # Choose fastest of 10 runs:
     elapsed = min(run_iter(statement, n))
@@ -71,6 +72,13 @@ def run(statement, K=150):
     print('{:>12,}: {}'.format(rate, statement))
     return rate
 
+
+run("parse_content_length(b'9007199254740992')")
+run("parse_response_line(b'HTTP/1.1 200 OK')")
+run("parse_response_line(b'HTTP/1.1 404 Not Found')")
+run("parse_request_line(b'GET / HTTP/1.1')")
+run("parse_request_line(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
+raise SystemExit()
 
 print('\nSimple parsers:')
 run("parse_response_line(b'HTTP/1.1 200 OK')")

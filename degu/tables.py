@@ -32,21 +32,91 @@ Or print the Python tables like this::
 
 """
 
-DIGIT_BIT = 1
-ALPHA_BIT = 2
-DASH_BIT  = 4
+from collections import namedtuple
 
-DIGIT = b'0123456789'
-ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-DASH  = b'-'
+BitFlag = namedtuple('BitFlag', 'bit name data')
+BitMask = namedtuple('BitMask', 'mask name flags')
 
-
+COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
 
 KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 VALUES = bytes(sorted(KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
 
+
+FLAGS_DEF = (
+    ('DIGIT', b'0123456789'),
+    ('ALPHA', b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'),
+    ('PATH',  b'-.:_~'),
+    ('QUERY', b'%&+='),
+    ('URI', b'/?'),
+    ('SPACE', b' '),
+    ('VAL', b'"\',;[]'),   
+)
+MASKS_DEF = (
+    ('DIGIT_MASK', ('DIGIT',)),
+    ('PATH_MASK', ('DIGIT', 'ALPHA', 'PATH')),
+    ('QUERY_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY')),
+    ('URI_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI')),
+    ('REASON_MASK', ('DIGIT', 'ALPHA', 'SPACE')),
+    ('VAL_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VAL')),
+)
+
+
+def check_flag_data(f):
+    sdata = bytes(sorted(set(f.data)))
+    if f.data != sdata:
+        raise ValueError(
+            '{}: {!r} != {!r}'.format(f.name, f.data, sdata)
+        )
+
+
+def build_flags(flags_def):
+    assert 0 < len(flags_def) < 8
+    accum = []
+    for (i, (name, data)) in enumerate(flags_def):
+        bit = 2 ** i
+        assert bit in (1, 2, 4, 8, 16, 32, 64)
+        accum.append(BitFlag(bit, name, data))
+    return tuple(accum)
+
+
+def build_masks(flags, masks_def):
+    accum = []
+    _map = dict((f.name, f.bit) for f in flags)
+    for (name, parts) in masks_def:
+        bits = 0
+        for p in parts:
+            bits |= _map[p]
+        mask = 255 ^ bits
+        accum.append(BitMask(mask, name, parts))
+    return tuple(accum)
+
+
+def build_table(flags):
+    assert 1 < len(flags) < 8
+    table = {}
+    for f in flags:
+        check_flag_data(f)
+        assert set(table).isdisjoint(f.data)
+        table.update((key, f.bit) for key in f.data)
+    for key in range(256):
+        table.setdefault(key, 128)
+    assert len(table) == 256
+    return tuple(sorted(table.items()))
+
+
+FLAGS = build_flags(FLAGS_DEF)
+MASKS = build_masks(FLAGS, MASKS_DEF)
+TABLE = build_table(FLAGS)
+
+
+
+
+
+
 URI = bytes(sorted(KEYS + b'%&+./:=?_~'))
+
 
 
 def iter_definition(allowed, casefold):
@@ -70,33 +140,34 @@ def format_values(line):
     return ','.join('{:>3}'.format(r) for (i, r) in line)
 
 
-def needs_help(line):
+def iter_help(line, r_ignore):
     for (i, r) in line:
-        if r != 255:
-            return True
-    return False
-
-
-def iter_help(line):
-    for (i, r) in line:
-        if r == 255:
+        if r == r_ignore:
             yield ' ' * 4  # 4 spaces
         else:
             yield '{!r:<4}'.format(chr(i))
 
 
-def format_help(line):
-    if needs_help(line):
-        return ' '.join(iter_help(line))
+def needs_help(line, r_ignore):
+    for (i, r) in line:
+        if r != r_ignore:
+            return True
+    return False
 
 
-def iter_lines(definition, comment):
+def format_help(line, r_ignore):
+    if needs_help(line, r_ignore):
+        return ' '.join(iter_help(line, r_ignore))
+
+
+def iter_lines(definition, comment, r_ignore=255):
+    assert r_ignore in (255, 128)
     line = []
     for item in definition:
         line.append(item)
         if len(line) == 8:
             text = '    {},'.format(format_values(line))
-            help = format_help(line)
+            help = format_help(line, r_ignore)
             if help:
                 yield '{} {}  {}'.format(text, comment, help.rstrip())
             else:
@@ -105,16 +176,40 @@ def iter_lines(definition, comment):
     assert not line
 
 
-def iter_c(name, definition):
+def iter_c(name, definition, r_ignore=255):
     yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(definition))
-    yield from iter_lines(definition, ' //')
+    yield from iter_lines(definition, ' //', r_ignore)
     yield '};'
 
 
-def iter_p(name, definition):
+def iter_p(name, definition, r_ignore=255):
     yield '{} = ('.format(name)
-    yield from iter_lines(definition, '#')
+    yield from iter_lines(definition, '#', r_ignore)
     yield ')'
+
+
+
+def iter_flags(flags):
+    width = max(len(f.name) for f in flags)
+    yield '/*'
+    for f in flags:
+        name = f.name.ljust(width)
+        yield ' * {} {:>2} {:08b}  {!r}'.format(name, f.bit, f.bit, f.data)
+    yield ' */'
+
+
+def iter_masks(masks):
+    width = max(len(m.name) for m in masks)
+    for m in masks:
+        name = m.name.ljust(width)
+        line = '#define {} {:>3}  // {:08b} '.format(name, m.mask, m.mask)
+        if m.flags is None:
+            yield line
+        else:
+            yield line + ' ~({})'.format('|'.join(m.flags))
+    yield ''
+        
+
 
 
 if __name__ == '__main__':
@@ -128,14 +223,16 @@ if __name__ == '__main__':
     iter_x = (iter_p if args.p else iter_c)
 
     print('')
-    for line in iter_x('_VALUES', VALUES_DEF):
-        print(line)
-
-    print('')
-    for line in iter_x('_URI', URI_DEF):
-        print(line)
-
-    print('')
     for line in iter_x('_KEYS', KEYS_DEF):
+        print(line)
+
+    print('')
+    for line in iter_flags(FLAGS):
+        print(line)
+    print('')
+    for line in iter_masks(MASKS):
+        print(line)
+
+    for line in iter_x('_FLAGS', TABLE, 128):
         print(line)
 

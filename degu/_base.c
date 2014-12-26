@@ -25,7 +25,7 @@
 #include <stdbool.h>
 
 
-#define _MAX_LINE_SIZE 4096
+#define _MAX_LINE_SIZE 4096  // Hello
 #define _MAX_HEADER_COUNT 20
 
 // Constraints for the content-length value:
@@ -79,91 +79,58 @@ static PyObject *args_size_two = NULL;  //  (2,)
 static PyObject *args_size_max = NULL;  //  (4096,)
 
 
+
 /*
- * _VALUES: table for validating the first preamble line plus header values.
- *
- * Degu only allows these 95 possible byte values to exist in the first line of
- * the HTTP preamble, and likewise to exist in the header values.  This is a
- * superset of the byte values allowed in the more restrictive `_KEYS` table.
- *
- * Valid entries get mapped to themselves (ie, no case-folding is done).
- * 
- * Invalid entries will always have the high bit set, for which you can do a
- * single error check at the end using (r & 128).
- *
- * See the `_decode()` function for more details.
+ * DIGIT  1 00000001  b'0123456789'
+ * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+ * PATH   4 00000100  b'-.:_~'
+ * QUERY  8 00001000  b'%&+='
+ * URI   16 00010000  b'/?'
+ * SPACE 32 00100000  b' '
+ * VAL   64 01000000  b'"\',;[]'
  */
-static const uint8_t _VALUES[256] = {
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-     32, 33, 34, 35, 36, 37, 38, 39,  //  ' '  '!'  '"'  '#'  '$'  '%'  '&'  "'"
-     40, 41, 42, 43, 44, 45, 46, 47,  //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
-     48, 49, 50, 51, 52, 53, 54, 55,  //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
-     56, 57, 58, 59, 60, 61, 62, 63,  //  '8'  '9'  ':'  ';'  '<'  '='  '>'  '?'
-     64, 65, 66, 67, 68, 69, 70, 71,  //  '@'  'A'  'B'  'C'  'D'  'E'  'F'  'G'
-     72, 73, 74, 75, 76, 77, 78, 79,  //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
-     80, 81, 82, 83, 84, 85, 86, 87,  //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
-     88, 89, 90, 91, 92, 93, 94, 95,  //  'X'  'Y'  'Z'  '['  '\\' ']'  '^'  '_'
-     96, 97, 98, 99,100,101,102,103,  //  '`'  'a'  'b'  'c'  'd'  'e'  'f'  'g'
-    104,105,106,107,108,109,110,111,  //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
-    112,113,114,115,116,117,118,119,  //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-    120,121,122,123,124,125,126,255,  //  'x'  'y'  'z'  '{'  '|'  '}'  '~'
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
+
+#define DIGIT_MASK  254  // 11111110  ~(DIGIT)
+#define PATH_MASK   248  // 11111000  ~(DIGIT|ALPHA|PATH)
+#define QUERY_MASK  240  // 11110000  ~(DIGIT|ALPHA|PATH|QUERY)
+#define URI_MASK    224  // 11100000  ~(DIGIT|ALPHA|PATH|QUERY|URI)
+#define REASON_MASK 220  // 11011100  ~(DIGIT|ALPHA|SPACE)
+#define VAL_MASK    128  // 10000000  ~(DIGIT|ALPHA|PATH|QUERY|URI|SPACE|VAL)
+
+static const uint8_t _FLAGS[256] = {
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+     32,128, 64,128,128,  8,  8, 64,  //  ' '       '"'            '%'  '&'  "'"
+    128,128,128,  8, 64,  4,  4, 16,  //                 '+'  ','  '-'  '.'  '/'
+      1,  1,  1,  1,  1,  1,  1,  1,  //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+      1,  1,  4, 64,128,  8,128, 16,  //  '8'  '9'  ':'  ';'       '='       '?'
+    128,  2,  2,  2,  2,  2,  2,  2,  //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
+      2,  2,  2,  2,  2,  2,  2,  2,  //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+      2,  2,  2,  2,  2,  2,  2,  2,  //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+      2,  2,  2, 64,128, 64,128,  4,  //  'X'  'Y'  'Z'  '['       ']'       '_'
+    128,  2,  2,  2,  2,  2,  2,  2,  //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+      2,  2,  2,  2,  2,  2,  2,  2,  //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+      2,  2,  2,  2,  2,  2,  2,  2,  //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+      2,  2,  2,128,128,128,  4,128,  //  'x'  'y'  'z'                 '~'
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
 };
-
-
-static const uint8_t _URI[256] = {
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255, 37, 38,255,  //                           '%'  '&'
-    255,255,255, 43,255, 45, 46, 47,  //                 '+'       '-'  '.'  '/'
-     48, 49, 50, 51, 52, 53, 54, 55,  //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
-     56, 57, 58,255,255, 61,255, 63,  //  '8'  '9'  ':'            '='       '?'
-    255, 65, 66, 67, 68, 69, 70, 71,  //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
-     72, 73, 74, 75, 76, 77, 78, 79,  //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
-     80, 81, 82, 83, 84, 85, 86, 87,  //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
-     88, 89, 90,255,255,255,255, 95,  //  'X'  'Y'  'Z'                      '_'
-    255, 97, 98, 99,100,101,102,103,  //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
-    104,105,106,107,108,109,110,111,  //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
-    112,113,114,115,116,117,118,119,  //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-    120,121,122,255,255,255,126,255,  //  'x'  'y'  'z'                 '~'
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,
-};
-
 
 /* 
  * _KEYS: table for validating and case-folding header keys (header names).
@@ -277,15 +244,8 @@ degu_parse_method(PyObject *self, PyObject *args)
 }
 
 
-/*
- * _decode(): validate against *table*, possibly case-fold.
- *
- * The *table* determines what bytes are allowed, and whether to case-fold.
- *
- * Return value will be an `str` instance, or NULL when there was an error.
- */
 static PyObject *
-_decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *format)
+_decode_key(const uint8_t *buf, const size_t len)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -298,13 +258,41 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
     }
     dst_buf = PyUnicode_1BYTE_DATA(dst);
     for (r = i = 0; i < len; i++) {
-        r |= dst_buf[i] = table[buf[i]];
+        r |= dst_buf[i] = _KEYS[buf[i]];
     }
     if (r & 128) {
         Py_CLEAR(dst);
         if (r != 255) {
-            Py_FatalError("internal error in `_decode()`");
+            Py_FatalError("internal error in `_decode_key()`");
         }
+        _value_error(buf, len, "bad bytes in header name: %R");
+    }
+    return dst;
+}
+
+
+static PyObject *
+_decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *format)
+{
+    PyObject *dst = NULL;
+    uint8_t *dst_buf = NULL;
+    uint8_t c, bits;
+    size_t i;
+
+    dst = PyUnicode_New(len, 127);
+    if (dst == NULL) {
+        return NULL;
+    }
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    for (bits = i = 0; i < len; i++) {
+        c = dst_buf[i] = buf[i];
+        bits |= _FLAGS[c];
+    }
+    if (bits == 0) {
+        Py_FatalError("internal error in `_decode()`");
+    }
+    if ((bits & mask) != 0) {
+        Py_CLEAR(dst);
         _value_error(buf, len, format);
     }
     return dst;
@@ -371,8 +359,9 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t *table, const char *
 static PyObject *
 _parse_content_length(const uint8_t *buf, const size_t len)
 {
-    uint64_t accum;
-    uint8_t err, d;
+    uint64_t accum = 0;
+    uint8_t bits = 0;
+    uint8_t c;
     size_t i;
 
     if (len < 1) {
@@ -384,13 +373,16 @@ _parse_content_length(const uint8_t *buf, const size_t len)
         return NULL; 
     }
 
-    for (accum = err = i = 0; i < len; i++) {
+    for (i = 0; i < len; i++) {
         accum *= 10;
-        d = buf[i];
-        err |= (d < 48 || d > 57);
-        accum += (d - 48);
+        c = buf[i];
+        bits |= _FLAGS[c];
+        accum += (c - 48);
     }
-    if (err) {
+    if (bits == 0) {
+        Py_FatalError("internal error in `_parse_content_length`");
+    }
+    if ((bits & DIGIT_MASK) != 0) {
         _value_error(buf, len, "bad bytes in content-length: %R");
         return NULL;
     }
@@ -402,6 +394,19 @@ _parse_content_length(const uint8_t *buf, const size_t len)
     }
 
     return PyLong_FromUnsignedLongLong(accum);
+}
+
+
+static PyObject *
+parse_content_length(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_content_length(buf, len);
 }
 
 
@@ -461,7 +466,7 @@ _parse_response_line(const uint8_t *buf, const size_t len,
     }
     else {
         _SET(*reason,
-            _decode(buf + 13, len - 13, _VALUES, "bad reason in response line: %R")
+            _decode(buf + 13, len - 13, REASON_MASK, "bad reason in response line: %R")
         )
     }
 
@@ -530,7 +535,7 @@ _parse_request_line_inner(const uint8_t *buf, const size_t len,
 
     _SET(*method, _parse_method(buf, method_len))
     _SET(*uri,
-        _decode(uri_buf, uri_len, _URI, "bad uri in request line: %R")
+        _decode(uri_buf, uri_len, URI_MASK, "bad uri in request line: %R")
     )
 
     /* Success! */
@@ -675,10 +680,8 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     val_buf = sep + 2;
     val_len = len - key_len - 2;
 
-    /* Casefold and validate header name in place */
-    _SET(key,
-        _decode(key_buf, key_len, _KEYS, "bad bytes in header name: %R")
-    )
+    /* Casefold and validate header name */
+    _SET(key, _decode_key(key_buf, key_len))
     key_buf =  PyUnicode_1BYTE_DATA(key);
 
     if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
@@ -697,7 +700,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     }
     else {
         _SET(val,
-            _decode(val_buf, val_len, _VALUES, "bad bytes in header value: %R")
+            _decode(val_buf, val_len, VAL_MASK, "bad bytes in header value: %R")
         )
     }
 
@@ -739,7 +742,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     }
 
     _SET(first_line,
-        _decode(line_buf, line_len, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len, VAL_MASK, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -1094,7 +1097,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(first_line,
-        _decode(line_buf, line_len - 2, _VALUES, "bad bytes in first line: %R")
+        _decode(line_buf, line_len - 2, VAL_MASK, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -1277,6 +1280,9 @@ cleanup:
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_content_length", parse_content_length, METH_VARARGS,
+        "parse_content_length(value)"
+    },
     {"parse_response_line", parse_response_line, METH_VARARGS,
         "parse_response_line(line)"},
     {"parse_request_line", parse_request_line, METH_VARARGS,
