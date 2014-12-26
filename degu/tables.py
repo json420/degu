@@ -34,14 +34,17 @@ Or print the Python tables like this::
 
 from collections import namedtuple
 
+Table = namedtuple('Table', 'name r_ignore items')
 BitFlag = namedtuple('BitFlag', 'bit name data')
 BitMask = namedtuple('BitMask', 'mask name flags')
+Classifier = namedtuple('Classifier', 'flags masks table') 
 
 COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
+VALUES = b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'
 
 KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
-VALUES = bytes(sorted(KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
+
 
 
 FLAGS_DEF = (
@@ -103,23 +106,18 @@ def build_table(flags):
     for key in range(256):
         table.setdefault(key, 128)
     assert len(table) == 256
-    return tuple(sorted(table.items()))
+    items = tuple(sorted(table.items()))
+    return Table('_FLAGS', 128, items)
 
 
-FLAGS = build_flags(FLAGS_DEF)
-MASKS = build_masks(FLAGS, MASKS_DEF)
-TABLE = build_table(FLAGS)
+def build_classifier(flags_def, masks_def):
+    flags = build_flags(flags_def)
+    masks = build_masks(flags, masks_def)
+    table = build_table(flags)
+    return Classifier(flags, masks, table)
 
 
-
-
-
-
-URI = bytes(sorted(KEYS + b'%&+./:=?_~'))
-
-
-
-def iter_definition(allowed, casefold):
+def _iter_names_table(allowed, casefold):
     assert isinstance(allowed, bytes)
     assert isinstance(casefold, bool)
     for i in range(256):
@@ -130,10 +128,9 @@ def iter_definition(allowed, casefold):
             yield (i, 255)
 
 
-# These are table "definitions", not the actual tables:
-KEYS_DEF = tuple(iter_definition(KEYS, True))
-VALUES_DEF = tuple(iter_definition(VALUES, False))
-URI_DEF = tuple(iter_definition(URI, False))
+def build_names_table(allowed, casefold):
+    items = tuple(_iter_names_table(allowed, casefold))
+    return Table('_NAMES', 255, items)
 
 
 def format_values(line):
@@ -160,14 +157,14 @@ def format_help(line, r_ignore):
         return ' '.join(iter_help(line, r_ignore))
 
 
-def iter_lines(definition, comment, r_ignore=255):
-    assert r_ignore in (255, 128)
+def iter_lines(table, comment):
+    assert table.r_ignore in (255, 128)
     line = []
-    for item in definition:
+    for item in table.items:
         line.append(item)
         if len(line) == 8:
             text = '    {},'.format(format_values(line))
-            help = format_help(line, r_ignore)
+            help = format_help(line, table.r_ignore)
             if help:
                 yield '{} {}  {}'.format(text, comment, help.rstrip())
             else:
@@ -176,9 +173,9 @@ def iter_lines(definition, comment, r_ignore=255):
     assert not line
 
 
-def iter_c(name, definition, r_ignore=255):
-    yield 'static const uint8_t {}[{:d}] = {{'.format(name, len(definition))
-    yield from iter_lines(definition, ' //', r_ignore)
+def iter_c(table):
+    yield 'static const uint8_t {}[{:d}] = {{'.format(table.name, len(table.items))
+    yield from iter_lines(table, '//')
     yield '};'
 
 
@@ -207,13 +204,56 @@ def iter_masks(masks):
             yield line
         else:
             yield line + ' ~({})'.format('|'.join(m.flags))
-    yield ''
-        
 
+
+def iter_classifier(obj):
+    yield from iter_flags(obj.flags)
+    yield from iter_masks(obj.masks)
+    yield from iter_c(obj.table)
+
+
+def iter_all(classifier, names_table):
+    (begin, end) = build_marker_comments('/', '*')
+    yield begin
+    yield ''
+    yield from iter_c(names_table)
+    yield ''
+    yield ''
+    yield from iter_classifier(classifier)
+    yield ''
+    yield end
+
+
+def build_marker_comments(end, fill):
+    labels = tuple(
+        '{} GENERATED TABLES'.format(way) for way in ('BEGIN', 'END')
+    )
+    width = max(len(l) for l in labels)
+
+    markers = []
+    for label in labels:
+        line = ''.join([
+            end,
+            (fill * 15),
+            (' ' * 4),
+            label.rjust(width),
+            (' ' * 4),
+        ])
+        needfill = 80 - len(line) - 1
+        line += (fill * needfill) + end
+        markers.append(line)
+    return tuple(markers)
 
 
 if __name__ == '__main__':
     import argparse
+    import os
+    from os import path
+
+    pkgdir = path.dirname(path.abspath(__file__))
+    orig = path.join(pkgdir, '_base.c')
+    tmp = orig + '.updated-tables'
+    bak = tmp + '.bak'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', action='store_true', default=False,
@@ -222,17 +262,39 @@ if __name__ == '__main__':
     args = parser.parse_args()
     iter_x = (iter_p if args.p else iter_c)
 
-    print('')
-    for line in iter_x('_KEYS', KEYS_DEF):
-        print(line)
+    classifier = build_classifier(FLAGS_DEF, MASKS_DEF)
+    names_table = build_names_table(KEYS, True)
 
-    print('')
-    for line in iter_flags(FLAGS):
-        print(line)
-    print('')
-    for line in iter_masks(MASKS):
-        print(line)
+    text = open(orig, 'r').read()
+    inlines = text.splitlines()
+    outlines = []
 
-    for line in iter_x('_FLAGS', TABLE, 128):
-        print(line)
+    (begin, end) = build_marker_comments('/', '*')
+    found = False
+    for line in inlines:
+        if line.startswith(begin):
+            assert not found
+            found = True
+        if found:
+            print('- ' + line)
+        else:
+            outlines.append(line)
+        if line.startswith(end):
+            assert found
+            found = False
+            for new in iter_all(classifier, names_table):
+                print('+ ' + new)
+                outlines.append(new)
 
+    with open(tmp, 'x') as fp:
+        fp.write('\n'.join(outlines))
+    with open(bak, 'x') as fp:
+        fp.write(text)
+    os.rename(tmp, orig)
+
+            
+
+#    for line in iter_all(classifier, names_table):
+#        print(line)
+        
+    print(pkgdir)

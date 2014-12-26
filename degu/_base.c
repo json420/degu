@@ -68,6 +68,9 @@ static PyObject *args_size_two = NULL;  //  (2,)
 static PyObject *args_size_max = NULL;  //  (4096,)
 
 
+
+/***************    BEGIN GENERATED TABLES    *********************************/
+
 /*
  * DIGIT  1 00000001  b'0123456789'
  * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
@@ -119,21 +122,7 @@ static const uint8_t _FLAGS[256] = {
     128,128,128,128,128,128,128,128,
 };
 
-/* 
- * _KEYS: table for validating and case-folding header keys (header names).
- *
- * Degu only allows these 63 possible byte values to exist in header names.
- * This is a subset of the byte values allowed in the more permissive `_VALUES`
- * table.
- *
- * Entries in [-0-9a-z] get mapped to themselves, and entries in [A-Z] get
- * mapped to their lowercase equivalent in [a-z].
- * 
- * Invalid entries will always have the high bit set, for which you can do a
- * single error check at the end using (r & 128).
- *
- * See the `_decode()` function for more details.
- */
+
 static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -168,6 +157,8 @@ static const uint8_t _KEYS[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
 };
+
+/***************      END GENERATED TABLES    *********************************/
 
 
 /*
