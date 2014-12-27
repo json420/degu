@@ -40,13 +40,15 @@ BitMask = namedtuple('BitMask', 'mask name flags')
 Classifier = namedtuple('Classifier', 'flags masks table') 
 
 COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
-VALUES = b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'
-
-KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 
 
+# For case-folding and validating header names:
+NAMES_DEF = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+VALUES_DEF = bytes(sorted(NAMES_DEF + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
 
+
+# Generic bit-flag based validation table with 7 sets, plus 1 error set:
 FLAGS_DEF = (
     ('DIGIT', b'0123456789'),
     ('ALPHA', b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'),
@@ -263,7 +265,7 @@ if __name__ == '__main__':
     iter_x = (iter_p if args.p else iter_c)
 
     classifier = build_classifier(FLAGS_DEF, MASKS_DEF)
-    names_table = build_names_table(KEYS, True)
+    names_table = build_names_table(NAMES_DEF, True)
 
     text = open(orig, 'r').read()
     inlines = text.splitlines()
