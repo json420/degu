@@ -252,8 +252,8 @@ if __name__ == '__main__':
 
     pkgdir = path.dirname(path.abspath(__file__))
     orig = path.join(pkgdir, '_base.c')
-    tmp = orig + '.updated-tables'
-    bak = tmp + '.bak'
+    tmp = orig + '.updated-tables.new'
+    bak = orig + '.updated-tables.old'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', action='store_true', default=False,
