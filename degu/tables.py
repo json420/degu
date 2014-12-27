@@ -263,7 +263,6 @@ def iter_all(classifier, names_table):
     yield ''
     yield end
     yield ''
-    yield from iter_mask_sets(classifier.masks)
 
 
 def build_marker_comments(end, fill):
@@ -299,7 +298,7 @@ class TheWorks:
 
 if __name__ == '__main__':
     import argparse
-    import os
+    #import os
     from os import path
 
     pkgdir = path.dirname(path.abspath(__file__))
@@ -324,33 +323,27 @@ if __name__ == '__main__':
             print(line)
         raise SystemExit('nope')
 
-    text = open(orig, 'r').read()
-    inlines = text.splitlines()
-    outlines = []
+#    text = open(orig, 'r').read()
+#    inlines = text.splitlines()
+#    outlines = []
 
-    (begin, end) = build_marker_comments('/', '*')
-    found = False
-    for line in inlines:
-        if line.startswith(begin):
-            assert not found
-            found = True
-        if found:
-            print('- ' + line)
-        else:
-            outlines.append(line)
-        if line.startswith(end):
-            assert found
-            found = False
-            outlines.extend(iter_all(classifier, names_table))
+#    (begin, end) = build_marker_comments('/', '*')
+#    found = False
+#    for line in inlines:
+#        if line.startswith(begin):
+#            assert not found
+#            found = True
+#        if found:
+#            print('- ' + line)
+#        else:
+#            outlines.append(line)
+#        if line.startswith(end):
+#            assert found
+#            found = False
+#            outlines.extend(iter_all(classifier, names_table))
 
-    with open(tmp, 'x') as fp:
-        fp.write('\n'.join(outlines) + '\n')
-    os.rename(orig, bak)
-    os.rename(tmp, orig)
+#    with open(tmp, 'x') as fp:
+#        fp.write('\n'.join(outlines) + '\n')
+#    os.rename(orig, bak)
+#    os.rename(tmp, orig)
 
-            
-
-#    for line in iter_all(classifier, names_table):
-#        print(line)
-        
-    print(pkgdir)
