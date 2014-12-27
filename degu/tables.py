@@ -36,7 +36,7 @@ from collections import namedtuple
 
 Table = namedtuple('Table', 'name r_ignore items')
 BitFlag = namedtuple('BitFlag', 'bit name data')
-BitMask = namedtuple('BitMask', 'mask name flags')
+BitMask = namedtuple('BitMask', 'mask name flags data')
 Classifier = namedtuple('Classifier', 'flags masks table') 
 
 COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
@@ -56,7 +56,7 @@ FLAGS_DEF = (
     ('QUERY', b'%&+='),
     ('URI', b'/?'),
     ('SPACE', b' '),
-    ('VAL', b'"\',;[]'),   
+    ('VAL', b'"\'()*,;[]'),   
 )
 MASKS_DEF = (
     ('DIGIT_MASK', ('DIGIT',)),
@@ -86,15 +86,38 @@ def build_flags(flags_def):
     return tuple(accum)
 
 
+def normalized_bytes(source):
+    return bytes(sorted(set(source)))
+
+
+def check_disjoint(accum, allowed):
+    allowed_s = normalized_bytes(allowed)
+    if allowed != allowed_s:
+        raise ValueError(
+            '{!r} != {!r}'.format(allowed, allowed_s)
+        )
+    common = set(accum).intersection(allowed)
+    if common:
+        raise ValueError(
+            'non-empty intersection: {!r}'.format(sorted(common))
+        )
+
+
 def build_masks(flags, masks_def):
     accum = []
-    _map = dict((f.name, f.bit) for f in flags)
+    _map = dict((f.name, f) for f in flags)
     for (name, parts) in masks_def:
         bits = 0
+        union = set()
         for p in parts:
-            bits |= _map[p]
+            f = _map[p]
+            bits |= f.bits
+            check_disjoint(union, f.data)
+            union.update(f.data)
         mask = 255 ^ bits
-        accum.append(BitMask(mask, name, parts))
+        data = normalized_bytes(union)
+        assert len(data) == len(union)
+        accum.append(BitMask(mask, name, parts, data))
     return tuple(accum)
 
 
@@ -289,9 +312,8 @@ if __name__ == '__main__':
                 outlines.append(new)
 
     with open(tmp, 'x') as fp:
-        fp.write('\n'.join(outlines))
-    with open(bak, 'x') as fp:
-        fp.write(text)
+        fp.write('\n'.join(outlines) + '\n')
+    os.rename(orig, bak)
     os.rename(tmp, orig)
 
             

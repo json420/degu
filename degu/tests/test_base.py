@@ -74,6 +74,30 @@ GOOD_HEADERS = (
         b'Transfer-Encoding: chunked\r\n',
         ('transfer-encoding', 'chunked')
     ),
+    (
+        b'User-Agent: Microfiber/14.12.0 (Ubuntu 14.04; x86_64)\r\n',
+        ('user-agent', 'Microfiber/14.12.0 (Ubuntu 14.04; x86_64)')
+    ),
+    (
+        b'Host: 192.168.1.171:5984\r\n',
+        ('host', '192.168.1.171:5984')
+    ),
+    (
+        b'Host: [fe80::e8b:fdff:fe75:402c/64]:5984\r\n',
+        ('host', '[fe80::e8b:fdff:fe75:402c/64]:5984')
+    ),
+    (
+        b'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n',
+        ('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+    ),
+    (
+        b'Date: Sat, 27 Dec 2014 01:12:48 GMT\r\n',
+        ('date', 'Sat, 27 Dec 2014 01:12:48 GMT')
+    ),
+    (
+        b'Content-Type: text/html;charset=utf-8\r\n',
+        ('content-type', 'text/html;charset=utf-8')
+    ),
 )
 
 
