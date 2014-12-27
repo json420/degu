@@ -29,6 +29,7 @@
 #define _MAX_HEADER_COUNT 20
 
 // Constraints for the content-length value:
+#define MAX_HEADER_NAME_LEN 32
 #define MAX_CL_LEN 16
 #define MAX_CL_VALUE 9007199254740992
 
@@ -273,13 +274,21 @@ degu_parse_method(PyObject *self, PyObject *args)
 
 
 static PyObject *
-_decode_key(const uint8_t *buf, const size_t len)
+_parse_header_name(const uint8_t *buf, const size_t len)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
     uint8_t r;
     size_t i;
 
+    if (len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header name is empty");
+        return NULL; 
+    }
+    if (len > MAX_HEADER_NAME_LEN) {
+        _value_error(buf, MAX_HEADER_NAME_LEN, "header name too long: %R...");
+        return NULL; 
+    }
     dst = PyUnicode_New(len, 127);
     if (dst == NULL) {
         return NULL;
@@ -291,11 +300,24 @@ _decode_key(const uint8_t *buf, const size_t len)
     if (r & 128) {
         Py_CLEAR(dst);
         if (r != 255) {
-            Py_FatalError("internal error in `_decode_key()`");
+            Py_FatalError("internal error in `_parse_header_name()`");
         }
         _value_error(buf, len, "bad bytes in header name: %R");
     }
     return dst;
+}
+
+
+static PyObject *
+parse_header_name(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_header_name(buf, len);
 }
 
 
@@ -671,7 +693,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     val_len = len - key_len - 2;
 
     /* Casefold and validate header name */
-    _SET(key, _decode_key(key_buf, key_len))
+    _SET(key, _parse_header_name(key_buf, key_len))
     key_buf =  PyUnicode_1BYTE_DATA(key);
 
     if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
@@ -1270,6 +1292,9 @@ cleanup:
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_header_name", parse_header_name, METH_VARARGS,
+        "parse_header_name(buf)"
+    },
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"
     },

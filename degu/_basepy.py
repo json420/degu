@@ -47,7 +47,7 @@ For *KEYS*, the Python implementation:
     2. Uses ``str.lower()`` to case-fold the header key
 
     3. Uses ``re.match()`` to further restrict down to the same 63 byte values
-       allowed by the C ``_KEYS`` table
+       allowed by the C ``_NAMES`` table
 
 Although it might seem a bit hodge-podge, this approach is much faster than
 doing lookup tables in pure-Python.
@@ -75,7 +75,7 @@ _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
-_KEYS = frozenset(
+_NAMES = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 )
 
@@ -122,11 +122,15 @@ def _decode_value(src, message):
     return text
 
 
-def _decode_key(buf):
+def parse_header_name(buf):
     """
     Used to decode, validate, and case-fold header keys.
     """
-    if _KEYS.issuperset(buf):
+    if len(buf) < 1:
+        raise ValueError('header name is empty')
+    if len(buf) > 32:
+        raise ValueError('header name too long: {!r}...'.format(buf[:32]))
+    if _NAMES.issuperset(buf):
         return buf.decode('ascii').lower()
     raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
@@ -248,7 +252,7 @@ def parse_preamble(preamble):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
-        key = _decode_key(key)
+        key = parse_header_name(key)
         value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
@@ -300,7 +304,7 @@ def __read_headers(readline):
             key = 'transfer-encoding'
             value = 'chunked'
         else:
-            key = _decode_key(key)
+            key = parse_header_name(key)
             value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(

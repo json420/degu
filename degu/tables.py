@@ -59,12 +59,12 @@ FLAGS_DEF = (
     ('VAL', b'"\'()*,;[]'),   
 )
 MASKS_DEF = (
-    ('DIGIT_MASK', ('DIGIT',)),
-    ('PATH_MASK', ('DIGIT', 'ALPHA', 'PATH')),
-    ('QUERY_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY')),
-    ('URI_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI')),
-    ('REASON_MASK', ('DIGIT', 'ALPHA', 'SPACE')),
-    ('VAL_MASK', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VAL')),
+    ('DIGIT', ('DIGIT',)),
+    ('PATH', ('DIGIT', 'ALPHA', 'PATH')),
+    ('QUERY', ('DIGIT', 'ALPHA', 'PATH', 'QUERY')),
+    ('URI', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI')),
+    ('REASON', ('DIGIT', 'ALPHA', 'SPACE')),
+    ('VAL', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VAL')),
 )
 
 
@@ -111,7 +111,7 @@ def build_masks(flags, masks_def):
         union = set()
         for p in parts:
             f = _map[p]
-            bits |= f.bits
+            bits |= f.bit
             check_disjoint(union, f.data)
             union.update(f.data)
         mask = 255 ^ bits
@@ -220,8 +220,13 @@ def iter_flags(flags):
     yield ' */'
 
 
+def mask_name(name):
+    assert 'mask' not in name.lower()
+    return name + '_MASK'
+
+
 def iter_masks(masks):
-    width = max(len(m.name) for m in masks)
+    width = max(len(mask_name(m.name)) for m in masks)
     for m in masks:
         name = m.name.ljust(width)
         line = '#define {} {:>3}  // {:08b} '.format(name, m.mask, m.mask)
@@ -237,6 +242,16 @@ def iter_classifier(obj):
     yield from iter_c(obj.table)
 
 
+def iter_py_mask_sets(masks):
+    for m in masks:
+        name = '_' + m.name
+        line = '{} = frozenset({!r})'.format(name, m.data)
+        if len(line) <= 80:
+            yield line
+        else:
+            yield '{} = frozenset(\n    {!r}\n)'.format(name, m.data)
+
+
 def iter_all(classifier, names_table):
     (begin, end) = build_marker_comments('/', '*')
     yield begin
@@ -247,6 +262,8 @@ def iter_all(classifier, names_table):
     yield from iter_classifier(classifier)
     yield ''
     yield end
+    yield ''
+    yield from iter_mask_sets(classifier.masks)
 
 
 def build_marker_comments(end, fill):
@@ -270,6 +287,16 @@ def build_marker_comments(end, fill):
     return tuple(markers)
 
 
+class TheWorks:
+    def __init__(self, names_def, flags_def, masks_def):
+        self.table = build_names_table(names_def, True)
+        self.obj = build_classifier(flags_def, masks_def)
+
+    def iter_lines_py(self):
+        yield from iter_py_mask_sets(self.obj.masks)
+        
+
+
 if __name__ == '__main__':
     import argparse
     import os
@@ -284,11 +311,18 @@ if __name__ == '__main__':
     parser.add_argument('-p', action='store_true', default=False,
         help='generate Python tables (instead of C)'
     )
+    parser.add_argument('--update', action='store_true', default=False,
+        help='update tables in _base.c, _basepy.py'
+    )
     args = parser.parse_args()
     iter_x = (iter_p if args.p else iter_c)
 
-    classifier = build_classifier(FLAGS_DEF, MASKS_DEF)
-    names_table = build_names_table(NAMES_DEF, True)
+    dawerks = TheWorks(NAMES_DEF, FLAGS_DEF, MASKS_DEF)
+
+    if not args.update:
+        for line in dawerks.iter_lines_py():
+            print(line)
+        raise SystemExit('nope')
 
     text = open(orig, 'r').read()
     inlines = text.splitlines()
@@ -307,9 +341,7 @@ if __name__ == '__main__':
         if line.startswith(end):
             assert found
             found = False
-            for new in iter_all(classifier, names_table):
-                print('+ ' + new)
-                outlines.append(new)
+            outlines.extend(iter_all(classifier, names_table))
 
     with open(tmp, 'x') as fp:
         fp.write('\n'.join(outlines) + '\n')

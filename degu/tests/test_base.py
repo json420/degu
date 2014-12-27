@@ -416,6 +416,89 @@ class TestFunctions(AlternatesTestCase):
         self.skip_if_no_c_ext()
         self.check_parse_method(_base)
 
+    def check_parse_header_name(self, backend):
+        self.assertIn(backend, (_base, _basepy))
+        parse_header_name = backend.parse_header_name
+
+        # Empty bytes:
+        with self.assertRaises(ValueError) as cm:
+            parse_header_name(b'')
+        self.assertEqual(str(cm.exception), 'header name is empty')
+
+        # Too long:
+        good = b'R' * 32
+        bad =  good + b'Q'
+        self.assertEqual(parse_header_name(good), good.decode().lower())
+        with self.assertRaises(ValueError) as cm:
+            parse_header_name(bad)
+        self.assertEqual(str(cm.exception),
+            'header name too long: {!r}...'.format(good)
+        )
+
+        # Too short, just right, too long:
+        for size in range(69):
+            buf = b'R' * size
+            if 1 <= size <= 32:
+                self.assertEqual(parse_header_name(buf), buf.decode().lower())
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_header_name(buf)
+                if size == 0:
+                    self.assertEqual(str(cm.exception), 'header name is empty')
+                else:
+                    self.assertEqual(str(cm.exception),
+                        "header name too long: b'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR'..."
+                    )
+
+        # Start with a know good value, then for each possible bad byte value,
+        # copy the good value and make it bad by replacing a good byte with a
+        # bad byte at each possible index:
+        goodset = frozenset(
+            b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        )
+        badset = frozenset(range(256)) - goodset
+        good = b'Super-Transfer-Encoding'
+        self.assertEqual(parse_header_name(good), 'super-transfer-encoding')
+        for b in badset:
+            for i in range(len(good)):
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
+                with self.assertRaises(ValueError) as cm:
+                    parse_header_name(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header name: {!r}'.format(bad)
+                )
+
+    def test_parse_header_name_py(self):
+        self.check_parse_header_name(_basepy)
+
+    def test_parse_header_name_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_header_name(_base)
+
+        # Compare C to Python implementations with the same random values:
+        functions = (_base.parse_header_name, _basepy.parse_header_name)
+        for i in range(1000):
+            bad = os.urandom(32)
+            for func in functions:
+                exc = 'bad bytes in header name: {!r}'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+            bad2 = bad + b'R'
+            for func in functions:
+                exc = 'header name too long: {!r}...'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad2)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+        for i in range(5000):
+            good = bytes(random.sample(_basepy._NAMES, 32))
+            for func in functions:
+                ret = func(good)
+                self.assertIsInstance(ret, str)
+                self.assertEqual(ret, good.decode().lower())
+
     def check_parse_response_line(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_response_line = backend.parse_response_line
