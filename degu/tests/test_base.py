@@ -74,6 +74,30 @@ GOOD_HEADERS = (
         b'Transfer-Encoding: chunked\r\n',
         ('transfer-encoding', 'chunked')
     ),
+    (
+        b'User-Agent: Microfiber/14.12.0 (Ubuntu 14.04; x86_64)\r\n',
+        ('user-agent', 'Microfiber/14.12.0 (Ubuntu 14.04; x86_64)')
+    ),
+    (
+        b'Host: 192.168.1.171:5984\r\n',
+        ('host', '192.168.1.171:5984')
+    ),
+    (
+        b'Host: [fe80::e8b:fdff:fe75:402c/64]:5984\r\n',
+        ('host', '[fe80::e8b:fdff:fe75:402c/64]:5984')
+    ),
+    (
+        b'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n',
+        ('accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+    ),
+    (
+        b'Date: Sat, 27 Dec 2014 01:12:48 GMT\r\n',
+        ('date', 'Sat, 27 Dec 2014 01:12:48 GMT')
+    ),
+    (
+        b'Content-Type: text/html;charset=utf-8\r\n',
+        ('content-type', 'text/html;charset=utf-8')
+    ),
 )
 
 
@@ -392,6 +416,89 @@ class TestFunctions(AlternatesTestCase):
         self.skip_if_no_c_ext()
         self.check_parse_method(_base)
 
+    def check_parse_header_name(self, backend):
+        self.assertIn(backend, (_base, _basepy))
+        parse_header_name = backend.parse_header_name
+
+        # Empty bytes:
+        with self.assertRaises(ValueError) as cm:
+            parse_header_name(b'')
+        self.assertEqual(str(cm.exception), 'header name is empty')
+
+        # Too long:
+        good = b'R' * 32
+        bad =  good + b'Q'
+        self.assertEqual(parse_header_name(good), good.decode().lower())
+        with self.assertRaises(ValueError) as cm:
+            parse_header_name(bad)
+        self.assertEqual(str(cm.exception),
+            'header name too long: {!r}...'.format(good)
+        )
+
+        # Too short, just right, too long:
+        for size in range(69):
+            buf = b'R' * size
+            if 1 <= size <= 32:
+                self.assertEqual(parse_header_name(buf), buf.decode().lower())
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_header_name(buf)
+                if size == 0:
+                    self.assertEqual(str(cm.exception), 'header name is empty')
+                else:
+                    self.assertEqual(str(cm.exception),
+                        "header name too long: b'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR'..."
+                    )
+
+        # Start with a know good value, then for each possible bad byte value,
+        # copy the good value and make it bad by replacing a good byte with a
+        # bad byte at each possible index:
+        goodset = frozenset(
+            b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        )
+        badset = frozenset(range(256)) - goodset
+        good = b'Super-Transfer-Encoding'
+        self.assertEqual(parse_header_name(good), 'super-transfer-encoding')
+        for b in badset:
+            for i in range(len(good)):
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
+                with self.assertRaises(ValueError) as cm:
+                    parse_header_name(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header name: {!r}'.format(bad)
+                )
+
+    def test_parse_header_name_py(self):
+        self.check_parse_header_name(_basepy)
+
+    def test_parse_header_name_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_header_name(_base)
+
+        # Compare C to Python implementations with the same random values:
+        functions = (_base.parse_header_name, _basepy.parse_header_name)
+        for i in range(1000):
+            bad = os.urandom(32)
+            for func in functions:
+                exc = 'bad bytes in header name: {!r}'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+            bad2 = bad + b'R'
+            for func in functions:
+                exc = 'header name too long: {!r}...'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad2)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+        for i in range(5000):
+            good = bytes(random.sample(_basepy._NAMES, 32))
+            for func in functions:
+                ret = func(good)
+                self.assertIsInstance(ret, str)
+                self.assertEqual(ret, good.decode().lower())
+
     def check_parse_response_line(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_response_line = backend.parse_response_line
@@ -507,6 +614,140 @@ class TestFunctions(AlternatesTestCase):
     def test_parse_request_line_c(self):
         self.skip_if_no_c_ext()
         self.check_parse_request_line(_base)
+
+    def check_parse_content_length(self, backend):
+        self.assertIn(backend, (_base, _basepy))
+        parse_content_length = backend.parse_content_length
+
+        # Empty bytes:
+        with self.assertRaises(ValueError) as cm:
+            parse_content_length(b'')
+        self.assertEqual(str(cm.exception), 'content-length is empty')
+
+        # Too long:
+        good = b'1111111111111111'
+        bad =  b'11111111111111112'
+        self.assertEqual(parse_content_length(good), 1111111111111111)
+        with self.assertRaises(ValueError) as cm:
+            parse_content_length(bad)
+        self.assertEqual(str(cm.exception),
+            "content-length too long: b'1111111111111111'..."
+        )
+
+        # Too short, just right, too long:
+        for size in range(50):
+            buf = b'1' * size
+            if 1 <= size <= 16:
+                self.assertEqual(parse_content_length(buf), int(buf))
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_content_length(buf)
+                if size == 0:
+                    self.assertEqual(str(cm.exception), 'content-length is empty')
+                else:
+                    self.assertEqual(str(cm.exception),
+                        "content-length too long: b'1111111111111111'..."
+                    )
+
+        # b'0' should work fine:
+        self.assertEqual(parse_content_length(b'0'), 0)
+
+        # Non-leading zeros should work fine:
+        somegood = (
+            b'10',
+            b'100',
+            b'101',
+            b'909',
+            b'1000000000000000',
+            b'1000000000000001',
+            b'9000000000000000',
+            b'9000000000000009',
+        )
+        for good in somegood:
+            self.assertEqual(parse_content_length(good), int(good))
+
+        # But leading zeros should raise a ValueError:
+        somebad = (
+            b'01',
+            b'09',
+            b'011',
+            b'099',
+            b'0111111111111111',
+            b'0999999999999999',
+            b'0000000000000001',
+            b'0000000000000009',
+        )
+        for bad in somebad:
+            with self.assertRaises(ValueError) as cm:
+                parse_content_length(bad)
+            self.assertEqual(str(cm.exception),
+                'content-length has leading zero: {!r}'.format(bad)
+            )
+
+        # Netative values and spaces should be reported with the 'bad bytes'
+        # ValueError message:
+        somebad = (
+            b'-1',
+            b'-17',
+            b' 1',
+            b'1 ',
+            b'              -1',
+            b'-900719925474099',
+        )
+        for bad in somebad:
+            with self.assertRaises(ValueError) as cm:
+                parse_content_length(bad)
+            self.assertEqual(str(cm.exception),
+                'bad bytes in content-length: {!r}'.format(bad)
+            )
+
+        # Start with a know good value, then for each possible bad byte value,
+        # copy the good value and make it bad by replacing a good byte with a
+        # bad byte at each possible index:
+        goodset = frozenset(b'0123456789')
+        badset = frozenset(range(256)) - goodset
+        good = b'9007199254740992'
+        self.assertEqual(parse_content_length(good), 9007199254740992)
+        for b in badset:
+            for i in range(len(good)):
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
+                with self.assertRaises(ValueError) as cm:
+                    parse_content_length(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in content-length: {!r}'.format(bad)
+                )
+
+    def test_parse_content_length_py(self):
+        self.check_parse_content_length(_basepy)
+
+    def test_parse_content_length_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_content_length(_base)
+
+        # Compare C to Python implementations with the same random values:
+        functions = (_base.parse_content_length, _basepy.parse_content_length)
+        for i in range(1000):
+            bad = os.urandom(16)
+            for func in functions:
+                exc = 'bad bytes in content-length: {!r}'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+            bad2 = bad + b'1'
+            for func in functions:
+                exc = 'content-length too long: {!r}...'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad2)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+        for i in range(5000):
+            goodval = random.randint(0, 9007199254740992)
+            good = str(goodval).encode()
+            for func in functions:
+                ret = func(good)
+                self.assertIsInstance(ret, int)
+                self.assertEqual(ret, goodval)
 
     def check_format_request_preamble(self, backend):
         # Too few arguments:

@@ -96,11 +96,11 @@ def _iter_bad(size, allowed, skip):
 
 
 def iter_bad_values(size):
-    yield from _iter_bad(size, tables.VALUES, b'\n')
+    yield from _iter_bad(size, tables.VALUES_DEF, b'\n')
 
 
 def iter_bad_keys(size):
-    yield from _iter_bad(size, tables.KEYS, b'\n')
+    yield from _iter_bad(size, tables.NAMES_DEF, b'\n')
 
 
 class TempDir:

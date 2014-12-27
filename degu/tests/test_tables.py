@@ -39,27 +39,29 @@ class TestConstants(TestCase):
         for i in allowed:
             self.assertEqual(i & 128, 0)
 
-    def test_KEYS(self):
-        self.check_allowed(tables.KEYS)
-        self.assertEqual(min(tables.KEYS), ord('-'))
-        self.assertEqual(max(tables.KEYS), ord('z'))
-        self.assertEqual(len(tables.KEYS), 63)
+    def test_NAMES_DEF(self):
+        self.check_allowed(tables.NAMES_DEF)
+        self.assertEqual(min(tables.NAMES_DEF), ord('-'))
+        self.assertEqual(max(tables.NAMES_DEF), ord('z'))
+        self.assertEqual(len(tables.NAMES_DEF), 63)
 
-    def test_URI(self):
-        self.check_allowed(tables.URI)
-        self.assertEqual(min(tables.URI), ord('%'))
-        self.assertEqual(max(tables.URI), ord('~'))
-        self.assertEqual(len(tables.URI), 73)
+    def test_VALUES_DEF(self):
+        self.check_allowed(tables.VALUES_DEF)
+        self.assertEqual(min(tables.VALUES_DEF), ord(' '))
+        self.assertEqual(max(tables.VALUES_DEF), ord('~'))
+        self.assertEqual(len(tables.VALUES_DEF), 95)
 
-    def test_VALUES(self):
-        self.check_allowed(tables.VALUES)
-        for i in range(128):
-            if chr(i).isprintable():
-                self.assertIn(i, tables.VALUES)
-        self.assertEqual(min(tables.VALUES), ord(' '))
-        self.assertEqual(max(tables.VALUES), ord('~'))
-        self.assertEqual(len(tables.VALUES), 95)
-        self.assertTrue(set(tables.VALUES).issuperset(tables.KEYS))
+    def test_FLAGS_DEF(self):
+        self.assertIsInstance(tables.FLAGS_DEF, tuple)
+        self.assertEqual(len(tables.FLAGS_DEF), 7)
+        for item in tables.FLAGS_DEF:
+            self.assertIsInstance(item, tuple)
+            self.assertEqual(len(item), 2)
+            (name, allowed) = item
+            self.assertIsInstance(name, str)
+            self.assertGreater(len(name), 1)
+            self.assertTrue(name.isupper())
+            self.check_allowed(allowed)
 
     def check_definition(self, definition, allowed, casefold):
         self.assertIsInstance(definition, tuple)
@@ -83,9 +85,4 @@ class TestConstants(TestCase):
                 self.assertEqual(r, 255)
         self.assertEqual(definition, tuple(sorted(definition)))
 
-    def test_KEYS_DEF(self):
-        self.check_definition(tables.KEYS_DEF, tables.KEYS, True)
-
-    def test_VALUES_DEF(self):
-        self.check_definition(tables.VALUES_DEF, tables.VALUES, False)
 

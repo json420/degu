@@ -47,7 +47,7 @@ For *KEYS*, the Python implementation:
     2. Uses ``str.lower()`` to case-fold the header key
 
     3. Uses ``re.match()`` to further restrict down to the same 63 byte values
-       allowed by the C ``_KEYS`` table
+       allowed by the C ``_NAMES`` table
 
 Although it might seem a bit hodge-podge, this approach is much faster than
 doing lookup tables in pure-Python.
@@ -63,8 +63,6 @@ implementations correctly using the same incorrect tables.
 ``str.isprintable()`` is an especially handy gem in this respect.
 """
 
-import re
-
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
@@ -77,12 +75,14 @@ _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
-_RE_KEYS = re.compile('^[-0-9a-z]+$')
-_RE_CONTENT_LENGTH = re.compile(b'^[0-9]+$')
+_NAMES = frozenset(
+    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+)
 
 _URI = frozenset(
     b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
 )
+_DIGIT = frozenset(b'0123456789')
 
 GET = 'GET'
 PUT = 'PUT'
@@ -122,18 +122,17 @@ def _decode_value(src, message):
     return text
 
 
-def _decode_key(src, message):
+def parse_header_name(buf):
     """
     Used to decode, validate, and case-fold header keys.
     """
-    text = None
-    try:
-        text = src.decode('ascii').lower()
-    except ValueError:
-        pass
-    if text is None or not _RE_KEYS.match(text):
-        raise ValueError(message.format(src))
-    return text
+    if len(buf) < 1:
+        raise ValueError('header name is empty')
+    if len(buf) > 32:
+        raise ValueError('header name too long: {!r}...'.format(buf[:32]))
+    if _NAMES.issuperset(buf):
+        return buf.decode('ascii').lower()
+    raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
 
 def _decode_uri(src):
@@ -142,6 +141,30 @@ def _decode_uri(src):
     raise ValueError(
         'bad uri in request line: {!r}'.format(src)
     )
+
+
+def parse_content_length(buf):
+    assert isinstance(buf, bytes)
+    if len(buf) < 1:
+        raise ValueError('content-length is empty')
+    if len(buf) > 16:
+        raise ValueError(
+            'content-length too long: {!r}...'.format(buf[:16])
+        )
+    if not _DIGIT.issuperset(buf):
+        raise ValueError(
+            'bad bytes in content-length: {!r}'.format(buf)
+        )
+    if buf[0:1] == b'0' and buf != b'0':
+        raise ValueError(
+            'content-length has leading zero: {!r}'.format(buf)
+        )
+    value = int(buf)
+    if value > 9007199254740992:
+        raise ValueError(
+            'content-length value too large: {!r}'.format(value)
+        )
+    return value
 
 
 class EmptyPreambleError(ConnectionError):
@@ -229,7 +252,7 @@ def parse_preamble(preamble):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
-        key = _decode_key(key, 'bad bytes in header name: {!r}')
+        key = parse_header_name(key)
         value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
@@ -237,23 +260,7 @@ def parse_preamble(preamble):
             )
     cl = headers.get('content-length')
     if cl is not None:
-        if len(cl) > 16:
-            raise ValueError(
-                'content-length too long: {!r}...'.format(cl[:16].encode())
-            )
-        try:
-            value = int(cl)
-        except ValueError:
-            value = None
-        if value is None or value < 0:
-            raise ValueError(
-                'bad bytes in content-length: {!r}'.format(cl)
-            )
-        if value > 9007199254740992:
-            raise ValueError(
-                'content-length value too large: {!r}'.format(value)
-            )
-        headers['content-length'] = value
+        headers['content-length'] = parse_content_length(cl.encode())
         if 'transfer-encoding' in headers:
             raise ValueError(
                 'cannot have both content-length and transfer-encoding headers'
@@ -287,22 +294,8 @@ def __read_headers(readline):
         if not (key and value):
             raise ValueError('bad header line: {!r}'.format(line))
         if key.lower() == b'content-length':
-            cl = None
-            if _RE_CONTENT_LENGTH.match(value):
-                try:
-                    cl = int(value)
-                except ValueError:
-                    pass
-            if cl is None or cl < 0:
-                raise ValueError(
-                    'bad bytes in content-length: {!r}'.format(value)
-                )
-            if cl > 9007199254740992:
-                raise ValueError(
-                    'content-length value too large: {!r}'.format(cl)
-                )
             key = 'content-length'
-            value = cl
+            value = parse_content_length(value)
         elif key.lower() == b'transfer-encoding':
             if value != b'chunked':
                 raise ValueError(
@@ -311,7 +304,7 @@ def __read_headers(readline):
             key = 'transfer-encoding'
             value = 'chunked'
         else:
-            key = _decode_key(key, 'bad bytes in header name: {!r}')
+            key = parse_header_name(key)
             value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
             raise ValueError(
