@@ -28,6 +28,8 @@
 #define _MAX_LINE_SIZE 4096  // Hello
 #define _MAX_HEADER_COUNT 20
 
+#define READER_BUFFER_SIZE 65536
+
 // Constraints for the content-length value:
 #define MAX_HEADER_NAME_LEN 32
 #define MAX_CL_LEN 16
@@ -54,6 +56,7 @@ static PyObject *degu_EmptyPreambleError = NULL;
 /* Pre-built global Python object for performance */
 static PyObject *int_zero = NULL;               //  0
 static PyObject *str_readline = NULL;           //  'readline'
+static PyObject *str_recv_into = NULL;          //  'recv_into'
 static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
@@ -1293,23 +1296,25 @@ cleanup:
 }
 
 
-
-
-
 typedef struct {
     PyObject_HEAD
-    PyObject *sock;
+    PyObject *sock_recv_into;
     PyObject *bodies;
+    uint8_t *buf;
+    size_t len;
     size_t rawtell;
-    size_t size;
 } Reader;
 
 
 static void
 Reader_dealloc(Reader *self)
 {
-    Py_CLEAR(self->sock);
+    Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
+    if (self->buf != NULL) {
+        free(self->buf);
+        self->buf = NULL;
+    }
 }
 
 
@@ -1322,17 +1327,35 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
         return -1;
     }
-    _SET_AND_INC(self->sock, sock)
+
+    _SET(self->sock_recv_into, PyObject_GetAttr(sock, str_recv_into))
+    if (!PyCallable_Check(self->sock_recv_into)) {
+        PyErr_SetString(PyExc_TypeError, "sock.recv_into is not callable");
+        goto error;
+    }
     _SET_AND_INC(self->bodies, bodies)
     self->rawtell = 0;
-    self->size = 0;
+    self->len = 0;
+
+    self->buf = (uint8_t *)calloc(READER_BUFFER_SIZE, sizeof(uint8_t));
+    if (self->buf == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
 
     return 0;
 
 error:
-    Py_CLEAR(self->sock);
+    Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
     return -1;
+}
+
+
+/* Reader.avail() */
+static PyObject *
+Reader_avail(Reader *self) {
+    return PyLong_FromSize_t(self->len);
 }
 
 /* Reader.rawtell() */
@@ -1344,11 +1367,81 @@ Reader_rawtell(Reader *self) {
 /* Reader.tell() */
 static PyObject *
 Reader_tell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell - self->size);
+    return PyLong_FromSize_t(self->rawtell - self->len);
+}
+
+/* _Reader_recv_into()
+ *     -1  general error code for when _SET() goes to error
+ *     -2  sock.recv_into() did not return an `int`
+ *     -3  overflow when converting to Py_ssize_t (`OverflowError` raised)
+ *     -4  sock.recv_into() did not return 0 <= size <= len
+ */
+
+static Py_ssize_t
+_Reader_recv_into(Reader *self, uint8_t *buf, const size_t len)
+{
+    PyObject *view = NULL;
+    PyObject *int_size = NULL;
+    size_t size;
+    Py_ssize_t ret = -1;
+
+    _SET(view,
+        PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
+    )
+    _SET(int_size,
+        PyObject_CallFunctionObjArgs(self->sock_recv_into, view, NULL)
+    )
+
+    /* sock.recv_into() must return an `int` */
+    if (!PyLong_CheckExact(int_size)) {
+        PyErr_Format(PyExc_TypeError,
+            "sock.recv_into() returned %R, should return <class 'int'>",
+            int_size->ob_type
+        );
+        ret = -2;
+        goto error;
+    }
+
+    /* Convert to size_t, check for OverflowError */
+    size = PyLong_AsSize_t(int_size);
+    if (PyErr_Occurred()) {
+        ret = -3;
+        goto error;
+    }
+
+    /* sock.recv_into() must return (0 <= size <= len) */
+    if (size < 0 || size > len) {
+        PyErr_Format(PyExc_IOError,
+            "sock.recv_into() returned size=%zd; need 0 <= size <= %zd",
+            size, len
+        );
+        ret = - 4;
+        goto error;
+    }
+
+    /* Add this number into our running raw read total */
+    self->rawtell += size;
+    ret = size;
+    goto cleanup;
+
+error:
+    if (ret >= 0) {
+        Py_FatalError(
+            "internal error in _Reader_recv_into(): in error, but ret >= 0"
+        );
+    }
+
+cleanup:
+    Py_CLEAR(view);
+    Py_CLEAR(int_size);
+    return ret;
 }
 
 
 static PyMethodDef Reader_methods[] = {
+    {"avail", (PyCFunction)Reader_avail, METH_NOARGS,
+        "number of bytes currently available in the buffer"
+    },
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
         "return number of bytes thus far read from the underlying socket"
     },
@@ -1487,6 +1580,7 @@ PyInit__base(void)
     /* Init global Python `int` and `str` objects we need for performance */
     _SET(int_zero, PyLong_FromLong(0))
     _SET(str_readline, PyUnicode_InternFromString("readline"))
+    _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
     _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
     _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
     _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
