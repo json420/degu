@@ -75,21 +75,34 @@ _MAX_HEADER_COUNT = 20
 
 MAX_PREAMBLE_BYTES = 65536  # 64 KiB
 
-_NAMES = frozenset(
-    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-)
-
-_URI = frozenset(
-    b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
-)
-_DIGIT = frozenset(b'0123456789')
-
 GET = 'GET'
 PUT = 'PUT'
 POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
+
+
+################    BEGIN GENERATED TABLES    ##################################
+NAMES_SET = frozenset(
+    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+)
+
+DIGIT = b'0123456789'
+ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+PATH  = b'-.:_~'
+QUERY = b'%&+='
+URI   = b'/?'
+SPACE = b' '
+VALUE = b'"\'()*,;[]'
+
+DIGIT_SET  = frozenset(DIGIT)
+PATH_SET   = frozenset(DIGIT + ALPHA + PATH)
+QUERY_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY)
+URI_SET    = frozenset(DIGIT + ALPHA + PATH + QUERY + URI)
+REASON_SET = frozenset(DIGIT + ALPHA + SPACE)
+VALUE_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY + URI + SPACE + VALUE)
+################      END GENERATED TABLES    ##################################
 
 
 def parse_method(method):
@@ -130,13 +143,13 @@ def parse_header_name(buf):
         raise ValueError('header name is empty')
     if len(buf) > 32:
         raise ValueError('header name too long: {!r}...'.format(buf[:32]))
-    if _NAMES.issuperset(buf):
+    if NAMES_SET.issuperset(buf):
         return buf.decode('ascii').lower()
     raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
 
 def _decode_uri(src):
-    if _URI.issuperset(src):
+    if URI_SET.issuperset(src):
         return src.decode()
     raise ValueError(
         'bad uri in request line: {!r}'.format(src)
@@ -151,7 +164,7 @@ def parse_content_length(buf):
         raise ValueError(
             'content-length too long: {!r}...'.format(buf[:16])
         )
-    if not _DIGIT.issuperset(buf):
+    if not DIGIT_SET.issuperset(buf):
         raise ValueError(
             'bad bytes in content-length: {!r}'.format(buf)
         )

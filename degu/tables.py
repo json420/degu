@@ -236,7 +236,7 @@ def iter_c_info(info):
     yield from iter_c_table(info.table)
 
 
-def _py_mask_name(name):
+def py_set_name(name):
     return '{}_SET'.format(name)
 
 
@@ -246,15 +246,11 @@ def iter_py_info(info):
         name = f.name.ljust(width)
         yield '{} = {!r}'.format(name, f.allowed)
     yield ''
-    width = max(len(_py_mask_name(m.name)) for m in info.masks)
+    width = max(len(py_set_name(m.name)) for m in info.masks)
     for m in info.masks:
-        name = _py_mask_name(m.name).ljust(width)
+        name = py_set_name(m.name).ljust(width)
         src = ' + '.join(m.flags)
-        line = '{} = frozenset({})'.format(name, src)
-        if len(line) <= 80:
-            yield line
-        else:
-            yield '{} = frozenset(\n    {}\n)'.format(name, src)
+        yield '{} = frozenset({})'.format(name, src)
 
 
 def build_marker_comments(end, fill):
@@ -316,6 +312,7 @@ def update(pkgdir, name, markers, newlines):
 
 class Generated:
     def __init__(self, names_def, flags_def, masks_def):
+        self.names_def = names_def
         self.names_table = build_names_table(names_def)
         self.info = build_info(flags_def, masks_def)
         self.markers_c = build_marker_comments('/', '*')
@@ -332,23 +329,25 @@ class Generated:
 
     def iter_lines_py(self):
         yield self.markers_py.begin
+        yield '{} = frozenset('.format(py_set_name('NAMES'))
+        yield '    {!r}'.format(self.names_def)
+        yield ')'
         yield ''
         yield from iter_py_info(self.info)
-        yield ''
         yield self.markers_py.end
 
     def update(self, pkgdir):
         update(pkgdir, '_base.c', self.markers_c, self.iter_lines_c())
-        #update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
+        update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', action='store_true', default=False,
-        help='generate Python tables (instead of C)'
+    parser.add_argument('--python', action='store_true', default=False,
+        help='print Python tables (instead of C)'
     )
     parser.add_argument('--update', action='store_true', default=False,
-        help='update tables in degu/_base.c, degu/_basepy.py'
+        help="update tables in 'degu/_base.c', 'degu/_basepy.py'"
     )
     args = parser.parse_args()
 
@@ -357,7 +356,7 @@ if __name__ == '__main__':
         pkgdir = path.dirname(path.abspath(__file__))
         gen.update(pkgdir)
     else:
-        if args.p:
+        if args.python:
             lines = gen.iter_lines_py()
         else:
             lines = gen.iter_lines_c()
