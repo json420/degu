@@ -1055,79 +1055,6 @@ cleanup:
 
 
 /*
- * C implementation of `degu.base._read_preamble()`.
- */
-static PyObject *
-degu_read_preamble(PyObject *self, PyObject *args)
-{
-    /* Borrowed reference we don't need to decrement */
-    PyObject *rfile = NULL;
-
-    /* Owned references we need to decrement in "cleanup" when != NULL */
-    PyObject *readline = NULL;
-    PyObject *line = NULL;
-    PyObject *first_line = NULL;
-    PyObject *headers = NULL;
-
-    /* Return value is a ``(first_line, headers)`` tuple */
-    PyObject *ret = NULL;
-
-    size_t line_len = 0;
-    const uint8_t *line_buf = NULL;
-
-    if (!PyArg_ParseTuple(args, "O:_read_preamble", &rfile)) {
-        return NULL;
-    }
-
-    /* For performance, we first get a reference to the rfile.readline() method
-     * and then call it each time we need using PyObject_Call().
-     *
-     * This creates an additional reference to the rfile that we own, which
-     * means that the rfile can't get GC'ed through any subtle weirdness when
-     * the rfile.readline() callback is called.
-     *
-     * See the _READLINE() macro for more details. 
-     */
-    _SET(readline, PyObject_GetAttr(rfile, str_readline))
-    if (!PyCallable_Check(readline)) {
-        Py_CLEAR(readline);
-        PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
-        return NULL;
-    }
-
-    /* Read and decode the first preamble line */
-    _READLINE(args_size_max, _MAX_LINE_SIZE)
-    if (line_len <= 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        goto error;
-    }
-    _CHECK_LINE_TERMINATION("bad line termination: %R")
-    if (line_len == 2) {
-        PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
-        goto error;
-    }
-    _SET(first_line,
-        _decode(line_buf, line_len - 2, VALUE_MASK, "bad bytes in first line: %R")
-    )
-
-    /* Read, parse, and decode the header lines */
-    _SET(headers, _read_headers(readline))
-    ret = PyTuple_Pack(2, first_line, headers);
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(readline);
-    Py_CLEAR(line);
-    Py_CLEAR(first_line);
-    Py_CLEAR(headers);
-    return ret;  
-}
-
-
-/*
  * C implementation of `degu.base._read_response_preamble()`.
  */
 static PyObject *
@@ -1302,7 +1229,6 @@ static struct PyMethodDef degu_functions[] = {
         "parse_request_line(line)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
 
-    {"_read_preamble", degu_read_preamble, METH_VARARGS, "_read_preamble(rfile)"},
     {"_read_response_preamble", degu_read_response_preamble, METH_VARARGS,
         "_read_response_preamble(rfile)"},
     {"_read_request_preamble", degu_read_request_preamble, METH_VARARGS,
