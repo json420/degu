@@ -297,31 +297,6 @@ def __read_headers(readline):
     return headers
 
 
-def __read_preamble(rfile):
-    readline = rfile.readline
-    if not callable(readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, _MAX_LINE_SIZE)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
-    headers = __read_headers(readline)
-    return (first_line, headers)
-
-
-def _read_preamble(rfile):
-    (first_line, headers) = __read_preamble(rfile)
-    if 'content-length' in headers and 'transfer-encoding' in headers:
-        raise ValueError(
-            'cannot have both content-length and transfer-encoding headers'
-        )
-    return (first_line, headers)
-
-
 def _read_response_preamble(rfile):
     readline = rfile.readline
     if not callable(readline):
