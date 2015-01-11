@@ -822,6 +822,67 @@ degu_parse_preamble(PyObject *self, PyObject *args)
 
 
 static PyObject *
+_format_headers(PyObject *headers)
+{
+    PyObject *key, *val;
+    Py_ssize_t header_count, pos, i;
+    PyObject *lines = NULL;
+    PyObject *ret = NULL;  /* str version of request preamble */
+
+    header_count = PyDict_Size(headers);
+    _SET(lines, PyList_New(header_count))
+    pos = i = 0;
+    while (PyDict_Next(headers, &pos, &key, &val)) {
+        PyList_SET_ITEM(lines, i,
+            PyUnicode_FromFormat("%S: %S\r\n", key, val)
+        );
+        i++;
+    }
+    /* Sorting is really expensive!
+     *
+     * 8 headers, sorted:
+     *     597,177: format_headers(headers)
+     * 
+     * 8 headers, unsorted:
+     *     752,831: format_headers(headers)
+     */
+    if (header_count > 1) {
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+    }
+    _SET(ret, PyUnicode_Join(str_empty, lines))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(lines);
+    return  ret;
+}
+
+
+static PyObject *
+format_headers(PyObject *self, PyObject *args)
+{
+    PyObject *headers = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:format_headers", &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    return _format_headers(headers);
+}
+
+
+static PyObject *
 degu_format_request_preamble(PyObject *self, PyObject *args)
 {
     PyObject *method, *uri, *headers, *key, *val;
@@ -1233,6 +1294,8 @@ static struct PyMethodDef degu_functions[] = {
         "_read_response_preamble(rfile)"},
     {"_read_request_preamble", degu_read_request_preamble, METH_VARARGS,
         "_read_request_preamble(rfile)"},
+
+    {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
     {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
         "format_request_preamble(method, uri, headers)"},
     {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,

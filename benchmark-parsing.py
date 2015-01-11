@@ -8,6 +8,7 @@ gc.enable()
 from io import BytesIO
 
 from degu._base import (
+    format_headers,
     format_request_preamble,
     format_response_preamble,
 
@@ -52,6 +53,9 @@ def run(statement, K=250):
 
 
 print('-' * 80)
+
+print('\nCommon formatting:')
+run('format_headers(headers)')
 
 print('\nRequest formatting:')
 run("format_request_preamble('GET', '/foo', {})")
