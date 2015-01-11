@@ -963,19 +963,6 @@ class TestFunctions(AlternatesTestCase):
         self.assertIn(backend, (_basepy, _base))
         read_preamble = backend._read_preamble
 
-        # Bad bytes in header name:
-        for size in range(1, 8):
-            for bad in helpers.iter_bad_keys(size):
-                data = b'da first line\r\n' + bad + b': Bar\r\nstuff: Junk\r\n\r\n'
-                rfile = io.BytesIO(data)
-                with self.assertRaises(ValueError) as cm:
-                    read_preamble(rfile)
-                self.assertEqual(str(cm.exception),
-                    'bad bytes in header name: {!r}'.format(bad)
-                )
-                self.assertEqual(sys.getrefcount(rfile), 2)
-                self.assertEqual(rfile.tell(), size + 22)
-
         # Test number of arguments _read_preamble() takes:
         with self.assertRaises(TypeError) as cm:
             read_preamble()

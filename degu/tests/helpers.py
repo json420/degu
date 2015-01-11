@@ -76,29 +76,6 @@ def _iter_good(size, allowed):
         yield bytes(okay for i in range(size))
 
 
-def _iter_bad(size, allowed, skip):
-    assert isinstance(size, int) and size >= 0
-    assert isinstance(allowed, bytes)
-    assert isinstance(skip, bytes) and b'\n' in skip
-    thebad = []
-    for i in range(256):
-        if i in allowed:
-            continue  # Not actually bad!
-        if i in skip:
-            continue  # Other values we should skip
-        thebad.append(i)
-    for good in _iter_good(size, allowed):
-        for bad in thebad:
-            for index in range(size):
-                notgood = bytearray(good)
-                notgood[index] = bad  # Make good bad
-                yield bytes(notgood)
-
-
-def iter_bad_keys(size):
-    yield from _iter_bad(size, tables.NAMES_DEF, b'\n')
-
-
 def iter_good(good, allowed):
     for i in range(len(good)):
         for g in allowed:
