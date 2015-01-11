@@ -285,12 +285,19 @@ class TestEmptyPreambleError(TestCase):
 
 
 class FuzzTestFunctions(AlternatesTestCase):
-    def test__read_preamble_p(self):
-        self.fuzz(_basepy._read_preamble)
+    def test__read_response_preamble_p(self):
+        self.fuzz(_basepy._read_response_preamble)
 
-    def test__read_preamble_c(self):
+    def test__read_response_preamble_c(self):
         self.skip_if_no_c_ext()
-        self.fuzz(_base._read_preamble)
+        self.fuzz(_base._read_response_preamble)
+
+    def test__read_request_preamble_p(self):
+        self.fuzz(_basepy._read_request_preamble)
+
+    def test__read_request_preamble_c(self):
+        self.skip_if_no_c_ext()
+        self.fuzz(_base._read_request_preamble)
 
     def test_read_chunk(self):
         self.fuzz(base.read_chunk)
