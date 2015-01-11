@@ -33,7 +33,6 @@ correctness of the C implementation.
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
-    '_read_preamble',
     'EmptyPreambleError',
 )
 

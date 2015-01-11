@@ -26,9 +26,7 @@ Unit tests for the `degu.base` module`
 from unittest import TestCase
 import os
 import io
-import sys
 from random import SystemRandom
-import itertools
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad
