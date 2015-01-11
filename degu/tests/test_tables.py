@@ -51,10 +51,10 @@ class TestConstants(TestCase):
         self.assertEqual(max(tables.VALUES_DEF), ord('~'))
         self.assertEqual(len(tables.VALUES_DEF), 95)
 
-    def test_FLAGS_DEF(self):
-        self.assertIsInstance(tables.FLAGS_DEF, tuple)
-        self.assertEqual(len(tables.FLAGS_DEF), 7)
-        for item in tables.FLAGS_DEF:
+    def test_BIT_FLAGS_DEF(self):
+        self.assertIsInstance(tables.BIT_FLAGS_DEF, tuple)
+        self.assertEqual(len(tables.BIT_FLAGS_DEF), 7)
+        for item in tables.BIT_FLAGS_DEF:
             self.assertIsInstance(item, tuple)
             self.assertEqual(len(item), 2)
             (name, allowed) = item

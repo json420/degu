@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Generate tables for validating and case-folding the HTTP preamble.
+Generate tables for validating the HTTP preamble.
 
 Print the C tables like this::
 
@@ -33,14 +33,22 @@ Or print the Python tables like this::
 """
 
 from collections import namedtuple
+import os
+from os import path
+import argparse
 
-Table = namedtuple('Table', 'name r_ignore items')
-BitFlag = namedtuple('BitFlag', 'bit name data')
-BitMask = namedtuple('BitMask', 'mask name flags data')
-Classifier = namedtuple('Classifier', 'flags masks table') 
+
+# Provide very clear TypeError messages:
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+
+
+Table = namedtuple('Table', 'name ignore items')
+BitFlag = namedtuple('BitFlag', 'bit name allowed')
+BitMask = namedtuple('BitMask', 'mask name flags allowed')
+Info = namedtuple('Info', 'flags masks table')
+Markers = namedtuple('Markers', 'begin end')
 
 COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
-
 
 
 # For case-folding and validating header names:
@@ -49,58 +57,73 @@ VALUES_DEF = bytes(sorted(NAMES_DEF + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
 
 
 # Generic bit-flag based validation table with 7 sets, plus 1 error set:
-FLAGS_DEF = (
+BIT_FLAGS_DEF = (
     ('DIGIT', b'0123456789'),
     ('ALPHA', b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'),
     ('PATH',  b'-.:_~'),
     ('QUERY', b'%&+='),
-    ('URI', b'/?'),
+    ('URI',   b'/?'),
     ('SPACE', b' '),
-    ('VAL', b'"\'()*,;[]'),   
+    ('VALUE', b'"\'()*,;[]'),   
 )
-MASKS_DEF = (
+BIT_MASKS_DEF = (
     ('DIGIT', ('DIGIT',)),
     ('PATH', ('DIGIT', 'ALPHA', 'PATH')),
     ('QUERY', ('DIGIT', 'ALPHA', 'PATH', 'QUERY')),
     ('URI', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI')),
     ('REASON', ('DIGIT', 'ALPHA', 'SPACE')),
-    ('VAL', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VAL')),
+    ('VALUE', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VALUE')),
 )
 
 
-def check_flag_data(f):
-    sdata = bytes(sorted(set(f.data)))
-    if f.data != sdata:
-        raise ValueError(
-            '{}: {!r} != {!r}'.format(f.name, f.data, sdata)
+def normalize(source):
+    return bytes(sorted(set(source)))
+
+
+def check_allowed(allowed):
+    if not isinstance(allowed, bytes):
+        raise TypeError(
+            TYPE_ERROR.format('allowed', bytes, type(allowed), allowed)
         )
+    expected = normalize(allowed)
+    if allowed != expected:
+        raise ValueError('{!r} != {!r}'.format(allowed, expected))
+
+
+def check_disjoint(accum, allowed):
+    check_allowed(allowed)
+    common = set(accum).intersection(allowed)
+    if common:
+        common = normalize(common)
+        accum = normalize(accum)
+        raise ValueError(
+            '{!r} common between {!r} and {!r}'.format(
+                normalize(common), normalize(accum), allowed
+            )
+        )
+
+
+def build_names_table(allowed):
+    check_allowed(allowed)
+    items = []
+    for i in range(256):
+        if i in allowed:
+            r = ord(chr(i).lower())
+            pair = (i, r)
+        else:
+            pair = (i, 255)
+        items.append(pair)
+    return Table('_NAMES', 255, tuple(items))
 
 
 def build_flags(flags_def):
     assert 0 < len(flags_def) < 8
     accum = []
-    for (i, (name, data)) in enumerate(flags_def):
+    for (i, (name, allowed)) in enumerate(flags_def):
         bit = 2 ** i
         assert bit in (1, 2, 4, 8, 16, 32, 64)
-        accum.append(BitFlag(bit, name, data))
+        accum.append(BitFlag(bit, name, allowed))
     return tuple(accum)
-
-
-def normalized_bytes(source):
-    return bytes(sorted(set(source)))
-
-
-def check_disjoint(accum, allowed):
-    allowed_s = normalized_bytes(allowed)
-    if allowed != allowed_s:
-        raise ValueError(
-            '{!r} != {!r}'.format(allowed, allowed_s)
-        )
-    common = set(accum).intersection(allowed)
-    if common:
-        raise ValueError(
-            'non-empty intersection: {!r}'.format(sorted(common))
-        )
 
 
 def build_masks(flags, masks_def):
@@ -112,22 +135,22 @@ def build_masks(flags, masks_def):
         for p in parts:
             f = _map[p]
             bits |= f.bit
-            check_disjoint(union, f.data)
-            union.update(f.data)
+            check_disjoint(union, f.allowed)
+            union.update(f.allowed)
         mask = 255 ^ bits
-        data = normalized_bytes(union)
-        assert len(data) == len(union)
-        accum.append(BitMask(mask, name, parts, data))
+        allowed = normalize(union)
+        assert len(allowed) == len(union)
+        accum.append(BitMask(mask, name, parts, allowed))
     return tuple(accum)
 
 
-def build_table(flags):
+def build_flags_table(flags):
     assert 1 < len(flags) < 8
     table = {}
     for f in flags:
-        check_flag_data(f)
-        assert set(table).isdisjoint(f.data)
-        table.update((key, f.bit) for key in f.data)
+        check_allowed(f.allowed)
+        assert set(table).isdisjoint(f.allowed)
+        table.update((key, f.bit) for key in f.allowed)
     for key in range(256):
         table.setdefault(key, 128)
     assert len(table) == 256
@@ -135,88 +158,59 @@ def build_table(flags):
     return Table('_FLAGS', 128, items)
 
 
-def build_classifier(flags_def, masks_def):
+def build_info(flags_def, masks_def):
     flags = build_flags(flags_def)
     masks = build_masks(flags, masks_def)
-    table = build_table(flags)
-    return Classifier(flags, masks, table)
+    table = build_flags_table(flags)
+    return Info(flags, masks, table)
 
 
-def _iter_names_table(allowed, casefold):
-    assert isinstance(allowed, bytes)
-    assert isinstance(casefold, bool)
-    for i in range(256):
-        if 32 <= i <= 127 and i in allowed:
-            r = (ord(chr(i).lower()) if casefold else i)
-            yield (i, r)
+def format_table_row(row):
+    return ','.join('{:>3}'.format(r) for (i, r) in row)
+
+
+def format_table_row_help(row, ignore):
+    if set(r for (i, r) in row) == {ignore}:
+        return None
+    help = []
+    for (i, r) in row:
+        if r == ignore:
+            help.append(' ' * 4)  # 4 spaces
         else:
-            yield (i, 255)
+            help.append('{!r:<4}'.format(chr(i)))
+    return ' '.join(help)
 
 
-def build_names_table(allowed, casefold):
-    items = tuple(_iter_names_table(allowed, casefold))
-    return Table('_NAMES', 255, items)
-
-
-def format_values(line):
-    return ','.join('{:>3}'.format(r) for (i, r) in line)
-
-
-def iter_help(line, r_ignore):
-    for (i, r) in line:
-        if r == r_ignore:
-            yield ' ' * 4  # 4 spaces
-        else:
-            yield '{!r:<4}'.format(chr(i))
-
-
-def needs_help(line, r_ignore):
-    for (i, r) in line:
-        if r != r_ignore:
-            return True
-    return False
-
-
-def format_help(line, r_ignore):
-    if needs_help(line, r_ignore):
-        return ' '.join(iter_help(line, r_ignore))
-
-
-def iter_lines(table, comment):
-    assert table.r_ignore in (255, 128)
-    line = []
+def iter_c_table_rows(table):
+    assert table.ignore in (255, 128)
+    row = []
     for item in table.items:
-        line.append(item)
-        if len(line) == 8:
-            text = '    {},'.format(format_values(line))
-            help = format_help(line, table.r_ignore)
+        row.append(item)
+        if len(row) == 8:
+            line = '    {},'.format(format_table_row(row))
+            help = format_table_row_help(row, table.ignore)
             if help:
-                yield '{} {}  {}'.format(text, comment, help.rstrip())
+                yield '{} //  {}'.format(line, help.rstrip())
             else:
-                yield text
-            line = []
-    assert not line
+                yield line
+            row = []
+    assert not row
 
 
-def iter_c(table):
-    yield 'static const uint8_t {}[{:d}] = {{'.format(table.name, len(table.items))
-    yield from iter_lines(table, '//')
+def iter_c_table(table):
+    yield 'static const uint8_t {}[{:d}] = {{'.format(
+        table.name, len(table.items)
+    )
+    yield from iter_c_table_rows(table)
     yield '};'
 
 
-def iter_p(name, definition, r_ignore=255):
-    yield '{} = ('.format(name)
-    yield from iter_lines(definition, '#', r_ignore)
-    yield ')'
-
-
-
-def iter_flags(flags):
+def iter_c_bit_flags_comment(flags):
     width = max(len(f.name) for f in flags)
     yield '/*'
     for f in flags:
         name = f.name.ljust(width)
-        yield ' * {} {:>2} {:08b}  {!r}'.format(name, f.bit, f.bit, f.data)
+        yield ' * {} {:>2} {:08b}  {!r}'.format(name, f.bit, f.bit, f.allowed)
     yield ' */'
 
 
@@ -225,10 +219,10 @@ def mask_name(name):
     return name + '_MASK'
 
 
-def iter_masks(masks):
+def iter_c_bit_masks(masks):
     width = max(len(mask_name(m.name)) for m in masks)
     for m in masks:
-        name = m.name.ljust(width)
+        name = mask_name(m.name).ljust(width)
         line = '#define {} {:>3}  // {:08b} '.format(name, m.mask, m.mask)
         if m.flags is None:
             yield line
@@ -236,33 +230,31 @@ def iter_masks(masks):
             yield line + ' ~({})'.format('|'.join(m.flags))
 
 
-def iter_classifier(obj):
-    yield from iter_flags(obj.flags)
-    yield from iter_masks(obj.masks)
-    yield from iter_c(obj.table)
+def iter_c_info(info):
+    yield from iter_c_bit_flags_comment(info.flags)
+    yield from iter_c_bit_masks(info.masks)
+    yield from iter_c_table(info.table)
 
 
-def iter_py_mask_sets(masks):
-    for m in masks:
-        name = '_' + m.name
-        line = '{} = frozenset({!r})'.format(name, m.data)
+def _py_mask_name(name):
+    return '{}_SET'.format(name)
+
+
+def iter_py_info(info):
+    width = max(len(f.name) for f in info.flags)
+    for f in info.flags:
+        name = f.name.ljust(width)
+        yield '{} = {!r}'.format(name, f.allowed)
+    yield ''
+    width = max(len(_py_mask_name(m.name)) for m in info.masks)
+    for m in info.masks:
+        name = _py_mask_name(m.name).ljust(width)
+        src = ' + '.join(m.flags)
+        line = '{} = frozenset({})'.format(name, src)
         if len(line) <= 80:
             yield line
         else:
-            yield '{} = frozenset(\n    {!r}\n)'.format(name, m.data)
-
-
-def iter_all(classifier, names_table):
-    (begin, end) = build_marker_comments('/', '*')
-    yield begin
-    yield ''
-    yield from iter_c(names_table)
-    yield ''
-    yield ''
-    yield from iter_classifier(classifier)
-    yield ''
-    yield end
-    yield ''
+            yield '{} = frozenset(\n    {}\n)'.format(name, src)
 
 
 def build_marker_comments(end, fill):
@@ -270,7 +262,6 @@ def build_marker_comments(end, fill):
         '{} GENERATED TABLES'.format(way) for way in ('BEGIN', 'END')
     )
     width = max(len(l) for l in labels)
-
     markers = []
     for label in labels:
         line = ''.join([
@@ -283,67 +274,95 @@ def build_marker_comments(end, fill):
         needfill = 80 - len(line) - 1
         line += (fill * needfill) + end
         markers.append(line)
-    return tuple(markers)
+    return Markers(*markers)
 
 
-class TheWorks:
+def replace(inlines, markers, newlines):
+    # States:
+    #   0: start marker not yet found
+    #   1: start marker found, end marker not yet found
+    #   2: end marker found (no markers should be found again)
+    state = 0
+    outlines = []
+    for line in inlines:
+        if line == markers.begin:
+            assert state == 0
+            state += 1
+        if state == 1:
+            print('- ' + line)
+        else:
+            assert state in (0, 2)
+            outlines.append(line)
+        if line == markers.end:
+            assert state == 1
+            state += 1
+            for new in newlines:
+                print('+ ' + new)
+                outlines.append(new)
+    assert state == 2
+    return outlines
+
+
+def update(pkgdir, name, markers, newlines):
+    orig = path.join(pkgdir, name)
+    tmp = orig + '.updated-tables.new'
+    bak = orig + '.updated-tables.old'
+    text = open(orig, 'r').read()
+    inlines = text.splitlines()
+    outlines = replace(inlines, markers, newlines)
+    with open(tmp, 'x') as fp:
+        fp.write('\n'.join(outlines) + '\n')
+    os.rename(orig, bak)
+    os.rename(tmp, orig)
+
+
+class Generated:
     def __init__(self, names_def, flags_def, masks_def):
-        self.table = build_names_table(names_def, True)
-        self.obj = build_classifier(flags_def, masks_def)
+        self.names_table = build_names_table(names_def)
+        self.info = build_info(flags_def, masks_def)
+        self.markers_c = build_marker_comments('/', '*')
+        self.markers_py = build_marker_comments('#', '#')
+
+    def iter_lines_c(self):
+        yield self.markers_c.begin
+        yield ''
+        yield from iter_c_table(self.names_table)
+        yield ''
+        yield from iter_c_info(self.info)
+        yield ''
+        yield self.markers_c.end
 
     def iter_lines_py(self):
-        yield from iter_py_mask_sets(self.obj.masks)
-        
+        yield self.markers_py.begin
+        yield ''
+        yield from iter_py_info(self.info)
+        yield ''
+        yield self.markers_py.end
+
+    def update(self, pkgdir):
+        update(pkgdir, '_base.c', self.markers_c, self.iter_lines_c())
+        update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
 
 
 if __name__ == '__main__':
-    import argparse
-    #import os
-    from os import path
-
-    pkgdir = path.dirname(path.abspath(__file__))
-    orig = path.join(pkgdir, '_base.c')
-    tmp = orig + '.updated-tables.new'
-    bak = orig + '.updated-tables.old'
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', action='store_true', default=False,
         help='generate Python tables (instead of C)'
     )
     parser.add_argument('--update', action='store_true', default=False,
-        help='update tables in _base.c, _basepy.py'
+        help='update tables in degu/_base.c, degu/_basepy.py'
     )
     args = parser.parse_args()
-    iter_x = (iter_p if args.p else iter_c)
 
-    dawerks = TheWorks(NAMES_DEF, FLAGS_DEF, MASKS_DEF)
-
-    if not args.update:
-        for line in dawerks.iter_lines_py():
+    gen = Generated(NAMES_DEF, BIT_FLAGS_DEF, BIT_MASKS_DEF)
+    if args.update:
+        pkgdir = path.dirname(path.abspath(__file__))
+        gen.update(pkgdir)
+    else:
+        if args.p:
+            lines = gen.iter_lines_py()
+        else:
+            lines = gen.iter_lines_c()
+        for line in lines:
             print(line)
-        raise SystemExit('nope')
-
-#    text = open(orig, 'r').read()
-#    inlines = text.splitlines()
-#    outlines = []
-
-#    (begin, end) = build_marker_comments('/', '*')
-#    found = False
-#    for line in inlines:
-#        if line.startswith(begin):
-#            assert not found
-#            found = True
-#        if found:
-#            print('- ' + line)
-#        else:
-#            outlines.append(line)
-#        if line.startswith(end):
-#            assert found
-#            found = False
-#            outlines.extend(iter_all(classifier, names_table))
-
-#    with open(tmp, 'x') as fp:
-#        fp.write('\n'.join(outlines) + '\n')
-#    os.rename(orig, bak)
-#    os.rename(tmp, orig)
 
