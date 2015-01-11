@@ -337,34 +337,59 @@ def _read_request_preamble(rfile):
 
 
 class Reader:
+    __slots__ = ('sock', '_buf', '_view', '_rawtell', '_size')
+
     def __init__(self, sock):
         self.sock = sock
         self._buf = bytearray(MAX_PREAMBLE_BYTES)
         self._view = memoryview(self._buf)
-        self._tell = 0
+        self._rawtell = 0
         self._size = 0
 
-    def tell(self):
-        assert isinstance(self._tell, int) and self._tell >= 0
-        return self._tell
+    def rawtell(self):
+        assert isinstance(self._rawtell, int) and self._rawtell >= 0
+        return self._rawtell
 
-    def _consume_buffer(self, size):
+    def tell(self):
+        pos = self._rawtell - self._size
+        assert isinstance(pos, int) and pos >= 0
+        return pos
+
+    def _fill_buffer(self):
+        assert 0 <= self._size <= len(self._buf)
+        if self._size == len(self._buf):
+            return 0
+        added = self.sock.recv_into(self._view[self._size:])
+        self._size += added
+        self._rawtell += added
+        return added
+
+    def _consume_buffer(self, size, trailing=0):
         """
         Consume first *size* bytes in buffer.
         """
         assert 0 <= size <= self._size <= MAX_PREAMBLE_BYTES
-        ret = self._view[:size].tobytes()
-        self._tell += size
+        assert 0 <= trailing <= size
+        ret_size = size - trailing
+        ret = self._view[:ret_size].tobytes()
         remaining = self._size - size
         self._view[:remaining] = self._view[size:size+remaining]
         self._size = remaining
         return ret
 
-    def _fill_buffer(self):
-        assert 0 <= self._size <= len(self._buf)
-        added = self.sock.recv_into(self._view[self._size:])
-        self._size += added
-        return added
+    def read_until(self, term, max_size=1024):
+        assert isinstance(term, bytes) and len(term) >= 2
+        assert 512 <= max_size <= len(self._buf)
+        self._fill_buffer()
+        size = min(max_size, self._size)
+        index = self._buf[:size].find(term)
+        if index < 0:
+            raise ValueError(
+                'could not find {!r} in first {} bytes'.format(term, size)
+            )
+        result_size = index + len(term)
+        assert 0 <= result_size <= size
+        return self._consume_buffer(result_size, len(term))
 
     def read_preamble(self):
         self._fill_buffer()

@@ -54,38 +54,26 @@ class TestReader(TestCase):
             self.assertEqual(inst._buf[i], 0)
         self.assertIsInstance(inst._view, memoryview)
         self.assertIs(inst._view.obj, inst._buf)
-        self.assertIsInstance(inst._tell, int)
-        self.assertEqual(inst._tell, 0)
+        self.assertIsInstance(inst._rawtell, int)
+        self.assertEqual(inst._rawtell, 0)
         self.assertIsInstance(inst._size, int)
         self.assertEqual(inst._size, 0)
+
+    def test_rawtell(self):
+        sock = MockSocket(b'GET / HTTP/1.1\r\n\r\n')
+        inst = _basepy.Reader(sock)
+        self.assertEqual(inst.rawtell(), 0)
+        inst._rawtell = 42
+        self.assertEqual(inst.rawtell(), 42)
 
     def test_tell(self):
         sock = MockSocket(b'GET / HTTP/1.1\r\n\r\n')
         inst = _basepy.Reader(sock)
         self.assertEqual(inst.tell(), 0)
-        inst._tell = 42
-        self.assertEqual(inst.tell(), 42)
-
-    def test_consume_buffer(self):
-        inst = _basepy.Reader(None)
-        data = os.urandom(42)
-        inst._view[0:42] = data
-        inst._size = 42
-
-        # Consume zero bytes:
-        self.assertEqual(inst._consume_buffer(0), b'')
-        self.assertEqual(inst.tell(), 0)
-        self.assertEqual(inst._size, 42)
-
-        # Consume first 17 bytes:
-        self.assertEqual(inst._consume_buffer(17), data[:17])
+        inst._rawtell = 22
+        self.assertEqual(inst.tell(), 22)
+        inst._size = 5
         self.assertEqual(inst.tell(), 17)
-        self.assertEqual(inst._size, 25)
-
-        # Consume first 25 bytes:
-        self.assertEqual(inst._consume_buffer(25), data[17:])
-        self.assertEqual(inst.tell(), 42)
-        self.assertEqual(inst._size, 0)
 
     def test_fill_buffer(self):
         data1 = os.urandom(MAX_PREAMBLE_BYTES)
@@ -116,4 +104,45 @@ class TestReader(TestCase):
         self.assertEqual(sock._rfile.tell(), MAX_PREAMBLE_BYTES + 34969)
         self.assertEqual(inst._size, MAX_PREAMBLE_BYTES)
         self.assertEqual(inst._view.tobytes(), data1[34969:] + data2)
+
+    def test_consume_buffer(self):
+        inst = _basepy.Reader(None)
+        data = os.urandom(42)
+        inst._view[0:42] = data
+        inst._size = 42
+
+        # Consume zero bytes:
+        self.assertEqual(inst._consume_buffer(0), b'')
+        self.assertEqual(inst._size, 42)
+
+        # Consume first 17 bytes, skip trailing 4:
+        self.assertEqual(inst._consume_buffer(17, 4), data[:13])
+        self.assertEqual(inst._size, 25)
+
+        # Consume final 25 bytes:
+        self.assertEqual(inst._consume_buffer(25), data[17:])
+        self.assertEqual(inst._size, 0)
+
+    def test_read_until(self):
+        crlf = b'\r\n'
+        term = crlf * 2  # Preamble terminator
+        sock = MockSocket(b'GET / HTTP/1.1\r\n\r\nHello')
+        inst = _basepy.Reader(sock)
+        self.assertEqual(inst.read_until(term), b'GET / HTTP/1.1')
+        self.assertEqual(inst.rawtell(), 23)
+        self.assertEqual(inst.tell(), 18)
+        self.assertEqual(sock._rfile.tell(), 23)
+        self.assertEqual(sock._rfile.read(), b'')
+
+        sock = MockSocket(b'GET / HTTP/1.1\r\n')
+        inst = _basepy.Reader(sock)
+        with self.assertRaises(ValueError) as cm:
+            inst.read_until(term)
+        self.assertEqual(str(cm.exception),
+            'could not find {!r} in first 16 bytes'.format(term)
+        )
+        self.assertEqual(inst.rawtell(), 16)
+        self.assertEqual(inst.tell(), 0)
+        self.assertEqual(sock._rfile.tell(), 16)
+        self.assertEqual(sock._rfile.read(), b'')
 
