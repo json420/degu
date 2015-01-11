@@ -337,8 +337,8 @@ def _read_request_preamble(rfile):
 
 
 class Reader:
-    def __init__(self, raw):
-        self.raw = raw
+    def __init__(self, sock):
+        self.sock = sock
         self._buf = bytearray(MAX_PREAMBLE_BYTES)
         self._view = memoryview(self._buf)
         self._tell = 0
@@ -362,7 +362,7 @@ class Reader:
 
     def _fill_buffer(self):
         assert 0 <= self._size <= len(self._buf)
-        added = self.raw.readinto(self._view[self._size:])
+        added = self.sock.recv_into(self._view[self._size:])
         self._size += added
         return added
 

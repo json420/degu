@@ -1293,6 +1293,38 @@ cleanup:
 }
 
 
+typedef struct {
+    PyObject_HEAD
+    /* Type-specific fields go here. */
+} degu_ReaderObject;
+
+
+static PyTypeObject degu_ReaderType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Reader",             /* tp_name */
+    sizeof(degu_ReaderObject), /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    0,                         /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "Reader(sock)",           /* tp_doc */
+};
+
+
+
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
@@ -1337,10 +1369,17 @@ PyInit__base(void)
     PyObject *int_size_max = NULL;
     PyObject *int_size_two = NULL;
 
+    degu_ReaderType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&degu_ReaderType) < 0)
+        return NULL;
+
     module = PyModule_Create(&degu);
     if (module == NULL) {
         return NULL;
     }
+
+    Py_INCREF(&degu_ReaderType);
+    PyModule_AddObject(module, "Reader", (PyObject *)&degu_ReaderType);
 
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
