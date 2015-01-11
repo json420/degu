@@ -947,19 +947,6 @@ class TestFunctions(AlternatesTestCase):
         self.assertIn(backend, (_basepy, _base))
         read_preamble = backend._read_preamble
 
-        # Bad bytes in preamble first line:
-        for size in range(1, 8):
-            for bad in helpers.iter_bad_values(size):
-                data = bad + b'\r\nFoo: Bar\r\nstuff: Junk\r\n\r\n'
-                rfile = io.BytesIO(data)
-                with self.assertRaises(ValueError) as cm:
-                    read_preamble(rfile)
-                self.assertEqual(str(cm.exception),
-                    'bad bytes in first line: {!r}'.format(bad)
-                )
-                self.assertEqual(sys.getrefcount(rfile), 2)
-                self.assertEqual(rfile.tell(), size + 2)
-
         # Bad bytes in header name:
         for size in range(1, 8):
             for bad in helpers.iter_bad_keys(size):
@@ -969,19 +956,6 @@ class TestFunctions(AlternatesTestCase):
                     read_preamble(rfile)
                 self.assertEqual(str(cm.exception),
                     'bad bytes in header name: {!r}'.format(bad)
-                )
-                self.assertEqual(sys.getrefcount(rfile), 2)
-                self.assertEqual(rfile.tell(), size + 22)
-
-        # Bad bytes in header value:
-        for size in range(1, 8):
-            for bad in helpers.iter_bad_values(size):
-                data = b'da first line\r\nFoo: ' + bad + b'\r\nstuff: Junk\r\n\r\n'
-                rfile = io.BytesIO(data)
-                with self.assertRaises(ValueError) as cm:
-                    read_preamble(rfile)
-                self.assertEqual(str(cm.exception),
-                    'bad bytes in header value: {!r}'.format(bad)
                 )
                 self.assertEqual(sys.getrefcount(rfile), 2)
                 self.assertEqual(rfile.tell(), size + 22)
@@ -1960,24 +1934,6 @@ class TestFunctions(AlternatesTestCase):
         rfile.seek(0)
         self.assertEqual(base.read_chunk(rfile), (('foo', 'bar'), data))
         self.assertEqual(rfile.tell(), len(line) + len(data) + 2)
-
-        # Bad bytes in extension:
-        linestart = b'6f0;'
-        for bad in helpers.iter_bad_values(8):
-            line = linestart + bad + b'\r\n'
-            rfile = io.BytesIO(line)
-            with self.assertRaises(ValueError) as cm:
-                base.read_chunk(rfile)
-            if b';' in bad:
-                self.assertEqual(str(cm.exception),
-                    'bad chunk size line: {!r}'.format(line)
-                )
-            else:
-                self.assertEqual(str(cm.exception),
-                    'bad bytes in chunk extension: {!r}'.format(bad)
-                )
-            self.assertEqual(sys.getrefcount(rfile), 2)
-            self.assertEqual(rfile.tell(), 14)
 
     def test_write_chunk(self):
         # len(data) > MAX_CHUNK_SIZE:

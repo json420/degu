@@ -45,12 +45,6 @@ class TestConstants(TestCase):
         self.assertEqual(max(tables.NAMES_DEF), ord('z'))
         self.assertEqual(len(tables.NAMES_DEF), 63)
 
-    def test_VALUES_DEF(self):
-        self.check_allowed(tables.VALUES_DEF)
-        self.assertEqual(min(tables.VALUES_DEF), ord(' '))
-        self.assertEqual(max(tables.VALUES_DEF), ord('~'))
-        self.assertEqual(len(tables.VALUES_DEF), 95)
-
     def test_BIT_FLAGS_DEF(self):
         self.assertIsInstance(tables.BIT_FLAGS_DEF, tuple)
         self.assertEqual(len(tables.BIT_FLAGS_DEF), 7)

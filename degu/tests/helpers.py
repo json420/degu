@@ -95,10 +95,6 @@ def _iter_bad(size, allowed, skip):
                 yield bytes(notgood)
 
 
-def iter_bad_values(size):
-    yield from _iter_bad(size, tables.VALUES_DEF, b'\n')
-
-
 def iter_bad_keys(size):
     yield from _iter_bad(size, tables.NAMES_DEF, b'\n')
 

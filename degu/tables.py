@@ -28,8 +28,17 @@ Print the C tables like this::
 
 Or print the Python tables like this::
 
-    $ python3 -m degu.tables -p
+    $ python3 -m degu.tables --python
 
+Finally, replace the existing tables in the "degu/_base.c" and "degu/_basepy.py"
+files with the tables as currently defined in this module like this::
+
+    $ python3 -m degu.tables --update
+
+If the existing tables already matched the current table definitions, the
+content of these files should not change (if it does change, that's a bug).
+However, the mtime of these files will change regardless, as a new file is still
+written even when the resulting content will be the same. 
 """
 
 from collections import namedtuple
@@ -53,7 +62,6 @@ COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz
 
 # For case-folding and validating header names:
 NAMES_DEF = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-VALUES_DEF = bytes(sorted(NAMES_DEF + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'))
 
 
 # Generic bit-flag based validation table with 7 sets, plus 1 error set:
