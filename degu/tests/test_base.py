@@ -493,7 +493,7 @@ class TestFunctions(AlternatesTestCase):
                     func(bad2)
                 self.assertEqual(str(cm.exception), exc, func.__module__)
         for i in range(5000):
-            good = bytes(random.sample(_basepy.NAMES_SET, 32))
+            good = bytes(random.sample(_basepy.NAME, 32))
             for func in functions:
                 ret = func(good)
                 self.assertIsInstance(ret, str)

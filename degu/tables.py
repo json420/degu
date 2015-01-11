@@ -236,20 +236,20 @@ def iter_c_info(info):
     yield from iter_c_table(info.table)
 
 
-def py_set_name(name):
-    return '{}_SET'.format(name)
+def py_flag_name(name):
+    return '_{}'.format(name)
 
 
 def iter_py_info(info):
-    width = max(len(f.name) for f in info.flags)
+    width = max(len(py_flag_name(f.name)) for f in info.flags)
     for f in info.flags:
-        name = f.name.ljust(width)
+        name = py_flag_name(f.name).ljust(width)
         yield '{} = {!r}'.format(name, f.allowed)
     yield ''
-    width = max(len(py_set_name(m.name)) for m in info.masks)
+    width = max(len(m.name) for m in info.masks)
     for m in info.masks:
-        name = py_set_name(m.name).ljust(width)
-        src = ' + '.join(m.flags)
+        name = m.name.ljust(width)
+        src = ' + '.join(py_flag_name(n) for n in m.flags)
         yield '{} = frozenset({})'.format(name, src)
 
 
@@ -327,7 +327,7 @@ class Generated:
 
     def iter_lines_py(self):
         yield self.markers_py.begin
-        yield '{} = frozenset('.format(py_set_name('NAMES'))
+        yield 'NAME = frozenset('
         yield '    {!r}'.format(self.names_def)
         yield ')'
         yield ''

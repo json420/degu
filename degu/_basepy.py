@@ -28,39 +28,6 @@ isn't meant for production use (mainly because it's much, much slower).
 
 This is a reference implementation whose purpose is only to help enforce the
 correctness of the C implementation.
-
-Note that the Python implementation is quite different in how it decodes and
-validates the HTTP preamble.  Using a lookup table is very fast in C, but is
-quite slow in Python.
-
-For *VALUES*, the Python implementation:
-
-    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
-
-    2. Uses ``str.isprintable()`` to further restrict down to the same 95 byte
-       values allowed by the C ``_VALUES`` table
-
-For *KEYS*, the Python implementation:
-
-    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
-
-    2. Uses ``str.lower()`` to case-fold the header key
-
-    3. Uses ``re.match()`` to further restrict down to the same 63 byte values
-       allowed by the C ``_NAMES`` table
-
-Although it might seem a bit hodge-podge, this approach is much faster than
-doing lookup tables in pure-Python.
-
-However, aside from the glaring performance difference, the Python and C
-implementations should always behave *exactly* the same, and we have oodles of
-unit tests to back this up.
-
-By not using lookup tables in the Python implementation, we can better verify
-the correctness of the C lookup tables.  Otherwise we could have two
-implementations correctly using the same incorrect tables.
-
-``str.isprintable()`` is an especially handy gem in this respect.
 """
 
 __all__ = (
@@ -85,24 +52,24 @@ OK = 'OK'
 
 
 ################    BEGIN GENERATED TABLES    ##################################
-NAMES_SET = frozenset(
+NAME = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 )
 
-DIGIT = b'0123456789'
-ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-PATH  = b'-.:_~'
-QUERY = b'%&+='
-URI   = b'/?'
-SPACE = b' '
-VALUE = b'"\'()*,;[]'
+_DIGIT = b'0123456789'
+_ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+_PATH  = b'-.:_~'
+_QUERY = b'%&+='
+_URI   = b'/?'
+_SPACE = b' '
+_VALUE = b'"\'()*,;[]'
 
-DIGIT_SET  = frozenset(DIGIT)
-PATH_SET   = frozenset(DIGIT + ALPHA + PATH)
-QUERY_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY)
-URI_SET    = frozenset(DIGIT + ALPHA + PATH + QUERY + URI)
-REASON_SET = frozenset(DIGIT + ALPHA + SPACE)
-VALUE_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY + URI + SPACE + VALUE)
+DIGIT  = frozenset(_DIGIT)
+PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
+QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
+URI    = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI)
+REASON = frozenset(_DIGIT + _ALPHA + _SPACE)
+VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
 
@@ -145,13 +112,13 @@ def parse_header_name(buf):
         raise ValueError('header name is empty')
     if len(buf) > 32:
         raise ValueError('header name too long: {!r}...'.format(buf[:32]))
-    if NAMES_SET.issuperset(buf):
+    if NAME.issuperset(buf):
         return buf.decode('ascii').lower()
     raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
 
 def _decode_uri(src):
-    if URI_SET.issuperset(src):
+    if URI.issuperset(src):
         return src.decode()
     raise ValueError(
         'bad uri in request line: {!r}'.format(src)
@@ -166,7 +133,7 @@ def parse_content_length(buf):
         raise ValueError(
             'content-length too long: {!r}...'.format(buf[:16])
         )
-    if not DIGIT_SET.issuperset(buf):
+    if not DIGIT.issuperset(buf):
         raise ValueError(
             'bad bytes in content-length: {!r}'.format(buf)
         )
