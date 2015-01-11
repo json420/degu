@@ -69,13 +69,6 @@ def random_identifier():
     return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
 
 
-def _iter_good(size, allowed):
-    assert isinstance(size, int) and size >= 0
-    assert isinstance(allowed, bytes)
-    for okay in allowed:
-        yield bytes(okay for i in range(size))
-
-
 def iter_good(good, allowed):
     for i in range(len(good)):
         for g in allowed:
