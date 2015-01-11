@@ -83,6 +83,7 @@ DELETE = 'DELETE'
 OK = 'OK'
 
 
+
 ################    BEGIN GENERATED TABLES    ##################################
 NAMES_SET = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
@@ -102,7 +103,8 @@ QUERY_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY)
 URI_SET    = frozenset(DIGIT + ALPHA + PATH + QUERY + URI)
 REASON_SET = frozenset(DIGIT + ALPHA + SPACE)
 VALUE_SET  = frozenset(DIGIT + ALPHA + PATH + QUERY + URI + SPACE + VALUE)
-################      END GENERATED TABLES    ##################################
+################    END GENERATED TABLES      ##################################
+
 
 
 def parse_method(method):

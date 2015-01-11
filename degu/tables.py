@@ -264,7 +264,7 @@ def build_marker_comments(end, fill):
             end,
             (fill * 15),
             (' ' * 4),
-            label.rjust(width),
+            label.ljust(width),
             (' ' * 4),
         ])
         needfill = 80 - len(line) - 1
@@ -320,11 +320,9 @@ class Generated:
 
     def iter_lines_c(self):
         yield self.markers_c.begin
-        yield ''
         yield from iter_c_table(self.names_table)
         yield ''
         yield from iter_c_info(self.info)
-        yield ''
         yield self.markers_c.end
 
     def iter_lines_py(self):
