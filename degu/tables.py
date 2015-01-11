@@ -84,6 +84,20 @@ BIT_MASKS_DEF = (
 )
 
 
+def _iter_never_allowed():
+    for i in range(256):
+        if (0 <= i <= 31) or (127 <= i <= 255):
+            yield i
+        else:
+            c = chr(i)
+            assert c == bytes([i]).decode('ascii')
+            if c.isprintable() is False:
+                yield i
+
+NEVER_ALLOWED = bytes(_iter_never_allowed())
+NEVER_ALLOWED_SET = frozenset(NEVER_ALLOWED)
+
+
 def normalize(source):
     return bytes(sorted(set(source)))
 
@@ -96,6 +110,11 @@ def check_allowed(allowed):
     expected = normalize(allowed)
     if allowed != expected:
         raise ValueError('{!r} != {!r}'.format(allowed, expected))
+    if NEVER_ALLOWED_SET.intersection(allowed):
+        raise ValueError(
+            'contains bytes that are never allowed: {!r}'.format(allowed)
+        )
+    return allowed
 
 
 def check_disjoint(accum, allowed):

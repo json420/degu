@@ -29,11 +29,33 @@ from degu import tables
 
 
 class TestConstants(TestCase):
+    def test_NEVER_ALLOWED(self):
+        self.assertIsInstance(tables.NEVER_ALLOWED, bytes)
+        self.assertEqual(len(tables.NEVER_ALLOWED), 161)
+        self.assertEqual(tables.NEVER_ALLOWED,
+            tables.normalize(tables.NEVER_ALLOWED)
+        )
+        for b in tables.NEVER_ALLOWED:
+            if b < 128:
+                self.assertFalse(chr(b).isprintable())
+
+    def test_NEVER_ALLOWED_SET(self):
+        self.assertIsInstance(tables.NEVER_ALLOWED_SET, frozenset)
+        self.assertEqual(tables.NEVER_ALLOWED_SET,
+            frozenset(tables.NEVER_ALLOWED)
+        )
+        self.assertTrue(
+            tables.NEVER_ALLOWED_SET.issuperset(range(32))
+        )
+        self.assertTrue(
+            tables.NEVER_ALLOWED_SET.issuperset(range(127, 256))
+        )
+
     def check_allowed(self, allowed):
         self.assertIsInstance(allowed, bytes)
         self.assertEqual(len(allowed), len(set(allowed)))
         self.assertEqual(allowed, bytes(sorted(set(allowed))))
-        for i in range(128):
+        for i in range(256):
             if not chr(i).isprintable():
                 self.assertNotIn(i, allowed)
         for i in allowed:
@@ -55,28 +77,24 @@ class TestConstants(TestCase):
             self.assertIsInstance(name, str)
             self.assertGreater(len(name), 1)
             self.assertTrue(name.isupper())
+            self.assertTrue(name.isidentifier())
             self.check_allowed(allowed)
 
-    def check_definition(self, definition, allowed, casefold):
-        self.assertIsInstance(definition, tuple)
-        self.assertEqual(len(definition), 256)
-        for (index, item) in enumerate(definition):
+    def test_BIT_MASKS_DEF(self):
+        self.assertIsInstance(tables.BIT_MASKS_DEF, tuple)
+        self.assertGreaterEqual(len(tables.BIT_MASKS_DEF), 6)
+        avail_flag_names = frozenset(dict((tables.BIT_FLAGS_DEF)))
+        for item in tables.BIT_MASKS_DEF:
             self.assertIsInstance(item, tuple)
             self.assertEqual(len(item), 2)
-            (i, r) = item
-            self.assertIsInstance(i, int)
-            self.assertEqual(i, index)
-            self.assertIsInstance(r, int)
-            if i in allowed:
-                self.assertEqual(i & 128, 0)
-                if casefold:
-                    self.assertEqual(r, ord(chr(i).lower()))
-                else:
-                    self.assertEqual(r, i)
-            else:
-                self.assertEqual(r, 255)
-            if not (32 <= i <= 126):
-                self.assertEqual(r, 255)
-        self.assertEqual(definition, tuple(sorted(definition)))
-
+            (name, flag_names) = item
+            self.assertIsInstance(name, str)
+            self.assertGreater(len(name), 1)
+            self.assertTrue(name.isupper())
+            self.assertTrue(name.isidentifier())
+            self.assertIsInstance(flag_names, tuple)
+            self.assertGreaterEqual(len(flag_names), 1)
+            self.assertTrue(avail_flag_names.issuperset(flag_names))
+            for n in flag_names:
+                self.assertIsInstance(n, str)
 
