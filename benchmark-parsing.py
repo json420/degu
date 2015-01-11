@@ -16,6 +16,7 @@ from degu._base import (
     parse_request_line,
     parse_method,
     parse_response_line,
+    parse_preamble,
 
     _read_request_preamble,
     _read_response_preamble,
@@ -33,6 +34,7 @@ headers = {
     'k': 'V',
 }
 request = format_request_preamble('POST', '/foo/bar?stuff=junk', headers)
+preamble = request[:-4]
 response = format_response_preamble(200, 'OK', headers)
 """
 
@@ -69,6 +71,9 @@ run("format_response_preamble(200, 'OK', headers)")
 
 print('\nCommon parsing:')
 run("parse_content_length(b'9007199254740992')")
+run("parse_preamble(b'HTTP/1.1 200 OK')")
+run("parse_preamble(b'HTTP/1.1 200 OK\\r\\ncontent-length: 17')")
+run('parse_preamble(preamble)')
 
 print('\nRequest parsing:')
 run("parse_request_line(b'GET / HTTP/1.1')")

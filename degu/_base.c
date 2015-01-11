@@ -732,68 +732,86 @@ cleanup:
 }
 
 
-static PyObject *
-_parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
-{
-    const uint8_t *line_buf, *crlf;
-    size_t line_len;
-    PyObject *first_line = NULL;
-    PyObject *headers = NULL;
-    PyObject *ret = NULL;
 
+static PyObject *
+_parse_headers(const uint8_t *buf, const size_t len)
+{
+
+    PyObject *headers = NULL;
+    const uint8_t *crlf;
     uint8_t flags = 0;
     int newflags;
 
-    line_buf = preamble_buf;
-    line_len = preamble_len;
-    crlf = memmem(line_buf, line_len, CRLF, 2);
-    if (crlf != NULL) {
-        line_len = crlf - line_buf;
-    }
+    /* Initalize to start of buf with full len */
+    const uint8_t *line_buf = buf;
+    size_t line_len = len;
 
-    _SET(first_line,
-        _decode(line_buf, line_len, VALUE_MASK, "bad bytes in first line: %R")
-    )
-
-    /* Read, parse, and decode the header lines */
     _SET(headers, PyDict_New())
-    while (crlf != NULL) {
-        line_buf = crlf + 2;
-        line_len = preamble_len - (line_buf - preamble_buf);
+    do {
         crlf = memmem(line_buf, line_len, CRLF, 2);
         if (crlf != NULL) {
             line_len = crlf - line_buf;
         }
-
-        /* We require both the header key and header value to each be at least
-         * one byte in length.  This means that the shortest valid header line
-         * (minus the CRLF) is four bytes in length:
-         *
-         *      line| k: v
-         *    offset| 0123
-         *      size| 1234
-         *
-         * So when (line_len < 4), there's no reason to proceed.  This
-         * short-circuiting is also a bit safer just in case a given `memmem()`
-         * implementation isn't well behaved when (haystacklen < needlelen).
-         */
         if (line_len < 4) {
             _value_error(line_buf, line_len, "header line too short: %R");
             goto error;
         }
-
         newflags = _parse_header_line(line_buf, line_len, headers);
         if (newflags < 0) {
             goto error;
         }
         flags |= newflags;
-    }
+
+        if (crlf != NULL) {
+            line_buf = crlf + 2;
+            line_len = len - (line_buf - buf);
+        }
+
+    }  while (crlf != NULL);
 
     if (flags == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
+    }
+    goto success;
+
+error:
+    Py_CLEAR(headers);
+
+success:
+    return headers;
+}
+
+
+
+static PyObject *
+_parse_preamble(const uint8_t *buf, const size_t len)
+{
+    const uint8_t *crlf, *headers_buf;
+    size_t line_len, headers_len;
+    PyObject *first_line = NULL;
+    PyObject *headers = NULL;
+    PyObject *ret = NULL;
+
+    line_len = len;
+    crlf = memmem(buf, len, CRLF, 2);
+    if (crlf != NULL) {
+        line_len = crlf - buf;
+    }
+
+    _SET(first_line,
+        _decode(buf, line_len, VALUE_MASK, "bad bytes in first line: %R")
+    )
+
+    if (crlf == NULL) {
+        _SET(headers, PyDict_New())
+    }
+    else {
+        headers_buf = crlf + 2;
+        headers_len = len - (headers_buf - buf);
+        _SET(headers, _parse_headers(headers_buf, headers_len))
     }
     ret = PyTuple_Pack(2, first_line, headers);
     goto cleanup;
