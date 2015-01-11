@@ -31,7 +31,7 @@ from random import SystemRandom
 import itertools
 
 from . import helpers
-from .helpers import DummySocket, random_chunks, FuzzTestCase
+from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
@@ -717,6 +717,22 @@ class TestFunctions(AlternatesTestCase):
                     parse_content_length(bad)
                 self.assertEqual(str(cm.exception),
                     'bad bytes in content-length: {!r}'.format(bad)
+                )
+
+        for good in (b'0', b'1', b'9', b'11', b'99', b'9007199254740992'):
+            self.assertEqual(parse_content_length(good), int(good))
+            self.assertEqual(str(int(good)).encode(), good)
+            for bad in iter_bad(good, b'0123456789'):
+                with self.assertRaises(ValueError) as cm:
+                    parse_content_length(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in content-length: {!r}'.format(bad)
+                )
+        for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
+            for also_good in helpers.iter_good(good, b'123456789'):
+                self.assertEqual(
+                    parse_content_length(also_good),
+                    int(also_good)
                 )
 
     def test_parse_content_length_py(self):

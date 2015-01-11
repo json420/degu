@@ -117,6 +117,10 @@ def check_allowed(allowed):
     return allowed
 
 
+def invert(allowed):
+    return normalize(set(range(256)) - set(check_allowed(allowed)))
+
+
 def check_disjoint(accum, allowed):
     check_allowed(allowed)
     common = set(accum).intersection(allowed)

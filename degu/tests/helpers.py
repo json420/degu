@@ -99,6 +99,25 @@ def iter_bad_keys(size):
     yield from _iter_bad(size, tables.NAMES_DEF, b'\n')
 
 
+def iter_good(good, allowed):
+    for i in range(len(good)):
+        for g in allowed:
+            also_good = bytearray(good)
+            also_good[i] = g
+            yield bytes(also_good)
+
+
+def iter_bad(good, allowed):
+    assert isinstance(good, bytes)
+    assert isinstance(allowed, bytes)
+    not_allowed = tables.invert(allowed)
+    for i in range(len(good)):
+        for b in not_allowed:
+            bad = bytearray(good)
+            bad[i] = b
+            yield bytes(bad)
+
+
 class TempDir:
     def __init__(self, prefix='unittest.'):
         self.dir = tempfile.mkdtemp(prefix=prefix)
