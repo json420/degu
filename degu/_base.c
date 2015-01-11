@@ -1387,6 +1387,10 @@ _Reader_recv_into(Reader *self, uint8_t *buf, const size_t len)
     size_t size;
     Py_ssize_t ret = -1;
 
+    if (self == NULL || buf == NULL || len < 1) {
+        Py_FatalError("bad internal call to _Reader_recv_into()");
+    }
+
     _SET(view,
         PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
     )
@@ -1440,24 +1444,33 @@ cleanup:
 }
 
 
+/* _Reader_fill_buffer() */
+static Py_ssize_t
+_Reader_fill_buffer(Reader *self) {
+    if (self->len >= self->maxlen) {
+        return 0;
+    }
+    const Py_ssize_t size = _Reader_recv_into(
+        self,
+        self->buf + self->len,
+        self->maxlen - self->len
+    );
+    if (size > 0) {
+        self->len += size;
+    }
+    return size;
+}
+
+
 /* Reader.fill_buffer() */
 static PyObject *
 Reader_fill_buffer(Reader *self) {
-    Py_ssize_t size = 0;
-
-    if (self->len < self->maxlen) {
-        size = _Reader_recv_into(self,
-            self->buf + self->len,
-            self->maxlen - self->len
-        );
-        if (size < 0) {
-            return NULL;
-        }
+    const Py_ssize_t size = _Reader_fill_buffer(self);
+    if (size < 0) {
+        return NULL;
     }
-    self->len += size;
     return PyLong_FromSsize_t(size);
 }
-
 
 
 static PyMethodDef Reader_methods[] = {
