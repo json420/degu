@@ -1293,34 +1293,111 @@ cleanup:
 }
 
 
+
+
+
 typedef struct {
     PyObject_HEAD
-    /* Type-specific fields go here. */
-} degu_ReaderObject;
+    PyObject *sock;
+    PyObject *bodies;
+    size_t rawtell;
+    size_t size;
+} Reader;
 
 
-static PyTypeObject degu_ReaderType = {
+static void
+Reader_dealloc(Reader *self)
+{
+    Py_CLEAR(self->sock);
+    Py_CLEAR(self->bodies);
+}
+
+
+static int
+Reader_init(Reader *self, PyObject *args, PyObject *kw)
+{
+    PyObject *sock=NULL, *bodies=NULL;
+    static char *keys[] = {"sock", "bodies", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
+        return -1;
+    }
+    _SET_AND_INC(self->sock, sock)
+    _SET_AND_INC(self->bodies, bodies)
+    self->rawtell = 0;
+    self->size = 0;
+
+    return 0;
+
+error:
+    Py_CLEAR(self->sock);
+    Py_CLEAR(self->bodies);
+    return -1;
+}
+
+/* Reader.rawtell() */
+static PyObject *
+Reader_rawtell(Reader *self) {
+    return PyLong_FromSize_t(self->rawtell);
+}
+
+/* Reader.tell() */
+static PyObject *
+Reader_tell(Reader *self) {
+    return PyLong_FromSize_t(self->rawtell - self->size);
+}
+
+
+static PyMethodDef Reader_methods[] = {
+    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
+        "return number of bytes thus far read from the underlying socket"
+    },
+    {"tell", (PyCFunction)Reader_tell, METH_NOARGS,
+        "total bytes thus far read from logical stream"
+    },
+    {NULL}
+};
+
+
+static PyTypeObject ReaderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Reader",             /* tp_name */
-    sizeof(degu_ReaderObject), /* tp_basicsize */
-    0,                         /* tp_itemsize */
-    0,                         /* tp_dealloc */
-    0,                         /* tp_print */
-    0,                         /* tp_getattr */
-    0,                         /* tp_setattr */
-    0,                         /* tp_reserved */
-    0,                         /* tp_repr */
-    0,                         /* tp_as_number */
-    0,                         /* tp_as_sequence */
-    0,                         /* tp_as_mapping */
-    0,                         /* tp_hash  */
-    0,                         /* tp_call */
-    0,                         /* tp_str */
-    0,                         /* tp_getattro */
-    0,                         /* tp_setattro */
-    0,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "Reader(sock)",           /* tp_doc */
+    "degu._base.Reader",          /* tp_name */
+    sizeof(Reader),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Reader_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Reader(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Reader_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Reader_init,        /* tp_init */
+    0,                            /* tp_alloc */
+    0,                            /* tp_new */
 };
 
 
@@ -1369,8 +1446,8 @@ PyInit__base(void)
     PyObject *int_size_max = NULL;
     PyObject *int_size_two = NULL;
 
-    degu_ReaderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&degu_ReaderType) < 0)
+    ReaderType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ReaderType) < 0)
         return NULL;
 
     module = PyModule_Create(&degu);
@@ -1378,8 +1455,8 @@ PyInit__base(void)
         return NULL;
     }
 
-    Py_INCREF(&degu_ReaderType);
-    PyModule_AddObject(module, "Reader", (PyObject *)&degu_ReaderType);
+    Py_INCREF(&ReaderType);
+    PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
 
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
