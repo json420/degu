@@ -1300,6 +1300,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
     PyObject *bodies;
+    size_t maxlen;
     uint8_t *buf;
     size_t len;
     size_t rawtell;
@@ -1337,7 +1338,8 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     self->rawtell = 0;
     self->len = 0;
 
-    self->buf = (uint8_t *)calloc(READER_BUFFER_SIZE, sizeof(uint8_t));
+    self->maxlen = READER_BUFFER_SIZE;
+    self->buf = (uint8_t *)calloc(self->maxlen, sizeof(uint8_t));
     if (self->buf == NULL) {
         PyErr_NoMemory();
         return -1;
@@ -1370,13 +1372,13 @@ Reader_tell(Reader *self) {
     return PyLong_FromSize_t(self->rawtell - self->len);
 }
 
-/* _Reader_recv_into()
+
+/* _Reader_recv_into():
  *     -1  general error code for when _SET() goes to error
  *     -2  sock.recv_into() did not return an `int`
  *     -3  overflow when converting to Py_ssize_t (`OverflowError` raised)
  *     -4  sock.recv_into() did not return 0 <= size <= len
  */
-
 static Py_ssize_t
 _Reader_recv_into(Reader *self, uint8_t *buf, const size_t len)
 {
@@ -1438,6 +1440,26 @@ cleanup:
 }
 
 
+/* Reader.fill_buffer() */
+static PyObject *
+Reader_fill_buffer(Reader *self) {
+    Py_ssize_t size = 0;
+
+    if (self->len < self->maxlen) {
+        size = _Reader_recv_into(self,
+            self->buf + self->len,
+            self->maxlen - self->len
+        );
+        if (size < 0) {
+            return NULL;
+        }
+    }
+    self->len += size;
+    return PyLong_FromSsize_t(size);
+}
+
+
+
 static PyMethodDef Reader_methods[] = {
     {"avail", (PyCFunction)Reader_avail, METH_NOARGS,
         "number of bytes currently available in the buffer"
@@ -1447,6 +1469,9 @@ static PyMethodDef Reader_methods[] = {
     },
     {"tell", (PyCFunction)Reader_tell, METH_NOARGS,
         "total bytes thus far read from logical stream"
+    },
+    {"fill_buffer", (PyCFunction)Reader_fill_buffer, METH_NOARGS,
+        "fill the internal read buffer"
     },
     {NULL}
 };
