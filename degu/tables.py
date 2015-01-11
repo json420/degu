@@ -285,19 +285,16 @@ def replace(inlines, markers, newlines):
     state = 0
     outlines = []
     for line in inlines:
+        assert state in (0, 1, 2)
         if line == markers.begin:
             assert state == 0
             state += 1
-        if state == 1:
-            print('- ' + line)
-        else:
-            assert state in (0, 2)
+        if state in (0, 2):
             outlines.append(line)
         if line == markers.end:
             assert state == 1
             state += 1
             for new in newlines:
-                print('+ ' + new)
                 outlines.append(new)
     assert state == 2
     return outlines
@@ -314,6 +311,7 @@ def update(pkgdir, name, markers, newlines):
         fp.write('\n'.join(outlines) + '\n')
     os.rename(orig, bak)
     os.rename(tmp, orig)
+    print('Updated {!r}'.format(orig))
 
 
 class Generated:
@@ -341,7 +339,7 @@ class Generated:
 
     def update(self, pkgdir):
         update(pkgdir, '_base.c', self.markers_c, self.iter_lines_c())
-        update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
+        #update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
 
 
 if __name__ == '__main__':

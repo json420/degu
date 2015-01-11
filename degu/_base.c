@@ -107,7 +107,6 @@ static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
 };
 
-
 /*
  * DIGIT  1 00000001  b'0123456789'
  * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
@@ -115,14 +114,14 @@ static const uint8_t _NAMES[256] = {
  * QUERY  8 00001000  b'%&+='
  * URI   16 00010000  b'/?'
  * SPACE 32 00100000  b' '
- * VAL   64 01000000  b'"\'()*,;[]'
+ * VALUE 64 01000000  b'"\'()*,;[]'
  */
 #define DIGIT_MASK  254  // 11111110  ~(DIGIT)
 #define PATH_MASK   248  // 11111000  ~(DIGIT|ALPHA|PATH)
 #define QUERY_MASK  240  // 11110000  ~(DIGIT|ALPHA|PATH|QUERY)
 #define URI_MASK    224  // 11100000  ~(DIGIT|ALPHA|PATH|QUERY|URI)
 #define REASON_MASK 220  // 11011100  ~(DIGIT|ALPHA|SPACE)
-#define VAL_MASK    128  // 10000000  ~(DIGIT|ALPHA|PATH|QUERY|URI|SPACE|VAL)
+#define VALUE_MASK  128  // 10000000  ~(DIGIT|ALPHA|PATH|QUERY|URI|SPACE|VALUE)
 static const uint8_t _FLAGS[256] = {
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
@@ -712,7 +711,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     }
     else {
         _SET(val,
-            _decode(val_buf, val_len, VAL_MASK, "bad bytes in header value: %R")
+            _decode(val_buf, val_len, VALUE_MASK, "bad bytes in header value: %R")
         )
     }
 
@@ -754,7 +753,7 @@ _parse_preamble(const uint8_t *preamble_buf, const size_t preamble_len)
     }
 
     _SET(first_line,
-        _decode(line_buf, line_len, VAL_MASK, "bad bytes in first line: %R")
+        _decode(line_buf, line_len, VALUE_MASK, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
@@ -1109,7 +1108,7 @@ degu_read_preamble(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(first_line,
-        _decode(line_buf, line_len - 2, VAL_MASK, "bad bytes in first line: %R")
+        _decode(line_buf, line_len - 2, VALUE_MASK, "bad bytes in first line: %R")
     )
 
     /* Read, parse, and decode the header lines */
