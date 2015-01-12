@@ -36,6 +36,7 @@
 #define MAX_CL_VALUE 9007199254740992
 
 #define CRLF "\r\n"
+#define TERM "\r\n\r\n"
 #define SEP ": "
 #define GET "GET"
 #define PUT "PUT"
@@ -1493,6 +1494,33 @@ Reader_fill_buffer(Reader *self) {
 }
 
 
+/* Reader.read_preamble() */
+static PyObject *
+Reader_read_raw_preamble(Reader *self) {
+    const Py_ssize_t size = _Reader_fill_buffer(self);
+    if (size < 0) {
+        return NULL;
+    }
+
+    if (self->len == 0) {
+        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
+        return NULL;
+    }
+    if (self->len < 18) {
+        _value_error(self->buf, self->len, "preamble too short: %R");
+        return NULL;
+    }
+
+    uint8_t *term = memmem(self->buf, self->len, TERM, 4);
+    if (term == NULL) {
+        _value_error(self->buf + (self->len - 4), 4,
+            "bad preamble termination: %R"
+        );
+    }
+    return PyBytes_FromStringAndSize((char *)self->buf, term - self->buf);
+}
+
+
 static PyMethodDef Reader_methods[] = {
     {"avail", (PyCFunction)Reader_avail, METH_NOARGS,
         "number of bytes currently available in the buffer"
@@ -1505,6 +1533,9 @@ static PyMethodDef Reader_methods[] = {
     },
     {"fill_buffer", (PyCFunction)Reader_fill_buffer, METH_NOARGS,
         "fill the internal read buffer"
+    },
+    {"read_raw_preamble", (PyCFunction)Reader_read_raw_preamble, METH_NOARGS,
+        "read raw preamble bytes without parsing"
     },
     {NULL}
 };
