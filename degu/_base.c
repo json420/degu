@@ -162,6 +162,35 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
+typedef struct {
+    const uint8_t *ptr;
+    const size_t len;
+} _Buffer;
+
+#define _BUFFER(ptr, len) (_Buffer){ptr, len}
+
+static _Buffer
+_slice(const uint8_t *src_ptr, const size_t src_len,
+       const uint8_t *dst_ptr, const size_t dst_len)
+{
+    if (src_ptr == NULL || src_len == 0) {
+        Py_FatalError("_slice: src_ptr == NULL || src_len == 0");
+    }
+    if (dst_ptr == NULL || dst_len == 0) {
+        Py_FatalError("_slice: dst_ptr == NULL || dst_len == 0");
+    }
+    if (dst_ptr < src_ptr) {
+        Py_FatalError("_slice: dst_ptr < src_ptr");
+    }
+    if (dst_ptr + dst_len > src_ptr + src_len) {
+        Py_FatalError("_slice: dst_ptr + dst_len > src_ptr + src_len");
+    }
+    return _BUFFER(dst_ptr, dst_len);
+}
+
+#define _SLICE_FROM_BUFFER(src, dst_ptr, dst_len) \
+    _slice(src.ptr, src.len, dst_ptr, dst_len)
+
 
 /*
  * _SET() macro: assign a PyObject pointer.
@@ -226,34 +255,34 @@ _value_error(const uint8_t *buf, const size_t len, const char *format)
 
 
 static PyObject *
-_parse_method(const uint8_t *buf, const size_t len)
+_parse_method(_Buffer src)
 {
     PyObject *method = NULL;
 
-    if (len == 3) {
-        if (memcmp(buf, GET, 3) == 0) {
+    if (src.len == 3) {
+        if (memcmp(src.ptr, GET, 3) == 0) {
             method = str_GET;
         }
-        else if (memcmp(buf, PUT, 3) == 0) {
+        else if (memcmp(src.ptr, PUT, 3) == 0) {
             method = str_PUT;
         }
     }
-    else if (len == 4) {
-        if (memcmp(buf, POST, 4) == 0) {
+    else if (src.len == 4) {
+        if (memcmp(src.ptr, POST, 4) == 0) {
             method = str_POST;
         }
-        else if (memcmp(buf, HEAD, 4) == 0) {
+        else if (memcmp(src.ptr, HEAD, 4) == 0) {
             method = str_HEAD;
         }
     }
-    else if (len == 6) {
-        if (memcmp(buf, DELETE, 6) == 0) {
+    else if (src.len == 6) {
+        if (memcmp(src.ptr, DELETE, 6) == 0) {
             method = str_DELETE;
         }
     }
 
     if (method == NULL) {
-        _value_error(buf, len, "bad HTTP method: %R");
+        _value_error(src.ptr, src.len, "bad HTTP method: %R");
     }
     else {
         Py_INCREF(method);
@@ -265,13 +294,13 @@ _parse_method(const uint8_t *buf, const size_t len)
 static PyObject *
 degu_parse_method(PyObject *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
+    const uint8_t *ptr = NULL;
     size_t len = 0;
 
-    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &ptr, &len)) {
         return NULL;
     }
-    return _parse_method(buf, len);
+    return _parse_method(_BUFFER(ptr, len));
 }
 
 
@@ -543,12 +572,12 @@ _parse_request_line_inner(const uint8_t *buf, const size_t len,
         _value_error(buf, len, "bad inner request line: %R");
         return NULL;
     }
-
     method_len = sep - buf;
+
     uri_buf = sep + 1;
     uri_len = len - (uri_buf - buf);
 
-    _SET(*method, _parse_method(buf, method_len))
+    _SET(*method, _parse_method(_slice(buf, len, buf, method_len)))
     _SET(*uri,
         _decode(uri_buf, uri_len, URI_MASK, "bad uri in request line: %R")
     )
@@ -1297,15 +1326,6 @@ cleanup:
 }
 
 
-typedef struct {
-    const uint8_t *ptr;
-    const size_t len;
-} _Buf;
-
-#define _BUF(ptr, len) ((_Buf){ptr, len})
-#define _NULL_BUF _BUF(NULL, 0)
-
-
 static uint8_t *
 _degu_calloc(const size_t len)
 {
@@ -1322,11 +1342,16 @@ _degu_calloc(const size_t len)
 
 typedef struct {
     PyObject_HEAD
+
     PyObject *sock_recv_into;
     PyObject *bodies;
-    size_t maxlen;
-    uint8_t *buf;
-    size_t len;
+
+    uint8_t *buf_ptr;
+    size_t   buf_len;
+
+    uint8_t *cur_ptr;
+    size_t   cur_len;
+
     size_t rawtell;
 } Reader;
 
@@ -1336,9 +1361,9 @@ Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
+    if (self->buf_ptr != NULL) {
+        free(self->buf_ptr);
+        self->buf_ptr = NULL;
     }
 }
 
@@ -1361,9 +1386,12 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     _SET_AND_INC(self->bodies, bodies)
 
     self->rawtell = 0;
-    self->len = 0;
-    self->maxlen = READER_BUFFER_SIZE;
-    _SET(self->buf, _degu_calloc(self->maxlen))
+
+    _SET(self->buf_ptr, _degu_calloc(READER_BUFFER_SIZE))
+    self->buf_len = READER_BUFFER_SIZE;
+
+    _SET(self->cur_ptr, self->buf_ptr)
+    self->cur_len = 0;
 
     return 0;
 
@@ -1377,7 +1405,7 @@ error:
 /* Reader.avail() */
 static PyObject *
 Reader_avail(Reader *self) {
-    return PyLong_FromSize_t(self->len);
+    return PyLong_FromSize_t(self->cur_len);
 }
 
 /* Reader.rawtell() */
@@ -1389,7 +1417,7 @@ Reader_rawtell(Reader *self) {
 /* Reader.tell() */
 static PyObject *
 Reader_tell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell - self->len);
+    return PyLong_FromSize_t(self->rawtell - self->cur_len);
 }
 
 
@@ -1465,32 +1493,102 @@ cleanup:
 }
 
 
-/* _Reader_fill_buffer() */
+static void
+_Reader_check_buffer(Reader *self)
+{
+    if (self == NULL) {
+        Py_FatalError("_Reader_check_buffer() called with NULL pointer");
+    }
+
+    /* Check that buffer appears to be properly initialized */
+    if (self->buf_ptr == NULL || self->buf_len < 4096) {
+        Py_FatalError(
+            "_Reader_check_buffer: buf_ptr == NULL || buf_len < 4096"
+        );
+    }
+
+    /* Check that cur_ptr/cur_len is a valid slice within buf_ptr/buf_len */
+    if (self->cur_ptr < self->buf_ptr) {
+        Py_FatalError("_Reader_check_buffer: cur_ptr < buf_ptr");
+    }
+    if (self->cur_ptr + self->cur_len > self->buf_ptr + self->buf_len) {
+        Py_FatalError(
+            "_Reader_check_buffer: cur_ptr + cur_len > buf_ptr + buf_len"
+        );
+    }
+
+    /* When cur_len == 0, cur_ptr must equal buf_ptr */
+    if (self->cur_len == 0 && self->cur_ptr != self->buf_ptr) {
+        Py_FatalError(
+            "_Reader_check_buffer: cur_len == 0, but cur_ptr != buf_ptr"
+        );
+    }
+}
+
+
 static Py_ssize_t
 _Reader_fill_buffer(Reader *self) {
-    if (self->len >= self->maxlen) {
+    _Reader_check_buffer(self);
+
+    /* Nothing to do if buffer is already full */
+    if (self->cur_len >= self->buf_len) {
         return 0;
     }
-    const Py_ssize_t size = _Reader_recv_into(
-        self,
-        self->buf + self->len,
-        self->maxlen - self->len
-    );
-    if (size > 0) {
-        self->len += size;
+
+    /* If needed, move non-empty current region */
+    if (self->cur_len > 0 && self->cur_ptr != self->buf_ptr) {
+        memmove(self->buf_ptr, self->cur_ptr, self->cur_len);
+        self->cur_ptr = self->buf_ptr;
+        _Reader_check_buffer(self);
     }
+
+    uint8_t *start = self->cur_ptr + self->cur_len;
+    uint8_t *stop = self->buf_ptr + self->buf_len;
+    const Py_ssize_t size = _Reader_recv_into(self, start, stop - start);
+    if (size > 0) {
+        self->cur_len += size;
+    }
+    _Reader_check_buffer(self);
     return size;
 }
 
 
-/* Reader.fill_buffer() */
-static PyObject *
-Reader_fill_buffer(Reader *self) {
-    const Py_ssize_t size = _Reader_fill_buffer(self);
-    if (size < 0) {
-        return NULL;
+static void
+_Reader_consume_buffer(Reader *self, const size_t size)
+{
+    /* Consistency check before modification */
+    _Reader_check_buffer(self);
+
+    /* Make sure the call is sane */
+    if (size < 1 || size > self->cur_len) {
+        Py_FatalError("bad internal call to _Reader_consume_buffer()");
     }
-    return PyLong_FromSsize_t(size);
+
+    /* Consuming a portion of the buffer just updates cur_ptr, cur_len */
+    if (size == self->cur_len) {
+        self->cur_ptr = self->buf_ptr;
+        self->cur_len = 0;
+    }
+    else {
+        self->cur_ptr += size;
+        self->cur_len -= size;
+    }
+
+    /* Another consistency check after the modification */
+    _Reader_check_buffer(self);
+}
+
+
+static PyObject *
+_Reader_buffer_to_bytes(Reader *self, const uint8_t *ptr, const size_t len) {
+    _Reader_check_buffer(self);
+    if (ptr < self->cur_ptr) {
+        Py_FatalError("_Reader_buffer_to_bytes: ptr < cur_ptr");
+    }
+    if (ptr + len > self->cur_ptr + self->cur_len) {
+        Py_FatalError("_Reader_buffer_to_bytes: ptr + len > cur_ptr + cur_len");
+    }
+    return PyBytes_FromStringAndSize((const char *)ptr, len);
 }
 
 
@@ -1499,29 +1597,30 @@ static PyObject *
 Reader_read_raw_preamble(Reader *self) {
     PyObject *ret = NULL;
 
-    const Py_ssize_t size = _Reader_fill_buffer(self);
-    if (size < 0) {
+    if (_Reader_fill_buffer(self) < 0) {
         return NULL;
     }
-
-    if (self->len == 0) {
+    if (self->cur_len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         return NULL;
     }
-    if (self->len < 18) {
-        _value_error(self->buf, self->len, "preamble too short: %R");
+    if (self->cur_len < 18) {
+        _value_error(self->cur_ptr, self->cur_len, "preamble too short: %R");
         return NULL;
     }
 
-    uint8_t *term = memmem(self->buf, self->len, TERM, 4);
+    uint8_t *term = memmem(self->cur_ptr, self->cur_len, TERM, 4);
     if (term == NULL) {
-        _value_error(self->buf + (self->len - 4), 4,
+        _value_error(
+            self->cur_ptr + (self->cur_len - 4),
+            4,
             "bad preamble termination: %R"
         );
+        goto error;
     }
-
-    const size_t preamble_len = term - self->buf;
-    _SET(ret, PyBytes_FromStringAndSize((char *)self->buf, preamble_len))
+    const size_t preamble_len = term - self->cur_ptr;
+    _SET(ret, _Reader_buffer_to_bytes(self, self->cur_ptr, preamble_len))
+    _Reader_consume_buffer(self, preamble_len + 4);
     goto success;
 
 error:
@@ -1541,9 +1640,6 @@ static PyMethodDef Reader_methods[] = {
     },
     {"tell", (PyCFunction)Reader_tell, METH_NOARGS,
         "total bytes thus far read from logical stream"
-    },
-    {"fill_buffer", (PyCFunction)Reader_fill_buffer, METH_NOARGS,
-        "fill the internal read buffer"
     },
     {"read_raw_preamble", (PyCFunction)Reader_read_raw_preamble, METH_NOARGS,
         "read raw preamble bytes without parsing"
