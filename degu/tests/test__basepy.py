@@ -27,6 +27,7 @@ from unittest import TestCase
 import io
 import os
 
+from degu.base import bodies as default_bodies
 from degu import _basepy
 from degu._basepy import MAX_PREAMBLE_BYTES
 
@@ -46,7 +47,7 @@ class MockSocket:
 class TestReader(TestCase):
     def test_init(self):
         sock = MockSocket(b'GET / HTTP/1.1\r\n\r\n')
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
         self.assertIs(inst.sock, sock)
         self.assertIsInstance(inst._buf, bytearray)
         self.assertEqual(len(inst._buf), _basepy.MAX_PREAMBLE_BYTES)
@@ -61,14 +62,14 @@ class TestReader(TestCase):
 
     def test_rawtell(self):
         sock = MockSocket(b'GET / HTTP/1.1\r\n\r\n')
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
         self.assertEqual(inst.rawtell(), 0)
         inst._rawtell = 42
         self.assertEqual(inst.rawtell(), 42)
 
     def test_tell(self):
         sock = MockSocket(b'GET / HTTP/1.1\r\n\r\n')
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
         self.assertEqual(inst.tell(), 0)
         inst._rawtell = 22
         self.assertEqual(inst.tell(), 22)
@@ -79,7 +80,7 @@ class TestReader(TestCase):
         data1 = os.urandom(MAX_PREAMBLE_BYTES)
         data2 = os.urandom(34969)
         sock = MockSocket(data1 + data2)
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
 
         # Test when buffer is completely empty, raw can fill buffer:
         self.assertEqual(sock._rfile.tell(), 0)
@@ -106,7 +107,7 @@ class TestReader(TestCase):
         self.assertEqual(inst._view.tobytes(), data1[34969:] + data2)
 
     def test_consume_buffer(self):
-        inst = _basepy.Reader(None)
+        inst = _basepy.Reader(None, default_bodies)
         data = os.urandom(42)
         inst._view[0:42] = data
         inst._size = 42
@@ -127,7 +128,7 @@ class TestReader(TestCase):
         crlf = b'\r\n'
         term = crlf * 2  # Preamble terminator
         sock = MockSocket(b'GET / HTTP/1.1\r\n\r\nHello')
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
         self.assertEqual(inst.read_until(term), b'GET / HTTP/1.1')
         self.assertEqual(inst.rawtell(), 23)
         self.assertEqual(inst.tell(), 18)
@@ -135,7 +136,7 @@ class TestReader(TestCase):
         self.assertEqual(sock._rfile.read(), b'')
 
         sock = MockSocket(b'GET / HTTP/1.1\r\n')
-        inst = _basepy.Reader(sock)
+        inst = _basepy.Reader(sock, default_bodies)
         with self.assertRaises(ValueError) as cm:
             inst.read_until(term)
         self.assertEqual(str(cm.exception),

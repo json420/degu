@@ -99,6 +99,18 @@ GOOD_HEADERS = (
 )
 
 
+class MockSocket:
+    def __init__(self, data):
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+
+    def recv_into(self, buf):
+        return self._rfile.readinto(buf)
+
+    def send(self, data):
+        return self._wfile.write(data)
+
+
 def _permute_remove(method):
     if len(method) <= 1:
         return
@@ -2077,4 +2089,31 @@ class TestChunkedBodyIter(TestCase):
                 [('write', base._encode_chunk(chunk)), 'flush']
             )
         self.assertEqual(wfile._calls, expected)
+
+
+class TestReader_Py(TestCase):
+    backend = _basepy
+
+    @property
+    def Reader(self):
+        return getattr(self.backend, 'Reader')
+
+    def new(self, data=b''):
+        sock = MockSocket(data)
+        reader = self.Reader(sock, base.bodies)
+        return (sock, reader)
+
+    def test_init(self):
+        (sock, reader) = self.new()
+        self.assertEqual(reader.avail(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+
+
+class TestReader_C(TestReader_Py):
+    backend = _base
+
+    def setUp(self):
+        if self.backend is None:
+            self.skipTest('cannot import `degu._base` C extension')
 

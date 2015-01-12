@@ -1497,6 +1497,8 @@ Reader_fill_buffer(Reader *self) {
 /* Reader.read_preamble() */
 static PyObject *
 Reader_read_raw_preamble(Reader *self) {
+    PyObject *ret = NULL;
+
     const Py_ssize_t size = _Reader_fill_buffer(self);
     if (size < 0) {
         return NULL;
@@ -1517,7 +1519,16 @@ Reader_read_raw_preamble(Reader *self) {
             "bad preamble termination: %R"
         );
     }
-    return PyBytes_FromStringAndSize((char *)self->buf, term - self->buf);
+
+    const size_t preamble_len = term - self->buf;
+    _SET(ret, PyBytes_FromStringAndSize((char *)self->buf, preamble_len))
+    goto success;
+
+error:
+    Py_CLEAR(ret);
+
+success:
+    return ret;
 }
 
 

@@ -337,14 +337,18 @@ def _read_request_preamble(rfile):
 
 
 class Reader:
-    __slots__ = ('sock', '_buf', '_view', '_rawtell', '_size')
+    __slots__ = ('sock', 'bodies', '_buf', '_view', '_rawtell', '_size')
 
-    def __init__(self, sock):
+    def __init__(self, sock, bodies):
         self.sock = sock
+        self.bodies = bodies
         self._buf = bytearray(MAX_PREAMBLE_BYTES)
         self._view = memoryview(self._buf)
         self._rawtell = 0
         self._size = 0
+
+    def avail(self):
+        return self._size
 
     def rawtell(self):
         assert isinstance(self._rawtell, int) and self._rawtell >= 0
