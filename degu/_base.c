@@ -1297,6 +1297,29 @@ cleanup:
 
 
 typedef struct {
+    const uint8_t *ptr;
+    const size_t len;
+} _Buf;
+
+#define _BUF(ptr, len) ((_Buf){ptr, len})
+#define _NULL_BUF _BUF(NULL, 0)
+
+
+static uint8_t *
+_degu_calloc(const size_t len)
+{
+    if (len < 1) {
+        Py_FatalError("bad internal call to _degu_calloc() with len < 1");
+    }
+    uint8_t *ptr = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (ptr == NULL) {
+        PyErr_NoMemory();
+    }
+    return ptr;
+}
+
+
+typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
     PyObject *bodies;
@@ -1335,15 +1358,11 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->bodies, bodies)
+
     self->rawtell = 0;
     self->len = 0;
-
     self->maxlen = READER_BUFFER_SIZE;
-    self->buf = (uint8_t *)calloc(self->maxlen, sizeof(uint8_t));
-    if (self->buf == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
+    _SET(self->buf, _degu_calloc(self->maxlen))
 
     return 0;
 
@@ -1373,10 +1392,11 @@ Reader_tell(Reader *self) {
 }
 
 
+
 /* _Reader_recv_into():
  *     -1  general error code for when _SET() goes to error
  *     -2  sock.recv_into() did not return an `int`
- *     -3  overflow when converting to Py_ssize_t (`OverflowError` raised)
+ *     -3  overflow when converting to size_t (`OverflowError` raised)
  *     -4  sock.recv_into() did not return 0 <= size <= len
  */
 static Py_ssize_t
