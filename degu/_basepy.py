@@ -380,70 +380,114 @@ def _read_request_preamble(rfile):
 
 
 class Reader:
-    __slots__ = ('sock', 'bodies', '_buf', '_view', '_rawtell', '_size')
+    __slots__ = ('sock', 'bodies', '_buf', '_start', '_stop', '_rawtell')
 
     def __init__(self, sock, bodies):
         self.sock = sock
         self.bodies = bodies
-        self._buf = bytearray(MAX_PREAMBLE_BYTES)
-        self._view = memoryview(self._buf)
+        self._buf = memoryview(bytearray(MAX_PREAMBLE_BYTES))
+        self._start = 0
+        self._stop = 0
         self._rawtell = 0
-        self._size = 0
+
+    def _check_start_stop(self):
+        (start, stop) = (self._start, self._stop)
+        assert isinstance(start, int)
+        assert isinstance(stop, int)
+        assert 0 <= start <= stop <= len(self._buf)
+        if stop == 0:
+            assert start == 0
+        return (start, stop)
 
     def avail(self):
-        return self._size
+        (start, stop) = self._check_start_stop()
+        avail = stop - start
+        assert 0 <= avail <= len(self._buf)
+        return avail
 
     def rawtell(self):
-        assert isinstance(self._rawtell, int) and self._rawtell >= 0
         return self._rawtell
 
     def tell(self):
-        pos = self._rawtell - self._size
-        assert isinstance(pos, int) and pos >= 0
-        return pos
+        return self._rawtell - self.avail()
 
     def _fill_buffer(self):
-        assert 0 <= self._size <= len(self._buf)
-        if self._size == len(self._buf):
+        (start, stop) = self._check_start_stop()
+        size = stop - start
+        assert 0 <= size <= len(self._buf)
+
+        # Nothing to do if buffer is already full:
+        if size == len(self._buf):
             return 0
-        added = self.sock.recv_into(self._view[self._size:])
-        self._size += added
+
+        # If needed, set buf[0:size] = buf[start:stop]
+        if size > 0 and start > 0:
+            self._buf[0:size] = self._buf[start:stop]
+            self._start = 0
+            self._stop = size
+            (start, stop) = self._check_start_stop()
+            assert start == 0
+            assert stop == size
+
+        added = self.sock.recv_into(self._buf[size:])
+        self._stop += added
         self._rawtell += added
+        self._check_start_stop()
         return added
 
-    def _consume_buffer(self, size, trailing=0):
-        """
-        Consume first *size* bytes in buffer.
-        """
-        assert 0 <= size <= self._size <= MAX_PREAMBLE_BYTES
-        assert 0 <= trailing <= size
-        ret_size = size - trailing
-        ret = self._view[:ret_size].tobytes()
-        remaining = self._size - size
-        self._view[:remaining] = self._view[size:size+remaining]
-        self._size = remaining
-        return ret
+    def _consume_buffer(self, size):
+        avail = self.avail()
+        assert 1 <= size <= avail
+        if size == avail:
+            self._start = 0
+            self._stop = 0
+        else:
+            assert size < avail
+            self._start += size
+        self._check_start_stop()
 
-    def read_until(self, term, max_size=1024):
+    def _get_cur(self, max_size=None):
+        (start, stop) = self._check_start_stop()
+        avail = stop - start
+        size = (avail if max_size is None else min(avail, max_size))
+        assert start + size <= stop
+        return self._buf[start:start + size]
+
+    def _cur_to_bytes(self, start=0, stop=None):
+        if stop is None:
+            stop = len(self._buf)
+        assert isinstance(start, int)
+        assert isinstance(stop, int)
+        assert 0 <= start <= stop <= len(self._buf)
+        cur = self._get_cur()
+        return cur[start:stop].tobytes()
+
+    def _cur_to_bytes2(self, max_size):
+        cur = self._get_cur()
+        size = min(len(cur), max_size)
+        return cur[0:size].tobytes()
+
+    def _read_until(self, term, message, max_size=1024):
         assert isinstance(term, bytes) and len(term) >= 2
-        assert 512 <= max_size <= len(self._buf)
-        self._fill_buffer()
-        size = min(max_size, self._size)
-        index = self._buf[:size].find(term)
+        assert isinstance(max_size, int) and 512 <= max_size <= len(self._buf)
+        cur = self._cur_to_bytes2(max_size)
+        index = cur.find(term)
         if index < 0:
-            raise ValueError(
-                'could not find {!r} in first {} bytes'.format(term, size)
-            )
-        result_size = index + len(term)
-        assert 0 <= result_size <= size
-        return self._consume_buffer(result_size, len(term))
+            raise ValueError(message.format(cur[-len(term):]))
+        assert 0 <= index <= len(cur) - len(term)
+        self._consume_buffer(index + len(term))
+        return cur[:index]
 
-    def read_preamble(self):
+    def read_raw_preamble(self):
         self._fill_buffer()
-        index = self.buf.find(b'\r\n\r\n')
-        if 0 < index < self.stop:
-            pass
-
+        avail = self.avail()
+        if avail == 0:
+            raise EmptyPreambleError('HTTP preamble is empty')
+        if avail < 4:
+            raise ValueError(
+                'HTTP preamble too short: {!r}'.format(self._cur_to_bytes())
+            )
+        return self._read_until(b'\r\n\r\n', 'bad preamble termination: {!r}')
 
 def format_request_preamble(method, uri, headers):
     lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]

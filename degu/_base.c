@@ -228,6 +228,11 @@ _slice_between(_Buffer src, const uint8_t *dst_buf, const uint8_t *stop_buf)
 }
 
 
+#define _BUFFER_TO_BYTES(src) \
+    PyBytes_FromStringAndSize((const char *)src.buf, src.len)
+
+
+
 /*
  * _SET() macro: assign a PyObject pointer.
  *
@@ -1735,7 +1740,7 @@ _Reader_check_buffer(Reader *self)
 
 
 static Py_ssize_t
-_Reader_fill_buffer(Reader *self) {
+_Reader_fill_buf(Reader *self) {
     _Reader_check_buffer(self);
 
     /* Nothing to do if buffer is already full */
@@ -1753,23 +1758,23 @@ _Reader_fill_buffer(Reader *self) {
     uint8_t *start = self->cur_ptr + self->cur_len;
     uint8_t *stop = self->buf_ptr + self->buf_len;
     const Py_ssize_t size = _Reader_recv_into(self, start, stop - start);
-    if (size > 0) {
+    if (size >= 0) {
         self->cur_len += size;
+        _Reader_check_buffer(self);
     }
-    _Reader_check_buffer(self);
     return size;
 }
 
 
 static void
-_Reader_consume_buffer(Reader *self, const size_t size)
+_Reader_consume_cur(Reader *self, const size_t size)
 {
     /* Consistency check before modification */
     _Reader_check_buffer(self);
 
     /* Make sure the call is sane */
     if (size < 1 || size > self->cur_len) {
-        Py_FatalError("bad internal call to _Reader_consume_buffer()");
+        Py_FatalError("bad internal call to _Reader_consume_cur()");
     }
 
     /* Consuming a portion of the buffer just updates cur_ptr, cur_len */
@@ -1787,16 +1792,16 @@ _Reader_consume_buffer(Reader *self, const size_t size)
 }
 
 
-static PyObject *
-_Reader_buffer_to_bytes(Reader *self, const uint8_t *ptr, const size_t len) {
+static _Buffer
+_Reader_cur_to_buffer(Reader *self, const uint8_t *dst_buf, const size_t dst_len) {
     _Reader_check_buffer(self);
-    if (ptr < self->cur_ptr) {
-        Py_FatalError("_Reader_buffer_to_bytes: ptr < cur_ptr");
-    }
-    if (ptr + len > self->cur_ptr + self->cur_len) {
-        Py_FatalError("_Reader_buffer_to_bytes: ptr + len > cur_ptr + cur_len");
-    }
-    return PyBytes_FromStringAndSize((const char *)ptr, len);
+    return _slice(_BUFFER(self->cur_ptr, self->cur_len), dst_buf, dst_len);
+}
+
+
+static PyObject *
+_Reader_cur_to_bytes(Reader *self, const uint8_t *dst_buf, const size_t dst_len) {
+    return _BUFFER_TO_BYTES(_Reader_cur_to_buffer(self, dst_buf, dst_len));
 }
 
 
@@ -1805,15 +1810,17 @@ static PyObject *
 Reader_read_raw_preamble(Reader *self) {
     PyObject *ret = NULL;
 
-    if (_Reader_fill_buffer(self) < 0) {
+    if (_Reader_fill_buf(self) < 0) {
         return NULL;
     }
     if (self->cur_len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         return NULL;
     }
-    if (self->cur_len < 18) {
-        _value_error(self->cur_ptr, self->cur_len, "preamble too short: %R");
+    if (self->cur_len < 4) {
+        _value_error(self->cur_ptr, self->cur_len,
+            "HTTP preamble too short: %R"
+        );
         return NULL;
     }
 
@@ -1827,8 +1834,8 @@ Reader_read_raw_preamble(Reader *self) {
         goto error;
     }
     const size_t preamble_len = term - self->cur_ptr;
-    _SET(ret, _Reader_buffer_to_bytes(self, self->cur_ptr, preamble_len))
-    _Reader_consume_buffer(self, preamble_len + 4);
+    _SET(ret, _Reader_cur_to_bytes(self, self->cur_ptr, preamble_len))
+    _Reader_consume_cur(self, preamble_len + 4);
     goto success;
 
 error:

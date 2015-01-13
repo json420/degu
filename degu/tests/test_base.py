@@ -47,6 +47,10 @@ except ImportError:
 random = SystemRandom()
 
 
+CRLF = b'\r\n'
+TERM = CRLF * 2
+
+
 BAD_HEADER_LINES = (
     b'K:V\r\n',
     b'K V\r\n',
@@ -100,6 +104,8 @@ GOOD_HEADERS = (
 
 
 class MockSocket:
+    __slots__ = ('_rfile', '_wfile')
+
     def __init__(self, data):
         self._rfile = io.BytesIO(data)
         self._wfile = io.BytesIO()
@@ -2213,7 +2219,11 @@ class TestReader_Py(TestCase):
 
     @property
     def Reader(self):
-        return getattr(self.backend, 'Reader')
+        return self.backend.Reader
+
+    @property
+    def EmptyPreambleError(self):
+        return self.backend.EmptyPreambleError
 
     def new(self, data=b''):
         sock = MockSocket(data)
@@ -2222,9 +2232,51 @@ class TestReader_Py(TestCase):
 
     def test_init(self):
         (sock, reader) = self.new()
+        self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.avail(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
+
+    def test_read_raw_preamble(self):
+        (sock, reader) = self.new()
+        with self.assertRaises(self.EmptyPreambleError) as cm:
+            reader.read_raw_preamble()
+        self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
+
+        bad_ones = (
+            b'GET / HTTP/1.1',
+            b'GET / HTTP/1.1Content-Length: 17',
+            b'GET / HTTP/1.1\r\n',
+            b'GET / HTTP/1.1\r\n\r',
+            b'GET / HTTP/1.1\r\nContent-Length: 17',
+            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n',
+            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n\r',
+        )
+        for bad in bad_ones:
+            (sock, reader) = self.new(bad)
+            with self.assertRaises(ValueError) as cm:
+                reader.read_raw_preamble()
+            self.assertEqual(str(cm.exception),
+                'bad preamble termination: {!r}'.format(bad[-4:])
+            )
+            self.assertEqual(sock._rfile.tell(), len(bad))
+            self.assertEqual(reader.rawtell(), len(bad))
+            self.assertEqual(reader.avail(), len(bad))
+            self.assertEqual(reader.tell(), 0)
+
+        good_ones = (
+            b'GET / HTTP/1.1\r\n\r\n',
+            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n\r\n',
+            b'HTTP/1.1 200 OK\r\n\r\n',
+            b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n',
+        )
+        for good in good_ones:
+            (sock, reader) = self.new(good)
+            self.assertEqual(reader.read_raw_preamble(), good[0:-4])
+            self.assertEqual(sock._rfile.tell(), len(good))
+            self.assertEqual(reader.rawtell(), len(good))
+            self.assertEqual(reader.avail(), 0)
+            self.assertEqual(reader.tell(), len(good))
 
 
 class TestReader_C(TestReader_Py):
