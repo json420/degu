@@ -72,6 +72,11 @@ VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
 
+def _decode(src, allowed, message):
+    if allowed.issuperset(src):
+        return src.decode('ascii')
+    raise ValueError(message.format(src))
+
 
 def parse_method(method):
     if isinstance(method, str):
@@ -87,6 +92,44 @@ def parse_method(method):
     if method == b'DELETE':
         return DELETE
     raise ValueError('bad HTTP method: {!r}'.format(method))
+
+
+def _parse_path(src):
+    if not src:
+        raise ValueError('path is empty')
+    if src[0:1] != b'/':
+        raise ValueError("path[0:1] != b'/': {!r}".format(src))
+    if b'//' in src:
+        raise ValueError("b'//' in path: {!r}".format(src))
+
+    if src == b'/':
+        return []
+    return [
+        _decode(c, PATH, 'bad bytes in path component: {!r}')
+        for c in src[1:].split(b'/')
+    ]
+
+
+def parse_uri(src):
+    if not src:
+        raise ValueError('uri is empty')
+    if src[0:1] != b'/':
+        raise ValueError("uri[0:1] != b'/': {!r}".format(src))
+
+    uri = _decode(src, URI, 'bad bytes in uri: {!r}')
+    parts = src.split(b'?', 1)
+    assert len(parts) in (1, 2)
+    path = _parse_path(parts[0])
+    if len(parts) == 1:
+        query = None
+    else:
+        query = _decode(parts[1], QUERY, 'bad bytes in query: {!r}')
+    return {
+        'uri': uri,
+        'script': [],
+        'path': path,
+        'query': query,
+    }
 
 
 def _decode_value(src, message):

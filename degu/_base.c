@@ -72,6 +72,15 @@ static PyObject *str_OK     = NULL;  // 'OK'
 static PyObject *args_size_two = NULL;  //  (2,)
 static PyObject *args_size_max = NULL;  //  (4096,)
 
+/* Keys used in the RGI request dict */
+static PyObject *str_method  = NULL;  // 'method'
+static PyObject *str_uri     = NULL;  // 'uri'
+static PyObject *str_script  = NULL;  // 'script'
+static PyObject *str_path    = NULL;  // 'path'
+static PyObject *str_query   = NULL;  // 'query'
+static PyObject *str_headers = NULL;  // 'headers'
+static PyObject *str_body    = NULL;  // 'body'
+
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/
@@ -163,33 +172,60 @@ static const uint8_t _FLAGS[256] = {
 
 
 typedef struct {
-    const uint8_t *ptr;
+    const uint8_t *buf;
     const size_t len;
 } _Buffer;
 
-#define _BUFFER(ptr, len) (_Buffer){ptr, len}
+#define _BUFFER(buf, len) (_Buffer){buf, len}
+
 
 static _Buffer
-_slice(const uint8_t *src_ptr, const size_t src_len,
-       const uint8_t *dst_ptr, const size_t dst_len)
+_slice(_Buffer src, const uint8_t *dst_buf, const size_t dst_len)
 {
-    if (src_ptr == NULL || src_len == 0) {
-        Py_FatalError("_slice: src_ptr == NULL || src_len == 0");
+    if (src.buf == NULL || src.len <= 0) {
+        Py_FatalError("_slice: src.buf == NULL || src.len <= 0");
     }
-    if (dst_ptr == NULL || dst_len == 0) {
-        Py_FatalError("_slice: dst_ptr == NULL || dst_len == 0");
+    if (dst_buf == NULL || dst_len < 0) {
+        Py_FatalError("_slice: dst_buf == NULL || dst_len < 0");
     }
-    if (dst_ptr < src_ptr) {
-        Py_FatalError("_slice: dst_ptr < src_ptr");
+    if (dst_buf < src.buf) {
+        Py_FatalError("_slice: dst_buf < src.buf");
     }
-    if (dst_ptr + dst_len > src_ptr + src_len) {
-        Py_FatalError("_slice: dst_ptr + dst_len > src_ptr + src_len");
+    if (dst_buf + dst_len > src.buf + src.len) {
+        Py_FatalError("_slice: dst_buf + dst_len > src.buf + src.len");
     }
-    return _BUFFER(dst_ptr, dst_len);
+    return _BUFFER(dst_buf, dst_len);
 }
 
-#define _SLICE_FROM_BUFFER(src, dst_ptr, dst_len) \
-    _slice(src.ptr, src.len, dst_ptr, dst_len)
+
+static _Buffer
+_slice_before(_Buffer src, const uint8_t *stop_buf)
+{
+    if (stop_buf < src.buf) {
+        Py_FatalError("_slice_before: stop_buf < src.buf");
+    }
+    const size_t dst_len = stop_buf - src.buf;
+    return _slice(src, src.buf, dst_len);
+}
+
+
+static _Buffer
+_slice_after(_Buffer src, const uint8_t *dst_buf)
+{
+    const size_t dst_len = src.len - (dst_buf - src.buf);
+    return _slice(src, dst_buf, dst_len);
+}
+
+
+static _Buffer
+_slice_between(_Buffer src, const uint8_t *dst_buf, const uint8_t *stop_buf)
+{
+    if (stop_buf < dst_buf) {
+        Py_FatalError("_slice_between: stop_buf < dst_buf");
+    }
+    const size_t dst_len = stop_buf - dst_buf;
+    return _slice(src, dst_buf, dst_len);
+}
 
 
 /*
@@ -253,6 +289,10 @@ _value_error(const uint8_t *buf, const size_t len, const char *format)
     Py_CLEAR(tmp);
 }
 
+#define _VALUE_ERROR(src, format) \
+    _value_error(src.buf, src.len, format); \
+    goto error;
+
 
 static PyObject *
 _parse_method(_Buffer src)
@@ -260,29 +300,29 @@ _parse_method(_Buffer src)
     PyObject *method = NULL;
 
     if (src.len == 3) {
-        if (memcmp(src.ptr, GET, 3) == 0) {
+        if (memcmp(src.buf, GET, 3) == 0) {
             method = str_GET;
         }
-        else if (memcmp(src.ptr, PUT, 3) == 0) {
+        else if (memcmp(src.buf, PUT, 3) == 0) {
             method = str_PUT;
         }
     }
     else if (src.len == 4) {
-        if (memcmp(src.ptr, POST, 4) == 0) {
+        if (memcmp(src.buf, POST, 4) == 0) {
             method = str_POST;
         }
-        else if (memcmp(src.ptr, HEAD, 4) == 0) {
+        else if (memcmp(src.buf, HEAD, 4) == 0) {
             method = str_HEAD;
         }
     }
     else if (src.len == 6) {
-        if (memcmp(src.ptr, DELETE, 6) == 0) {
+        if (memcmp(src.buf, DELETE, 6) == 0) {
             method = str_DELETE;
         }
     }
 
     if (method == NULL) {
-        _value_error(src.ptr, src.len, "bad HTTP method: %R");
+        _value_error(src.buf, src.len, "bad HTTP method: %R");
     }
     else {
         Py_INCREF(method);
@@ -294,13 +334,13 @@ _parse_method(_Buffer src)
 static PyObject *
 degu_parse_method(PyObject *self, PyObject *args)
 {
-    const uint8_t *ptr = NULL;
+    const uint8_t *buf = NULL;
     size_t len = 0;
 
-    if (!PyArg_ParseTuple(args, "s#:parse_method", &ptr, &len)) {
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         return NULL;
     }
-    return _parse_method(_BUFFER(ptr, len));
+    return _parse_method(_BUFFER(buf, len));
 }
 
 
@@ -353,7 +393,7 @@ parse_header_name(PyObject *self, PyObject *args)
 
 
 static PyObject *
-_decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *format)
+_decode(_Buffer src, const uint8_t mask, const char *format)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -363,22 +403,29 @@ _decode(const uint8_t *buf, const size_t len, const uint8_t mask, const char *fo
     if (mask == 0 || (mask & 1) != 0) {
         Py_FatalError("internal error in `_decode()`: bad mask");
     }
-    dst = PyUnicode_New(len, 127);
-    if (dst == NULL) {
-        return NULL;
+    if (src.len < 1) {
+        _SET_AND_INC(dst, str_empty);
+        goto done;
     }
+    _SET(dst, PyUnicode_New(src.len, 127))
     dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (bits = i = 0; i < len; i++) {
-        c = dst_buf[i] = buf[i];
+    for (bits = i = 0; i < src.len; i++) {
+        c = dst_buf[i] = src.buf[i];
         bits |= _FLAGS[c];
     }
     if (bits == 0) {
         Py_FatalError("internal error in `_decode()`");
     }
     if ((bits & mask) != 0) {
-        Py_CLEAR(dst);
-        _value_error(buf, len, format);
+        _value_error(src.buf, src.len, format);
+        goto error;
     }
+    goto done;
+
+error:
+    Py_CLEAR(dst);
+
+done:
     return dst;
 }
 
@@ -510,7 +557,7 @@ _parse_response_line(const uint8_t *buf, const size_t len,
     }
     else {
         _SET(*reason,
-            _decode(buf + 13, len - 13, REASON_MASK, "bad reason in response line: %R")
+            _decode(_BUFFER(buf + 13, len - 13), REASON_MASK, "bad reason in response line: %R")
         )
     }
 
@@ -559,27 +606,22 @@ static bool
 _parse_request_line_inner(const uint8_t *buf, const size_t len,
                           PyObject **method, PyObject **uri)
 {
-    uint8_t *sep, *uri_buf;
-    size_t method_len, uri_len;
+    uint8_t *sep;
+    _Buffer src = _BUFFER(buf, len);
 
     /* Search for method terminating space, plus start of uri:
      *
      *     "GET /"
      *         ^^
      */
-    sep = memmem(buf, len, " /", 2);
+    sep = memmem(src.buf, src.len, " /", 2);
     if (sep == NULL) {
         _value_error(buf, len, "bad inner request line: %R");
         return NULL;
     }
-    method_len = sep - buf;
-
-    uri_buf = sep + 1;
-    uri_len = len - (uri_buf - buf);
-
-    _SET(*method, _parse_method(_slice(buf, len, buf, method_len)))
+    _SET(*method, _parse_method(_slice_before(src, sep)))
     _SET(*uri,
-        _decode(uri_buf, uri_len, URI_MASK, "bad uri in request line: %R")
+        _decode(_slice_after(src, sep + 1), URI_MASK, "bad uri in request line: %R")
     )
 
     /* Success! */
@@ -622,6 +664,172 @@ _parse_request_line(const uint8_t *buf, const size_t len,
      *      ^^^^^
      */
     return _parse_request_line_inner(buf, len - 9, method, uri);
+}
+
+
+#define _SET_ITEM(dict, key, val) \
+    if (PyDict_SetItem(dict, key, val) != 0) { \
+        goto error; \
+    }
+
+
+#define _APPEND(list, item) \
+    if (PyList_Append(list, item) != 0) { \
+        goto error; \
+    }
+
+
+static PyObject *
+_parse_path(_Buffer src)
+{
+    PyObject *path = NULL;
+    PyObject *component = NULL;
+    const uint8_t *start, *stop, *final_stop;
+
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "path is empty");
+        goto error;
+    }
+    if (src.buf[0] != '/') {
+        _VALUE_ERROR(src, "path[0:1] != b'/': %R")
+    }
+
+    _SET(path, PyList_New(0))
+    if (src.len == 1) {
+        goto cleanup;
+    }
+    final_stop = src.buf + src.len;
+    start = src.buf + 1;
+    while (start < final_stop) {
+        stop = memchr(start, '/', final_stop - start);
+        if (stop == NULL) {
+            stop = final_stop;
+        }
+        if (start >= stop) {
+            _VALUE_ERROR(src, "b'//' in path: %R")
+        }
+        if (stop - start == 2)
+        _REPLACE(component,
+            _decode(
+                _slice_between(src, start, stop),
+                PATH_MASK,
+                "bad bytes in path component: %R"
+            )
+        )
+        _APPEND(path, component)
+        start = stop + 1;
+    }
+    if (src.buf[src.len - 1] == '/') {
+        _APPEND(path, str_empty)
+    }
+    goto cleanup;
+
+error:
+    Py_CLEAR(path);
+
+cleanup:
+    Py_CLEAR(component);
+    return path;
+}
+
+
+static PyObject *
+_parse_query(_Buffer src)
+{
+    PyObject *query = NULL;
+
+    _SET(query,
+        _decode(src, QUERY_MASK, "bad bytes in query: %R")
+    )
+    goto cleanup;
+
+error:
+    Py_CLEAR(query);
+
+cleanup:
+    return query;
+}
+
+
+static bool
+_parse_uri(_Buffer src, PyObject *request)
+{
+    bool success = true;
+    const uint8_t *q;
+
+    PyObject *uri = NULL;
+    PyObject *script = NULL;
+    PyObject *path = NULL;
+    PyObject *query = NULL;
+
+    if (src.buf == NULL || request == NULL || !PyDict_CheckExact(request)) {
+        Py_FatalError("bad internal call to _parse_uri()");
+    }
+
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "uri is empty");
+        goto error;
+    }
+    if (src.buf[0] != '/') {
+        _value_error(src.buf, src.len, "uri[0:1] != b'/': %R");
+        goto error;
+    }
+
+    /* Build PyObjects used as values in request dict */
+    _SET(uri,
+        _decode(src, URI_MASK, "bad bytes in uri: %R")
+    )
+    _SET(script, PyList_New(0))
+    q = memchr(src.buf, '?', src.len);
+    if (q == NULL) {
+        _SET(path, _parse_path(src))
+        _SET_AND_INC(query, Py_None)
+    }
+    else {
+        _SET(path, _parse_path(_slice_before(src, q)))
+        _SET(query, _parse_query(_slice_after(src, q + 1)))
+    }
+
+    /* Fill in values in request dict */
+    _SET_ITEM(request, str_uri, uri)
+    _SET_ITEM(request, str_script, script)
+    _SET_ITEM(request, str_path, path)
+    _SET_ITEM(request, str_query, query)
+    goto cleanup;
+
+error:
+    success = false;
+
+cleanup:
+    Py_CLEAR(uri);
+    Py_CLEAR(script);
+    Py_CLEAR(path);
+    Py_CLEAR(query);
+    return success;
+}
+
+
+static PyObject *
+parse_uri(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *request = NULL;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
+        return NULL;
+    }
+    _SET(request, PyDict_New())
+    if (!_parse_uri(_BUFFER(buf, len), request)) {
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    Py_CLEAR(request);
+
+cleanup:
+    return request;
 }
 
 
@@ -743,7 +951,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     }
     else {
         _SET(val,
-            _decode(val_buf, val_len, VALUE_MASK, "bad bytes in header value: %R")
+            _decode(_BUFFER(val_buf, val_len), VALUE_MASK, "bad bytes in header value: %R")
         )
     }
 
@@ -835,7 +1043,7 @@ _parse_preamble(const uint8_t *buf, const size_t len)
     }
 
     _SET(first_line,
-        _decode(buf, line_len, VALUE_MASK, "bad bytes in first line: %R")
+        _decode(_BUFFER(buf, line_len), VALUE_MASK, "bad bytes in first line: %R")
     )
 
     if (crlf == NULL) {
@@ -1332,11 +1540,11 @@ _degu_calloc(const size_t len)
     if (len < 1) {
         Py_FatalError("bad internal call to _degu_calloc() with len < 1");
     }
-    uint8_t *ptr = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (ptr == NULL) {
+    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (buf == NULL) {
         PyErr_NoMemory();
     }
-    return ptr;
+    return buf;
 }
 
 
@@ -1694,6 +1902,8 @@ static PyTypeObject ReaderType = {
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
+
     {"parse_header_name", parse_header_name, METH_VARARGS,
         "parse_header_name(buf)"
     },
@@ -1782,6 +1992,14 @@ PyInit__base(void)
     _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
     _SET(str_empty, PyUnicode_InternFromString(""))
     _SET(str_crlf, PyUnicode_InternFromString(CRLF))
+
+    _SET(str_method, PyUnicode_InternFromString("method"))
+    _SET(str_uri, PyUnicode_InternFromString("uri"))
+    _SET(str_script, PyUnicode_InternFromString("script"))
+    _SET(str_path, PyUnicode_InternFromString("path"))
+    _SET(str_query, PyUnicode_InternFromString("query"))
+    _SET(str_headers, PyUnicode_InternFromString("headers"))
+    _SET(str_body, PyUnicode_InternFromString("body"))
 
     /* Init pre-built global args tuple for rfile.readline(_MAX_LINE_SIZE) */
     _SET(int_size_max, PyObject_GetAttrString(module, "_MAX_LINE_SIZE"))    

@@ -433,6 +433,123 @@ class TestFunctions(AlternatesTestCase):
         self.skip_if_no_c_ext()
         self.check_parse_method(_base)
 
+    def check_parse_uri(self, backend):
+        self.assertIn(backend, (_base, _basepy))
+        parse_uri = backend.parse_uri
+
+        # Empty b'':
+        with self.assertRaises(ValueError) as cm:
+            parse_uri(b'')
+        self.assertEqual(str(cm.exception), 'uri is empty')
+
+        # URI does not start with /:
+        with self.assertRaises(ValueError) as cm:
+            parse_uri(b'foo')
+        self.assertEqual(str(cm.exception), "uri[0:1] != b'/': b'foo'")
+
+        # Empty path component:
+        double_slashers = (
+            b'//',
+            b'//foo',
+            b'//foo/',
+            b'//foo/bar',
+            b'//foo/bar/',
+            b'/foo//',
+            b'/foo//bar',
+            b'/foo//bar/',
+            b'/foo/bar//',
+        )
+        for bad in double_slashers:
+            for suffix in (b'', b'?', b'?q'):
+                with self.assertRaises(ValueError) as cm:
+                    parse_uri(bad + suffix)
+                self.assertEqual(str(cm.exception),
+                    "b'//' in path: {!r}".format(bad)
+                )
+
+        self.assertEqual(parse_uri(b'/'), {
+            'uri': '/',
+            'script': [],
+            'path': [],
+            'query': None,
+        })
+        self.assertEqual(parse_uri(b'/?'), {
+            'uri': '/?',
+            'script': [],
+            'path': [],
+            'query': '',
+        })
+        self.assertEqual(parse_uri(b'/?q'), {
+            'uri': '/?q',
+            'script': [],
+            'path': [],
+            'query': 'q',
+        })
+
+        self.assertEqual(parse_uri(b'/foo'), {
+            'uri': '/foo',
+            'script': [],
+            'path': ['foo'],
+            'query': None,
+        })
+        self.assertEqual(parse_uri(b'/foo?'), {
+            'uri': '/foo?',
+            'script': [],
+            'path': ['foo'],
+            'query': '',
+        })
+        self.assertEqual(parse_uri(b'/foo?q'), {
+            'uri': '/foo?q',
+            'script': [],
+            'path': ['foo'],
+            'query': 'q',
+        })
+
+        self.assertEqual(parse_uri(b'/foo/'), {
+            'uri': '/foo/',
+            'script': [],
+            'path': ['foo', ''],
+            'query': None,
+        })
+        self.assertEqual(parse_uri(b'/foo/?'), {
+            'uri': '/foo/?',
+            'script': [],
+            'path': ['foo', ''],
+            'query': '',
+        })
+        self.assertEqual(parse_uri(b'/foo/?q'), {
+            'uri': '/foo/?q',
+            'script': [],
+            'path': ['foo', ''],
+            'query': 'q',
+        })
+
+        self.assertEqual(parse_uri(b'/foo/bar'), {
+            'uri': '/foo/bar',
+            'script': [],
+            'path': ['foo', 'bar'],
+            'query': None,
+        })
+        self.assertEqual(parse_uri(b'/foo/bar?'), {
+            'uri': '/foo/bar?',
+            'script': [],
+            'path': ['foo', 'bar'],
+            'query': '',
+        })
+        self.assertEqual(parse_uri(b'/foo/?q'), {
+            'uri': '/foo/?q',
+            'script': [],
+            'path': ['foo', ''],
+            'query': 'q',
+        })
+
+    def test_parse_uri_py(self):
+        self.check_parse_uri(_basepy)
+
+    def test_parse_uri_c(self):
+        self.skip_if_no_c_ext()
+        self.check_parse_uri(_base)
+
     def check_parse_header_name(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_header_name = backend.parse_header_name
