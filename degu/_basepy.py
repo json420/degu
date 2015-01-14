@@ -39,7 +39,8 @@ __all__ = (
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 _MAX_HEADER_COUNT = 20
 
-MAX_PREAMBLE_BYTES = 65536  # 64 KiB
+READER_BUFFER_SIZE = 65536  # 64 KiB
+MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
 
 GET = 'GET'
 PUT = 'PUT'
@@ -113,8 +114,6 @@ def _parse_path(src):
 def parse_uri(src):
     if not src:
         raise ValueError('uri is empty')
-    if src[0:1] != b'/':
-        raise ValueError("uri[0:1] != b'/': {!r}".format(src))
 
     uri = _decode(src, URI, 'bad bytes in uri: {!r}')
     parts = src.split(b'?', 1)
@@ -380,114 +379,171 @@ def _read_request_preamble(rfile):
 
 
 class Reader:
-    __slots__ = ('sock', 'bodies', '_buf', '_start', '_stop', '_rawtell')
+    __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
 
     def __init__(self, sock, bodies):
         self.sock = sock
         self.bodies = bodies
-        self._buf = memoryview(bytearray(MAX_PREAMBLE_BYTES))
-        self._start = 0
-        self._stop = 0
         self._rawtell = 0
-
-    def _check_start_stop(self):
-        (start, stop) = (self._start, self._stop)
-        assert isinstance(start, int)
-        assert isinstance(stop, int)
-        assert 0 <= start <= stop <= len(self._buf)
-        if stop == 0:
-            assert start == 0
-        return (start, stop)
+        self._rawbuf = memoryview(bytearray(2**16))
+        self._start = 0
+        self._buf = self._rawbuf[0:0]
 
     def avail(self):
-        (start, stop) = self._check_start_stop()
-        avail = stop - start
-        assert 0 <= avail <= len(self._buf)
-        return avail
+        return len(self._buf)
 
     def rawtell(self):
         return self._rawtell
 
     def tell(self):
-        return self._rawtell - self.avail()
+        return self._rawtell - len(self._buf)
 
-    def _fill_buffer(self):
-        (start, stop) = self._check_start_stop()
-        size = stop - start
-        assert 0 <= size <= len(self._buf)
-
-        # Nothing to do if buffer is already full:
-        if size == len(self._buf):
-            return 0
-
-        # If needed, set buf[0:size] = buf[start:stop]
-        if size > 0 and start > 0:
-            self._buf[0:size] = self._buf[start:stop]
-            self._start = 0
-            self._stop = size
-            (start, stop) = self._check_start_stop()
-            assert start == 0
-            assert stop == size
-
-        added = self.sock.recv_into(self._buf[size:])
-        self._stop += added
+    def _raw_recv_into(self, buf):
+        added = self.sock.recv_into(buf)
         self._rawtell += added
-        self._check_start_stop()
         return added
 
-    def _consume_buffer(self, size):
-        avail = self.avail()
-        assert 1 <= size <= avail
-        if size == avail:
-            self._start = 0
-            self._stop = 0
+    def _update_buffer(self, start, size):
+        """
+        Valid transitions::
+
+            ===========================
+            -->|<--            |  Empty
+               |<---- buf <--  |  Shift
+               |      buf ---->|  Fill
+               |  --> buf      |  Drain
+            ===========================
+        """
+        # Check previous state:
+        assert 0 <= self._start <= self._start + len(self._buf) <= len(self._rawbuf)
+
+        # Check new state:
+        assert 0 <= start <= start + size <= len(self._rawbuf)
+
+        # _update_buffer() should only be called when there is a change:
+        assert start != self._start or size != len(self._buf)
+
+        # Check that previous to new is one of the four valid transitions:
+        if size == 0:
+            # empty
+            assert start == 0
+            assert len(self._buf) > 0
+        elif size == len(self._buf):
+            # shift
+            assert size > 0
+            assert start == 0
+            assert self._start > 0
+        elif size > len(self._buf):
+            # fill
+            assert size > 0
+            assert start == self._start == 0
+        elif size < len(self._buf):
+            # drain
+            assert size > 0
+            assert start + size == self._start + len(self._buf)
         else:
-            assert size < avail
-            self._start += size
-        self._check_start_stop()
+            raise ValueError(
+                'invalid buffer update: ({},{}) --> ({}, {})'.format(
+                    self._start, len(self._buf), start, size
+                )
+            )
 
-    def _get_cur(self, max_size=None):
-        (start, stop) = self._check_start_stop()
-        avail = stop - start
-        size = (avail if max_size is None else min(avail, max_size))
-        assert start + size <= stop
-        return self._buf[start:start + size]
+        # Update start, buf:
+        self._start = start
+        self._buf = self._rawbuf[start:start+size]
 
-    def _cur_to_bytes(self, start=0, stop=None):
-        if stop is None:
-            stop = len(self._buf)
-        assert isinstance(start, int)
-        assert isinstance(stop, int)
-        assert 0 <= start <= stop <= len(self._buf)
-        cur = self._get_cur()
-        return cur[start:stop].tobytes()
 
-    def _cur_to_bytes2(self, max_size):
-        cur = self._get_cur()
-        size = min(len(cur), max_size)
-        return cur[0:size].tobytes()
+    def _fill_buffer(self):
+        avail = len(self._buf)
 
-    def _read_until(self, term, message, max_size=1024):
-        assert isinstance(term, bytes) and len(term) >= 2
-        assert isinstance(max_size, int) and 512 <= max_size <= len(self._buf)
-        cur = self._cur_to_bytes2(max_size)
-        index = cur.find(term)
+        # Nothing to do if buffer is already full:
+        if avail == len(self._rawbuf):
+            return 0
+
+        # If needed, shift current buf content to start of rawbuf:
+        if self._start > 0:
+            assert avail > 0
+            self._rawbuf[0:avail] = self._buf
+            self._update_buffer(0, avail)
+
+        assert self._start == 0
+        assert len(self._buf) == avail
+        added = self._raw_recv_into(self._rawbuf[avail:])
+        if added > 0:
+            self._update_buffer(0, avail + added)
+        return added
+
+    def _drain_buffer(self, amount):
+        assert isinstance(amount, int) and amount >= 0
+        if amount == 0:
+            return
+        avail = self.avail()
+        if amount > avail:
+            raise ValueError(
+                'Reader._drain_buffer(): amount > avail: {} > {}'.format(amount, avail)
+            )
+        if amount == avail:
+            # Empty the buffer:
+            self._update_buffer(0, 0)
+        else:
+            assert 0 < amount < avail
+            # Drain some of the buffer:
+            self._update_buffer(self._start + amount, avail - amount)
+
+    def _read_until(self, end, max_size, message):
+        assert isinstance(end, bytes)
+        assert isinstance(max_size, int)
+        assert 2 <= len(end) <= 4
+        assert len(end) <= max_size <= len(self._rawbuf)
+
+        size = min(max_size, len(self._buf))
+        haystack = self._buf[0:size].tobytes()
+        index = haystack.find(end)
         if index < 0:
-            raise ValueError(message.format(cur[-len(term):]))
-        assert 0 <= index <= len(cur) - len(term)
-        self._consume_buffer(index + len(term))
-        return cur[:index]
+            raise ValueError(
+                message.format(haystack[-len(end):])
+            )
+        assert 0 <= index <= size - len(end)
+        self._drain_buffer(index + len(end))
+        return haystack[0:index]
 
     def read_raw_preamble(self):
-        self._fill_buffer()
-        avail = self.avail()
-        if avail == 0:
+        if self.avail() < MAX_PREAMBLE_SIZE:
+            self._fill_buffer()
+        if self.avail() == 0:
             raise EmptyPreambleError('HTTP preamble is empty')
-        if avail < 4:
+        return self._read_until(
+            b'\r\n\r\n',
+            MAX_PREAMBLE_SIZE,
+            'bad preamble termination: {!r}'
+        )
+
+    def read(self, max_size):
+        assert isinstance(max_size, int)
+        if max_size < 0:
             raise ValueError(
-                'HTTP preamble too short: {!r}'.format(self._cur_to_bytes())
+                'need max_size >= 0; got {}'.format(max_size)
             )
-        return self._read_until(b'\r\n\r\n', 'bad preamble termination: {!r}')
+        if max_size == 0:
+            return b''
+        if max_size <= len(self._rawbuf):
+            if max_size > len(self._buf):
+                self._fill_buffer()
+            size = min(max_size, len(self._buf))
+            data = self._buf[0:size].tobytes()
+            self._drain_buffer(size)
+            return data
+        assert False
+        tmp = bytearray(max_size)
+        avail = len(self._buf)
+        if avail > 0:
+            tmp[0:avail] = self._buf
+            self._drain_buffer(avail)
+            size = avail + self._raw_recv_into(tmp[avail:])
+        else:
+            size = self._raw_recv_into(tmp)
+        return tmp[0:size].tobytes()
+
 
 def format_request_preamble(method, uri, headers):
     lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]

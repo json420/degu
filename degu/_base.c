@@ -29,6 +29,7 @@
 #define _MAX_HEADER_COUNT 20
 
 #define READER_BUFFER_SIZE 65536
+#define MAX_PREAMBLE_SIZE 32768
 
 // Constraints for the content-length value:
 #define MAX_HEADER_NAME_LEN 32
@@ -37,7 +38,6 @@
 
 #define CRLF "\r\n"
 #define TERM "\r\n\r\n"
-#define SEP ": "
 #define GET "GET"
 #define PUT "PUT"
 #define POST "POST"
@@ -61,7 +61,6 @@ static PyObject *str_recv_into = NULL;          //  'recv_into'
 static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
-static PyObject *str_empty = NULL;              //  ''
 static PyObject *str_crlf = NULL;               //  '\r\n'
 static PyObject *str_GET    = NULL;  // 'GET'
 static PyObject *str_PUT    = NULL;  // 'PUT'
@@ -71,6 +70,9 @@ static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
 static PyObject *args_size_two = NULL;  //  (2,)
 static PyObject *args_size_max = NULL;  //  (4096,)
+
+static PyObject *str_empty = NULL;    //  ''
+static PyObject *bytes_empty = NULL;  // b''
 
 /* Keys used in the RGI request dict */
 static PyObject *str_method  = NULL;  // 'method'
@@ -171,6 +173,18 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
+static inline size_t
+_min(const size_t a, const size_t b)
+{
+    if (a < b) {
+        return a;
+    }
+    else {
+        return b;
+    }
+}
+
+
 typedef struct {
     const uint8_t *buf;
     const size_t len;
@@ -226,7 +240,6 @@ _slice_between(_Buffer src, const uint8_t *dst_buf, const uint8_t *stop_buf)
     const size_t dst_len = stop_buf - dst_buf;
     return _slice(src, dst_buf, dst_len);
 }
-
 
 #define _BUFFER_TO_BYTES(src) \
     PyBytes_FromStringAndSize((const char *)src.buf, src.len)
@@ -775,10 +788,6 @@ _parse_uri(_Buffer src, PyObject *request)
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-    if (src.buf[0] != '/') {
-        _value_error(src.buf, src.len, "uri[0:1] != b'/': %R");
-        goto error;
-    }
 
     /* Build PyObjects used as values in request dict */
     _SET(uri,
@@ -913,11 +922,8 @@ cleanup:
     }
 
 
-
-
-
 static int
-_parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
+_parse_header_line(_Buffer src, PyObject *headers)
 {
     const uint8_t *sep = NULL;
     const uint8_t *key_buf, *val_buf;
@@ -926,15 +932,21 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
     PyObject *val = NULL;
     int flags = 0;
 
-    sep = memmem(buf, len, SEP, 2);
-    if (sep == NULL || sep < buf + 1 || sep > buf + len - 3) {
-        _value_error(buf, len, "bad header line: %R");
+    if (src.len < 4) {
+        _value_error(src.buf, src.len, "header line too short: %R");
         goto error;
     }
-    key_buf = buf;
-    key_len = sep - buf;
+
+    // FIXME: User a better error message here
+    sep = memmem(src.buf + 1, src.len - 1, ": ", 2);
+    if (sep == NULL) {
+        _value_error(src.buf, src.len, "b': ' not in header line: %R");
+        goto error;
+    }
+    key_buf = src.buf;
+    key_len = sep - src.buf;
     val_buf = sep + 2;
-    val_len = len - key_len - 2;
+    val_len = src.len - key_len - 2;
 
     /* Casefold and validate header name */
     _SET(key, _parse_header_name(key_buf, key_len))
@@ -962,7 +974,7 @@ _parse_header_line(const uint8_t *buf, const size_t len, PyObject *headers)
 
     /* Store in headers dict, make sure it's not a duplicate key */
     if (PyDict_SetDefault(headers, key, val) != val) {
-        _value_error(buf, len, "duplicate header: %R");
+        _value_error(src.buf, src.len, "duplicate header: %R");
         goto error;
     }
     goto cleanup;
@@ -978,55 +990,50 @@ cleanup:
 }
 
 
-
 static PyObject *
-_parse_headers(const uint8_t *buf, const size_t len)
+_parse_headers(_Buffer src)
 {
-
     PyObject *headers = NULL;
-    const uint8_t *crlf;
+    const uint8_t *start, *stop, *final_stop;
     uint8_t flags = 0;
     int newflags;
 
-    /* Initalize to start of buf with full len */
-    const uint8_t *line_buf = buf;
-    size_t line_len = len;
-
     _SET(headers, PyDict_New())
-    do {
-        crlf = memmem(line_buf, line_len, CRLF, 2);
-        if (crlf != NULL) {
-            line_len = crlf - line_buf;
+    if (src.len == 0) {
+        goto cleanup;
+    }
+
+    final_stop = src.buf + src.len;
+    start = src.buf;
+    while (start < final_stop) {
+        stop = memmem(start, final_stop - start, CRLF, 2);
+        if (stop == NULL) {
+            stop = final_stop;
         }
-        if (line_len < 4) {
-            _value_error(line_buf, line_len, "header line too short: %R");
-            goto error;
+        if (start >= stop) {
+            Py_FatalError("_parse_headers: start >= stop");
         }
-        newflags = _parse_header_line(line_buf, line_len, headers);
+        newflags = _parse_header_line(
+            _slice_between(src, start, stop), headers
+        );
         if (newflags < 0) {
             goto error;
         }
         flags |= newflags;
-
-        if (crlf != NULL) {
-            line_buf = crlf + 2;
-            line_len = len - (line_buf - buf);
-        }
-
-    }  while (crlf != NULL);
-
+        start = stop + 2;
+    }
     if (flags == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
     }
-    goto success;
+    goto cleanup;
 
 error:
     Py_CLEAR(headers);
 
-success:
+cleanup:
     return headers;
 }
 
@@ -1057,7 +1064,7 @@ _parse_preamble(const uint8_t *buf, const size_t len)
     else {
         headers_buf = crlf + 2;
         headers_len = len - (headers_buf - buf);
-        _SET(headers, _parse_headers(headers_buf, headers_len))
+        _SET(headers, _parse_headers(_BUFFER(headers_buf, headers_len)))
     }
     ret = PyTuple_Pack(2, first_line, headers);
     goto cleanup;
@@ -1343,7 +1350,7 @@ _read_headers(PyObject *readline)
             goto error;
         }
 
-        newflags = _parse_header_line(line_buf, line_len - 2, headers);
+        newflags = _parse_header_line(_BUFFER(line_buf, line_len - 2), headers);
         if (newflags < 0) {
             goto error;
         }
@@ -1559,11 +1566,11 @@ typedef struct {
     PyObject *sock_recv_into;
     PyObject *bodies;
 
-    uint8_t *buf_ptr;
-    size_t   buf_len;
+    uint8_t *raw_buf;
+    size_t   raw_len;
 
-    uint8_t *cur_ptr;
-    size_t   cur_len;
+    uint8_t *buf;
+    size_t   len;
 
     size_t rawtell;
 } Reader;
@@ -1574,9 +1581,9 @@ Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
-    if (self->buf_ptr != NULL) {
-        free(self->buf_ptr);
-        self->buf_ptr = NULL;
+    if (self->raw_buf != NULL) {
+        free(self->raw_buf);
+        self->raw_buf = NULL;
     }
 }
 
@@ -1600,11 +1607,11 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
 
     self->rawtell = 0;
 
-    _SET(self->buf_ptr, _degu_calloc(READER_BUFFER_SIZE))
-    self->buf_len = READER_BUFFER_SIZE;
+    _SET(self->raw_buf, _degu_calloc(READER_BUFFER_SIZE))
+    self->raw_len = READER_BUFFER_SIZE;
 
-    _SET(self->cur_ptr, self->buf_ptr)
-    self->cur_len = 0;
+    _SET(self->buf, self->raw_buf)
+    self->len = 0;
 
     return 0;
 
@@ -1618,7 +1625,7 @@ error:
 /* Reader.avail() */
 static PyObject *
 Reader_avail(Reader *self) {
-    return PyLong_FromSize_t(self->cur_len);
+    return PyLong_FromSize_t(self->len);
 }
 
 /* Reader.rawtell() */
@@ -1630,7 +1637,7 @@ Reader_rawtell(Reader *self) {
 /* Reader.tell() */
 static PyObject *
 Reader_tell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell - self->cur_len);
+    return PyLong_FromSize_t(self->rawtell - self->len);
 }
 
 
@@ -1714,24 +1721,24 @@ _Reader_check_buffer(Reader *self)
     }
 
     /* Check that buffer appears to be properly initialized */
-    if (self->buf_ptr == NULL || self->buf_len < 4096) {
+    if (self->raw_buf == NULL || self->raw_len < 4096) {
         Py_FatalError(
             "_Reader_check_buffer: buf_ptr == NULL || buf_len < 4096"
         );
     }
 
     /* Check that cur_ptr/cur_len is a valid slice within buf_ptr/buf_len */
-    if (self->cur_ptr < self->buf_ptr) {
+    if (self->buf < self->raw_buf) {
         Py_FatalError("_Reader_check_buffer: cur_ptr < buf_ptr");
     }
-    if (self->cur_ptr + self->cur_len > self->buf_ptr + self->buf_len) {
+    if (self->buf + self->len > self->raw_buf + self->raw_len) {
         Py_FatalError(
             "_Reader_check_buffer: cur_ptr + cur_len > buf_ptr + buf_len"
         );
     }
 
     /* When cur_len == 0, cur_ptr must equal buf_ptr */
-    if (self->cur_len == 0 && self->cur_ptr != self->buf_ptr) {
+    if (self->len == 0 && self->buf != self->raw_buf) {
         Py_FatalError(
             "_Reader_check_buffer: cur_len == 0, but cur_ptr != buf_ptr"
         );
@@ -1740,26 +1747,26 @@ _Reader_check_buffer(Reader *self)
 
 
 static Py_ssize_t
-_Reader_fill_buf(Reader *self) {
+_Reader_fill_buffer(Reader *self) {
     _Reader_check_buffer(self);
 
     /* Nothing to do if buffer is already full */
-    if (self->cur_len >= self->buf_len) {
+    if (self->len >= self->raw_len) {
         return 0;
     }
 
     /* If needed, move non-empty current region */
-    if (self->cur_len > 0 && self->cur_ptr != self->buf_ptr) {
-        memmove(self->buf_ptr, self->cur_ptr, self->cur_len);
-        self->cur_ptr = self->buf_ptr;
+    if (self->len > 0 && self->buf != self->raw_buf) {
+        memmove(self->raw_buf, self->buf, self->len);
+        self->buf = self->raw_buf;
         _Reader_check_buffer(self);
     }
 
-    uint8_t *start = self->cur_ptr + self->cur_len;
-    uint8_t *stop = self->buf_ptr + self->buf_len;
+    uint8_t *start = self->buf + self->len;
+    uint8_t *stop = self->raw_buf + self->raw_len;
     const Py_ssize_t size = _Reader_recv_into(self, start, stop - start);
     if (size >= 0) {
-        self->cur_len += size;
+        self->len += size;
         _Reader_check_buffer(self);
     }
     return size;
@@ -1767,24 +1774,24 @@ _Reader_fill_buf(Reader *self) {
 
 
 static void
-_Reader_consume_cur(Reader *self, const size_t size)
+_Reader_drain(Reader *self, const size_t size)
 {
     /* Consistency check before modification */
     _Reader_check_buffer(self);
 
     /* Make sure the call is sane */
-    if (size < 1 || size > self->cur_len) {
-        Py_FatalError("bad internal call to _Reader_consume_cur()");
+    if (size < 1 || size > self->len) {
+        Py_FatalError("bad internal call to _Reader_drain()");
     }
 
     /* Consuming a portion of the buffer just updates cur_ptr, cur_len */
-    if (size == self->cur_len) {
-        self->cur_ptr = self->buf_ptr;
-        self->cur_len = 0;
+    if (size == self->len) {
+        self->buf = self->raw_buf;
+        self->len = 0;
     }
     else {
-        self->cur_ptr += size;
-        self->cur_len -= size;
+        self->buf += size;
+        self->len -= size;
     }
 
     /* Another consistency check after the modification */
@@ -1792,10 +1799,39 @@ _Reader_consume_cur(Reader *self, const size_t size)
 }
 
 
+static PyObject *
+_Reader_drain_to_bytes(Reader *self, const size_t len, const size_t extra_len)
+{
+    PyObject *ret = NULL;
+    const size_t size = len + extra_len;
+
+    if (size > self->len) {
+        Py_FatalError("len + extra_len > self->len");
+    }
+
+    if (len == 0) {
+        _SET_AND_INC(ret, bytes_empty);
+    }
+    else {
+        _SET(ret, PyBytes_FromStringAndSize((const char*)self->buf, len))
+    }
+    if (size > 0) {
+        _Reader_drain(self, size);
+    }
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    return ret;
+}
+
+
 static _Buffer
 _Reader_cur_to_buffer(Reader *self, const uint8_t *dst_buf, const size_t dst_len) {
     _Reader_check_buffer(self);
-    return _slice(_BUFFER(self->cur_ptr, self->cur_len), dst_buf, dst_len);
+    return _slice(_BUFFER(self->buf, self->len), dst_buf, dst_len);
 }
 
 
@@ -1810,38 +1846,78 @@ static PyObject *
 Reader_read_raw_preamble(Reader *self) {
     PyObject *ret = NULL;
 
-    if (_Reader_fill_buf(self) < 0) {
+    if (_Reader_fill_buffer(self) < 0) {
         return NULL;
     }
-    if (self->cur_len == 0) {
+    if (self->len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         return NULL;
     }
-    if (self->cur_len < 4) {
-        _value_error(self->cur_ptr, self->cur_len,
+    if (self->len < 4) {
+        _value_error(self->buf, self->len,
             "HTTP preamble too short: %R"
         );
         return NULL;
     }
 
-    uint8_t *term = memmem(self->cur_ptr, self->cur_len, TERM, 4);
+    uint8_t *term = memmem(self->buf, self->len, TERM, 4);
     if (term == NULL) {
         _value_error(
-            self->cur_ptr + (self->cur_len - 4),
+            self->buf + (self->len - 4),
             4,
             "bad preamble termination: %R"
         );
         goto error;
     }
-    const size_t preamble_len = term - self->cur_ptr;
-    _SET(ret, _Reader_cur_to_bytes(self, self->cur_ptr, preamble_len))
-    _Reader_consume_cur(self, preamble_len + 4);
+    const size_t preamble_len = term - self->buf;
+    _SET(ret, _Reader_cur_to_bytes(self, self->buf, preamble_len))
+    _Reader_drain(self, preamble_len + 4);
     goto success;
 
 error:
     Py_CLEAR(ret);
 
 success:
+    return ret;
+}
+
+
+static PyObject *
+Reader_read(Reader *self, PyObject *args)
+{
+    Py_ssize_t max_size = -1;
+    size_t size;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "n", &max_size)) {
+        return NULL;
+    }
+    if (max_size < 0) {
+        PyErr_Format(PyExc_ValueError, "need max_size >= 0; got %zd", max_size);
+        return NULL;
+    }
+
+    if (max_size == 0) {
+        _SET_AND_INC(ret, bytes_empty)
+    }
+    else if (max_size <= self->raw_len) {
+        if (max_size > self->len) {
+            if (_Reader_fill_buffer(self) < 0) {
+                goto error;
+            }
+        }
+        size = _min(max_size, self->len);
+        _SET(ret, _Reader_drain_to_bytes(self, size, 0))
+    }
+    else {
+        _SET(ret, PyBytes_FromStringAndSize(NULL, max_size))
+    }
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
     return ret;
 }
 
@@ -1858,6 +1934,8 @@ static PyMethodDef Reader_methods[] = {
     },
     {"read_raw_preamble", (PyCFunction)Reader_read_raw_preamble, METH_NOARGS,
         "read raw preamble bytes without parsing"
+    },
+    {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(max_size)"
     },
     {NULL}
 };
@@ -1997,8 +2075,10 @@ PyInit__base(void)
     _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
     _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
     _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
-    _SET(str_empty, PyUnicode_InternFromString(""))
     _SET(str_crlf, PyUnicode_InternFromString(CRLF))
+
+    _SET(str_empty, PyUnicode_InternFromString(""))
+    _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
     _SET(str_method, PyUnicode_InternFromString("method"))
     _SET(str_uri, PyUnicode_InternFromString("uri"))

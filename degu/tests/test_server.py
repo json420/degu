@@ -393,7 +393,9 @@ class TestFunctions(TestCase):
         rfile = io.BytesIO(b'GET /foo HTTP/1.1\r\nBar:baz\r\n\r\nbody')
         with self.assertRaises(ValueError) as cm:
             server._read_request(rfile, base.bodies)
-        self.assertEqual(str(cm.exception), "bad header line: b'Bar:baz'")
+        self.assertEqual(str(cm.exception),
+            "b': ' not in header line: b'Bar:baz'"
+        )
         self.assertEqual(rfile.tell(), 28)
         self.assertEqual(rfile.read(), b'\r\nbody')
 
