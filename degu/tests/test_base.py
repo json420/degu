@@ -2257,7 +2257,7 @@ class TestReader_Py(TestCase):
             with self.assertRaises(ValueError) as cm:
                 reader.read_raw_preamble()
             self.assertEqual(str(cm.exception),
-                'bad preamble termination: {!r}'.format(bad[-4:])
+                'not found in {!r}'.format(bad)
             )
             self.assertEqual(sock._rfile.tell(), len(bad))
             self.assertEqual(reader.rawtell(), len(bad))
@@ -2284,7 +2284,7 @@ class TestReader_Py(TestCase):
         (sock, reader) = self.new(data)
         with self.assertRaises(ValueError) as cm:
             reader.read(-1)
-        self.assertEqual(str(cm.exception), 'need max_size >= 0; got -1')
+        self.assertEqual(str(cm.exception), 'need size >= 0; got -1')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)

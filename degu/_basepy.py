@@ -452,7 +452,6 @@ class Reader:
         self._start = start
         self._buf = self._rawbuf[start:start+size]
 
-
     def _fill_buffer(self):
         avail = len(self._buf)
 
@@ -490,18 +489,17 @@ class Reader:
             # Drain some of the buffer:
             self._update_buffer(self._start + amount, avail - amount)
 
-    def _read_until(self, end, max_size, message):
+    def _read_until(self, end, max_size):
         assert isinstance(end, bytes)
         assert isinstance(max_size, int)
         assert 2 <= len(end) <= 4
         assert len(end) <= max_size <= len(self._rawbuf)
-
         size = min(max_size, len(self._buf))
         haystack = self._buf[0:size].tobytes()
         index = haystack.find(end)
         if index < 0:
             raise ValueError(
-                message.format(haystack[-len(end):])
+                'not found in {!r}'.format(haystack)
             )
         assert 0 <= index <= size - len(end)
         self._drain_buffer(index + len(end))
@@ -512,17 +510,13 @@ class Reader:
             self._fill_buffer()
         if self.avail() == 0:
             raise EmptyPreambleError('HTTP preamble is empty')
-        return self._read_until(
-            b'\r\n\r\n',
-            MAX_PREAMBLE_SIZE,
-            'bad preamble termination: {!r}'
-        )
+        return self._read_until(b'\r\n\r\n', MAX_PREAMBLE_SIZE)
 
     def read(self, max_size):
         assert isinstance(max_size, int)
         if max_size < 0:
             raise ValueError(
-                'need max_size >= 0; got {}'.format(max_size)
+                'need size >= 0; got {}'.format(max_size)
             )
         if max_size == 0:
             return b''
