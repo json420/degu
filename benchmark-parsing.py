@@ -15,6 +15,7 @@ from degu._base import (
     parse_content_length,
     parse_request_line,
     parse_method,
+    parse_uri,
     parse_response_line,
     parse_preamble,
 
@@ -83,6 +84,10 @@ run("parse_method(b'PUT')")
 run("parse_method(b'POST')")
 run("parse_method(b'HEAD')")
 run("parse_method(b'DELETE')")
+run("parse_uri(b'/')")
+run("parse_uri(b'/?')")
+run("parse_uri(b'/foo/bar')")
+run("parse_uri(b'/foo/bar?stuff=junk')")
 
 print('\nResponse parsing:')
 run("parse_response_line(b'HTTP/1.1 200 OK')")

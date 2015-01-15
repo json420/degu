@@ -179,71 +179,101 @@ _min(const size_t a, const size_t b)
     if (a < b) {
         return a;
     }
-    else {
-        return b;
-    }
+    return b;
 }
 
 
 typedef struct {
     const uint8_t *buf;
     const size_t len;
-} _Buffer;
+} DeguBuf;
 
-#define _BUFFER(buf, len) (_Buffer){buf, len}
+#define _BUFFER(buf, len) (DeguBuf){buf, len}
 
 
-static _Buffer
-_slice(_Buffer src, const uint8_t *dst_buf, const size_t dst_len)
+static void
+_check_subslice(DeguBuf parent, DeguBuf child)
+{
+    if (parent.buf == NULL || parent.len == 0) {
+        Py_FatalError("parent.buf == NULL || parent.len == 0");
+    }
+    if (child.buf == NULL || child.buf < parent.buf) {
+        Py_FatalError("child.buf == NULL || child.buf < parent.buf");
+    }
+    if (child.len > parent.len) {
+        Py_FatalError("child.len > parent.len");
+    }
+    if (child.buf + child.len > parent.buf + parent.len) {
+        Py_FatalError("child.buf + child.len > parent.buf + parent.len");
+    }
+}
+
+
+static DeguBuf
+_slice(DeguBuf src, const size_t start, const size_t stop)
 {
     if (src.buf == NULL || src.len <= 0) {
         Py_FatalError("_slice: src.buf == NULL || src.len <= 0");
     }
-    if (dst_buf == NULL || dst_len < 0) {
-        Py_FatalError("_slice: dst_buf == NULL || dst_len < 0");
+    if (start > stop || stop > src.len) {
+        Py_FatalError("_slice: start > stop || stop > src.len");
     }
-    if (dst_buf < src.buf) {
-        Py_FatalError("_slice: dst_buf < src.buf");
-    }
-    if (dst_buf + dst_len > src.buf + src.len) {
-        Py_FatalError("_slice: dst_buf + dst_len > src.buf + src.len");
-    }
-    return _BUFFER(dst_buf, dst_len);
+    DeguBuf dst = {src.buf + start, stop - start};
+    _check_subslice(src, dst);
+    return dst;
 }
 
 
-static _Buffer
-_slice_before(_Buffer src, const uint8_t *stop_buf)
+static DeguBuf
+_subslice(DeguBuf src, const uint8_t *buf, const size_t len)
 {
-    if (stop_buf < src.buf) {
-        Py_FatalError("_slice_before: stop_buf < src.buf");
+    if (buf < src.buf) {
+        Py_FatalError("_subslice: buf < src.buf");
     }
-    const size_t dst_len = stop_buf - src.buf;
-    return _slice(src, src.buf, dst_len);
-}
-
-
-static _Buffer
-_slice_after(_Buffer src, const uint8_t *dst_buf)
-{
-    const size_t dst_len = src.len - (dst_buf - src.buf);
-    return _slice(src, dst_buf, dst_len);
-}
-
-
-static _Buffer
-_slice_between(_Buffer src, const uint8_t *dst_buf, const uint8_t *stop_buf)
-{
-    if (stop_buf < dst_buf) {
-        Py_FatalError("_slice_between: stop_buf < dst_buf");
+    if (buf + len > src.buf + src.len) {
+        Py_FatalError("_subslice: buf + len > src.buf + src.len");
     }
-    const size_t dst_len = stop_buf - dst_buf;
-    return _slice(src, dst_buf, dst_len);
+    DeguBuf dst = {buf, len};
+    _check_subslice(src, dst);
+    return dst;
 }
 
-#define _BUFFER_TO_BYTES(src) \
-    PyBytes_FromStringAndSize((const char *)src.buf, src.len)
 
+static DeguBuf
+_slice_before(DeguBuf src, const uint8_t *buf)
+{
+    if (buf < src.buf) {
+        Py_FatalError("_slice_before: buf < src.buf");
+    }
+    return _slice(src, 0, buf - src.buf);
+}
+
+
+static DeguBuf
+_slice_after(DeguBuf src, const uint8_t *buf)
+{
+    if (buf < src.buf) {
+        Py_FatalError("_slice_after: buf < src.buf");
+    }
+    return _slice(src, buf - src.buf, src.len);
+}
+
+
+static DeguBuf
+_slice_between(DeguBuf src, const uint8_t *buf_a, const uint8_t *buf_b)
+{
+    if (buf_a < src.buf || buf_b < src.buf) {
+        Py_FatalError("_slice_between: buf_a < src.buf || buf_b < src.buf");
+    }
+    return _slice(src, buf_a - src.buf, buf_b - src.buf);
+}
+
+
+static PyObject *
+_to_bytes(DeguBuf src)
+{
+    return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
+}
 
 
 /*
@@ -313,7 +343,7 @@ _value_error(const uint8_t *buf, const size_t len, const char *format)
 
 
 static PyObject *
-_parse_method(_Buffer src)
+_parse_method(DeguBuf src)
 {
     PyObject *method = NULL;
 
@@ -358,40 +388,40 @@ degu_parse_method(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         return NULL;
     }
-    return _parse_method(_BUFFER(buf, len));
+    return _parse_method((DeguBuf){buf, len});
 }
 
 
 static PyObject *
-_parse_header_name(const uint8_t *buf, const size_t len)
+_parse_header_name(DeguBuf src)
 {
     PyObject *dst = NULL;
-    uint8_t *dst_buf = NULL;
+    uint8_t *dst_buf;
     uint8_t r;
     size_t i;
 
-    if (len < 1) {
+    if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "header name is empty");
         return NULL; 
     }
-    if (len > MAX_HEADER_NAME_LEN) {
-        _value_error(buf, MAX_HEADER_NAME_LEN, "header name too long: %R...");
+    if (src.len > MAX_HEADER_NAME_LEN) {
+        _value_error(src.buf, MAX_HEADER_NAME_LEN, "header name too long: %R...");
         return NULL; 
     }
-    dst = PyUnicode_New(len, 127);
+    dst = PyUnicode_New(src.len, 127);
     if (dst == NULL) {
         return NULL;
     }
     dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (r = i = 0; i < len; i++) {
-        r |= dst_buf[i] = _NAMES[buf[i]];
+    for (r = i = 0; i < src.len; i++) {
+        r |= dst_buf[i] = _NAMES[src.buf[i]];
     }
     if (r & 128) {
         Py_CLEAR(dst);
         if (r != 255) {
             Py_FatalError("internal error in `_parse_header_name()`");
         }
-        _value_error(buf, len, "bad bytes in header name: %R");
+        _value_error(src.buf, src.len, "bad bytes in header name: %R");
     }
     return dst;
 }
@@ -406,12 +436,12 @@ parse_header_name(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
         return NULL;
     }
-    return _parse_header_name(buf, len);
+    return _parse_header_name((DeguBuf){buf, len});
 }
 
 
 static PyObject *
-_decode(_Buffer src, const uint8_t mask, const char *format)
+_decode(DeguBuf src, const uint8_t mask, const char *format)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -625,7 +655,7 @@ _parse_request_line_inner(const uint8_t *buf, const size_t len,
                           PyObject **method, PyObject **uri)
 {
     uint8_t *sep;
-    _Buffer src = _BUFFER(buf, len);
+    DeguBuf src = _BUFFER(buf, len);
 
     /* Search for method terminating space, plus start of uri:
      *
@@ -698,7 +728,7 @@ _parse_request_line(const uint8_t *buf, const size_t len,
 
 
 static PyObject *
-_parse_path(_Buffer src)
+_parse_path(DeguBuf src)
 {
     PyObject *path = NULL;
     PyObject *component = NULL;
@@ -752,7 +782,7 @@ cleanup:
 
 
 static PyObject *
-_parse_query(_Buffer src)
+_parse_query(DeguBuf src)
 {
     PyObject *query = NULL;
 
@@ -770,7 +800,7 @@ cleanup:
 
 
 static bool
-_parse_uri(_Buffer src, PyObject *request)
+_parse_uri(DeguBuf src, PyObject *request)
 {
     bool success = true;
     const uint8_t *q;
@@ -923,11 +953,10 @@ cleanup:
 
 
 static int
-_parse_header_line(_Buffer src, PyObject *headers)
+_parse_header_line(DeguBuf src, PyObject *headers)
 {
     const uint8_t *sep = NULL;
-    const uint8_t *key_buf, *val_buf;
-    size_t key_len, val_len;
+    const uint8_t *key_buf;
     PyObject *key = NULL;
     PyObject *val = NULL;
     int flags = 0;
@@ -943,13 +972,11 @@ _parse_header_line(_Buffer src, PyObject *headers)
         _value_error(src.buf, src.len, "b': ' not in header line: %R");
         goto error;
     }
-    key_buf = src.buf;
-    key_len = sep - src.buf;
-    val_buf = sep + 2;
-    val_len = src.len - key_len - 2;
+    k = _slice_before(src, sep);
+    v = _slice_after(src, sep + 2);
 
     /* Casefold and validate header name */
-    _SET(key, _parse_header_name(key_buf, key_len))
+    _SET(key, _parse_header_name(k))
     key_buf =  PyUnicode_1BYTE_DATA(key);
 
     if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
@@ -991,7 +1018,7 @@ cleanup:
 
 
 static PyObject *
-_parse_headers(_Buffer src)
+_parse_headers(DeguBuf src)
 {
     PyObject *headers = NULL;
     const uint8_t *start, *stop, *final_stop;
@@ -1547,11 +1574,8 @@ cleanup:
 
 
 static uint8_t *
-_degu_calloc(const size_t len)
+_calloc_buf(const size_t len)
 {
-    if (len < 1) {
-        Py_FatalError("bad internal call to _degu_calloc() with len < 1");
-    }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
@@ -1562,17 +1586,12 @@ _degu_calloc(const size_t len)
 
 typedef struct {
     PyObject_HEAD
-
     PyObject *sock_recv_into;
     PyObject *bodies;
-
-    uint8_t *raw_buf;
-    size_t   raw_len;
-
-    uint8_t *buf;
-    size_t   len;
-
     size_t rawtell;
+    uint8_t *buf;
+    size_t start;
+    size_t stop;
 } Reader;
 
 
@@ -1581,9 +1600,9 @@ Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
-    if (self->raw_buf != NULL) {
-        free(self->raw_buf);
-        self->raw_buf = NULL;
+    if (self->buf != NULL) {
+        free(self->buf);
+        self->buf = NULL;
     }
 }
 
@@ -1597,49 +1616,27 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
         return -1;
     }
-
     _SET(self->sock_recv_into, PyObject_GetAttr(sock, str_recv_into))
     if (!PyCallable_Check(self->sock_recv_into)) {
         PyErr_SetString(PyExc_TypeError, "sock.recv_into is not callable");
         goto error;
     }
     _SET_AND_INC(self->bodies, bodies)
-
+    _SET(self->buf, _calloc_buf(READER_BUFFER_SIZE))
     self->rawtell = 0;
-
-    _SET(self->raw_buf, _degu_calloc(READER_BUFFER_SIZE))
-    self->raw_len = READER_BUFFER_SIZE;
-
-    _SET(self->buf, self->raw_buf)
-    self->len = 0;
-
+    self->start = 0;
+    self->stop = 0;
     return 0;
 
 error:
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies);
+    if (self->buf != NULL) {
+        free(self->buf);
+        self->buf = NULL;
+    }
     return -1;
 }
-
-
-/* Reader.avail() */
-static PyObject *
-Reader_avail(Reader *self) {
-    return PyLong_FromSize_t(self->len);
-}
-
-/* Reader.rawtell() */
-static PyObject *
-Reader_rawtell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell);
-}
-
-/* Reader.tell() */
-static PyObject *
-Reader_tell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell - self->len);
-}
-
 
 
 /* _Reader_recv_into():
@@ -1678,7 +1675,7 @@ _Reader_recv_into(Reader *self, uint8_t *buf, const size_t len)
     }
 
     /* Convert to size_t, check for OverflowError */
-    size = PyLong_AsSize_t(int_size);
+    size = PyLong_AsSsize_t(int_size);
     if (PyErr_Occurred()) {
         ret = -3;
         goto error;
@@ -1713,131 +1710,171 @@ cleanup:
 }
 
 
-static void
-_Reader_check_buffer(Reader *self)
+static DeguBuf
+_Reader_peek(Reader *self)
 {
-    if (self == NULL) {
-        Py_FatalError("_Reader_check_buffer() called with NULL pointer");
+    const uint8_t *buf = self->buf;
+    const size_t start = self->start;
+    const size_t stop = self->stop;
+    if (buf == NULL) {
+        Py_FatalError("_Reader_peak: buf == NULL");
     }
-
-    /* Check that buffer appears to be properly initialized */
-    if (self->raw_buf == NULL || self->raw_len < 4096) {
-        Py_FatalError(
-            "_Reader_check_buffer: buf_ptr == NULL || buf_len < 4096"
-        );
+    if (stop > READER_BUFFER_SIZE) {
+        Py_FatalError("_Reader_peak: stop > READER_BUFFER_SIZE");
     }
-
-    /* Check that cur_ptr/cur_len is a valid slice within buf_ptr/buf_len */
-    if (self->buf < self->raw_buf) {
-        Py_FatalError("_Reader_check_buffer: cur_ptr < buf_ptr");
+    if (start >= stop && start != 0) {
+        Py_FatalError("_Reader_peak: start >= stop && start != 0");
     }
-    if (self->buf + self->len > self->raw_buf + self->raw_len) {
-        Py_FatalError(
-            "_Reader_check_buffer: cur_ptr + cur_len > buf_ptr + buf_len"
-        );
-    }
-
-    /* When cur_len == 0, cur_ptr must equal buf_ptr */
-    if (self->len == 0 && self->buf != self->raw_buf) {
-        Py_FatalError(
-            "_Reader_check_buffer: cur_len == 0, but cur_ptr != buf_ptr"
-        );
-    }
+    return (DeguBuf){buf + start, stop - start};
 }
 
 
-static Py_ssize_t
-_Reader_fill_buffer(Reader *self) {
-    _Reader_check_buffer(self);
-
-    /* Nothing to do if buffer is already full */
-    if (self->len >= self->raw_len) {
-        return 0;
+static DeguBuf
+_Reader_peek_at_most(Reader *self, const size_t max_size)
+{
+    DeguBuf cur = _Reader_peek(*self);
+    if (cur.len <= max_size) {
+        return cur;
     }
-
-    /* If needed, move non-empty current region */
-    if (self->len > 0 && self->buf != self->raw_buf) {
-        memmove(self->raw_buf, self->buf, self->len);
-        self->buf = self->raw_buf;
-        _Reader_check_buffer(self);
-    }
-
-    uint8_t *start = self->buf + self->len;
-    uint8_t *stop = self->raw_buf + self->raw_len;
-    const Py_ssize_t size = _Reader_recv_into(self, start, stop - start);
-    if (size >= 0) {
-        self->len += size;
-        _Reader_check_buffer(self);
-    }
-    return size;
+    return _slice(cur, cur.buf, max_size);
 }
 
 
-static void
-_Reader_drain(Reader *self, const size_t size)
+static DeguBuf
+_Reader_update(Reader *self, const size_t start, const size_t stop)
 {
-    /* Consistency check before modification */
-    _Reader_check_buffer(self);
-
-    /* Make sure the call is sane */
-    if (size < 1 || size > self->len) {
-        Py_FatalError("bad internal call to _Reader_drain()");
+    if (start > stop) {
+        Py_FatalError("_Reader_update: start > stop");
     }
+    const size_t len = stop - start;
+    DeguBuf cur = _Reader_peek(self);
+    const size_t cur_start = self->start;
+    const size_t cur_stop = self->stop;
 
-    /* Consuming a portion of the buffer just updates cur_ptr, cur_len */
-    if (size == self->len) {
-        self->buf = self->raw_buf;
-        self->len = 0;
+    if (stop > READER_BUFFER_SIZE) {
+        Py_FatalError("_Reader_update: stop > READER_BUFFER_SIZE");
     }
-    else {
-        self->buf += size;
-        self->len -= size;
-    }
-
-    /* Another consistency check after the modification */
-    _Reader_check_buffer(self);
-}
-
-
-static PyObject *
-_Reader_drain_to_bytes(Reader *self, const size_t len, const size_t extra_len)
-{
-    PyObject *ret = NULL;
-    const size_t size = len + extra_len;
-
-    if (size > self->len) {
-        Py_FatalError("len + extra_len > self->len");
+    if (start == cur_start && stop == cur_stop) {
+        Py_FatalError("_Reader_update: called with no change");
     }
 
     if (len == 0) {
-        _SET_AND_INC(ret, bytes_empty);
+        /* We're emptying the buffer */
+        if (start != 0 || stop != 0 || cur.len == 0 || cur_stop == 0) {
+            Py_FatalError("_Reader_update: bad buffer empty");
+        }
     }
-    else {
-        _SET(ret, PyBytes_FromStringAndSize((const char*)self->buf, len))
+    if (len > cur.len) {
+        /* We're filling the buffer */
+        if (cur_start != 0 || start != 0 || cur_stop <= stop) {
+            Py_FatalError("_Reader_update: bad buffer fill");
+        }
     }
-    if (size > 0) {
-        _Reader_drain(self, size);
+    if (len < cur.len) {
+        /* We're draining the buffer */
+        if (cur_start <= start || cur_stop != stop) {
+            Py_FatalError("_Reader_update: bad buffer drain");
+        }
     }
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    return ret;
+    if (len == cur.len) {
+        /* We're shifting the buffer */
+        if (cur_start == 0 || start != 0) {
+            Py_FatalError("_Reader_update: bad buffer shift");
+        }
+    }
+    self->start = start;
+    self->stop = stop;
+    return _Reader_peek(self);
 }
 
 
-static _Buffer
-_Reader_cur_to_buffer(Reader *self, const uint8_t *dst_buf, const size_t dst_len) {
-    _Reader_check_buffer(self);
-    return _slice(_BUFFER(self->buf, self->len), dst_buf, dst_len);
+static DeguBuf
+_Reader_shift(Reader *self, size_t size)
+{
+    DeguBuf cur = _Reader_peek(self);
+    if (cur.len >= size || cur.buf == self->buf) {
+        return cur;
+    }
+    if (cur.len == 0 || self->start == 0) {
+        Py_FatalError("_Reader_shift: cur.len == 0 || start == 0");
+    }
+    memmove(self->buf, cur.buf, cur.len);
+    return _Reader_update(self, 0, cur.len);
+}
+
+
+static bool
+_Reader_fill(Reader *self, const size_t size)
+{
+    if (size > READER_BUFFER_SIZE) {
+        Py_FatalError("_Reader_fill: size > READER_BUFFER_SIZE");
+    }
+    DeguBuf cur = _Reader_shift(self, size);
+
+    /* Nothing to do when buffer already has >= size bytes */
+    if (cur.len >= size) {
+        return true;
+    }
+
+    if (cur.buf != self->buf) {
+        Py_FatalError("_Reader_fill: cur.buf != self->buf");
+    }
+
+    /* Fill from logical buffer stop to physical buffer stop */
+    uint8_t *dst_buf = cur.buf + cur.len;
+    const size_t dst_len = READER_BUFFER_SIZE - cur.len;
+    const Py_ssize_t added = _Reader_recv_into(self, dst_buf, dst_len);
+    if (added < 0) {
+        return false;
+    }
+
+    /* If needed, update buffer state */
+    if (added > 0) {
+        DeguBuf new = _Reader_update(self, 0, cur.len + added);
+        if (new.buf != cur.buf || new.len != cur.len + added) {
+            Py_FatalError("_Reader_fill: oops");
+        }
+    }
+    return true;
+}
+
+
+static DeguBuf
+_Reader_drain(Reader *self, const uint16_t size)
+{
+    DeguBuf cur = _Reader_peek(self);
+    if (size > cur.len) {
+        Py_FatalError("_Reader_drain: size > avail");
+    }
+    if (size == avail) {
+        return _Reader_update(self, 0, 0);
+    }
+    return _Reader_update(self, self->start + size, self->stop); 
+}
+
+
+static DeguBuf
+_Reader_drain_until(Reader *self, const size_t max_size,
+                    DeguBuf end, bool include_end)
+{
+    DeguBuf cur = _Reader_current_at_most(self, max_size);
+    uint8_t *found = memem(cur.buf, cur.len, end.buf, end.len);
+    if (found == NULL) {
+        return (DeguBuf){NULL, 0};
+    }
+    DeguBuf src = _Reader_drain(self, (found - cur.buf) + end.len);
+    if (include_end) {
+        return src;
+    }
+    return _slice(src, src.buf, src.len - end.len);
 }
 
 
 static PyObject *
-_Reader_cur_to_bytes(Reader *self, const uint8_t *dst_buf, const size_t dst_len) {
-    return _BUFFER_TO_BYTES(_Reader_cur_to_buffer(self, dst_buf, dst_len));
+_Reader_drain_as_bytes(Reader *self, const uint16_t len, const uint16_t extra)
+{
+    DeguBuf src = _Reader_drain_as_src(self, len, extra);
+    return PyBytes_FromStringAndSize((const char*)src.buf, src.len);
 }
 
 
@@ -1845,33 +1882,32 @@ _Reader_cur_to_bytes(Reader *self, const uint8_t *dst_buf, const size_t dst_len)
 static PyObject *
 Reader_read_raw_preamble(Reader *self) {
     PyObject *ret = NULL;
+    uint8_t term;
 
-    if (_Reader_fill_buffer(self) < 0) {
-        return NULL;
+    if (!_Reader_fill(self, MAX_PREAMBLE_SIZE)) {
+        goto error;
     }
-    if (self->len == 0) {
+    DeguBuf cur = _Reader_current_buffer(self);
+    if (cur.len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        return NULL;
+        goto error;
     }
-    if (self->len < 4) {
-        _value_error(self->buf, self->len,
-            "HTTP preamble too short: %R"
-        );
-        return NULL;
+    if (cur.len < 4) {
+        _value_error(cur.buf, cur.len, "HTTP preamble too short: %R");
+        goto error;
     }
-
-    uint8_t *term = memmem(self->buf, self->len, TERM, 4);
+    term = memmem(cur.buf, cur.len, TERM, 4);
     if (term == NULL) {
         _value_error(
-            self->buf + (self->len - 4),
+            cur.buf + (cur.len - 4),
             4,
             "bad preamble termination: %R"
         );
         goto error;
     }
-    const size_t preamble_len = term - self->buf;
-    _SET(ret, _Reader_cur_to_bytes(self, self->buf, preamble_len))
-    _Reader_drain(self, preamble_len + 4);
+    DeguBuf src = _slice_before(cur, term);
+    _Reader_drain(src.len
+    _SET(ret, _Reader_drain_as_bytes(self, len, 4))
     goto success;
 
 error:
@@ -1885,32 +1921,44 @@ success:
 static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
-    Py_ssize_t max_size = -1;
-    size_t size;
+    Py_ssize_t size = -1;
     PyObject *ret = NULL;
+    uint8_t *dst_buf;
+    Py_ssize_t added;
 
-    if (!PyArg_ParseTuple(args, "n", &max_size)) {
+    if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    if (max_size < 0) {
+    if (size < 0) {
         PyErr_Format(PyExc_ValueError, "need max_size >= 0; got %zd", max_size);
         return NULL;
     }
-
-    if (max_size == 0) {
+    if (size == 0) {
         _SET_AND_INC(ret, bytes_empty)
+        goto cleanup;
     }
-    else if (max_size <= self->raw_len) {
-        if (max_size > self->len) {
-            if (_Reader_fill_buffer(self) < 0) {
-                goto error;
-            }
+
+    /* Drain any currently buffered bytes up to size */
+    DeguBuf src = _Reader_drain_at_most(self, size);
+    if (src.len > size) {
+        Py_FatalError("src.len > size");
+    }
+    if (src.len == size) {
+        _SET(ret, _to_bytes(src))
+        goto cleanup;
+    }
+
+    _SET(ret, PyBytes_FromStringAndSize(NULL, size))
+    dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
+    memcpy(dst_buf, src.buf, src.len);
+    added = _Reader_recv_into(self, dst_buf + src.len, size - src.len);
+    if (added < 0) {
+        goto error;
+    }
+    if (src.len + added < size) {
+        if (_PyBytes_Resize(&ret, src.len + added) != 0) {
+            goto error;
         }
-        size = _min(max_size, self->len);
-        _SET(ret, _Reader_drain_to_bytes(self, size, 0))
-    }
-    else {
-        _SET(ret, PyBytes_FromStringAndSize(NULL, max_size))
     }
     goto cleanup;
 
@@ -1919,6 +1967,32 @@ error:
 
 cleanup:
     return ret;
+}
+
+
+
+
+
+
+
+/* Reader.avail() */
+static PyObject *
+Reader_avail(Reader *self) {
+    const uint16_t avail = _Reader_check_avail(self);
+    return PyLong_FromSize_t(avail);
+}
+
+/* Reader.rawtell() */
+static PyObject *
+Reader_rawtell(Reader *self) {
+    return PyLong_FromSize_t(self->rawtell);
+}
+
+/* Reader.tell() */
+static PyObject *
+Reader_tell(Reader *self) {
+    const uint16_t avail = _Reader_check_avail(self);
+    return PyLong_FromSize_t(self->rawtell - avail);
 }
 
 
