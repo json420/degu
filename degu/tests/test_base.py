@@ -2314,7 +2314,7 @@ class TestReader_Py(TestCase):
         KiB_64  = 2 ** 16
         KiB_32  = 2 ** 15
         KiB_16  = 2 ** 14
-        KiB_8   = 2 ** 13
+        #KiB_8   = 2 ** 13
         data = b''.join([
             b'A' * KiB_16,
             b'B' * KiB_32,
@@ -2348,3 +2348,17 @@ class TestReader_C(TestReader_Py):
         if self.backend is None:
             self.skipTest('cannot import `degu._base` C extension')
 
+    def test_read_request(self):
+        data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.read_request(),
+            {
+                'method': 'GET',
+                'uri': '/',
+                'script': [],
+                'path': [],
+                'query': None,
+                'headers': {},
+            }
+        )
+        

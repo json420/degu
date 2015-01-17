@@ -195,8 +195,8 @@ static const DeguBuf NULL_DeguBuf = {NULL, 0};
 
 _DEGU_BUF_CONSTANT(TERM, "\r\n\r\n")
 _DEGU_BUF_CONSTANT(OK, "OK")
-_DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, "HTTP/1.1")
-
+_DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
+_DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
 
 #define _BUFFER(buf, len) (DeguBuf){buf, len}
 
@@ -226,7 +226,6 @@ _slice(DeguBuf src, const size_t start, const size_t stop)
         Py_FatalError("_slice(): NULL src buffer");
     }
     if (start > stop || stop > src.len) {
-        printf("start=%zu, stop=%zu, src.len=%zu\n", start, stop, src.len);
         Py_FatalError("_slice(): requested subslice not within parent");
     }
     DeguBuf dst = {src.buf + start, stop - start};
@@ -711,7 +710,7 @@ _parse_request_line_inner(DeguBuf src, PyObject **method, PyObject **uri)
     sep = memmem(src.buf, src.len, " /", 2);
     if (sep == NULL) {
         _value_error(src, "bad inner request line: %R");
-        return NULL;
+        return false;
     }
     _SET(*method, _parse_method(_slice_before(src, sep)))
     _SET(*uri,
@@ -747,14 +746,15 @@ _parse_request_line(DeguBuf src, PyObject **method, PyObject **uri)
      *     "GET / HTTP/1.1"[-9:]
      *           ^^^^^^^^^
      */
-    if (memcmp(src.buf + (src.len - 9), " HTTP/1.1", 9) != 0) {
+    DeguBuf protocol = _slice(src, src.len - 9, src.len);
+    if (! _equal(protocol, REQUEST_PROTOCOL)) {
         _value_error(src, "bad protocol in request line: %R");
-        return NULL;
+        return false;
     }
 
     /* _parse_request_line_inner() will handle the rest:
      *
-     *     "GET / HTTP/1.1"[-9:]
+     *     "GET / HTTP/1.1"[0:-9]
      *      ^^^^^
      */
     DeguBuf inner = _slice(src, 0, src.len - 9);
@@ -895,7 +895,7 @@ _parse_request_line2(DeguBuf line, PyObject *request)
 {
     bool success = true;
     uint8_t *sep;
-    size_t offset;
+    size_t method_stop, uri_start;
     PyObject *method = NULL;
 
     /* Sanity check */
@@ -919,8 +919,8 @@ _parse_request_line2(DeguBuf line, PyObject *request)
      *           ^^^^^^^^^
      */
     DeguBuf protocol = _slice(line, line.len - 9, line.len);
-    if (!_equal(protocol, REQUEST_PROTOCOL)) {
-        _value_error(protocol, "bad protocol in request line: %R");
+    if (! _equal(protocol, REQUEST_PROTOCOL)) {
+        _value_error(protocol, "_parse_request_line2: bad protocol in request line: %R");
         goto error;
     }
 
@@ -941,14 +941,15 @@ _parse_request_line2(DeguBuf line, PyObject *request)
         _value_error(line, "bad request line: %R");
         goto error;
     }
-    offset = sep - src.buf;
+    method_stop = sep - src.buf;
+    uri_start = method_stop + 1;
 
     /* Parse the method, add it to the request dict */
-    _SET(method, _parse_method(_slice(src, 0, offset)))
+    _SET(method, _parse_method(_slice(src, 0, method_stop)))
     _SET_ITEM(request, str_method, method)
 
     /* _parse_uri() will fill in uri, script, request, and query */
-    if (!_parse_uri(_slice(src, offset, src.len - offset), request)) {
+    if (!_parse_uri(_slice(src, uri_start, src.len), request)) {
         goto error;
     }
     goto cleanup;
@@ -1150,9 +1151,6 @@ _parse_headers(DeguBuf src)
         if (stop == NULL) {
             stop = final_stop;
         }
-        if (start >= stop) {
-            Py_FatalError("_parse_headers: start >= stop");
-        }
         newflags = _parse_header_line(
             _slice_between(src, start, stop), headers
         );
@@ -1210,6 +1208,20 @@ error:
 cleanup:
     Py_CLEAR(headers);
     return request;
+}
+
+
+static PyObject *
+parse_request(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_preamble", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    return _parse_request(src);
 }
 
 
@@ -1686,7 +1698,7 @@ degu_read_request_preamble(PyObject *self, PyObject *args)
     }
 
     DeguBuf src = {line_buf, line_len - 2};
-    if (_parse_request_line(src, &method, &uri) != true) {
+    if (! _parse_request_line(src, &method, &uri)) {
         goto error;
     }
     if (method == NULL || uri == NULL) {
@@ -1864,7 +1876,7 @@ _Reader_peek(Reader *self, const size_t size)
         Py_FatalError("_Reader_peak: start >= stop && start != 0");
     }
     const uint8_t *cur_buf = self->buf + self->start;
-    const uint8_t  cur_len = self->stop - self->start;
+    const size_t cur_len = self->stop - self->start;
     return (DeguBuf){cur_buf, _min(size, cur_len)};
 }
 
@@ -1896,6 +1908,9 @@ _Reader_fill(Reader *self, const size_t size)
     DeguBuf cur = _Reader_peek(self, size);
     if (cur.len == size) {
         return cur;
+    }
+    if (cur.len > size) {
+        Py_FatalError("_Reader_fill(): cur.len > size");
     }
     if (self->start > 0) {
         memmove(self->buf, cur.buf, cur.len);
@@ -2131,6 +2146,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
+    {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
 
     {"_read_response_preamble", degu_read_response_preamble, METH_VARARGS,
         "_read_response_preamble(rfile)"},

@@ -16,6 +16,7 @@ from degu._base import (
     parse_request_line,
     parse_method,
     parse_uri,
+    parse_request,
     parse_response_line,
     parse_preamble,
 
@@ -77,6 +78,9 @@ run("parse_preamble(b'HTTP/1.1 200 OK\\r\\ncontent-length: 17')")
 run('parse_preamble(preamble)')
 
 print('\nRequest parsing:')
+run("parse_request(b'GET / HTTP/1.1')")
+run("parse_request(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
+run("parse_request(b'GET / HTTP/1.1\\r\\ncontent-length: 17')")
 run("parse_request_line(b'GET / HTTP/1.1')")
 run("parse_request_line(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_method(b'GET')")
