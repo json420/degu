@@ -240,7 +240,7 @@ def parse_response_line(line):
     except ValueError:
         pass
     if status is None or not (100 <= status <= 599):
-        raise ValueError('bad status in response line: {!r}'.format(line))
+        raise ValueError('bad status: {!r}'.format(line[9:12]))
 
     # reason:
     if line[13:] == b'OK':
@@ -499,7 +499,7 @@ class Reader:
         index = haystack.find(end)
         if index < 0:
             raise ValueError(
-                'not found in {!r}'.format(haystack)
+                '{!r} not found in {!r}'.format(end, haystack)
             )
         assert 0 <= index <= size - len(end)
         self._drain_buffer(index + len(end))

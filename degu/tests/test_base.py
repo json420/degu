@@ -684,7 +684,7 @@ class TestFunctions(AlternatesTestCase):
                     with self.assertRaises(ValueError) as cm:
                         parse_response_line(line)
                     self.assertEqual(str(cm.exception),
-                        'bad status in response line: {!r}'.format(line)
+                        'bad status: {!r}'.format('{:03d}'.format(status).encode())
                     )
 
         # Test fast-path when reason is 'OK':
@@ -2257,7 +2257,7 @@ class TestReader_Py(TestCase):
             with self.assertRaises(ValueError) as cm:
                 reader.read_raw_preamble()
             self.assertEqual(str(cm.exception),
-                'not found in {!r}'.format(bad)
+                '{!r} not found in {!r}'.format(b'\r\n\r\n', bad)
             )
             self.assertEqual(sock._rfile.tell(), len(bad))
             self.assertEqual(reader.rawtell(), len(bad))
