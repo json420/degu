@@ -1253,12 +1253,24 @@ parse_request(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_preamble", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
         return NULL;
     }
     DeguBuf src = {buf, len};
     return _parse_request(src);
+}
+
+
+static PyObject *
+parse_response(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    return _parse_response(src);
 }
 
 
@@ -2283,6 +2295,7 @@ static struct PyMethodDef degu_functions[] = {
         "parse_request_line(line)"},
     {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
+    {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
 
     {"_read_response_preamble", degu_read_response_preamble, METH_VARARGS,
         "_read_response_preamble(rfile)"},
