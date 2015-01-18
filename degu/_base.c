@@ -2107,13 +2107,6 @@ Reader_start_stop(Reader *self)
 }
 
 
-/* Reader.avail() */
-static PyObject *
-Reader_avail(Reader *self) {
-    DeguBuf cur = _Reader_peek(self, self->len);
-    return PyLong_FromSize_t(cur.len);
-}
-
 /* Reader.rawtell() */
 static PyObject *
 Reader_rawtell(Reader *self) {
@@ -2131,9 +2124,6 @@ Reader_tell(Reader *self) {
 static PyMethodDef Reader_methods[] = {
     {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
         "return (start, stop) tuple"
-    },
-    {"avail", (PyCFunction)Reader_avail, METH_NOARGS,
-        "number of bytes currently available in the buffer"
     },
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
         "return number of bytes thus far read from the underlying socket"

@@ -2236,7 +2236,6 @@ class TestReader_Py(TestCase):
     def test_init(self):
         (sock, reader) = self.new()
         self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.avail(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
@@ -2414,60 +2413,24 @@ class TestReader_Py(TestCase):
         self.assertEqual(str(cm.exception), 'need size >= 0; got -1')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.avail(), 0)
 
         self.assertEqual(reader.read(0), b'')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.avail(), 0)
-        return
 
-        ret = reader.read_raw_preamble()
-        self.assertEqual(ret, b'GET / HTTP/1.1')
-        self.assertEqual(sock._rfile.tell(), len(data))
-        self.assertEqual(reader.rawtell(), len(data))
-        self.assertEqual(reader.tell(), len(ret) + 4)
-        self.assertEqual(reader.avail(), len(data) - len(ret) - 4)
-        self.assertEqual(sock._rfile.read(), b'')
-
-        self.assertEqual(reader.read(1000), b'Hello naughty nurse!')
-        self.assertEqual(sock._rfile.tell(), len(data))
-        self.assertEqual(reader.rawtell(), len(data))
-        self.assertEqual(reader.tell(), len(data))
-        self.assertEqual(reader.avail(), 0)
-        self.assertEqual(sock._rfile.read(), b'')
-
-        KiB_64  = 2 ** 16
-        KiB_32  = 2 ** 15
-        KiB_16  = 2 ** 14
-        #KiB_8   = 2 ** 13
-        data = b''.join([
-            b'A' * KiB_16,
-            b'B' * KiB_32,
-            b'C' * KiB_64,
-        ])
-        self.assertEqual(len(data), 112 * 1024)
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.read(KiB_16), b'A' * KiB_16)
-        self.assertEqual(sock._rfile.tell(), KiB_64)
-        self.assertEqual(reader.rawtell(), KiB_64)
-        self.assertEqual(reader.tell(), KiB_16)
-        self.assertEqual(reader.avail(), KiB_64 - KiB_16)
-
-        self.assertEqual(reader.read(KiB_32), b'B' * KiB_32)
-        self.assertEqual(sock._rfile.tell(), KiB_64)
-        self.assertEqual(reader.rawtell(), KiB_64)
-        self.assertEqual(reader.tell(), KiB_16 + KiB_32)
-        self.assertEqual(reader.avail(), KiB_16)
-
-        self.assertEqual(reader.read(KiB_64), b'C' * KiB_64)
-        self.assertEqual(sock._rfile.tell(), len(data))
-        self.assertEqual(reader.rawtell(), len(data))
-        self.assertEqual(reader.tell(), len(data))
-        self.assertEqual(reader.avail(), 0)
-
+        A = b'A' * 1024
+        B = b'B' * BUF_SIZE
+        C = b'C' * 512
+        D = b'D' * (BUF_SIZE + 1)
+        (sock, reader) = self.new(A + B + C + D)
+        self.assertEqual(reader.read(1024), A)
+        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(512), C)
+        self.assertEqual(reader.read(BUF_SIZE + 1), D)
 
 
 class TestReader_C(TestReader_Py):

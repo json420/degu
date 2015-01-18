@@ -389,16 +389,13 @@ class Reader:
         self._start = 0
         self._buf = b''
 
-    def avail(self):
-        return len(self._buf)
-
     def rawtell(self):
         return self._rawtell
 
     def tell(self):
         return self._rawtell - len(self._buf)
 
-    def _raw_recv_into(self, buf):
+    def _readinto(self, buf):
         added = self.sock.recv_into(buf)
         self._rawtell += added
         return added
@@ -490,7 +487,7 @@ class Reader:
             self._update(0, len(cur))
         assert self._start == 0
         assert len(self._buf) == len(cur)
-        added = self._raw_recv_into(self._rawbuf[len(cur):])
+        added = self._readinto(self._rawbuf[len(cur):])
         assert added >= 0
         if added > 0:
             self._update(0, len(cur) + added)
@@ -527,22 +524,15 @@ class Reader:
         if size == 0:
             return b''
         if size <= len(self._rawbuf):
-            if size > len(self._buf):
-                self.fill(size)
-            size = min(size, len(self._buf))
-            data = self._buf[0:size]
-            self.drain(size)
-            return data
-        assert False
-        tmp = bytearray(size)
-        avail = len(self._buf)
-        if avail > 0:
-            tmp[0:avail] = self._buf
-            self.drain(avail)
-            size = avail + self._raw_recv_into(tmp[avail:])
-        else:
-            size = self._raw_recv_into(tmp)
-        return tmp[0:size]
+            self.fill(size)
+            return self.drain(size)
+
+        src = self.drain(size)
+        src_len = len(src)
+        dst = memoryview(bytearray(size))
+        dst[0:src_len] = src
+        dst_len = src_len + self._readinto(dst[src_len:])
+        return dst[:dst_len].tobytes()
 
 
 def format_request_preamble(method, uri, headers):
