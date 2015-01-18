@@ -2238,6 +2238,7 @@ class TestReader_Py(TestCase):
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.avail(), 0)
         self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
     def test_expose(self):
@@ -2280,73 +2281,129 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
 
         # Buffer is empty:
-        size3 = BUF_SIZE // 3
-        size2 = BUF_SIZE // 2
-        self.assertEqual(reader.fill(size3), data[0:size3])
+        third = BUF_SIZE // 3
+        half = BUF_SIZE // 2
+        self.assertEqual(reader.fill(third), data[0:third])
         self.assertEqual(sock._rfile.tell(), BUF_SIZE)
         self.assertEqual(reader.rawtell(), BUF_SIZE)
         self.assertEqual(reader.start_stop(), (0, BUF_SIZE))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), data[0:BUF_SIZE])
         self.assertEqual(reader.peek(-1), data[0:BUF_SIZE])
-        return
 
         # Nothing was drained:
-        self.assertEqual(reader.fill(size2), data[0:size2])
+        self.assertEqual(reader.fill(half), data[0:half])
         self.assertEqual(sock._rfile.tell(), BUF_SIZE)
         self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.start_stop(), (0, BUF_SIZE))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), data[0:BUF_SIZE])
         self.assertEqual(reader.peek(-1), data[0:BUF_SIZE])
 
         # Drain first 1/3 of buffer:
-        self.assertEqual(reader.fill(size3, drain=True), data[0:size3])
+        self.assertEqual(reader.drain(third), data[0:third])
         self.assertEqual(sock._rfile.tell(), BUF_SIZE)
         self.assertEqual(reader.rawtell(), BUF_SIZE)
-        self.assertEqual(reader.tell(), size3)
+        self.assertEqual(reader.start_stop(), (third, BUF_SIZE))
+        self.assertEqual(reader.tell(), third)
         self.assertEqual(reader.expose(), data[0:BUF_SIZE])
-        self.assertEqual(reader.peek(-1), data[size3:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[third:BUF_SIZE])
 
-    def test_read_raw_preamble(self):
+        # A fill() request for another 1/2 of the buffer should be done from
+        # memory, with no call to sock.recv_into()
+        self.assertEqual(reader.fill(half), data[third:third+half])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE)
+        self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.start_stop(), (third, BUF_SIZE))
+        self.assertEqual(reader.tell(), third)
+        self.assertEqual(reader.expose(), data[0:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[third:BUF_SIZE])
+
+        # Drain next 1/2 of buffer:
+        self.assertEqual(reader.drain(half), data[third:third+half])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE)
+        self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.start_stop(), (third + half, BUF_SIZE))
+        self.assertEqual(reader.tell(), third + half)
+        self.assertEqual(reader.expose(), data[0:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[third+half:BUF_SIZE])
+
+        # Now fill() request for 1/3 the buffer will shift available to the
+        # left of the raw buffer, and fill the remaining:
+        accum = third + half
+        self.assertEqual(reader.fill(third), data[accum:accum+third])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE + accum)
+        self.assertEqual(reader.rawtell(), BUF_SIZE + accum)
+        self.assertEqual(reader.start_stop(), (0, BUF_SIZE))
+        self.assertEqual(reader.tell(), accum)
+        self.assertEqual(reader.expose(), data[accum:BUF_SIZE+accum])
+        self.assertEqual(reader.peek(-1), data[accum:BUF_SIZE+accum])
+
+        # Drain next third of the buffer:
+        self.assertEqual(reader.drain(third), data[accum:accum+third])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE + accum)
+        self.assertEqual(reader.rawtell(), BUF_SIZE + accum)
+        self.assertEqual(reader.start_stop(), (third, BUF_SIZE))
+        self.assertEqual(reader.tell(), accum + third)
+        self.assertEqual(reader.expose(), data[accum:BUF_SIZE+accum])
+        self.assertEqual(reader.peek(-1), data[accum+third:BUF_SIZE+accum])
+
+    def test_search(self):
         (sock, reader) = self.new()
-        with self.assertRaises(self.EmptyPreambleError) as cm:
-            reader.read_raw_preamble()
-        self.assertEqual(str(cm.exception), 'HTTP preamble is empty')
+        with self.assertRaises(ValueError) as cm:
+            reader.search(4096, b'')
+        self.assertEqual(str(cm.exception), 'end cannot be empty')
+        self.assertEqual(reader.search(4096, b'\n'), b'')
+        self.assertEqual(reader.search(4096, b'\r\n'), b'')
+        self.assertEqual(reader.search(4096, b'\r\n\r\n'), b'')
 
-        bad_ones = (
-            b'GET / HTTP/1.1',
-            b'GET / HTTP/1.1Content-Length: 17',
-            b'GET / HTTP/1.1\r\n',
-            b'GET / HTTP/1.1\r\n\r',
-            b'GET / HTTP/1.1\r\nContent-Length: 17',
-            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n',
-            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n\r',
-        )
-        for bad in bad_ones:
-            (sock, reader) = self.new(bad)
-            with self.assertRaises(ValueError) as cm:
-                reader.read_raw_preamble()
-            self.assertEqual(str(cm.exception),
-                '{!r} not found in {!r}'.format(b'\r\n\r\n', bad)
-            )
-            self.assertEqual(sock._rfile.tell(), len(bad))
-            self.assertEqual(reader.rawtell(), len(bad))
-            self.assertEqual(reader.avail(), len(bad))
-            self.assertEqual(reader.tell(), 0)
+        A = b'A' * 512
+        B = b'B' * 256
+        C = b'C' * 128
+        end = b'\r\n\r\n'
 
-        good_ones = (
-            b'GET / HTTP/1.1\r\n\r\n',
-            b'GET / HTTP/1.1\r\nContent-Length: 17\r\n\r\n',
-            b'HTTP/1.1 200 OK\r\n\r\n',
-            b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n',
+        # End not in data:
+        data = A + B + C
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.search(512, end)
+        self.assertEqual(str(cm.exception),
+            '{!r} not found in {!r}...'.format(end, A[:32])
         )
-        for good in good_ones:
-            (sock, reader) = self.new(good)
-            self.assertEqual(reader.read_raw_preamble(), good[0:-4])
-            self.assertEqual(sock._rfile.tell(), len(good))
-            self.assertEqual(reader.rawtell(), len(good))
-            self.assertEqual(reader.avail(), 0)
-            self.assertEqual(reader.tell(), len(good))
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.search(512, end, always_return=True), A)
+        self.assertEqual(reader.search(512, end, always_return=True), B + C)
+        self.assertEqual(reader.search(512, end, always_return=True), b'')
+
+        # End in data, but not in size bytes:
+        data = end.join([A, B, C]) + end
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.search(512, end)
+        self.assertEqual(str(cm.exception),
+            '{!r} not found in {!r}...'.format(end, A[:32])
+        )
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.search(512, end, always_return=True), A)
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.search(516, end), A)
+        self.assertEqual(reader.search(512, end), B)
+        self.assertEqual(reader.search(512, end), C)
+        self.assertEqual(reader.search(512, end), b'')
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.search(516, end, include_end=True), A + end)
+        self.assertEqual(reader.search(512, end, include_end=True), B + end)
+        self.assertEqual(reader.search(512, end, include_end=True), C + end)
+        self.assertEqual(reader.search(512, end, include_end=True), b'')
+
+    def test_readline(self):
+        size = 1024 * 64
+        (sock, reader) = self.new()
+        self.assertEqual(reader.readline(size), b'')
+
+        data = b'D' * size
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.readline(size), data)
 
     def test_read(self):
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
@@ -2365,6 +2422,7 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.avail(), 0)
+        return
 
         ret = reader.read_raw_preamble()
         self.assertEqual(ret, b'GET / HTTP/1.1')
@@ -2410,14 +2468,6 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.tell(), len(data))
         self.assertEqual(reader.avail(), 0)
 
-    def test_readline(self):
-        size = 1024 * 64
-        (sock, reader) = self.new()
-        self.assertEqual(reader.readline(size), b'')
-
-        data = b'D' * size
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.readline(size), data)
 
 
 class TestReader_C(TestReader_Py):

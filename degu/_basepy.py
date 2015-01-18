@@ -496,29 +496,27 @@ class Reader:
             self._update(0, len(cur) + added)
         return self.peek(size)
 
-    def _search(self, haystack, end, include_end=False, always_return=False):
-        index = haystack.find(end)
+    def search(self, size, end, include_end=False, always_return=False):
+        assert isinstance(end, bytes)
+        if not end:
+            raise ValueError('end cannot be empty')
+        cur = self.fill(size)
+        if len(cur) == 0:
+            return cur
+        index = cur.find(end)
         if index < 0:
             if always_return:
-                return haystack
+                return self.drain(size)
             raise ValueError(
-                '{!r} not found in {!r}'.format(end, haystack)
+                '{!r} not found in {!r}...'.format(end, cur[:32])
             )
-        assert 0 <= index <= len(haystack) - len(end)
-        size = index + len(end)
-        src = self.drain(size)
-        assert len(src) == size
+        src = self.drain(index + len(end))
         if include_end:
             return src
         return src[0:index]
 
-    def read_raw_preamble(self):
-        cur = self.fill(MAX_PREAMBLE_SIZE)
-        if len(cur) == 0:
-            raise EmptyPreambleError('HTTP preamble is empty')
-        size = min(MAX_PREAMBLE_SIZE, len(self._buf))
-        haystack = self._buf[0:size]
-        return self._search(haystack, b'\r\n\r\n')
+    def readline(self, size):
+        return self.search(size, b'\n', True, True)
 
     def read(self, size):
         assert isinstance(size, int)
@@ -545,18 +543,6 @@ class Reader:
         else:
             size = self._raw_recv_into(tmp)
         return tmp[0:size]
-
-    def readline(self, size):
-        assert isinstance(size, int)
-        if not (0 <= size <= READER_BUFFER_SIZE):
-            raise ValueError(
-                'need 0 <= size <= {}; got {}'.format(size, READER_BUFFER_SIZE)
-            )
-        if size == 0:
-            return b''
-        haystack = self.fill(size)
-        return self._search(haystack, b'\n', True, True)
-        
 
 
 def format_request_preamble(method, uri, headers):

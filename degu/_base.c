@@ -1929,8 +1929,15 @@ _Reader_fill(Reader *self, const size_t size)
 
 static DeguBuf
 _Reader_search(Reader *self, const size_t size, DeguBuf end,
-               const bool include_end, const bool always_return)
+               const int include_end, const int always_return)
 {
+    if (end.buf == NULL) {
+        Py_FatalError("_Reader_search: end.buf == NULL");
+    }
+    if (end.len == 0) {
+        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
+        return NULL_DeguBuf;
+    }
     DeguBuf cur = _Reader_fill(self, size);
     if (cur.buf == NULL) {
         return NULL_DeguBuf;
@@ -1941,9 +1948,11 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
     const uint8_t *found = memmem(cur.buf, cur.len, end.buf, end.len);
     if (found == NULL) {
         if (always_return) {
-            return cur;
+            return _Reader_drain(self, size);
         }
-        _value_error2("%R not found in %R", end, cur);
+        _value_error2(
+            "%R not found in %R...", end, _slice(cur, 0, _min(cur.len, 32))
+        );
         return NULL_DeguBuf;
     }
     DeguBuf src = _Reader_drain(self, (found - cur.buf) + end.len);
@@ -1960,10 +1969,7 @@ Reader_read_request(Reader *self) {
     if (src.buf == NULL) {
         return NULL;
     }
-    if (cur.buf == NULL) {
-        return NULL;
-    }
-    if (cur.len == 0) {
+    if (src.len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
         return NULL;
     }
@@ -2010,45 +2016,34 @@ Reader_drain(Reader *self, PyObject *args) {
 
 
 static PyObject *
-Reader_readline(Reader *self, PyObject *args) {
+Reader_search(Reader *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
     ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
+    uint8_t *end_buf = NULL;
+    size_t end_len = 0;
+    int include_end = false;
+    int always_return = false;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:search", keys,
+            &size, &end_buf, &end_len, &include_end, &always_return)) {
         return NULL;
     }
-    if (size > self->len) {
-        PyErr_Format(PyExc_ValueError,
-            "need size <= %zd; got %zd", self->len, size
-        );
-        return NULL;
-    }
-    DeguBuf cur = _Reader_fill(self, size);
-    if (cur.buf == NULL) {
-        return NULL;
-    }
-    DeguBuf src = _Reader_search(self, cur, LF, true, true);
-    if (src.buf == NULL) {
-        return NULL;
-    }
-    return _tobytes(src);
+    DeguBuf end = {end_buf, end_len};
+    return _tobytes(
+        _Reader_search(self, size, end, include_end, always_return)
+    );
 }
 
 
 static PyObject *
-Reader_read_raw_preamble(Reader *self)
+Reader_readline(Reader *self, PyObject *args)
 {
-    DeguBuf cur = _Reader_fill(self, self->len);
-    if (cur.buf == NULL) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    if (cur.len == 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        return NULL;
-    }
-    DeguBuf src = _Reader_search(self, cur, TERM, false, false);
-    if (src.buf == NULL) {
-        return NULL;
-    }
-    return _tobytes(src);
+    return _tobytes(_Reader_search(self, size, LF, true, true));
 }
 
 
@@ -2086,8 +2081,8 @@ Reader_read(Reader *self, PyObject *args)
                 goto error;
             }
         }
-        goto cleanup;
     }
+    goto cleanup;
 
 error:
     Py_CLEAR(ret);
@@ -2149,14 +2144,14 @@ static PyMethodDef Reader_methods[] = {
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
         "read and parse the HTTP request preamble"
     },
-    {"read_raw_preamble", (PyCFunction)Reader_read_raw_preamble, METH_NOARGS,
-        "read raw preamble bytes without parsing"
-    },
 
     {"fill", (PyCFunction)Reader_fill, METH_VARARGS, "fill(size)"},
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
     {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},
+    {"search", (PyCFunction)Reader_search, METH_VARARGS | METH_KEYWORDS,
+        "search(size, end, include_end=False, always_return=False)"
+    },
     {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
     {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
 
