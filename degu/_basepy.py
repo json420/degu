@@ -269,9 +269,9 @@ def parse_request_line(line):
     )
 
 
-def parse_preamble(preamble):
-    (first_line, *header_lines) = preamble.split(b'\r\n')
-    first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')
+def parse_request(preamble):
+    # FIXME
+    (line, *header_lines) = preamble.split(b'\r\n')
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
@@ -402,9 +402,7 @@ class Reader:
         return self._rawtell - len(self._buf)
 
     def _readinto(self, buf):
-        print('readinto', len(buf))
         added = self.sock.recv_into(buf)
-        print(added)
         self._rawtell += added
         return added
 
@@ -479,7 +477,6 @@ class Reader:
         return src
 
     def fill(self, size):
-        print('fill', size)
         assert isinstance(size, int)
         if not (0 <= size <= len(self._rawbuf)):
             raise ValueError(
@@ -526,11 +523,9 @@ class Reader:
         return src[0:index]
 
     def readline(self, size):
-        print('readline', size)
         return self.search(size, b'\n', True, True)
 
     def read(self, size):
-        print('read', size)
         assert isinstance(size, int)
         if size < 0:
             raise ValueError(
