@@ -37,11 +37,6 @@
 #define MAX_CL_VALUE 9007199254740992
 
 #define CRLF "\r\n"
-#define GET "GET"
-#define PUT "PUT"
-#define POST "POST"
-#define HEAD "HEAD"
-#define DELETE "DELETE"
 #define CONTENT_LENGTH "content-length"
 #define TRANSFER_ENCODING "transfer-encoding"
 #define CHUNKED "chunked"
@@ -200,8 +195,25 @@ _DEGU_BUF_CONSTANT(TERM, "\r\n\r\n")
 _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
 _DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
+_DEGU_BUF_CONSTANT(GET, "GET")
+_DEGU_BUF_CONSTANT(PUT, "PUT")
+_DEGU_BUF_CONSTANT(POST, "POST")
+_DEGU_BUF_CONSTANT(HEAD, "HEAD")
+_DEGU_BUF_CONSTANT(DELETE, "DELETE")
 
 #define _BUFFER(buf, len) (DeguBuf){buf, len}
+
+
+static bool
+_equal(const DeguBuf a, const DeguBuf b) {
+    if (a.buf == NULL || b.buf == NULL) {
+        Py_FatalError("_equal(): comparing a NULL buffer");
+    }
+    if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
+        return true;
+    }
+    return false;
+}
 
 
 static void
@@ -280,17 +292,6 @@ _tobytes(DeguBuf src)
     return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
 }
 
-
-static bool
-_equal(const DeguBuf a, const DeguBuf b) {
-    if (a.buf == NULL || b.buf == NULL) {
-        Py_FatalError("_equal(): comparing a NULL buffer");
-    }
-    if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
-        return true;
-    }
-    return false;
-}
 
 
 static void
@@ -380,29 +381,25 @@ static PyObject *
 _parse_method(DeguBuf src)
 {
     PyObject *method = NULL;
-
     if (src.len == 3) {
-        if (memcmp(src.buf, GET, 3) == 0) {
+        if (_equal(src, GET)) {
             method = str_GET;
         }
-        else if (memcmp(src.buf, PUT, 3) == 0) {
+        else if (_equal(src, PUT)) {
             method = str_PUT;
         }
     }
     else if (src.len == 4) {
-        if (memcmp(src.buf, POST, 4) == 0) {
+        if (_equal(src, POST)) {
             method = str_POST;
         }
-        else if (memcmp(src.buf, HEAD, 4) == 0) {
+        else if (_equal(src, HEAD)) {
             method = str_HEAD;
         }
     }
-    else if (src.len == 6) {
-        if (memcmp(src.buf, DELETE, 6) == 0) {
-            method = str_DELETE;
-        }
+    else if (_equal(src, DELETE)) {
+        method = str_DELETE;
     }
-
     if (method == NULL) {
         _value_error(src, "bad HTTP method: %R");
     }
@@ -2350,12 +2347,12 @@ PyInit__base(void)
     }
 
     /* Init string constants */
-    _ADD_MODULE_STRING(str_GET,    GET)
-    _ADD_MODULE_STRING(str_PUT,    PUT)
-    _ADD_MODULE_STRING(str_POST,   POST)
-    _ADD_MODULE_STRING(str_HEAD,   HEAD)
-    _ADD_MODULE_STRING(str_DELETE, DELETE)
-    _ADD_MODULE_STRING(str_OK, "OK")
+    _ADD_MODULE_STRING(str_GET,    "GET")
+    _ADD_MODULE_STRING(str_PUT,    "PUT")
+    _ADD_MODULE_STRING(str_POST,   "POST")
+    _ADD_MODULE_STRING(str_HEAD,   "HEAD")
+    _ADD_MODULE_STRING(str_DELETE, "DELETE")
+    _ADD_MODULE_STRING(str_OK,     "OK")
 
     /* Init EmptyPreambleError exception */
     _SET(degu_EmptyPreambleError,
