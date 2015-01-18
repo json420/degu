@@ -254,7 +254,7 @@ class Connection:
         self.sock = sock
         self.base_headers = base_headers
         self.bodies = bodies
-        (self._rfile, self._wfile) = _makefiles(sock)
+        (self._rfile, self._wfile) = _makefiles(sock, bodies)
         self._response_body = None  # Previous Body(), ChunkedBody(), or None
 
     def __del__(self):

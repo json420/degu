@@ -201,7 +201,7 @@ def _write_response(wfile, status, reason, headers, body):
 
 
 def _handle_requests(app, sock, max_requests, session, bodies):
-    (rfile, wfile) = _makefiles(sock)
+    (rfile, wfile) = _makefiles(sock, bodies)
     assert session['requests'] == 0
     requests = 0
     while _handle_one(app, rfile, wfile, session, bodies) is True:

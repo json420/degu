@@ -548,12 +548,12 @@ class TestConnection(TestCase):
         self.assertIs(inst.base_headers, base_headers)
         self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
-        self.assertIs(inst._rfile, sock._rfile)
+        self.assertIsInstance(inst._rfile, base.Reader)
         self.assertIs(inst._wfile, sock._wfile)
         self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, False)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
@@ -856,10 +856,10 @@ class TestClient(TestCase):
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
-        self.assertIs(conn._rfile, sock._rfile)
+        self.assertIsInstance(conn._rfile, base.Reader)
         self.assertIs(conn._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
@@ -870,12 +870,12 @@ class TestClient(TestCase):
         self.assertIs(conn2.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
-        self.assertIs(conn2._rfile, sock._rfile)
+        self.assertIsInstance(conn2._rfile, base.Reader)
         self.assertIs(conn2._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 
@@ -891,10 +891,10 @@ class TestClient(TestCase):
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
-        self.assertIs(conn._rfile, sock._rfile)
+        self.assertIsInstance(conn._rfile, base.Reader)
         self.assertIs(conn._wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
+            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 

@@ -44,6 +44,7 @@ except ImportError:
         _read_response_preamble,
         format_request_preamble,
         format_response_preamble,
+        Reader,
     )
 
 
@@ -51,6 +52,7 @@ __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
+    'Reader',
     '_read_response_preamble',
     '_read_request_preamble',
     'format_request_preamble',
@@ -67,13 +69,13 @@ IO_SIZE = 1048576  # 1 MiB
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-def _makefiles(sock):
+def _makefiles(sock, bodies):
     """
     Create (rfile, wfile) from a socket connection.
     """
     return (
-        #Reader(sock, bodies),
-        sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
+        Reader(sock, bodies),
+        #sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
         sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
     )
 

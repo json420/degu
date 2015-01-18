@@ -349,9 +349,10 @@ class UserBytes(bytes):
 class TestFunctions(AlternatesTestCase):
     def test__makefiles(self):
         sock = DummySocket()
-        self.assertEqual(base._makefiles(sock), (sock._rfile, sock._wfile))
+        (reader, wfile) = base._makefiles(sock, base.bodies)
+        self.assertIsInstance(reader, base.Reader)
+        self.assertIs(wfile, sock._wfile)
         self.assertEqual(sock._calls, [
-            ('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
             ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
         ])
 

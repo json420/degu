@@ -147,6 +147,9 @@ class DummySocket:
     def close(self):
         self._calls.append('close')
 
+    def recv_into(self, buf):
+        pass
+
 
 class DummyFile:
     def __init__(self):
