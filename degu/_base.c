@@ -193,6 +193,7 @@ static const DeguBuf NULL_DeguBuf = {NULL, 0};
 #define _DEGU_BUF_CONSTANT(name, text) \
     static const DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
 
+_DEGU_BUF_CONSTANT(LF, "\n")
 _DEGU_BUF_CONSTANT(TERM, "\r\n\r\n")
 _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
@@ -1283,7 +1284,7 @@ static PyObject *
 _format_headers(PyObject *headers)
 {
     PyObject *key, *val;
-    Py_ssize_t header_count, pos, i;
+    ssize_t header_count, pos, i;
     PyObject *lines = NULL;
     PyObject *ret = NULL;  /* str version of request preamble */
 
@@ -1344,7 +1345,7 @@ static PyObject *
 degu_format_request_preamble(PyObject *self, PyObject *args)
 {
     PyObject *method, *uri, *headers, *key, *val;
-    Py_ssize_t header_count, pos, i;
+    ssize_t header_count, pos, i;
     PyObject *first_line = NULL;
     PyObject *lines = NULL;
     PyObject *str = NULL;  /* str version of request preamble */
@@ -1423,7 +1424,7 @@ static PyObject *
 degu_format_response_preamble(PyObject *self, PyObject *args)
 {
     PyObject *status, *reason, *headers, *key, *val;
-    Py_ssize_t header_count, pos, i;
+    ssize_t header_count, pos, i;
     PyObject *first_line = NULL;
     PyObject *lines = NULL;
     PyObject *str = NULL;  /* str version of response preamble */
@@ -1798,13 +1799,13 @@ error:
  *     -3  overflow when converting to size_t (`OverflowError` raised)
  *     -4  sock.recv_into() did not return 0 <= size <= len
  */
-static Py_ssize_t
+static ssize_t
 _Reader_readinto(Reader *self, uint8_t *buf, const size_t len)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    size_t size;
-    Py_ssize_t ret = -1;
+    ssize_t size;
+    ssize_t ret = -1;
 
     if (self == NULL || buf == NULL || len < 1) {
         Py_FatalError("bad internal call to _Reader_recv_into()");
@@ -1897,11 +1898,11 @@ _Reader_drain(Reader *self, const size_t size)
 static DeguBuf
 _Reader_fill(Reader *self, const size_t size)
 {
-    Py_ssize_t added;
+    ssize_t added;
 
-    if (size > self->len) {
+    if (size < 0 || size > self->len) {
         PyErr_Format(PyExc_ValueError,
-            "size > len: %zd > %zd", size, self->len
+            "need 0 <= size <= %zd; got %zd", self->len, size
         );
         return NULL_DeguBuf;
     }
@@ -1917,10 +1918,7 @@ _Reader_fill(Reader *self, const size_t size)
         self->start = 0;
         self->stop = cur.len;
     }
-    added = _Reader_readinto(self,
-        self->buf + cur.len,
-        self->len - cur.len
-    );
+    added = _Reader_readinto(self, self->buf + cur.len, self->len - cur.len);
     if (added < 0) {
         return NULL_DeguBuf;
     }
@@ -1930,14 +1928,21 @@ _Reader_fill(Reader *self, const size_t size)
 
 
 static DeguBuf
-_Reader_search(Reader *self, DeguBuf cur, DeguBuf end,
-                   const bool include_end)
+_Reader_search(Reader *self, const size_t size, DeguBuf end,
+               const bool include_end, const bool always_return)
 {
+    DeguBuf cur = _Reader_fill(self, size);
     if (cur.buf == NULL) {
         return NULL_DeguBuf;
     }
+    if (cur.len == 0) {
+        return cur;
+    }
     const uint8_t *found = memmem(cur.buf, cur.len, end.buf, end.len);
     if (found == NULL) {
+        if (always_return) {
+            return cur;
+        }
         _value_error2("%R not found in %R", end, cur);
         return NULL_DeguBuf;
     }
@@ -1951,7 +1956,10 @@ _Reader_search(Reader *self, DeguBuf cur, DeguBuf end,
 
 static PyObject *
 Reader_read_request(Reader *self) {
-    DeguBuf cur = _Reader_fill(self, self->len);
+    DeguBuf src = _Reader_search(self, self->len, TERM, false, false);
+    if (src.buf == NULL) {
+        return NULL;
+    }
     if (cur.buf == NULL) {
         return NULL;
     }
@@ -1959,18 +1967,75 @@ Reader_read_request(Reader *self) {
         PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
         return NULL;
     }
-    DeguBuf src = _Reader_search(self, cur, TERM, false);
-    if (src.buf == NULL) {
-        return NULL;
-    }
     return _parse_request(src);
 }
 
 
-
-/* Reader.read_preamble() */
 static PyObject *
-Reader_read_raw_preamble(Reader *self) {
+Reader_fill(Reader *self, PyObject *args)
+{
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_fill(self, size));
+}
+
+
+static PyObject *
+Reader_expose(Reader *self) {
+    DeguBuf rawbuf = {self->buf, self->len};
+    return _tobytes(rawbuf);
+}
+
+
+static PyObject *
+Reader_peek(Reader *self, PyObject *args) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_peek(self, size));
+}
+
+
+static PyObject *
+Reader_drain(Reader *self, PyObject *args) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_drain(self, size));
+}
+
+
+static PyObject *
+Reader_readline(Reader *self, PyObject *args) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    if (size > self->len) {
+        PyErr_Format(PyExc_ValueError,
+            "need size <= %zd; got %zd", self->len, size
+        );
+        return NULL;
+    }
+    DeguBuf cur = _Reader_fill(self, size);
+    if (cur.buf == NULL) {
+        return NULL;
+    }
+    DeguBuf src = _Reader_search(self, cur, LF, true, true);
+    if (src.buf == NULL) {
+        return NULL;
+    }
+    return _tobytes(src);
+}
+
+
+static PyObject *
+Reader_read_raw_preamble(Reader *self)
+{
     DeguBuf cur = _Reader_fill(self, self->len);
     if (cur.buf == NULL) {
         return NULL;
@@ -1979,8 +2044,7 @@ Reader_read_raw_preamble(Reader *self) {
         PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
         return NULL;
     }
-
-    DeguBuf src = _Reader_search(self, cur, TERM, false);
+    DeguBuf src = _Reader_search(self, cur, TERM, false, false);
     if (src.buf == NULL) {
         return NULL;
     }
@@ -1988,14 +2052,13 @@ Reader_read_raw_preamble(Reader *self) {
 }
 
 
-
 static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
-    Py_ssize_t size = -1;
-    PyObject *ret = NULL;
+    ssize_t size = -1;
     uint8_t *dst_buf;
-    Py_ssize_t added;
+    ssize_t added;
+    PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
@@ -2004,27 +2067,17 @@ Reader_read(Reader *self, PyObject *args)
         PyErr_Format(PyExc_ValueError, "need size >= 0; got %zd", size);
         return NULL;
     }
-
     if (size <= self->len) {
         DeguBuf src = _Reader_fill(self, size);
-        if (src.buf == NULL) {
-            goto error;
-        }
-        _SET(ret, _tobytes(_Reader_drain(self, src.len)))
-        goto cleanup;
+        _SET(ret, _tobytes(src))
+        _Reader_drain(self, size);
     }
     else {
         DeguBuf cur = _Reader_drain(self, size);
-        if (cur.buf == NULL) {
-            goto error;
-        }
         _SET(ret, PyBytes_FromStringAndSize(NULL, size))
         dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
         memcpy(dst_buf, cur.buf, cur.len);
-        added = _Reader_readinto(self,
-            dst_buf + cur.len,
-               size - cur.len
-        );
+        added = _Reader_readinto(self, dst_buf + cur.len, size - cur.len);
         if (added < 0) {
             goto error;
         }
@@ -2044,10 +2097,25 @@ cleanup:
 }
 
 
+static PyObject *
+Reader_start_stop(Reader *self)
+{
+    PyObject *ret = NULL;
+    PyObject *start = PyLong_FromSize_t(self->start);
+    PyObject *stop = PyLong_FromSize_t(self->stop);
+    if (start != NULL && stop != NULL) {
+        ret = PyTuple_Pack(2, start, stop);
+    }
+    Py_CLEAR(start);
+    Py_CLEAR(stop);
+    return ret;
+}
+
+
 /* Reader.avail() */
 static PyObject *
 Reader_avail(Reader *self) {
-    DeguBuf cur = _Reader_peek(self, -1);
+    DeguBuf cur = _Reader_peek(self, self->len);
     return PyLong_FromSize_t(cur.len);
 }
 
@@ -2060,12 +2128,15 @@ Reader_rawtell(Reader *self) {
 /* Reader.tell() */
 static PyObject *
 Reader_tell(Reader *self) {
-    DeguBuf cur = _Reader_peek(self, -1);
+    DeguBuf cur = _Reader_peek(self, self->len);
     return PyLong_FromSize_t(self->rawtell - cur.len);
 }
 
 
 static PyMethodDef Reader_methods[] = {
+    {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
+        "return (start, stop) tuple"
+    },
     {"avail", (PyCFunction)Reader_avail, METH_NOARGS,
         "number of bytes currently available in the buffer"
     },
@@ -2081,8 +2152,14 @@ static PyMethodDef Reader_methods[] = {
     {"read_raw_preamble", (PyCFunction)Reader_read_raw_preamble, METH_NOARGS,
         "read raw preamble bytes without parsing"
     },
-    {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(max_size)"
-    },
+
+    {"fill", (PyCFunction)Reader_fill, METH_VARARGS, "fill(size)"},
+    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
+    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
+    {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},
+    {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
+    {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
+
     {NULL}
 };
 

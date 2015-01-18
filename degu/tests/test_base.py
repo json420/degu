@@ -2214,6 +2214,9 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(wfile._calls, expected)
 
 
+BUF_SIZE = 64 * 1024
+
+
 class TestReader_Py(TestCase):
     backend = _basepy
 
@@ -2236,6 +2239,73 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.avail(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
+
+    def test_expose(self):
+        (sock, reader) = self.new()
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+    def test_fill(self):
+        data = os.urandom(2 * BUF_SIZE)
+        (sock, reader) = self.new(data)
+
+        with self.assertRaises(ValueError) as cm:
+            reader.fill(-1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= {}; got -1'.format(BUF_SIZE)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        with self.assertRaises(ValueError) as cm:
+            reader.fill(BUF_SIZE + 1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= {}; got {}'.format(BUF_SIZE, BUF_SIZE + 1)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # Regardless of buffer state, requesting a read of 0 should not cause a
+        # a call to sock.recv_into():
+        self.assertEqual(reader.fill(0), b'')
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # Buffer is empty:
+        size3 = BUF_SIZE // 3
+        size2 = BUF_SIZE // 2
+        self.assertEqual(reader.fill(size3), data[0:size3])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE)
+        self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.start_stop(), (0, BUF_SIZE))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), data[0:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[0:BUF_SIZE])
+        return
+
+        # Nothing was drained:
+        self.assertEqual(reader.fill(size2), data[0:size2])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE)
+        self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), data[0:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[0:BUF_SIZE])
+
+        # Drain first 1/3 of buffer:
+        self.assertEqual(reader.fill(size3, drain=True), data[0:size3])
+        self.assertEqual(sock._rfile.tell(), BUF_SIZE)
+        self.assertEqual(reader.rawtell(), BUF_SIZE)
+        self.assertEqual(reader.tell(), size3)
+        self.assertEqual(reader.expose(), data[0:BUF_SIZE])
+        self.assertEqual(reader.peek(-1), data[size3:BUF_SIZE])
 
     def test_read_raw_preamble(self):
         (sock, reader) = self.new()
@@ -2339,6 +2409,15 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.rawtell(), len(data))
         self.assertEqual(reader.tell(), len(data))
         self.assertEqual(reader.avail(), 0)
+
+    def test_readline(self):
+        size = 1024 * 64
+        (sock, reader) = self.new()
+        self.assertEqual(reader.readline(size), b'')
+
+        data = b'D' * size
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.readline(size), data)
 
 
 class TestReader_C(TestReader_Py):

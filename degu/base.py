@@ -33,6 +33,7 @@ try:
         _read_request_preamble,
         format_request_preamble,
         format_response_preamble,
+        Reader,
     )
 except ImportError:
     from ._basepy import (
@@ -71,6 +72,7 @@ def _makefiles(sock):
     Create (rfile, wfile) from a socket connection.
     """
     return (
+        #Reader(sock, bodies),
         sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
         sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
     )

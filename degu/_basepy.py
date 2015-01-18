@@ -387,7 +387,7 @@ class Reader:
         self._rawtell = 0
         self._rawbuf = memoryview(bytearray(2**16))
         self._start = 0
-        self._buf = self._rawbuf[0:0]
+        self._buf = b''
 
     def avail(self):
         return len(self._buf)
@@ -403,7 +403,7 @@ class Reader:
         self._rawtell += added
         return added
 
-    def _update_buffer(self, start, size):
+    def _update(self, start, size):
         """
         Valid transitions::
 
@@ -420,7 +420,7 @@ class Reader:
         # Check new state:
         assert 0 <= start <= start + size <= len(self._rawbuf)
 
-        # _update_buffer() should only be called when there is a change:
+        # _update() should only be called when there is a change:
         assert start != self._start or size != len(self._buf)
 
         # Check that previous to new is one of the four valid transitions:
@@ -450,93 +450,113 @@ class Reader:
 
         # Update start, buf:
         self._start = start
-        self._buf = self._rawbuf[start:start+size]
+        self._buf = self._rawbuf[start:start+size].tobytes()
 
-    def _fill_buffer(self):
+    def expose(self):
+        return self._rawbuf.tobytes()
+
+    def start_stop(self):
+        return (self._start, self._start + len(self._buf))
+
+    def peek(self, size):
+        assert isinstance(size, int)
+        if size < 0:
+            return self._buf
+        return self._buf[0:size]
+
+    def drain(self, size):
         avail = len(self._buf)
-
-        # Nothing to do if buffer is already full:
-        if avail == len(self._rawbuf):
-            return 0
-
-        # If needed, shift current buf content to start of rawbuf:
-        if self._start > 0:
-            assert avail > 0
-            self._rawbuf[0:avail] = self._buf
-            self._update_buffer(0, avail)
-
-        assert self._start == 0
-        assert len(self._buf) == avail
-        added = self._raw_recv_into(self._rawbuf[avail:])
-        if added > 0:
-            self._update_buffer(0, avail + added)
-        return added
-
-    def _drain_buffer(self, amount):
-        assert isinstance(amount, int) and amount >= 0
-        if amount == 0:
-            return
-        avail = self.avail()
-        if amount > avail:
-            raise ValueError(
-                'Reader._drain_buffer(): amount > avail: {} > {}'.format(amount, avail)
-            )
-        if amount == avail:
-            # Empty the buffer:
-            self._update_buffer(0, 0)
+        src = self.peek(size)
+        if len(src) == avail:
+            self._update(0, 0)
         else:
-            assert 0 < amount < avail
-            # Drain some of the buffer:
-            self._update_buffer(self._start + amount, avail - amount)
+            self._update(self._start + len(src), avail - len(src))
+        return src
 
-    def _read_until(self, end, max_size):
-        assert isinstance(end, bytes)
-        assert isinstance(max_size, int)
-        assert 2 <= len(end) <= 4
-        assert len(end) <= max_size <= len(self._rawbuf)
-        size = min(max_size, len(self._buf))
-        haystack = self._buf[0:size].tobytes()
+    def fill(self, size):
+        assert isinstance(size, int)
+        if not (0 <= size <= len(self._rawbuf)):
+            raise ValueError(
+                'need 0 <= size <= {}; got {}'.format(len(self._rawbuf), size)
+            )
+        cur = self.peek(size)
+        if len(cur) == size:
+            return cur
+        assert len(cur) < size
+        assert len(cur) == len(self._buf)
+        if self._start > 0:
+            assert len(cur) > 0
+            self._rawbuf[0:len(cur)] = cur
+            self._update(0, len(cur))
+        assert self._start == 0
+        assert len(self._buf) == len(cur)
+        added = self._raw_recv_into(self._rawbuf[len(cur):])
+        assert added >= 0
+        if added > 0:
+            self._update(0, len(cur) + added)
+        return self.peek(size)
+
+    def _search(self, haystack, end, include_end=False, always_return=False):
         index = haystack.find(end)
         if index < 0:
+            if always_return:
+                return haystack
             raise ValueError(
                 '{!r} not found in {!r}'.format(end, haystack)
             )
-        assert 0 <= index <= size - len(end)
-        self._drain_buffer(index + len(end))
-        return haystack[0:index]
+        assert 0 <= index <= len(haystack) - len(end)
+        size = index + len(end)
+        src = self.drain(size)
+        assert len(src) == size
+        if include_end:
+            return src
+        return src[0:index]
 
     def read_raw_preamble(self):
-        if self.avail() < MAX_PREAMBLE_SIZE:
-            self._fill_buffer()
-        if self.avail() == 0:
+        cur = self.fill(MAX_PREAMBLE_SIZE)
+        if len(cur) == 0:
             raise EmptyPreambleError('HTTP preamble is empty')
-        return self._read_until(b'\r\n\r\n', MAX_PREAMBLE_SIZE)
+        size = min(MAX_PREAMBLE_SIZE, len(self._buf))
+        haystack = self._buf[0:size]
+        return self._search(haystack, b'\r\n\r\n')
 
-    def read(self, max_size):
-        assert isinstance(max_size, int)
-        if max_size < 0:
+    def read(self, size):
+        assert isinstance(size, int)
+        if size < 0:
             raise ValueError(
-                'need size >= 0; got {}'.format(max_size)
+                'need size >= 0; got {}'.format(size)
             )
-        if max_size == 0:
+        if size == 0:
             return b''
-        if max_size <= len(self._rawbuf):
-            if max_size > len(self._buf):
-                self._fill_buffer()
-            size = min(max_size, len(self._buf))
-            data = self._buf[0:size].tobytes()
-            self._drain_buffer(size)
+        if size <= len(self._rawbuf):
+            if size > len(self._buf):
+                self.fill(size)
+            size = min(size, len(self._buf))
+            data = self._buf[0:size]
+            self.drain(size)
             return data
         assert False
-        tmp = bytearray(max_size)
+        tmp = bytearray(size)
         avail = len(self._buf)
         if avail > 0:
             tmp[0:avail] = self._buf
-            self._drain_buffer(avail)
+            self.drain(avail)
             size = avail + self._raw_recv_into(tmp[avail:])
         else:
             size = self._raw_recv_into(tmp)
-        return tmp[0:size].tobytes()
+        return tmp[0:size]
+
+    def readline(self, size):
+        assert isinstance(size, int)
+        if not (0 <= size <= READER_BUFFER_SIZE):
+            raise ValueError(
+                'need 0 <= size <= {}; got {}'.format(size, READER_BUFFER_SIZE)
+            )
+        if size == 0:
+            return b''
+        haystack = self.fill(size)
+        return self._search(haystack, b'\n', True, True)
+        
 
 
 def format_request_preamble(method, uri, headers):
