@@ -2441,6 +2441,11 @@ class TestReader_C(TestReader_Py):
             self.skipTest('cannot import `degu._base` C extension')
 
     def test_read_request(self):
+        (sock, reader) = self.new()
+        with self.assertRaises(self.backend.EmptyPreambleError) as cm:
+            reader.read_request()
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
         (sock, reader) = self.new(data)
         self.assertEqual(reader.read_request(),
@@ -2453,4 +2458,14 @@ class TestReader_C(TestReader_Py):
                 'headers': {},
             }
         )
-        
+
+    def test_read_response(self):
+        (sock, reader) = self.new()
+        with self.assertRaises(self.backend.EmptyPreambleError) as cm:
+            reader.read_response()
+        self.assertEqual(str(cm.exception), 'response preamble is empty')
+
+        data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
+        (sock, reader) = self.new(data)
+        self.assertEqual(reader.read_response(), (200, 'OK', {}))
+

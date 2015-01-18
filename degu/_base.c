@@ -56,6 +56,8 @@ static PyObject *degu_EmptyPreambleError = NULL;
 static PyObject *int_zero = NULL;               //  0
 static PyObject *str_readline = NULL;           //  'readline'
 static PyObject *str_recv_into = NULL;          //  'recv_into'
+static PyObject *str_Body = NULL;               //  'Body'
+static PyObject *str_ChunkedBody = NULL;        //  'ChunkedBody'
 static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
@@ -1213,6 +1215,40 @@ cleanup:
 
 
 static PyObject *
+_parse_response(DeguBuf src)
+{
+    PyObject *response = NULL;
+    PyObject *headers = NULL;
+    uint8_t *crlf;
+    size_t stop_line, start_headers;
+
+    crlf = memmem(src.buf, src.len, "\r\n", 2);
+    if (crlf == NULL) {
+        stop_line =  src.len;
+        start_headers = src.len;
+    }
+    else {
+        stop_line = crlf - src.buf;
+        start_headers = stop_line + 2;
+    }
+    _SET(response, PyTuple_New(3))
+    if (! _parse_response_line(_slice(src, 0, stop_line), response)) {
+        goto error;
+    }
+    _SET(headers, _parse_headers(_slice(src, start_headers, src.len)))
+    PyTuple_SET_ITEM(response, 2, headers);
+    goto cleanup;
+
+error:
+    Py_CLEAR(response);
+
+cleanup:
+    Py_CLEAR(headers);
+    return response;
+}
+
+
+static PyObject *
 parse_request(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
@@ -1739,7 +1775,8 @@ _calloc_buf(const size_t len)
 typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
-    PyObject *bodies;
+    PyObject *bodies_Body;
+    PyObject *bodies_ChunkedBody;
     size_t rawtell;
     uint8_t *buf;
     size_t len;
@@ -1752,7 +1789,8 @@ static void
 Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->sock_recv_into);
-    Py_CLEAR(self->bodies);
+    Py_CLEAR(self->bodies_Body);
+    Py_CLEAR(self->bodies_ChunkedBody);
     if (self->buf != NULL) {
         free(self->buf);
         self->buf = NULL;
@@ -1769,12 +1807,23 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
         return -1;
     }
+
     _SET(self->sock_recv_into, PyObject_GetAttr(sock, str_recv_into))
     if (!PyCallable_Check(self->sock_recv_into)) {
-        PyErr_SetString(PyExc_TypeError, "sock.recv_into is not callable");
+        PyErr_SetString(PyExc_TypeError, "sock.recv_into() is not callable");
         goto error;
     }
-    _SET_AND_INC(self->bodies, bodies)
+    _SET(self->bodies_Body, PyObject_GetAttr(bodies, str_Body))
+    if (!PyCallable_Check(self->bodies_Body)) {
+        PyErr_SetString(PyExc_TypeError, "bodies.Body() is not callable");
+        goto error;
+    }
+    _SET(self->bodies_ChunkedBody, PyObject_GetAttr(bodies, str_ChunkedBody))
+    if (!PyCallable_Check(self->bodies_ChunkedBody)) {
+        PyErr_SetString(PyExc_TypeError, "bodies.ChunkedBody() is not callable");
+        goto error;
+    }
+
     self->len = READER_BUFFER_SIZE;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
@@ -1783,12 +1832,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     return 0;
 
 error:
-    Py_CLEAR(self->sock_recv_into);
-    Py_CLEAR(self->bodies);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
-    }
+    Reader_dealloc(self);
     return -1;
 }
 
@@ -1991,6 +2035,20 @@ Reader_read_request(Reader *self) {
 
 
 static PyObject *
+Reader_read_response(Reader *self) {
+    DeguBuf src = _Reader_search(self, self->len, TERM, false, false);
+    if (src.buf == NULL) {
+        return NULL;
+    }
+    if (src.len == 0) {
+        PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
+        return NULL;
+    }
+    return _parse_response(src);
+}
+
+
+static PyObject *
 Reader_fill(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
@@ -2145,7 +2203,10 @@ static PyMethodDef Reader_methods[] = {
         "total bytes thus far read from logical stream"
     },
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
-        "read and parse the HTTP request preamble"
+        "read_request()"
+    },
+    {"read_response", (PyCFunction)Reader_read_response, METH_NOARGS,
+        "read_response()"
     },
 
     {"fill", (PyCFunction)Reader_fill, METH_VARARGS, "fill(size)"},
@@ -2294,6 +2355,8 @@ PyInit__base(void)
     _SET(int_zero, PyLong_FromLong(0))
     _SET(str_readline, PyUnicode_InternFromString("readline"))
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
+    _SET(str_Body, PyUnicode_InternFromString("Body"))
+    _SET(str_ChunkedBody, PyUnicode_InternFromString("ChunkedBody"))
     _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
     _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
     _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))

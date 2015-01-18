@@ -382,6 +382,12 @@ class Reader:
     __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
 
     def __init__(self, sock, bodies):
+        if not callable(sock.recv_into):
+            raise TypeError('sock.recv_into() is not callable')
+        if not callable(bodies.Body):
+            raise TypeError('bodies.Body is not callable')
+        if not callable(bodies.ChunkedBody):
+            raise TypeError('bodies.ChunkedBody is not callable')
         self.sock = sock
         self.bodies = bodies
         self._rawtell = 0
