@@ -396,7 +396,9 @@ class Reader:
         return self._rawtell - len(self._buf)
 
     def _readinto(self, buf):
+        print('readinto', len(buf))
         added = self.sock.recv_into(buf)
+        print(added)
         self._rawtell += added
         return added
 
@@ -471,6 +473,7 @@ class Reader:
         return src
 
     def fill(self, size):
+        print('fill', size)
         assert isinstance(size, int)
         if not (0 <= size <= len(self._rawbuf)):
             raise ValueError(
@@ -497,10 +500,14 @@ class Reader:
         assert isinstance(end, bytes)
         if not end:
             raise ValueError('end cannot be empty')
-        cur = self.fill(size)
+
+        cur = self.peek(size)
+        index = cur.find(end)
+        if index < 0 and len(cur) < size:
+            cur = self.fill(size)
+            index = cur.find(end)
         if len(cur) == 0:
             return cur
-        index = cur.find(end)
         if index < 0:
             if always_return:
                 return self.drain(size)
@@ -513,9 +520,11 @@ class Reader:
         return src[0:index]
 
     def readline(self, size):
+        print('readline', size)
         return self.search(size, b'\n', True, True)
 
     def read(self, size):
+        print('read', size)
         assert isinstance(size, int)
         if size < 0:
             raise ValueError(

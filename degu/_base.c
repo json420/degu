@@ -1928,6 +1928,19 @@ _Reader_fill(Reader *self, const size_t size)
 
 
 static DeguBuf
+_Reader_search_inner(Reader *self, const size_t size, DeguBuf end)
+{
+    DeguBuf cur = _Reader_peek(self, size);
+    if (cur.len >= end.len) {
+        if (memmem(cur.buf, cur.len, end.buf, end.len) != NULL) {
+            return cur;
+        }
+    }
+    return _Reader_fill(self, size);
+}
+
+
+static DeguBuf
 _Reader_search(Reader *self, const size_t size, DeguBuf end,
                const int include_end, const int always_return)
 {
@@ -1938,7 +1951,7 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL_DeguBuf;
     }
-    DeguBuf cur = _Reader_fill(self, size);
+    DeguBuf cur = _Reader_search_inner(self, size, end);
     if (cur.buf == NULL) {
         return NULL_DeguBuf;
     }
