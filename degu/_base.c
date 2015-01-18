@@ -1241,9 +1241,9 @@ _parse_response(DeguBuf src)
 
 error:
     Py_CLEAR(response);
+    Py_CLEAR(headers);
 
 cleanup:
-    Py_CLEAR(headers);
     return response;
 }
 
