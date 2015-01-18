@@ -1271,60 +1271,6 @@ parse_response(PyObject *self, PyObject *args)
 }
 
 
-
-static PyObject *
-_parse_preamble(const uint8_t *buf, const size_t len)
-{
-    const uint8_t *crlf, *headers_buf;
-    size_t line_len, headers_len;
-    PyObject *first_line = NULL;
-    PyObject *headers = NULL;
-    PyObject *ret = NULL;
-
-    line_len = len;
-    crlf = memmem(buf, len, CRLF, 2);
-    if (crlf != NULL) {
-        line_len = crlf - buf;
-    }
-
-    _SET(first_line,
-        _decode(_BUFFER(buf, line_len), VALUE_MASK, "bad bytes in first line: %R")
-    )
-
-    if (crlf == NULL) {
-        _SET(headers, PyDict_New())
-    }
-    else {
-        headers_buf = crlf + 2;
-        headers_len = len - (headers_buf - buf);
-        _SET(headers, _parse_headers(_BUFFER(headers_buf, headers_len)))
-    }
-    ret = PyTuple_Pack(2, first_line, headers);
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(first_line);
-    Py_CLEAR(headers);
-    return ret;
-}
-
-
-static PyObject *
-degu_parse_preamble(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_preamble", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_preamble(buf, len);   
-}
-
-
 static PyObject *
 _format_headers(PyObject *headers)
 {
@@ -2290,7 +2236,6 @@ static struct PyMethodDef degu_functions[] = {
         "parse_response_line(line)"},
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
-    {"parse_preamble", degu_parse_preamble, METH_VARARGS, "parse_preamble(preamble)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
     {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
 
