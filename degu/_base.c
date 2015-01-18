@@ -2119,6 +2119,13 @@ cleanup:
 
 
 static PyObject *
+Reader_close(Reader *self)
+{
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
 Reader_start_stop(Reader *self)
 {
     PyObject *ret = NULL;
@@ -2148,6 +2155,7 @@ Reader_tell(Reader *self) {
 
 
 static PyMethodDef Reader_methods[] = {
+    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
     {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
         "return (start, stop) tuple"
     },

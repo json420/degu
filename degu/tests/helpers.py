@@ -159,6 +159,20 @@ class DummyFile:
         self._calls.append('close')
 
 
+class MockSocket:
+    __slots__ = ('_rfile', '_wfile')
+
+    def __init__(self, data):
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+
+    def recv_into(self, buf):
+        return self._rfile.readinto(buf)
+
+    def send(self, data):
+        return self._wfile.write(data)
+
+
 class FuzzTestCase(TestCase):
     """
     Base class for fuzz-testing read functions.
