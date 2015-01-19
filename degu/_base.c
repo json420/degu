@@ -920,7 +920,7 @@ _parse_request_line2(DeguBuf line, PyObject *request)
      */
     DeguBuf protocol = _slice(line, line.len - 9, line.len);
     if (! _equal(protocol, REQUEST_PROTOCOL)) {
-        _value_error(protocol, "_parse_request_line2: bad protocol in request line: %R");
+        _value_error(protocol, "bad protocol in request line: %R");
         goto error;
     }
 

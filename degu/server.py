@@ -141,19 +141,9 @@ def _validate_server_sslctx(sslctx):
 
 
 def _read_request(rfile, bodies):
-    (method, uri, headers) = _read_request_preamble(rfile)
-
-    uri_parts = uri.split('?')
-    if len(uri_parts) == 2:
-        (path_str, query) = uri_parts
-    elif len(uri_parts) == 1:
-        (path_str, query) = (uri_parts[0], None)
-    else:
-        raise ValueError('bad request uri: {!r}'.format(uri))
-    if path_str[:1] != '/' or '//' in path_str:
-        raise ValueError('bad request path: {!r}'.format(path_str))
-    path = ([] if path_str == '/' else path_str[1:].split('/'))
-
+    request = rfile.read_request()
+    method = request['method']
+    headers = request['headers']
     # Only one dictionary lookup for content-length:
     content_length = headers.get('content-length')
 
@@ -174,16 +164,8 @@ def _read_request(rfile, bodies):
             'Request body with wrong method: {!r}'.format(method)
         )
 
-    # Return the RGI request argument:
-    return {
-        'method': method,
-        'uri': uri,
-        'script': [],
-        'path': path,
-        'query': query,
-        'headers': headers,
-        'body': body,
-    }
+    request['body'] = body
+    return request
 
 
 def _write_response(wfile, status, reason, headers, body):
