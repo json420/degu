@@ -1635,87 +1635,6 @@ cleanup:
 }
 
 
-/*
- * C implementation of `degu.base._read_request_preamble()`.
- */
-static PyObject *
-degu_read_request_preamble(PyObject *self, PyObject *args)
-{
-    /* Borrowed reference we don't need to decrement */
-    PyObject *rfile = NULL;
-
-    /* Owned references we need to decrement in "cleanup" when != NULL */
-    PyObject *readline = NULL;
-    PyObject *line = NULL;
-    PyObject *method = NULL;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-
-    /* Return value is a ``(method, uri, headers)`` tuple */
-    PyObject *ret = NULL;
-
-    size_t line_len = 0;
-    const uint8_t *line_buf = NULL;
-
-    if (!PyArg_ParseTuple(args, "O:_read_request_preamble", &rfile)) {
-        return NULL;
-    }
-
-    /* For performance, we first get a reference to the rfile.readline() method
-     * and then call it each time we need using PyObject_Call().
-     *
-     * This creates an additional reference to the rfile that we own, which
-     * means that the rfile can't get GC'ed through any subtle weirdness when
-     * the rfile.readline() callback is called.
-     *
-     * See the _READLINE() macro for more details. 
-     */
-    _SET(readline, PyObject_GetAttr(rfile, str_readline))
-    if (!PyCallable_Check(readline)) {
-        Py_CLEAR(readline);
-        PyErr_SetString(PyExc_TypeError, "rfile.readline is not callable");
-        return NULL;
-    }
-
-    /* Read and decode the first preamble line */
-    _READLINE(args_size_max, _MAX_LINE_SIZE)
-    if (line_len <= 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "HTTP preamble is empty");
-        goto error;
-    }
-    _CHECK_LINE_TERMINATION("bad line termination: %R")
-    if (line_len == 2) {
-        PyErr_SetString(PyExc_ValueError, "first preamble line is empty");
-        goto error;
-    }
-
-    DeguBuf src = {line_buf, line_len - 2};
-    if (! _parse_request_line(src, &method, &uri)) {
-        goto error;
-    }
-    if (method == NULL || uri == NULL) {
-        goto error;
-    }
-
-    /* Read, parse, and decode the header lines */
-    _SET(headers, _read_headers(readline))
-
-    ret = PyTuple_Pack(3, method, uri, headers);
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(readline);
-    Py_CLEAR(line);
-    Py_CLEAR(method);
-    Py_CLEAR(uri);
-    Py_CLEAR(headers);
-    return ret;  
-}
-
-
 static uint8_t *
 _calloc_buf(const size_t len)
 {
@@ -2249,8 +2168,6 @@ static struct PyMethodDef degu_functions[] = {
 
     {"_read_response_preamble", degu_read_response_preamble, METH_VARARGS,
         "_read_response_preamble(rfile)"},
-    {"_read_request_preamble", degu_read_request_preamble, METH_VARARGS,
-        "_read_request_preamble(rfile)"},
 
     {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
     {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,

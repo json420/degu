@@ -30,7 +30,6 @@ try:
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
         _read_response_preamble,
-        _read_request_preamble,
         format_request_preamble,
         format_response_preamble,
         Reader,
@@ -40,7 +39,6 @@ except ImportError:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        _read_request_preamble,
         _read_response_preamble,
         format_request_preamble,
         format_response_preamble,
@@ -54,7 +52,6 @@ __all__ = (
     'EmptyPreambleError',
     'Reader',
     '_read_response_preamble',
-    '_read_request_preamble',
     'format_request_preamble',
     'format_response_preamble',
 )

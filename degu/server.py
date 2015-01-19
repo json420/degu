@@ -32,7 +32,6 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    _read_request_preamble,
     format_response_preamble,
 )
 
