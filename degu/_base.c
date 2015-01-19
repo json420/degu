@@ -35,12 +35,6 @@
 #define MAX_NAME_LEN 32
 #define MAX_CL_LEN 16
 #define MAX_CL_VALUE 9007199254740992
-
-#define CRLF "\r\n"
-#define CONTENT_LENGTH "content-length"
-#define TRANSFER_ENCODING "transfer-encoding"
-#define CHUNKED "chunked"
-
 #define CONTENT_LENGTH_BIT    1
 #define TRANSFER_ENCODING_BIT 2
 
@@ -191,7 +185,8 @@ static const DeguBuf NULL_DeguBuf = {NULL, 0};
     static const DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
 
 _DEGU_BUF_CONSTANT(LF, "\n")
-_DEGU_BUF_CONSTANT(TERM, "\r\n\r\n")
+_DEGU_BUF_CONSTANT(CRLF, "\r\n")
+_DEGU_BUF_CONSTANT(CRLF_CRLF, "\r\n\r\n")
 _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
 _DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
@@ -200,6 +195,9 @@ _DEGU_BUF_CONSTANT(PUT, "PUT")
 _DEGU_BUF_CONSTANT(POST, "POST")
 _DEGU_BUF_CONSTANT(HEAD, "HEAD")
 _DEGU_BUF_CONSTANT(DELETE, "DELETE")
+_DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
+_DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
+_DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 
 #define _BUFFER(buf, len) (DeguBuf){buf, len}
 
@@ -1023,8 +1021,6 @@ static int
 _parse_header_line(DeguBuf src, PyObject *headers)
 {
     const uint8_t *sep = NULL;
-    const uint8_t *key_buf, *val_buf;
-    size_t key_len, val_len;
     PyObject *key = NULL;
     PyObject *val = NULL;
     int flags = 0;
@@ -1040,23 +1036,21 @@ _parse_header_line(DeguBuf src, PyObject *headers)
         _value_error(src, "b': ' not in header line: %R");
         goto error;
     }
-    key_buf = src.buf;
-    key_len = sep - src.buf;
-    val_buf = sep + 2;
-    val_len = src.len - key_len - 2;
+    DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
+    DeguBuf valsrc = _slice(src, rawkeysrc.len + 2, src.len);
 
     /* Casefold and validate header name */
-    _SET(key, _parse_header_name(_BUFFER(key_buf, key_len)))
-    key_buf =  PyUnicode_1BYTE_DATA(key);
+    _SET(key, _parse_header_name(rawkeysrc))
+    DeguBuf keysrc =  {PyUnicode_1BYTE_DATA(key), rawkeysrc.len};
 
-    if (_LENMEMCMP(key_buf, key_len, CONTENT_LENGTH, 14)) {
+    if (_equal(keysrc, CONTENT_LENGTH)) {
         _REPLACE(key, str_content_length)
-        _SET(val, _parse_content_length(_BUFFER(val_buf, val_len)))
+        _SET(val, _parse_content_length(valsrc))
         flags = CONTENT_LENGTH_BIT;
     }
-    else if (_LENMEMCMP(key_buf, key_len, TRANSFER_ENCODING, 17)) {
-        if (! _LENMEMCMP(val_buf, val_len, CHUNKED, 7)) {
-            _value_error(_BUFFER(val_buf, val_len), "bad transfer-encoding: %R");
+    else if (_equal(keysrc, TRANSFER_ENCODING)) {
+        if (! _equal(valsrc, CHUNKED)) {
+            _value_error(valsrc, "bad transfer-encoding: %R");
             goto error;
         }
         _REPLACE(key, str_transfer_encoding)
@@ -1065,7 +1059,7 @@ _parse_header_line(DeguBuf src, PyObject *headers)
     }
     else {
         _SET(val,
-            _decode(_BUFFER(val_buf, val_len), VALUE_MASK, "bad bytes in header value: %R")
+            _decode(valsrc, VALUE_MASK, "bad bytes in header value: %R")
         )
     }
 
@@ -1083,7 +1077,6 @@ cleanup:
     Py_CLEAR(key);
     Py_CLEAR(val);
     return flags;
-
 }
 
 
@@ -1103,7 +1096,7 @@ _parse_headers(DeguBuf src)
     final_stop = src.buf + src.len;
     start = src.buf;
     while (start < final_stop) {
-        stop = memmem(start, final_stop - start, CRLF, 2);
+        stop = memmem(start, final_stop - start, CRLF.buf, CRLF.len);
         if (stop == NULL) {
             stop = final_stop;
         }
@@ -1140,7 +1133,7 @@ _parse_request(DeguBuf src)
     uint8_t *crlf;
     size_t stop_line, start_headers;
 
-    crlf = memmem(src.buf, src.len, "\r\n", 2);
+    crlf = memmem(src.buf, src.len, CRLF.buf, CRLF.len);
     if (crlf == NULL) {
         stop_line =  src.len;
         start_headers = src.len;
@@ -1175,7 +1168,7 @@ _parse_response(DeguBuf src)
     uint8_t *crlf;
     size_t stop_line, start_headers;
 
-    crlf = memmem(src.buf, src.len, "\r\n", 2);
+    crlf = memmem(src.buf, src.len, CRLF.buf, CRLF.len);
     if (crlf == NULL) {
         stop_line =  src.len;
         start_headers = src.len;
@@ -1707,7 +1700,7 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
 
 static PyObject *
 Reader_read_request(Reader *self) {
-    DeguBuf src = _Reader_search(self, self->len, TERM, false, false);
+    DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
     if (src.buf == NULL) {
         return NULL;
     }
@@ -1721,7 +1714,7 @@ Reader_read_request(Reader *self) {
 
 static PyObject *
 Reader_read_response(Reader *self) {
-    DeguBuf src = _Reader_search(self, self->len, TERM, false, false);
+    DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
     if (src.buf == NULL) {
         return NULL;
     }
@@ -2045,10 +2038,10 @@ PyInit__base(void)
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
     _SET(str_Body, PyUnicode_InternFromString("Body"))
     _SET(str_ChunkedBody, PyUnicode_InternFromString("ChunkedBody"))
-    _SET(str_content_length, PyUnicode_InternFromString(CONTENT_LENGTH))
-    _SET(str_transfer_encoding, PyUnicode_InternFromString(TRANSFER_ENCODING))
-    _SET(str_chunked, PyUnicode_InternFromString(CHUNKED))
-    _SET(str_crlf, PyUnicode_InternFromString(CRLF))
+    _SET(str_content_length, PyUnicode_InternFromString("content-length"))
+    _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
+    _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
 
     _SET(str_empty, PyUnicode_InternFromString(""))
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
