@@ -32,7 +32,7 @@
 #define MAX_PREAMBLE_SIZE 32768
 
 // Constraints for the content-length value:
-#define MAX_NAME_LEN 32
+#define MAX_KEY 32
 #define MAX_CL_LEN 16
 #define MAX_CL_VALUE 9007199254740992
 #define CONTENT_LENGTH_BIT    1
@@ -310,7 +310,15 @@ _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
 }
 
 
-
+static uint8_t *
+_calloc_buf(const size_t len)
+{
+    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (buf == NULL) {
+        PyErr_NoMemory();
+    }
+    return buf;
+}
 
 
 /*
@@ -425,9 +433,9 @@ _parse_header_name(DeguBuf src)
         PyErr_SetString(PyExc_ValueError, "header name is empty");
         return NULL; 
     }
-    if (src.len > MAX_NAME_LEN) {
+    if (src.len > MAX_KEY) {
         _value_error(
-            _slice(src, 0, MAX_NAME_LEN),
+            _slice(src, 0, MAX_KEY),
             "header name too long: %R..."
         );
         return NULL; 
@@ -1010,8 +1018,52 @@ cleanup:
 }
 
 
+static inline bool
+_parse_key(DeguBuf key, uint8_t *scratch)
+{
+    uint8_t r;
+    size_t i;
+
+    if (key.len > MAX_KEY) {
+        _value_error(_slice(key, 0, MAX_KEY), "header name too long: %R...");
+        return false;
+    }
+    for (r = i = 0; i < key.len; i++) {
+        r |= scratch[i] = _NAMES[key.buf[i]];
+    }
+    if (r & 128) {
+        if (r != 255) {
+            Py_FatalError("internal error in `_parse_header_name()`");
+        }
+        _value_error(key, "bad bytes in header name: %R");
+        return false;
+    }
+    return true;
+}
+
+
+static PyObject *
+_tostr(DeguBuf src)
+{
+    PyObject *dst = PyUnicode_New(src.len, 127);
+    if (dst == NULL) {
+        return NULL;
+    }
+    uint8_t *dst_buf = PyUnicode_1BYTE_DATA(dst);
+    memcpy(dst_buf, src.buf, src.len);
+    return dst;
+}
+
+
+static inline PyObject *
+_parse_val(DeguBuf val)
+{
+    return _decode(val, VALUE_MASK, "bad bytes in header value: %R");
+}
+
+
 static int
-_parse_header_line(DeguBuf src, PyObject *headers)
+_parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
 {
     const uint8_t *sep = NULL;
     PyObject *key = NULL;
@@ -1032,12 +1084,13 @@ _parse_header_line(DeguBuf src, PyObject *headers)
     DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
     DeguBuf valsrc = _slice(src, rawkeysrc.len + 2, src.len);
 
-    /* Casefold and validate header name */
-    _SET(key, _parse_header_name(rawkeysrc))
-    DeguBuf keysrc =  {PyUnicode_1BYTE_DATA(key), rawkeysrc.len};
+    if (! _parse_key(rawkeysrc, scratch)) {
+        goto error;
+    }
+    DeguBuf keysrc = {scratch, rawkeysrc.len};
 
     if (_equal(keysrc, CONTENT_LENGTH)) {
-        _REPLACE(key, str_content_length)
+        _SET_AND_INC(key, str_content_length)
         _SET(val, _parse_content_length(valsrc))
         flags = CONTENT_LENGTH_BIT;
     }
@@ -1046,14 +1099,13 @@ _parse_header_line(DeguBuf src, PyObject *headers)
             _value_error(valsrc, "bad transfer-encoding: %R");
             goto error;
         }
-        _REPLACE(key, str_transfer_encoding)
+        _SET_AND_INC(key, str_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
         flags = TRANSFER_ENCODING_BIT;
     }
     else {
-        _SET(val,
-            _decode(valsrc, VALUE_MASK, "bad bytes in header value: %R")
-        )
+        _SET(key, _tostr(keysrc))
+        _SET(val, _parse_val(valsrc))
     }
 
     /* Store in headers dict, make sure it's not a duplicate key */
@@ -1074,7 +1126,7 @@ cleanup:
 
 
 static PyObject *
-_parse_headers(DeguBuf src)
+_parse_headers(DeguBuf src, uint8_t *scratch)
 {
     PyObject *headers = NULL;
     const uint8_t *start, *stop, *final_stop;
@@ -1094,7 +1146,7 @@ _parse_headers(DeguBuf src)
             stop = final_stop;
         }
         newflags = _parse_header_line(
-            _slice_between(src, start, stop), headers
+            _slice_between(src, start, stop), headers, scratch
         );
         if (newflags < 0) {
             goto error;
@@ -1119,7 +1171,7 @@ cleanup:
 
 
 static PyObject *
-_parse_request(DeguBuf src)
+_parse_request(DeguBuf src, uint8_t *scratch)
 {
     PyObject *request = NULL;
     PyObject *headers = NULL;
@@ -1140,7 +1192,9 @@ _parse_request(DeguBuf src)
     if (! _parse_request_line2(_slice(src, 0, stop_line), request)) {
         goto error;
     }
-    _SET(headers, _parse_headers(_slice(src, start_headers, src.len)))
+    _SET(headers,
+        _parse_headers(_slice(src, start_headers, src.len), scratch)
+    )
     _SET_ITEM(request, str_headers, headers)
     goto cleanup;
 
@@ -1154,7 +1208,7 @@ cleanup:
 
 
 static PyObject *
-_parse_response(DeguBuf src)
+_parse_response(DeguBuf src, uint8_t *scratch)
 {
     PyObject *response = NULL;
     PyObject *headers = NULL;
@@ -1174,7 +1228,9 @@ _parse_response(DeguBuf src)
     if (! _parse_response_line(_slice(src, 0, stop_line), response)) {
         goto error;
     }
-    _SET(headers, _parse_headers(_slice(src, start_headers, src.len)))
+    _SET(headers,
+        _parse_headers(_slice(src, start_headers, src.len), scratch)
+    )
     PyTuple_SET_ITEM(response, 2, headers);
     goto cleanup;
 
@@ -1196,7 +1252,13 @@ parse_request(PyObject *self, PyObject *args)
         return NULL;
     }
     DeguBuf src = {buf, len};
-    return _parse_request(src);
+    uint8_t *scratch = _calloc_buf(MAX_KEY);
+    if (scratch == NULL) {
+        return NULL;
+    }
+    PyObject *ret = _parse_request(src, scratch);
+    free(scratch);
+    return ret;
 }
 
 
@@ -1209,7 +1271,13 @@ parse_response(PyObject *self, PyObject *args)
         return NULL;
     }
     DeguBuf src = {buf, len};
-    return _parse_response(src);
+    uint8_t *scratch = _calloc_buf(MAX_KEY);
+    if (scratch == NULL) {
+        return NULL;
+    }
+    PyObject *ret = _parse_response(src, scratch);
+    free(scratch);
+    return ret;
 }
 
 
@@ -1432,22 +1500,12 @@ cleanup:
 }
 
 
-static uint8_t *
-_calloc_buf(const size_t len)
-{
-    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (buf == NULL) {
-        PyErr_NoMemory();
-    }
-    return buf;
-}
-
-
 typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
     PyObject *bodies_Body;
     PyObject *bodies_ChunkedBody;
+    uint8_t *scratch;
     size_t rawtell;
     uint8_t *buf;
     size_t len;
@@ -1462,6 +1520,10 @@ Reader_dealloc(Reader *self)
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies_Body);
     Py_CLEAR(self->bodies_ChunkedBody);
+    if (self->scratch != NULL) {
+        free(self->scratch);
+        self->scratch = NULL;
+    }
     if (self->buf != NULL) {
         free(self->buf);
         self->buf = NULL;
@@ -1495,6 +1557,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         goto error;
     }
 
+    _SET(self->scratch, _calloc_buf(MAX_KEY))
     self->len = READER_BUFFER_SIZE;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
@@ -1701,7 +1764,7 @@ Reader_read_request(Reader *self) {
         PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
         return NULL;
     }
-    return _parse_request(src);
+    return _parse_request(src, self->scratch);
 }
 
 
@@ -1715,7 +1778,7 @@ Reader_read_response(Reader *self) {
         PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
         return NULL;
     }
-    return _parse_response(src);
+    return _parse_response(src, self->scratch);
 }
 
 
