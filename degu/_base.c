@@ -42,8 +42,6 @@
 static PyObject *degu_EmptyPreambleError = NULL;
 
 /* Pre-built global Python object for performance */
-static PyObject *int_zero = NULL;               //  0
-static PyObject *str_readline = NULL;           //  'readline'
 static PyObject *str_recv_into = NULL;          //  'recv_into'
 static PyObject *str_Body = NULL;               //  'Body'
 static PyObject *str_ChunkedBody = NULL;        //  'ChunkedBody'
@@ -57,8 +55,6 @@ static PyObject *str_POST   = NULL;  // 'POST'
 static PyObject *str_HEAD   = NULL;  // 'HEAD'
 static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
-static PyObject *args_size_two = NULL;  //  (2,)
-static PyObject *args_size_max = NULL;  //  (4096,)
 
 static PyObject *str_empty = NULL;    //  ''
 static PyObject *bytes_empty = NULL;  // b''
@@ -198,8 +194,6 @@ _DEGU_BUF_CONSTANT(DELETE, "DELETE")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
-
-#define _BUFFER(buf, len) (DeguBuf){buf, len}
 
 
 static bool
@@ -361,13 +355,10 @@ _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
         goto error; \
     }
 
+
 #define _REPLACE(pyobj, source) \
     _RESET(pyobj, source) \
     Py_INCREF(pyobj);
-
-
-#define _LENMEMCMP(a_buf, a_len, b_buf, b_len) \
-    (a_len == b_len && memcmp(a_buf, b_buf, a_len) == 0)
 
 
 #define _VALUE_ERROR(src, format) \
@@ -379,6 +370,7 @@ static PyObject *
 _parse_method(DeguBuf src)
 {
     PyObject *method = NULL;
+
     if (src.len == 3) {
         if (_equal(src, GET)) {
             method = str_GET;
@@ -972,7 +964,8 @@ parse_uri(PyObject *self, PyObject *args)
         return NULL;
     }
     _SET(request, PyDict_New())
-    if (!_parse_uri(_BUFFER(buf, len), request)) {
+    DeguBuf src = {buf, len};
+    if (!_parse_uri(src, request)) {
         goto error;
     }
     goto cleanup;
@@ -1991,8 +1984,6 @@ PyMODINIT_FUNC
 PyInit__base(void)
 {
     PyObject *module = NULL;
-    PyObject *int_size_max = NULL;
-    PyObject *int_size_two = NULL;
 
     ReaderType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ReaderType) < 0)
@@ -2033,8 +2024,6 @@ PyInit__base(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     /* Init global Python `int` and `str` objects we need for performance */
-    _SET(int_zero, PyLong_FromLong(0))
-    _SET(str_readline, PyUnicode_InternFromString("readline"))
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
     _SET(str_Body, PyUnicode_InternFromString("Body"))
     _SET(str_ChunkedBody, PyUnicode_InternFromString("ChunkedBody"))
@@ -2053,16 +2042,6 @@ PyInit__base(void)
     _SET(str_query, PyUnicode_InternFromString("query"))
     _SET(str_headers, PyUnicode_InternFromString("headers"))
     _SET(str_body, PyUnicode_InternFromString("body"))
-
-    /* Init pre-built global args tuple for rfile.readline(_MAX_LINE_SIZE) */
-    _SET(int_size_max, PyObject_GetAttrString(module, "_MAX_LINE_SIZE"))    
-    _SET(args_size_max, PyTuple_Pack(1, int_size_max))
-    Py_CLEAR(int_size_max);
-
-    /* Init pre-built global args tuple for rfile.readline(2) */
-    _SET(int_size_two, PyLong_FromLong(2))
-    _SET(args_size_two, PyTuple_Pack(1, int_size_two))
-    Py_CLEAR(int_size_two);
 
     return module;
 
