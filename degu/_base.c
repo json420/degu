@@ -1019,50 +1019,6 @@ cleanup:
 }
 
 
-/*
- * _READLINE() macro: read the next line in the preamble using rfile.readline().
- */
-#define _READLINE(py_args, size) \
-    line_len = 0; \
-    _RESET(line, PyObject_Call(readline, py_args, NULL)) \
-    if (!PyBytes_CheckExact(line)) { \
-        PyErr_Format(PyExc_TypeError, \
-            "rfile.readline() returned %R, should return <class 'bytes'>", \
-            line->ob_type \
-        ); \
-        goto error; \
-    } \
-    line_len = PyBytes_GET_SIZE(line); \
-    if (line_len > size) { \
-        PyErr_Format(PyExc_ValueError, \
-            "rfile.readline() returned %u bytes, expected at most %u", \
-            line_len, size \
-        ); \
-        goto error; \
-    } \
-    line_buf = (uint8_t *)PyBytes_AS_STRING(line);
-
-
-/* _START() macro: only used below in _CHECK_LINE_TERMINATION() */
-#define _START(size) \
-    (size < 2 ? 0 : size - 2)
-
-
-/*
- * _CHECK_LINE_TERMINATION() macro: ensure the line ends with ``b'\r\n'``.
- */
-#define _CHECK_LINE_TERMINATION(format) \
-    if (line_len < 2 || memcmp(line_buf + (line_len - 2), CRLF, 2) != 0) { \
-        PyObject *_crlf = PySequence_GetSlice(line, _START(line_len), line_len); \
-        if (_crlf == NULL) { \
-            goto error; \
-        } \
-        PyErr_Format(PyExc_ValueError, (format), _crlf); \
-        Py_CLEAR(_crlf); \
-        goto error; \
-    }
-
-
 static int
 _parse_header_line(DeguBuf src, PyObject *headers)
 {
