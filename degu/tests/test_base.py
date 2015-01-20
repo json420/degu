@@ -705,35 +705,13 @@ class TestFunctions(AlternatesTestCase):
     def check_parse_request_line(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_request_line = backend.parse_request_line
-        good_uri = ('/foo', '/?stuff=junk', '/foo/bar/', '/foo/bar?stuff=junk')
-
-        # Test all good methods:
-        for method in GOOD_METHODS:
-            good = '{} / HTTP/1.1'.format(method).encode()
-            self.assertEqual(parse_request_line(good), (method, '/'))
-            for i in range(len(good)):
-                bad = bytearray(good)
-                del bad[i]
-                with self.assertRaises(ValueError):
-                    parse_request_line(bytes(bad))
-                for j in range(256):
-                    if good[i] == j:
-                        continue
-                    bad = bytearray(good)
-                    bad[i] = j
-                    with self.assertRaises(ValueError):
-                        parse_request_line(bytes(bad))
-            for uri in good_uri:
-                good2 = '{} {} HTTP/1.1'.format(method, uri).encode()
-                self.assertEqual(parse_request_line(good2), (method, uri))
-
-        # Pre-generated bad method permutations:
-        for uri in good_uri:
-            tail = ' {} HTTP/1.1'.format(uri).encode()
-            for method in BAD_METHODS:
-                bad = method + tail
-                with self.assertRaises(ValueError):
-                    parse_request_line(bad)
+        self.assertEqual(parse_request_line(b'GET / HTTP/1.1'), {
+            'method': 'GET',
+            'uri': '/',
+            'script': [],
+            'path': [],
+            'query': None,
+        })
 
     def test_parse_request_line_py(self):
         self.check_parse_request_line(_basepy)

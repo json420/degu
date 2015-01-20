@@ -253,8 +253,6 @@ def parse_response_line(line):
 
 
 def parse_request_line(line):
-    if isinstance(line, str):
-        line = line.encode()
     if len(line) < 14:
         raise ValueError('request line too short: {!r}'.format(line))
     if line[-9:] != b' HTTP/1.1':
@@ -263,15 +261,14 @@ def parse_request_line(line):
     items = line.split(b' /', 1)
     if len(items) < 2:
         raise ValueError('bad inner request line: {!r}'.format(line))
-    return (
-        parse_method(items[0]),
-        _decode_uri( b'/' + items[1])
-    )
+    request = {'method': parse_method(items[0])}
+    request.update(parse_uri(b'/' + items[1]))
+    return request
 
 
 def parse_request(preamble):
-    # FIXME
     (line, *header_lines) = preamble.split(b'\r\n')
+    request = parse_request_line(line)
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
@@ -293,7 +290,8 @@ def parse_request(preamble):
             raise ValueError(
                 'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
             )
-    return (first_line, headers)
+    request['headers'] = headers
+    return request
 
 
 def __read_headers(readline):
@@ -463,7 +461,6 @@ class Reader:
         assert isinstance(end, bytes)
         if not end:
             raise ValueError('end cannot be empty')
-
         cur = self.peek(size)
         index = cur.find(end)
         if index < 0 and len(cur) < size:
@@ -484,6 +481,12 @@ class Reader:
 
     def readline(self, size):
         return self.search(size, b'\n', True, True)
+
+    def read_request(self):
+        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        if preamble == b'':
+            raise EmptyPreambleError('request preamble is empty')
+        return parse_request(preamble)
 
     def read(self, size):
         assert isinstance(size, int)

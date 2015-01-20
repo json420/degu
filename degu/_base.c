@@ -369,6 +369,18 @@ _calloc_buf(const size_t len)
     Py_INCREF(pyobj);
 
 
+#define _SET_ITEM(dict, key, val) \
+    if (PyDict_SetItem(dict, key, val) != 0) { \
+        goto error; \
+    }
+
+
+#define _APPEND(list, item) \
+    if (PyList_Append(list, item) != 0) { \
+        goto error; \
+    }
+
+
 #define _VALUE_ERROR(src, format) \
     _value_error(src, format); \
     goto error;
@@ -695,83 +707,6 @@ parse_response_line(PyObject *self, PyObject *args)
 }
 
 
-static bool
-_parse_request_line_inner(DeguBuf src, PyObject **method, PyObject **uri)
-{
-    uint8_t *sep;
-
-    /* Search for method terminating space, plus start of uri:
-     *
-     *     "GET /"
-     *         ^^
-     */
-    sep = memmem(src.buf, src.len, " /", 2);
-    if (sep == NULL) {
-        _value_error(src, "bad inner request line: %R");
-        return false;
-    }
-    _SET(*method, _parse_method(_slice_before(src, sep)))
-    _SET(*uri,
-        _decode(_slice_after(src, sep + 1), URI_MASK, "bad uri in request line: %R")
-    )
-
-    /* Success! */
-    return true;
-
-error:
-    Py_CLEAR(*method);
-    Py_CLEAR(*uri);
-    return false;
-}
-
-
-static bool
-_parse_request_line(DeguBuf src, PyObject **method, PyObject **uri)
-{
-
-    /* Reject any request line shorter than 14 bytes:
-     *
-     *     "GET / HTTP/1.1"[0:14]
-     *      ^^^^^^^^^^^^^^
-     */
-    if (src.len < 14) {
-        _value_error(src, "request line too short: %R");
-        return false;
-    }
-
-    /* verify final 9 bytes (protocol):
-     *
-     *     "GET / HTTP/1.1"[-9:]
-     *           ^^^^^^^^^
-     */
-    DeguBuf protocol = _slice(src, src.len - 9, src.len);
-    if (! _equal(protocol, REQUEST_PROTOCOL)) {
-        _value_error(src, "bad protocol in request line: %R");
-        return false;
-    }
-
-    /* _parse_request_line_inner() will handle the rest:
-     *
-     *     "GET / HTTP/1.1"[0:-9]
-     *      ^^^^^
-     */
-    DeguBuf inner = _slice(src, 0, src.len - 9);
-    return _parse_request_line_inner(inner, method, uri);
-}
-
-
-#define _SET_ITEM(dict, key, val) \
-    if (PyDict_SetItem(dict, key, val) != 0) { \
-        goto error; \
-    }
-
-
-#define _APPEND(list, item) \
-    if (PyList_Append(list, item) != 0) { \
-        goto error; \
-    }
-
-
 static PyObject *
 _parse_path(DeguBuf src)
 {
@@ -889,7 +824,7 @@ cleanup:
 
 
 static bool
-_parse_request_line2(DeguBuf line, PyObject *request)
+_parse_request_line(DeguBuf line, PyObject *request)
 {
     bool success = true;
     uint8_t *sep;
@@ -991,30 +926,23 @@ parse_request_line(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    PyObject *method = NULL;
-    PyObject *uri = NULL;
-    PyObject *ret = NULL;
+    PyObject *request = NULL;
 
     if (!PyArg_ParseTuple(args, "s#:parse_request_line", &buf, &len)) {
         return NULL;
     }
     DeguBuf src = {buf, len};
-    if (_parse_request_line(src, &method, &uri) != true) {
+    _SET(request, PyDict_New())
+    if (! _parse_request_line(src, request)) {
         goto error;
     }
-    if (method == NULL || uri == NULL) {
-        goto error;
-    }
-    _SET(ret, PyTuple_Pack(2, method, uri))
-    goto cleanup;
+    goto done;
 
 error:
-    Py_CLEAR(ret);
+    Py_CLEAR(request);
 
-cleanup:
-    Py_CLEAR(method);
-    Py_CLEAR(uri);
-    return ret;
+done:
+    return request;
 }
 
 
@@ -1189,7 +1117,7 @@ _parse_request(DeguBuf src, uint8_t *scratch)
     }
 
     _SET(request, PyDict_New())
-    if (! _parse_request_line2(_slice(src, 0, stop_line), request)) {
+    if (! _parse_request_line(_slice(src, 0, stop_line), request)) {
         goto error;
     }
     _SET(headers,
