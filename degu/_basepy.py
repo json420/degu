@@ -266,9 +266,7 @@ def parse_request_line(line):
     return request
 
 
-def parse_request(preamble):
-    (line, *header_lines) = preamble.split(b'\r\n')
-    request = parse_request_line(line)
+def _parse_header_lines(header_lines):
     headers = {}
     for line in header_lines:
         (key, value) = line.split(b': ')
@@ -290,50 +288,21 @@ def parse_request(preamble):
             raise ValueError(
                 'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
             )
-    request['headers'] = headers
+    return headers
+
+
+def parse_request(preamble):
+    (line, *header_lines) = preamble.split(b'\r\n')
+    request = parse_request_line(line)
+    request['headers'] = _parse_header_lines(header_lines)
     return request
 
 
-def __read_headers(readline):
-    headers = {}
-    for i in range(_MAX_HEADER_COUNT):
-        line = _READLINE(readline, _MAX_LINE_SIZE)
-        crlf = line[-2:]
-        if crlf != b'\r\n':
-            raise ValueError('bad header line termination: {!r}'.format(crlf))
-        if line == b'\r\n':  # Stop on the first empty CRLF terminated line
-            return headers
-        if len(line) < 6:
-            raise ValueError('header line too short: {!r}'.format(line))
-        assert line[-2:] == b'\r\n'
-        line = line[:-2]
-        try:
-            (key, value) = line.split(b': ', 1)
-        except ValueError:
-            key = None
-            value = None
-        if not (key and value):
-            raise ValueError('bad header line: {!r}'.format(line))
-        if key.lower() == b'content-length':
-            key = 'content-length'
-            value = parse_content_length(value)
-        elif key.lower() == b'transfer-encoding':
-            if value != b'chunked':
-                raise ValueError(
-                    'bad transfer-encoding: {!r}'.format(value)
-                )
-            key = 'transfer-encoding'
-            value = 'chunked'
-        else:
-            key = parse_header_name(key)
-            value = _decode_value(value, 'bad bytes in header value: {!r}')
-        if headers.setdefault(key, value) is not value:
-            raise ValueError(
-                'duplicate header: {!r}'.format(line)
-            )
-    if _READLINE(readline, 2) != b'\r\n':
-        raise ValueError('too many headers (> {})'.format(_MAX_HEADER_COUNT))
-    return headers
+def parse_response(preamble):
+    (line, *header_lines) = preamble.split(b'\r\n')
+    (status, reason) = parse_response_line(line)
+    headers = _parse_header_lines(header_lines)
+    return (status, reason, headers)
 
 
 class Reader:
@@ -487,6 +456,12 @@ class Reader:
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
         return parse_request(preamble)
+
+    def read_response(self):
+        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        if preamble == b'':
+            raise EmptyPreambleError('response preamble is empty')
+        return parse_response(preamble)
 
     def read(self, size):
         assert isinstance(size, int)
