@@ -256,11 +256,11 @@ def parse_request_line(line):
     if len(line) < 14:
         raise ValueError('request line too short: {!r}'.format(line))
     if line[-9:] != b' HTTP/1.1':
-        raise ValueError('bad protocol in request line: {!r}'.format(line))
-    line = line[:-9]
-    items = line.split(b' /', 1)
+        raise ValueError('bad protocol in request line: {!r}'.format(line[-9:]))
+    src = line[:-9]
+    items = src.split(b' /', 1)
     if len(items) < 2:
-        raise ValueError('bad inner request line: {!r}'.format(line))
+        raise ValueError('bad request line: {!r}'.format(line))
     request = {'method': parse_method(items[0])}
     request.update(parse_uri(b'/' + items[1]))
     return request
@@ -269,7 +269,12 @@ def parse_request_line(line):
 def _parse_header_lines(header_lines):
     headers = {}
     for line in header_lines:
-        (key, value) = line.split(b': ')
+        (key, value) = (None, None)
+        parts = line.split(b': ', 1)
+        if len(parts) >= 2:
+            (key, value) = parts
+        if not (key and value):
+            raise ValueError('bad header line: {!r}'.format(line))
         key = parse_header_name(key)
         value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
@@ -286,7 +291,9 @@ def _parse_header_lines(header_lines):
     elif 'transfer-encoding' in headers:
         if headers['transfer-encoding'] != 'chunked':
             raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
+                'bad transfer-encoding: {!r}'.format(
+                    headers['transfer-encoding'].encode()
+                )
             )
     return headers
 

@@ -1006,7 +1006,7 @@ _parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
     // FIXME: User a better error message here
     sep = memmem(src.buf + 1, src.len - 1, ": ", 2);
     if (sep == NULL) {
-        _value_error(src, "b': ' not in header line: %R");
+        _value_error(src, "bad header line: %R");
         goto error;
     }
     DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
