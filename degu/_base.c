@@ -554,12 +554,10 @@ parse_content_length(PyObject *self, PyObject *args)
 }
 
 
-static PyObject *
+static inline PyObject *
 _parse_status(DeguBuf src)
 {
-
-    uint8_t d;
-    uint8_t err;
+    uint8_t d, err;
     unsigned long accum;
 
     if (src.len != 3) {
@@ -577,7 +575,7 @@ _parse_status(DeguBuf src)
 }
 
 
-static PyObject *
+static inline PyObject *
 _parse_reason(DeguBuf src)
 {
     if (_equal(src, OK)) {

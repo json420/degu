@@ -265,8 +265,9 @@ class TestFunctions(TestCase):
 
         # No data:
         rfile = base.Reader(MockSocket(b''), base.bodies)
-        with self.assertRaises(base.EmptyPreambleError):
+        with self.assertRaises(base.EmptyPreambleError) as cm:
             server._read_request(rfile, base.bodies)
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
 
        # CRLF terminated request line is empty: 
         rfile = base.Reader(MockSocket(b'\r\n'), base.bodies)
