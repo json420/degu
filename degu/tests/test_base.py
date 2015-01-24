@@ -29,7 +29,7 @@ import io
 from random import SystemRandom
 
 from . import helpers
-from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad
+from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
@@ -101,20 +101,6 @@ GOOD_HEADERS = (
         ('content-type', 'text/html;charset=utf-8')
     ),
 )
-
-
-class MockSocket:
-    __slots__ = ('_rfile', '_wfile')
-
-    def __init__(self, data):
-        self._rfile = io.BytesIO(data)
-        self._wfile = io.BytesIO()
-
-    def recv_into(self, buf):
-        return self._rfile.readinto(buf)
-
-    def send(self, data):
-        return self._wfile.write(data)
 
 
 def _permute_remove(method):
@@ -2123,8 +2109,8 @@ class TestReader_Py(TestCase):
     def EmptyPreambleError(self):
         return self.backend.EmptyPreambleError
 
-    def new(self, data=b''):
-        sock = MockSocket(data)
+    def new(self, data=b'', rcvbuf=None):
+        sock = MockSocket(data, rcvbuf)
         reader = self.Reader(sock, base.bodies)
         return (sock, reader)
 
@@ -2241,6 +2227,50 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.tell(), accum + third)
         self.assertEqual(reader.expose(), data[accum:BUF_SIZE+accum])
         self.assertEqual(reader.peek(-1), data[accum+third:BUF_SIZE+accum])
+
+    def test_fill_until(self):
+        end = b'\r\n'
+        (sock, reader) = self.new()
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.fill_until(4096, end), (False, b''))
+        self.assertEqual(sock._recv_into_calls, 1)
+
+        data = (b'D' * 4094) + end
+        (sock, reader) = self.new(data)
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.fill_until(4096, end), (True, data))
+        self.assertEqual(sock._recv_into_calls, 1)
+
+        (sock, reader) = self.new(data, 1)
+        self.assertEqual(sock._rcvbuf, 1)
+        self.assertEqual(reader.fill_until(4096, end), (True, data))
+        self.assertEqual(sock._recv_into_calls, 4096)
+
+        nope = os.urandom(16)
+        marker = os.urandom(16)
+        suffix = os.urandom(666)
+        for i in range(318):
+            prefix = os.urandom(i)
+            data = prefix + marker
+            total_data = data + suffix
+
+            (sock, reader) = self.new(total_data, 333)
+            self.assertEqual(reader.fill_until(333, marker), (True, data))
+            self.assertEqual(reader.peek(-1), total_data[:333])
+            self.assertEqual(reader.rawtell(), 333)
+            self.assertEqual(reader.tell(), 0)
+
+            (sock, reader) = self.new(total_data, 333)
+            self.assertEqual(reader.fill_until(333, nope),
+                (False, total_data[:333])
+            )
+            self.assertEqual(reader.peek(-1), total_data[:333])
+            self.assertEqual(reader.rawtell(), 333)
+            self.assertEqual(reader.tell(), 0)
+            self.assertEqual(reader.fill_until(333, marker), (True, data))
+            self.assertEqual(reader.peek(-1), total_data[:333])
+            self.assertEqual(reader.rawtell(), 333)
+            self.assertEqual(reader.tell(), 0)
 
     def test_search(self):
         (sock, reader) = self.new()

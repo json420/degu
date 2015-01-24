@@ -160,13 +160,20 @@ class DummyFile:
 
 
 class MockSocket:
-    __slots__ = ('_rfile', '_wfile')
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_recv_into_calls')
 
-    def __init__(self, data):
+    def __init__(self, data, rcvbuf=None):
+        assert rcvbuf is None or (isinstance(rcvbuf, int) and rcvbuf > 0)
         self._rfile = io.BytesIO(data)
         self._wfile = io.BytesIO()
+        self._rcvbuf = rcvbuf
+        self._recv_into_calls = 0
 
     def recv_into(self, buf):
+        assert isinstance(buf, memoryview)
+        if self._rcvbuf is not None and len(buf) > self._rcvbuf:
+            buf = buf[0:self._rcvbuf]
+        self._recv_into_calls += 1
         return self._rfile.readinto(buf)
 
     def send(self, data):

@@ -1506,7 +1506,7 @@ error:
  *     -4  sock.recv_into() did not return 0 <= size <= len
  */
 static ssize_t
-_Reader_readinto(Reader *self, uint8_t *buf, const size_t len)
+_Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
@@ -1624,12 +1624,84 @@ _Reader_fill(Reader *self, const size_t size)
         self->start = 0;
         self->stop = cur.len;
     }
-    added = _Reader_readinto(self, self->buf + cur.len, self->len - cur.len);
+    added = _Reader_sock_recv_into(self, self->buf + cur.len, self->len - cur.len);
     if (added < 0) {
         return NULL_DeguBuf;
     }
     self->stop += added;
     return _Reader_peek(self, size);
+}
+
+
+static DeguBuf
+_Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
+{
+    size_t avail;
+    uint8_t *ptr;
+    size_t offset;
+    ssize_t added;
+
+    if (size < 0 || size > self->len) {
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= size <= %zd; got %zd", self->len, size
+        );
+        return NULL_DeguBuf;
+    }
+    if (end.buf == NULL) {
+        Py_FatalError("_Reader_fill_until: end.buf == NULL");
+    }
+    if (end.len == 0) {
+        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
+        return NULL_DeguBuf;
+    }
+
+    /* First, search current buffer */
+    DeguBuf cur = _Reader_peek(self, size);
+    ptr = memmem(cur.buf, cur.len, end.buf, end.len);
+    if (ptr != NULL) {
+        *found = true;
+        offset = ptr - cur.buf;
+        return _Reader_peek(self, offset + end.len); 
+    }
+    if (cur.len >= size) {
+        if (cur.len != size) {
+            Py_FatalError("_Reader_fill_until: cur.len >= size");
+        }
+        return cur;
+    }
+
+    /* Shift buffer if needed */
+    if (self->start > 0) {
+        if (cur.len < 1) {
+            Py_FatalError("_Reader_fill_until: cur.len < 1");
+        }
+        memmove(self->buf, cur.buf, cur.len);
+        self->start = 0;
+        self->stop = cur.len;
+    }
+
+    /* Now search till found */
+    while (self->stop < size) {
+        if (self->stop > self->len) {
+            Py_FatalError("_Reader_fill_until: self->stop > self->len");
+        }
+        avail = self->len - self->stop;
+        added = _Reader_sock_recv_into(self, self->buf + self->stop, avail);
+        if (added < 0) {
+            return NULL_DeguBuf;
+        }
+        if (added == 0) {
+            return _Reader_peek(self, self->stop);
+        }
+        self->stop += added;
+        ptr = memmem(self->buf, _min(self->stop, size), end.buf, end.len);
+        if (ptr != NULL) {
+            *found = true;
+            offset = ptr - self->buf;
+            return _Reader_peek(self, offset + end.len); 
+        }
+    }
+    return _Reader_peek(self, self->stop); 
 }
 
 
@@ -1749,6 +1821,43 @@ Reader_drain(Reader *self, PyObject *args) {
 
 
 static PyObject *
+Reader_fill_until(Reader *self, PyObject *args)
+{
+    ssize_t size = -1;
+    uint8_t *end_buf = NULL;
+    size_t end_len = 0;
+    bool found = false;
+    PyObject *pyfound = NULL;
+    PyObject *pydata = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "ny#", &size, &end_buf, &end_len)) {
+        return NULL;
+    }
+    DeguBuf end = {end_buf, end_len};
+    DeguBuf src = _Reader_fill_until(self, size, end, &found);
+    if (found) {
+        pyfound = Py_True;
+    }
+    else {
+        pyfound = Py_False;
+    }
+    Py_INCREF(pyfound);
+    _SET(pydata, _tobytes(src))
+    _SET(ret, PyTuple_Pack(2, pyfound, pydata))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(pyfound);
+    Py_CLEAR(pydata);
+    return ret;
+}
+
+
+static PyObject *
 Reader_search(Reader *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
@@ -1805,7 +1914,7 @@ Reader_read(Reader *self, PyObject *args)
         _SET(ret, PyBytes_FromStringAndSize(NULL, size))
         dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
         memcpy(dst_buf, cur.buf, cur.len);
-        added = _Reader_readinto(self, dst_buf + cur.len, size - cur.len);
+        added = _Reader_sock_recv_into(self, dst_buf + cur.len, size - cur.len);
         if (added < 0) {
             goto error;
         }
@@ -1880,6 +1989,9 @@ static PyMethodDef Reader_methods[] = {
     },
 
     {"fill", (PyCFunction)Reader_fill, METH_VARARGS, "fill(size)"},
+    {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,
+        "fill_until(size, end)"
+    },
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
     {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},

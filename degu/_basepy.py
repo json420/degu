@@ -335,7 +335,7 @@ class Reader:
     def tell(self):
         return self._rawtell - len(self._buf)
 
-    def _readinto(self, buf):
+    def _sock_recv_into(self, buf):
         added = self.sock.recv_into(buf)
         self._rawtell += added
         return added
@@ -404,6 +404,8 @@ class Reader:
     def drain(self, size):
         avail = len(self._buf)
         src = self.peek(size)
+        if len(src) == 0:
+            return src
         if len(src) == avail:
             self._update(0, 0)
         else:
@@ -427,11 +429,49 @@ class Reader:
             self._update(0, len(cur))
         assert self._start == 0
         assert len(self._buf) == len(cur)
-        added = self._readinto(self._rawbuf[len(cur):])
+        added = self._sock_recv_into(self._rawbuf[len(cur):])
         assert added >= 0
         if added > 0:
             self._update(0, len(cur) + added)
         return self.peek(size)
+
+    def fill_until(self, size, end):
+        # First, search current buffer:
+        cur = self.peek(size)
+        index = cur.find(end)
+        if index >= 0:
+            return (True, self.peek(index + len(end)))
+        if len(cur) >= size:
+            assert len(cur) == size
+            return (False, cur)
+
+        # Shift buffer if needed:
+        if self._start > 0:
+            assert len(cur) > 0
+            self._rawbuf[0:len(cur)] = cur
+            self._update(0, len(cur))
+
+        # Now search till found:
+        remaining = len(self._rawbuf) - len(cur)
+        while remaining > 0:
+            dst = self._rawbuf[-remaining:]
+            added = self._sock_recv_into(dst)
+            if added <= 0:
+                assert added == 0
+                return (False, cur)
+            self._update(0, len(cur) + added)
+
+            cur = self.peek(size)
+            index = cur.find(end)
+            if index >= 0:
+                assert index + len(end) <= size
+                return (True, self.peek(index + len(end)))
+            if len(cur) >= size:
+                assert len(cur) == size
+                return (False, self.peek(size))
+            remaining = len(self._rawbuf) - len(cur)
+
+        return (False, cur)
 
     def search(self, size, end, include_end=False, always_return=False):
         assert isinstance(end, bytes)
@@ -486,7 +526,7 @@ class Reader:
         src_len = len(src)
         dst = memoryview(bytearray(size))
         dst[0:src_len] = src
-        dst_len = src_len + self._readinto(dst[src_len:])
+        dst_len = src_len + self._sock_recv_into(dst[src_len:])
         return dst[:dst_len].tobytes()
 
 
