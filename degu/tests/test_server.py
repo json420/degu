@@ -275,6 +275,7 @@ class TestFunctions(TestCase):
         self.assertEqual(str(cm.exception),
             '{!r} not found in {!r}...'.format(b'\r\n\r\n', b'\r\n')
         )
+        self.assertEqual(rfile.rawtell(), 2)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(100), b'\r\n')
 

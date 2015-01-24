@@ -520,6 +520,7 @@ class Reader:
             return src
         assert src_len < size
         dst = memoryview(bytearray(size))
+        dst[0:src_len] = src
         stop = src_len
         while stop < size:
             added = self._sock_recv_into(dst[stop:])
