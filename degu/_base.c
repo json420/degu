@@ -196,33 +196,12 @@ _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 
 
-static bool
+static inline bool
 _equal(const DeguBuf a, const DeguBuf b) {
-    if (a.buf == NULL || b.buf == NULL) {
-        Py_FatalError("_equal(): comparing a NULL buffer");
-    }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
         return true;
     }
     return false;
-}
-
-
-static void
-_check_subslice(DeguBuf parent, DeguBuf child)
-{
-    if (parent.buf == NULL || parent.len == 0) {
-        Py_FatalError("parent.buf == NULL || parent.len == 0");
-    }
-    if (child.buf == NULL || child.buf < parent.buf) {
-        Py_FatalError("child.buf == NULL || child.buf < parent.buf");
-    }
-    if (child.len > parent.len) {
-        Py_FatalError("child.len > parent.len");
-    }
-    if (child.buf + child.len > parent.buf + parent.len) {
-        Py_FatalError("child.buf + child.len > parent.buf + parent.len");
-    }
 }
 
 
@@ -235,9 +214,7 @@ _slice(DeguBuf src, const size_t start, const size_t stop)
     if (start > stop || stop > src.len) {
         Py_FatalError("_slice(): requested subslice not within parent");
     }
-    DeguBuf dst = {src.buf + start, stop - start};
-    _check_subslice(src, dst);
-    return dst;
+    return (DeguBuf){src.buf + start, stop - start};
 }
 
 
@@ -1650,7 +1627,7 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
         self->stop = cur.len;
     }
 
-    /* Now search till found */
+    /* Now read till found */
     while (self->stop < size) {
         if (self->stop > self->len) {
             Py_FatalError("_Reader_fill_until: self->stop > self->len");
@@ -1681,14 +1658,6 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
 {
     bool found = false;
 
-    if (end.buf == NULL) {
-        Py_FatalError("_Reader_search: end.buf == NULL");
-    }
-    if (end.len == 0) {
-        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
-        return NULL_DeguBuf;
-    }
-
     DeguBuf src = _Reader_fill_until(self, size, end, &found);
     if (src.buf == NULL) {
         return NULL_DeguBuf;
@@ -1696,7 +1665,6 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
     if (src.len == 0) {
         return src;
     }
-
     if (! found) {
         if (always_return) {
             return _Reader_drain(self, src.len);
@@ -1706,7 +1674,6 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
         );
         return NULL_DeguBuf;
     }
-
     DeguBuf ret = _Reader_drain(self, src.len);
     if (include_end) {
         return ret;
