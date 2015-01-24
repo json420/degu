@@ -477,23 +477,19 @@ class Reader:
         assert isinstance(end, bytes)
         if not end:
             raise ValueError('end cannot be empty')
-        cur = self.peek(size)
-        index = cur.find(end)
-        if index < 0 and len(cur) < size:
-            cur = self.fill(size)
-            index = cur.find(end)
-        if len(cur) == 0:
-            return cur
-        if index < 0:
-            if always_return:
-                return self.drain(size)
-            raise ValueError(
-                '{!r} not found in {!r}...'.format(end, cur[:32])
-            )
-        src = self.drain(index + len(end))
-        if include_end:
+        (found, src) = self.fill_until(size, end)
+        if len(src) == 0:
             return src
-        return src[0:index]
+        if not found:
+            if always_return:
+                return self.drain(len(src))
+            raise ValueError(
+                '{!r} not found in {!r}...'.format(end, src[:32])
+            )
+        ret = self.drain(len(src))
+        if include_end:
+            return ret
+        return ret[0:-len(end)]
 
     def readline(self, size):
         return self.search(size, b'\n', True, True)

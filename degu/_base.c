@@ -1701,20 +1701,7 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
             return _Reader_peek(self, offset + end.len); 
         }
     }
-    return _Reader_peek(self, self->stop); 
-}
-
-
-static DeguBuf
-_Reader_search_inner(Reader *self, const size_t size, DeguBuf end)
-{
-    DeguBuf cur = _Reader_peek(self, size);
-    if (cur.len >= end.len) {
-        if (memmem(cur.buf, cur.len, end.buf, end.len) != NULL) {
-            return cur;
-        }
-    }
-    return _Reader_fill(self, size);
+    return _Reader_peek(self, size); 
 }
 
 
@@ -1722,6 +1709,8 @@ static DeguBuf
 _Reader_search(Reader *self, const size_t size, DeguBuf end,
                const int include_end, const int always_return)
 {
+    bool found = false;
+
     if (end.buf == NULL) {
         Py_FatalError("_Reader_search: end.buf == NULL");
     }
@@ -1729,28 +1718,30 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL_DeguBuf;
     }
-    DeguBuf cur = _Reader_search_inner(self, size, end);
-    if (cur.buf == NULL) {
+
+    DeguBuf src = _Reader_fill_until(self, size, end, &found);
+    if (src.buf == NULL) {
         return NULL_DeguBuf;
     }
-    if (cur.len == 0) {
-        return cur;
+    if (src.len == 0) {
+        return src;
     }
-    const uint8_t *found = memmem(cur.buf, cur.len, end.buf, end.len);
-    if (found == NULL) {
+
+    if (! found) {
         if (always_return) {
-            return _Reader_drain(self, size);
+            return _Reader_drain(self, src.len);
         }
         _value_error2(
-            "%R not found in %R...", end, _slice(cur, 0, _min(cur.len, 32))
+            "%R not found in %R...", end, _slice(src, 0, _min(src.len, 32))
         );
         return NULL_DeguBuf;
     }
-    DeguBuf src = _Reader_drain(self, (found - cur.buf) + end.len);
+
+    DeguBuf ret = _Reader_drain(self, src.len);
     if (include_end) {
-        return src;
+        return ret;
     }
-    return _slice(src, 0, src.len - end.len);
+    return _slice(ret, 0, ret.len - end.len);
 }
 
 
