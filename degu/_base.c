@@ -261,9 +261,8 @@ _tobytes(DeguBuf src)
 }
 
 
-
 static void
-_value_error(DeguBuf src, const char *format)
+_value_error(const char *format, DeguBuf src)
 {
     PyObject *tmp = _tobytes(src);
     if (tmp != NULL) {
@@ -357,11 +356,6 @@ _calloc_buf(const size_t len)
     }
 
 
-#define _VALUE_ERROR(src, format) \
-    _value_error(src, format); \
-    goto error;
-
-
 static PyObject *
 _parse_method(DeguBuf src)
 {
@@ -387,7 +381,7 @@ _parse_method(DeguBuf src)
         method = str_DELETE;
     }
     if (method == NULL) {
-        _value_error(src, "bad HTTP method: %R");
+        _value_error("bad HTTP method: %R", src);
     }
     else {
         Py_INCREF(method);
@@ -422,10 +416,7 @@ _parse_header_name(DeguBuf src)
         return NULL; 
     }
     if (src.len > MAX_KEY) {
-        _value_error(
-            _slice(src, 0, MAX_KEY),
-            "header name too long: %R..."
-        );
+        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
         return NULL; 
     }
     dst = PyUnicode_New(src.len, 127);
@@ -441,7 +432,7 @@ _parse_header_name(DeguBuf src)
         if (r != 255) {
             Py_FatalError("internal error in `_parse_header_name()`");
         }
-        _value_error(src, "bad bytes in header name: %R");
+        _value_error("bad bytes in header name: %R", src);
     }
     return dst;
 }
@@ -485,7 +476,7 @@ _decode(DeguBuf src, const uint8_t mask, const char *format)
         Py_FatalError("internal error in `_decode()`");
     }
     if ((bits & mask) != 0) {
-        _value_error(src, format);
+        _value_error(format, src);
         goto error;
     }
     goto done;
@@ -524,9 +515,8 @@ _parse_content_length(DeguBuf src)
         return NULL; 
     }
     if (src.len > MAX_CL_LEN) {
-        _value_error(
-            _slice(src, 0, MAX_CL_LEN),
-            "content-length too long: %R..."
+        _value_error("content-length too long: %R...",
+            _slice(src, 0, MAX_CL_LEN)
         );
         return NULL; 
     }
@@ -540,11 +530,11 @@ _parse_content_length(DeguBuf src)
         Py_FatalError("_parse_content_length(): flags == 0");
     }
     if ((flags & DIGIT_MASK) != 0) {
-        _value_error(src, "bad bytes in content-length: %R");
+        _value_error("bad bytes in content-length: %R", src);
         return NULL;
     }
     if (src.buf[0] == 48 && src.len != 1) {
-        _value_error(src, "content-length has leading zero: %R");
+        _value_error("content-length has leading zero: %R", src);
         return NULL;
     }
     return PyLong_FromUnsignedLongLong(accum);
@@ -573,14 +563,14 @@ _parse_status(DeguBuf src)
     unsigned long accum;
 
     if (src.len != 3) {
-        _value_error(src, "bad status length: %R");
+        _value_error("bad status length: %R", src);
         return NULL;
     }
     d = src.buf[0];    err =  (d < 49 || d > 57);    accum =  (d - 48) * 100;
     d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
     d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
     if (err || accum < 100 || accum > 599) {
-        _value_error(src, "bad status: %R");
+        _value_error("bad status: %R", src);
         return NULL;
     }
     return PyLong_FromUnsignedLong(accum);
@@ -610,7 +600,7 @@ _parse_response_line(DeguBuf src, PyObject *response)
      *      ^^^^^^^^^^^^^^^
      */
     if (src.len < 15) {
-        _value_error(src, "response line too short: %R");
+        _value_error("response line too short: %R", src);
         return false;
     }
 
@@ -624,7 +614,7 @@ _parse_response_line(DeguBuf src, PyObject *response)
      */
 
     if (memcmp(src.buf, "HTTP/1.1 ", 9) != 0 || src.buf[12] != ' ') {
-        _value_error(src, "bad response line: %R");
+        _value_error("bad response line: %R", src);
         return false;
     }
 
@@ -685,13 +675,17 @@ _parse_path(DeguBuf src)
 
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "path is empty");
-        goto error;
+        return NULL;
     }
     if (src.buf[0] != '/') {
-        _VALUE_ERROR(src, "path[0:1] != b'/': %R")
+        _value_error("path[0:1] != b'/': %R", src);
+        return NULL;
     }
 
-    _SET(path, PyList_New(0))
+    path = PyList_New(0);
+    if (path == NULL) {
+        goto error;
+    }
     if (src.len == 1) {
         goto cleanup;
     }
@@ -703,21 +697,25 @@ _parse_path(DeguBuf src)
             stop = final_stop;
         }
         if (start >= stop) {
-            _VALUE_ERROR(src, "b'//' in path: %R")
+            _value_error("b'//' in path: %R", src);
+            goto error;
         }
-        if (stop - start == 2)
-        _REPLACE(component,
-            _decode(
-                _slice_between(src, start, stop),
-                PATH_MASK,
-                "bad bytes in path component: %R"
-            )
-        )
-        _APPEND(path, component)
+        component = _decode(_slice_between(src, start, stop), PATH_MASK,
+            "bad bytes in path component: %R"
+        );
+        if (component == NULL) {
+            goto error;
+        }
+        if (PyList_Append(path, component) != 0) {
+            goto error;
+        }
+        Py_CLEAR(component);
         start = stop + 1;
     }
     if (src.buf[src.len - 1] == '/') {
-        _APPEND(path, str_empty)
+        if (PyList_Append(path, str_empty) != 0) {
+            goto error;
+        }
     }
     goto cleanup;
 
@@ -811,7 +809,7 @@ _parse_request_line(DeguBuf line, PyObject *request)
      *      ^^^^^^^^^^^^^^
      */
     if (line.len < 14) {
-        _value_error(line, "request line too short: %R");
+        _value_error("request line too short: %R", line);
         goto error;
     }
 
@@ -822,7 +820,7 @@ _parse_request_line(DeguBuf line, PyObject *request)
      */
     DeguBuf protocol = _slice(line, line.len - 9, line.len);
     if (! _equal(protocol, REQUEST_PROTOCOL)) {
-        _value_error(protocol, "bad protocol in request line: %R");
+        _value_error("bad protocol in request line: %R", protocol);
         goto error;
     }
 
@@ -840,7 +838,7 @@ _parse_request_line(DeguBuf line, PyObject *request)
      */
     sep = memmem(src.buf, src.len, " /", 2);
     if (sep == NULL) {
-        _value_error(line, "bad request line: %R");
+        _value_error("bad request line: %R", line);
         goto error;
     }
     method_stop = sep - src.buf;
@@ -922,7 +920,7 @@ _parse_key(DeguBuf key, uint8_t *scratch)
     size_t i;
 
     if (key.len > MAX_KEY) {
-        _value_error(_slice(key, 0, MAX_KEY), "header name too long: %R...");
+        _value_error("header name too long: %R...", _slice(key, 0, MAX_KEY));
         return false;
     }
     for (r = i = 0; i < key.len; i++) {
@@ -932,7 +930,7 @@ _parse_key(DeguBuf key, uint8_t *scratch)
         if (r != 255) {
             Py_FatalError("internal error in `_parse_header_name()`");
         }
-        _value_error(key, "bad bytes in header name: %R");
+        _value_error("bad bytes in header name: %R", key);
         return false;
     }
     return true;
@@ -968,14 +966,14 @@ _parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
     int flags = 0;
 
     if (src.len < 4) {
-        _value_error(src, "header line too short: %R");
+        _value_error("header line too short: %R", src);
         goto error;
     }
 
     // FIXME: User a better error message here
     sep = memmem(src.buf + 1, src.len - 1, ": ", 2);
     if (sep == NULL) {
-        _value_error(src, "bad header line: %R");
+        _value_error("bad header line: %R", src);
         goto error;
     }
     DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
@@ -993,7 +991,7 @@ _parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
     }
     else if (_equal(keysrc, TRANSFER_ENCODING)) {
         if (! _equal(valsrc, CHUNKED)) {
-            _value_error(valsrc, "bad transfer-encoding: %R");
+            _value_error("bad transfer-encoding: %R", valsrc);
             goto error;
         }
         _SET_AND_INC(key, str_transfer_encoding)
@@ -1007,7 +1005,7 @@ _parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
 
     /* Store in headers dict, make sure it's not a duplicate key */
     if (PyDict_SetDefault(headers, key, val) != val) {
-        _value_error(src, "duplicate header: %R");
+        _value_error("duplicate header: %R", src);
         goto error;
     }
     goto cleanup;
