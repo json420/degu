@@ -1894,6 +1894,7 @@ Reader_read(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
     uint8_t *dst_buf;
+    size_t start;
     ssize_t added;
     PyObject *ret = NULL;
 
@@ -1904,24 +1905,36 @@ Reader_read(Reader *self, PyObject *args)
         PyErr_Format(PyExc_ValueError, "need size >= 0; got %zd", size);
         return NULL;
     }
-    if (size <= self->len) {
-        DeguBuf src = _Reader_fill(self, size);
+    DeguBuf src = _Reader_drain(self, size);
+    if (src.len == size) {
         _SET(ret, _tobytes(src))
-        _Reader_drain(self, size);
+        goto cleanup;
     }
-    else {
-        DeguBuf cur = _Reader_drain(self, size);
-        _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-        dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
-        memcpy(dst_buf, cur.buf, cur.len);
-        added = _Reader_sock_recv_into(self, dst_buf + cur.len, size - cur.len);
+    if (src.len >= size) {
+        Py_FatalError("_Reader_read: src.len >= size");
+    }
+
+    _SET(ret, PyBytes_FromStringAndSize(NULL, size))
+    dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
+    memcpy(dst_buf, src.buf, src.len);
+
+    start = src.len;
+    while (start < size) {
+        added = _Reader_sock_recv_into(self, dst_buf + start, size - start);
         if (added < 0) {
             goto error;
         }
-        if (cur.len + added < size) {
-            if (_PyBytes_Resize(&ret, cur.len + added) != 0) {
-                goto error;
-            }
+        if (added == 0) {
+            break;
+        }
+        start += added;
+        if (start > size) {
+            Py_FatalError("_Reader_read: start > size");
+        }
+    }
+    if (start < size) {
+        if (_PyBytes_Resize(&ret, start) != 0) {
+            goto error;
         }
     }
     goto cleanup;

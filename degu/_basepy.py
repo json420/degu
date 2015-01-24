@@ -518,16 +518,21 @@ class Reader:
             )
         if size == 0:
             return b''
-        if size <= len(self._rawbuf):
-            self.fill(size)
-            return self.drain(size)
-
         src = self.drain(size)
         src_len = len(src)
+        if src_len == size:
+            return src
+        assert src_len < size
         dst = memoryview(bytearray(size))
-        dst[0:src_len] = src
-        dst_len = src_len + self._sock_recv_into(dst[src_len:])
-        return dst[:dst_len].tobytes()
+        stop = src_len
+        while stop < size:
+            added = self._sock_recv_into(dst[stop:])
+            if added <= 0:
+                assert added == 0
+                break
+            assert stop + added <= size
+            stop += added
+        return dst[:stop].tobytes()
 
 
 def format_request_preamble(method, uri, headers):

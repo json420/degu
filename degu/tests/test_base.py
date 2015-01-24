@@ -2386,6 +2386,18 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.read(512), C)
         self.assertEqual(reader.read(BUF_SIZE + 1), D)
 
+        (sock, reader) = self.new(A + B + C + D, 3)
+        self.assertEqual(reader.read(1024), A)
+        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(512), C)
+        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+
+        (sock, reader) = self.new(A + B + C + D, 1)
+        self.assertEqual(reader.read(1024), A)
+        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(512), C)
+        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+
 
 class TestReader_C(TestReader_Py):
     backend = _base
