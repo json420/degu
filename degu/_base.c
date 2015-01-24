@@ -29,12 +29,11 @@
 #define _MAX_HEADER_COUNT 20
 
 #define READER_BUFFER_SIZE 65536
-#define MAX_PREAMBLE_SIZE 32768
 
-// Constraints for the content-length value:
+#define MAX_PREAMBLE 32768
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
-#define MAX_CL_VALUE 9007199254740992
+
 #define CONTENT_LENGTH_BIT    1
 #define TRANSFER_ENCODING_BIT 2
 
@@ -516,9 +515,8 @@ done:
 static PyObject *
 _parse_content_length(DeguBuf src)
 {
-    uint64_t accum = 0;
-    uint8_t bits = 0;
-    uint8_t c;
+    uint64_t accum;
+    uint8_t flags, c;
     size_t i;
 
     if (src.len < 1) {
@@ -532,27 +530,21 @@ _parse_content_length(DeguBuf src)
         );
         return NULL; 
     }
-    for (i = 0; i < src.len; i++) {
+    for (accum = flags = i = 0; i < src.len; i++) {
         accum *= 10;
         c = src.buf[i];
-        bits |= _FLAGS[c];
+        flags |= _FLAGS[c];
         accum += (c - 48);
     }
-    if (bits == 0) {
-        Py_FatalError("internal error in `_parse_content_length`");
+    if (flags == 0) {
+        Py_FatalError("_parse_content_length(): flags == 0");
     }
-    if ((bits & DIGIT_MASK) != 0) {
+    if ((flags & DIGIT_MASK) != 0) {
         _value_error(src, "bad bytes in content-length: %R");
         return NULL;
     }
     if (src.buf[0] == 48 && src.len != 1) {
         _value_error(src, "content-length has leading zero: %R");
-        return NULL;
-    }
-    if (accum > (uint64_t)MAX_CL_VALUE) {
-        PyErr_Format(PyExc_ValueError,
-            "content-length value too large: %llu", accum
-        );
         return NULL;
     }
     return PyLong_FromUnsignedLongLong(accum);

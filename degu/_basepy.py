@@ -182,12 +182,7 @@ def parse_content_length(buf):
         raise ValueError(
             'content-length has leading zero: {!r}'.format(buf)
         )
-    value = int(buf)
-    if value > 9007199254740992:
-        raise ValueError(
-            'content-length value too large: {!r}'.format(value)
-        )
-    return value
+    return int(buf)
 
 
 class EmptyPreambleError(ConnectionError):

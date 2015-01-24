@@ -810,7 +810,17 @@ class TestFunctions(AlternatesTestCase):
                     'bad bytes in content-length: {!r}'.format(bad)
                 )
 
-        for good in (b'0', b'1', b'9', b'11', b'99', b'9007199254740992'):
+        good_values = (
+            b'0',
+            b'1',
+            b'9',
+            b'11',
+            b'99',
+            b'1111111111111111',
+            b'9007199254740992',
+            b'9999999999999999',
+        )
+        for good in good_values:
             self.assertEqual(parse_content_length(good), int(good))
             self.assertEqual(str(int(good)).encode(), good)
             for bad in iter_bad(good, b'0123456789'):
