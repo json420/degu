@@ -194,36 +194,6 @@ class EmptyPreambleError(ConnectionError):
     pass
 
 
-def _READLINE(readline, maxsize):
-    """
-    Matches error checking semantics of the _READLINE() macro in degu/_base.c.
-
-    It makes sense to focus on making the pure-Python implementation a very
-    correct and easy to understand reference implementation, even when at the
-    expense of performance.
-
-    So although using this _READLINE() function means a rather hefty performance
-    hit for the pure-Python implementation, it helps define the correct behavior
-    of the dramatically higher-performance C implementation (aka, the
-    implementation you actually want to use).
-    """
-    assert isinstance(maxsize, int) and maxsize in (_MAX_LINE_SIZE, 2)
-    line = readline(maxsize)
-    if type(line) is not bytes:
-        raise TypeError(
-            'rfile.readline() returned {!r}, should return {!r}'.format(
-                type(line), bytes
-            )
-        )
-    if len(line) > maxsize:
-        raise ValueError(
-            'rfile.readline() returned {} bytes, expected at most {}'.format(
-                len(line), maxsize
-            )
-        )
-    return line
-
-
 def parse_response_line(line):
     if isinstance(line, str):
         line = line.encode()
