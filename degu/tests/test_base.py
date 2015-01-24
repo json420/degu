@@ -2230,6 +2230,78 @@ class TestReader_Py(TestCase):
 
     def test_fill_until(self):
         end = b'\r\n'
+
+        data = os.urandom(2 * BUF_SIZE)
+        (sock, reader) = self.new(data)
+
+        # len(end) == 0:
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(4096, b'')
+        self.assertEqual(str(cm.exception), 'end cannot be empty')
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # size < 0:
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(-1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got -1'.format(BUF_SIZE)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # size < 1:
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(0, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got 0'.format(BUF_SIZE)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # size < len(end):
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got 1'.format(BUF_SIZE)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(15, os.urandom(16))
+        self.assertEqual(str(cm.exception),
+            'need 16 <= size <= {}; got 15'.format(BUF_SIZE)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        # size > BUF_SIZE:
+        with self.assertRaises(ValueError) as cm:
+            reader.fill_until(BUF_SIZE + 1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got {}'.format(BUF_SIZE, BUF_SIZE + 1)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
         self.assertEqual(reader.fill_until(4096, end), (False, b''))
@@ -2253,7 +2325,6 @@ class TestReader_Py(TestCase):
             prefix = os.urandom(i)
             data = prefix + marker
             total_data = data + suffix
-
             (sock, reader) = self.new(total_data, 333)
             self.assertEqual(reader.fill_until(333, marker), (True, data))
             self.assertEqual(reader.peek(-1), total_data[:333])

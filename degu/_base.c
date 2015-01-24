@@ -1641,12 +1641,6 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
     size_t offset;
     ssize_t added;
 
-    if (size < 0 || size > self->len) {
-        PyErr_Format(PyExc_ValueError,
-            "need 0 <= size <= %zd; got %zd", self->len, size
-        );
-        return NULL_DeguBuf;
-    }
     if (end.buf == NULL) {
         Py_FatalError("_Reader_fill_until: end.buf == NULL");
     }
@@ -1654,20 +1648,28 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL_DeguBuf;
     }
+    if (size < end.len || size > self->len) {
+        PyErr_Format(PyExc_ValueError,
+            "need %zd <= size <= %zd; got %zd", end.len, self->len, size
+        );
+        return NULL_DeguBuf;
+    }
 
     /* First, search current buffer */
     DeguBuf cur = _Reader_peek(self, size);
-    ptr = memmem(cur.buf, cur.len, end.buf, end.len);
-    if (ptr != NULL) {
-        *found = true;
-        offset = ptr - cur.buf;
-        return _Reader_peek(self, offset + end.len); 
-    }
-    if (cur.len >= size) {
-        if (cur.len != size) {
-            Py_FatalError("_Reader_fill_until: cur.len >= size");
+    if (cur.len >= end.len) {
+        ptr = memmem(cur.buf, cur.len, end.buf, end.len);
+        if (ptr != NULL) {
+            *found = true;
+            offset = ptr - cur.buf;
+            return _Reader_peek(self, offset + end.len); 
         }
-        return cur;
+        if (cur.len >= size) {
+            if (cur.len != size) {
+                Py_FatalError("_Reader_fill_until: cur.len >= size");
+            }
+            return cur;
+        }
     }
 
     /* Shift buffer if needed */

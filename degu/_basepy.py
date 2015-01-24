@@ -406,6 +406,17 @@ class Reader:
         return self.peek(size)
 
     def fill_until(self, size, end):
+        assert isinstance(size, int)
+        assert isinstance(end, bytes)
+        if not end:
+            raise ValueError('end cannot be empty')
+        if not (len(end) <= size <= len(self._rawbuf)):
+            raise ValueError(
+                'need {} <= size <= {}; got {}'.format(
+                    len(end), len(self._rawbuf), size
+                )
+            )
+
         # First, search current buffer:
         cur = self.peek(size)
         index = cur.find(end)
