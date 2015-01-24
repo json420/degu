@@ -382,29 +382,6 @@ class Reader:
             self._update(self._start + len(src), avail - len(src))
         return src
 
-    def fill(self, size):
-        assert isinstance(size, int)
-        if not (0 <= size <= len(self._rawbuf)):
-            raise ValueError(
-                'need 0 <= size <= {}; got {}'.format(len(self._rawbuf), size)
-            )
-        cur = self.peek(size)
-        if len(cur) == size:
-            return cur
-        assert len(cur) < size
-        assert len(cur) == len(self._buf)
-        if self._start > 0:
-            assert len(cur) > 0
-            self._rawbuf[0:len(cur)] = cur
-            self._update(0, len(cur))
-        assert self._start == 0
-        assert len(self._buf) == len(cur)
-        added = self._sock_recv_into(self._rawbuf[len(cur):])
-        assert added >= 0
-        if added > 0:
-            self._update(0, len(cur) + added)
-        return self.peek(size)
-
     def fill_until(self, size, end):
         assert isinstance(size, int)
         assert isinstance(end, bytes)

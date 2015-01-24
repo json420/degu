@@ -1602,38 +1602,6 @@ _Reader_drain(Reader *self, const size_t size)
 
 
 static DeguBuf
-_Reader_fill(Reader *self, const size_t size)
-{
-    ssize_t added;
-
-    if (size < 0 || size > self->len) {
-        PyErr_Format(PyExc_ValueError,
-            "need 0 <= size <= %zd; got %zd", self->len, size
-        );
-        return NULL_DeguBuf;
-    }
-    DeguBuf cur = _Reader_peek(self, size);
-    if (cur.len == size) {
-        return cur;
-    }
-    if (cur.len > size) {
-        Py_FatalError("_Reader_fill(): cur.len > size");
-    }
-    if (self->start > 0) {
-        memmove(self->buf, cur.buf, cur.len);
-        self->start = 0;
-        self->stop = cur.len;
-    }
-    added = _Reader_sock_recv_into(self, self->buf + cur.len, self->len - cur.len);
-    if (added < 0) {
-        return NULL_DeguBuf;
-    }
-    self->stop += added;
-    return _Reader_peek(self, size);
-}
-
-
-static DeguBuf
 _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
 {
     size_t avail;
@@ -1772,17 +1740,6 @@ Reader_read_response(Reader *self) {
         return NULL;
     }
     return _parse_response(src, self->scratch);
-}
-
-
-static PyObject *
-Reader_fill(Reader *self, PyObject *args)
-{
-    ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_fill(self, size));
 }
 
 
@@ -1994,7 +1951,6 @@ static PyMethodDef Reader_methods[] = {
         "read_response()"
     },
 
-    {"fill", (PyCFunction)Reader_fill, METH_VARARGS, "fill(size)"},
     {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,
         "fill_until(size, end)"
     },
