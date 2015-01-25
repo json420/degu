@@ -69,38 +69,23 @@ def random_identifier():
     return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
 
 
-def _iter_good(size, allowed):
-    assert isinstance(size, int) and size >= 0
+def iter_good(good, allowed):
+    for i in range(len(good)):
+        for g in allowed:
+            also_good = bytearray(good)
+            also_good[i] = g
+            yield bytes(also_good)
+
+
+def iter_bad(good, allowed):
+    assert isinstance(good, bytes)
     assert isinstance(allowed, bytes)
-    for okay in allowed:
-        yield bytes(okay for i in range(size))
-
-
-def _iter_bad(size, allowed, skip):
-    assert isinstance(size, int) and size >= 0
-    assert isinstance(allowed, bytes)
-    assert isinstance(skip, bytes) and b'\n' in skip
-    thebad = []
-    for i in range(256):
-        if i in allowed:
-            continue  # Not actually bad!
-        if i in skip:
-            continue  # Other values we should skip
-        thebad.append(i)
-    for good in _iter_good(size, allowed):
-        for bad in thebad:
-            for index in range(size):
-                notgood = bytearray(good)
-                notgood[index] = bad  # Make good bad
-                yield bytes(notgood)
-
-
-def iter_bad_values(size):
-    yield from _iter_bad(size, tables.VALUES_DEF, b'\n')
-
-
-def iter_bad_keys(size):
-    yield from _iter_bad(size, tables.NAMES_DEF, b'\n')
+    not_allowed = tables.invert(allowed)
+    for i in range(len(good)):
+        for b in not_allowed:
+            bad = bytearray(good)
+            bad[i] = b
+            yield bytes(bad)
 
 
 class TempDir:
@@ -162,6 +147,9 @@ class DummySocket:
     def close(self):
         self._calls.append('close')
 
+    def recv_into(self, buf):
+        pass
+
 
 class DummyFile:
     def __init__(self):
@@ -169,6 +157,27 @@ class DummyFile:
 
     def close(self):
         self._calls.append('close')
+
+
+class MockSocket:
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_recv_into_calls')
+
+    def __init__(self, data, rcvbuf=None):
+        assert rcvbuf is None or (isinstance(rcvbuf, int) and rcvbuf > 0)
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+        self._rcvbuf = rcvbuf
+        self._recv_into_calls = 0
+
+    def recv_into(self, buf):
+        assert isinstance(buf, memoryview)
+        if self._rcvbuf is not None and len(buf) > self._rcvbuf:
+            buf = buf[0:self._rcvbuf]
+        self._recv_into_calls += 1
+        return self._rfile.readinto(buf)
+
+    def send(self, data):
+        return self._wfile.write(data)
 
 
 class FuzzTestCase(TestCase):

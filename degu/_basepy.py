@@ -28,61 +28,19 @@ isn't meant for production use (mainly because it's much, much slower).
 
 This is a reference implementation whose purpose is only to help enforce the
 correctness of the C implementation.
-
-Note that the Python implementation is quite different in how it decodes and
-validates the HTTP preamble.  Using a lookup table is very fast in C, but is
-quite slow in Python.
-
-For *VALUES*, the Python implementation:
-
-    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
-
-    2. Uses ``str.isprintable()`` to further restrict down to the same 95 byte
-       values allowed by the C ``_VALUES`` table
-
-For *KEYS*, the Python implementation:
-
-    1. Uses ``bytes.decode('ascii')`` to prevent bytes whose high-bit is set
-
-    2. Uses ``str.lower()`` to case-fold the header key
-
-    3. Uses ``re.match()`` to further restrict down to the same 63 byte values
-       allowed by the C ``_NAMES`` table
-
-Although it might seem a bit hodge-podge, this approach is much faster than
-doing lookup tables in pure-Python.
-
-However, aside from the glaring performance difference, the Python and C
-implementations should always behave *exactly* the same, and we have oodles of
-unit tests to back this up.
-
-By not using lookup tables in the Python implementation, we can better verify
-the correctness of the C lookup tables.  Otherwise we could have two
-implementations correctly using the same incorrect tables.
-
-``str.isprintable()`` is an especially handy gem in this respect.
 """
 
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
-    '_read_preamble',
     'EmptyPreambleError',
 )
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 _MAX_HEADER_COUNT = 20
 
-MAX_PREAMBLE_BYTES = 65536  # 64 KiB
-
-_NAMES = frozenset(
-    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-)
-
-_URI = frozenset(
-    b'%&+-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~'
-)
-_DIGIT = frozenset(b'0123456789')
+READER_BUFFER_SIZE = 65536  # 64 KiB
+MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
 
 GET = 'GET'
 PUT = 'PUT'
@@ -90,6 +48,35 @@ POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
+
+
+
+################    BEGIN GENERATED TABLES    ##################################
+NAME = frozenset(
+    b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+)
+
+_DIGIT = b'0123456789'
+_ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+_PATH  = b'-.:_~'
+_QUERY = b'%&+='
+_URI   = b'/?'
+_SPACE = b' '
+_VALUE = b'"\'()*,;[]'
+
+DIGIT  = frozenset(_DIGIT)
+PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
+QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
+URI    = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI)
+REASON = frozenset(_DIGIT + _ALPHA + _SPACE)
+VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+################    END GENERATED TABLES      ##################################
+
+
+def _decode(src, allowed, message):
+    if allowed.issuperset(src):
+        return src.decode('ascii')
+    raise ValueError(message.format(src))
 
 
 def parse_method(method):
@@ -106,6 +93,42 @@ def parse_method(method):
     if method == b'DELETE':
         return DELETE
     raise ValueError('bad HTTP method: {!r}'.format(method))
+
+
+def _parse_path(src):
+    if not src:
+        raise ValueError('path is empty')
+    if src[0:1] != b'/':
+        raise ValueError("path[0:1] != b'/': {!r}".format(src))
+    if b'//' in src:
+        raise ValueError("b'//' in path: {!r}".format(src))
+
+    if src == b'/':
+        return []
+    return [
+        _decode(c, PATH, 'bad bytes in path component: {!r}')
+        for c in src[1:].split(b'/')
+    ]
+
+
+def parse_uri(src):
+    if not src:
+        raise ValueError('uri is empty')
+
+    uri = _decode(src, URI, 'bad bytes in uri: {!r}')
+    parts = src.split(b'?', 1)
+    assert len(parts) in (1, 2)
+    path = _parse_path(parts[0])
+    if len(parts) == 1:
+        query = None
+    else:
+        query = _decode(parts[1], QUERY, 'bad bytes in query: {!r}')
+    return {
+        'uri': uri,
+        'script': [],
+        'path': path,
+        'query': query,
+    }
 
 
 def _decode_value(src, message):
@@ -130,13 +153,13 @@ def parse_header_name(buf):
         raise ValueError('header name is empty')
     if len(buf) > 32:
         raise ValueError('header name too long: {!r}...'.format(buf[:32]))
-    if _NAMES.issuperset(buf):
+    if NAME.issuperset(buf):
         return buf.decode('ascii').lower()
     raise ValueError('bad bytes in header name: {!r}'.format(buf))
 
 
 def _decode_uri(src):
-    if _URI.issuperset(src):
+    if URI.issuperset(src):
         return src.decode()
     raise ValueError(
         'bad uri in request line: {!r}'.format(src)
@@ -151,7 +174,7 @@ def parse_content_length(buf):
         raise ValueError(
             'content-length too long: {!r}...'.format(buf[:16])
         )
-    if not _DIGIT.issuperset(buf):
+    if not DIGIT.issuperset(buf):
         raise ValueError(
             'bad bytes in content-length: {!r}'.format(buf)
         )
@@ -159,46 +182,11 @@ def parse_content_length(buf):
         raise ValueError(
             'content-length has leading zero: {!r}'.format(buf)
         )
-    value = int(buf)
-    if value > 9007199254740992:
-        raise ValueError(
-            'content-length value too large: {!r}'.format(value)
-        )
-    return value
+    return int(buf)
 
 
 class EmptyPreambleError(ConnectionError):
     pass
-
-
-def _READLINE(readline, maxsize):
-    """
-    Matches error checking semantics of the _READLINE() macro in degu/_base.c.
-
-    It makes sense to focus on making the pure-Python implementation a very
-    correct and easy to understand reference implementation, even when at the
-    expense of performance.
-
-    So although using this _READLINE() function means a rather hefty performance
-    hit for the pure-Python implementation, it helps define the correct behavior
-    of the dramatically higher-performance C implementation (aka, the
-    implementation you actually want to use).
-    """
-    assert isinstance(maxsize, int) and maxsize in (_MAX_LINE_SIZE, 2)
-    line = readline(maxsize)
-    if type(line) is not bytes:
-        raise TypeError(
-            'rfile.readline() returned {!r}, should return {!r}'.format(
-                type(line), bytes
-            )
-        )
-    if len(line) > maxsize:
-        raise ValueError(
-            'rfile.readline() returned {} bytes, expected at most {}'.format(
-                len(line), maxsize
-            )
-        )
-    return line
 
 
 def parse_response_line(line):
@@ -217,7 +205,7 @@ def parse_response_line(line):
     except ValueError:
         pass
     if status is None or not (100 <= status <= 599):
-        raise ValueError('bad status in response line: {!r}'.format(line))
+        raise ValueError('bad status: {!r}'.format(line[9:12]))
 
     # reason:
     if line[13:] == b'OK':
@@ -230,28 +218,28 @@ def parse_response_line(line):
 
 
 def parse_request_line(line):
-    if isinstance(line, str):
-        line = line.encode()
     if len(line) < 14:
         raise ValueError('request line too short: {!r}'.format(line))
     if line[-9:] != b' HTTP/1.1':
-        raise ValueError('bad protocol in request line: {!r}'.format(line))
-    line = line[:-9]
-    items = line.split(b' /', 1)
+        raise ValueError('bad protocol in request line: {!r}'.format(line[-9:]))
+    src = line[:-9]
+    items = src.split(b' /', 1)
     if len(items) < 2:
-        raise ValueError('bad inner request line: {!r}'.format(line))
-    return (
-        parse_method(items[0]),
-        _decode_uri( b'/' + items[1])
-    )
+        raise ValueError('bad request line: {!r}'.format(line))
+    request = {'method': parse_method(items[0])}
+    request.update(parse_uri(b'/' + items[1]))
+    return request
 
 
-def parse_preamble(preamble):
-    (first_line, *header_lines) = preamble.split(b'\r\n')
-    first_line = _decode_value(first_line, 'bad bytes in first line: {!r}')
+def _parse_header_lines(header_lines):
     headers = {}
     for line in header_lines:
-        (key, value) = line.split(b': ')
+        (key, value) = (None, None)
+        parts = line.split(b': ', 1)
+        if len(parts) >= 2:
+            (key, value) = parts
+        if not (key and value):
+            raise ValueError('bad header line: {!r}'.format(line))
         key = parse_header_name(key)
         value = _decode_value(value, 'bad bytes in header value: {!r}')
         if headers.setdefault(key, value) is not value:
@@ -268,153 +256,233 @@ def parse_preamble(preamble):
     elif 'transfer-encoding' in headers:
         if headers['transfer-encoding'] != 'chunked':
             raise ValueError(
-                'bad transfer-encoding: {!r}'.format(headers['transfer-encoding'])
-            )
-    return (first_line, headers)
-
-
-def __read_headers(readline):
-    headers = {}
-    for i in range(_MAX_HEADER_COUNT):
-        line = _READLINE(readline, _MAX_LINE_SIZE)
-        crlf = line[-2:]
-        if crlf != b'\r\n':
-            raise ValueError('bad header line termination: {!r}'.format(crlf))
-        if line == b'\r\n':  # Stop on the first empty CRLF terminated line
-            return headers
-        if len(line) < 6:
-            raise ValueError('header line too short: {!r}'.format(line))
-        assert line[-2:] == b'\r\n'
-        line = line[:-2]
-        try:
-            (key, value) = line.split(b': ', 1)
-        except ValueError:
-            key = None
-            value = None
-        if not (key and value):
-            raise ValueError('bad header line: {!r}'.format(line))
-        if key.lower() == b'content-length':
-            key = 'content-length'
-            value = parse_content_length(value)
-        elif key.lower() == b'transfer-encoding':
-            if value != b'chunked':
-                raise ValueError(
-                    'bad transfer-encoding: {!r}'.format(value)
+                'bad transfer-encoding: {!r}'.format(
+                    headers['transfer-encoding'].encode()
                 )
-            key = 'transfer-encoding'
-            value = 'chunked'
-        else:
-            key = parse_header_name(key)
-            value = _decode_value(value, 'bad bytes in header value: {!r}')
-        if headers.setdefault(key, value) is not value:
-            raise ValueError(
-                'duplicate header: {!r}'.format(line)
             )
-    if _READLINE(readline, 2) != b'\r\n':
-        raise ValueError('too many headers (> {})'.format(_MAX_HEADER_COUNT))
     return headers
 
 
-def __read_preamble(rfile):
-    readline = rfile.readline
-    if not callable(readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, _MAX_LINE_SIZE)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    first_line = _decode_value(line[:-2], 'bad bytes in first line: {!r}')
-    headers = __read_headers(readline)
-    return (first_line, headers)
+def parse_request(preamble):
+    (line, *header_lines) = preamble.split(b'\r\n')
+    request = parse_request_line(line)
+    request['headers'] = _parse_header_lines(header_lines)
+    return request
 
 
-def _read_preamble(rfile):
-    (first_line, headers) = __read_preamble(rfile)
-    if 'content-length' in headers and 'transfer-encoding' in headers:
-        raise ValueError(
-            'cannot have both content-length and transfer-encoding headers'
-        )
-    return (first_line, headers)
-
-
-def _read_response_preamble(rfile):
-    readline = rfile.readline
-    if not callable(readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, _MAX_LINE_SIZE)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    (status, reason) = parse_response_line(line[:-2])
-    headers = __read_headers(readline)
-    if 'content-length' in headers and 'transfer-encoding' in headers:
-        raise ValueError(
-            'cannot have both content-length and transfer-encoding headers'
-        )
+def parse_response(preamble):
+    (line, *header_lines) = preamble.split(b'\r\n')
+    (status, reason) = parse_response_line(line)
+    headers = _parse_header_lines(header_lines)
     return (status, reason, headers)
 
 
-def _read_request_preamble(rfile):
-    readline = rfile.readline
-    if not callable(readline):
-        raise TypeError('rfile.readline is not callable')
-    line = _READLINE(readline, _MAX_LINE_SIZE)
-    if not line:
-        raise EmptyPreambleError('HTTP preamble is empty')
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad line termination: {!r}'.format(line[-2:]))
-    if len(line) == 2:
-        raise ValueError('first preamble line is empty')
-    (method, uri) = parse_request_line(line[:-2])
-    headers = __read_headers(readline)
-    if 'content-length' in headers and 'transfer-encoding' in headers:
-        raise ValueError(
-            'cannot have both content-length and transfer-encoding headers'
-        )
-    return (method, uri, headers)
-
-
 class Reader:
-    def __init__(self, raw):
-        self.raw = raw
-        self._buf = bytearray(MAX_PREAMBLE_BYTES)
-        self._view = memoryview(self._buf)
-        self._tell = 0
-        self._size = 0
+    __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
+
+    def __init__(self, sock, bodies):
+        if not callable(sock.recv_into):
+            raise TypeError('sock.recv_into() is not callable')
+        if not callable(bodies.Body):
+            raise TypeError('bodies.Body is not callable')
+        if not callable(bodies.ChunkedBody):
+            raise TypeError('bodies.ChunkedBody is not callable')
+        self.sock = sock
+        self.bodies = bodies
+        self._rawtell = 0
+        self._rawbuf = memoryview(bytearray(2**16))
+        self._start = 0
+        self._buf = b''
+
+    def rawtell(self):
+        return self._rawtell
 
     def tell(self):
-        assert isinstance(self._tell, int) and self._tell >= 0
-        return self._tell
+        return self._rawtell - len(self._buf)
 
-    def _consume_buffer(self, size):
-        """
-        Consume first *size* bytes in buffer.
-        """
-        assert 0 <= size <= self._size <= MAX_PREAMBLE_BYTES
-        ret = self._view[:size].tobytes()
-        self._tell += size
-        remaining = self._size - size
-        self._view[:remaining] = self._view[size:size+remaining]
-        self._size = remaining
-        return ret
-
-    def _fill_buffer(self):
-        assert 0 <= self._size <= len(self._buf)
-        added = self.raw.readinto(self._view[self._size:])
-        self._size += added
+    def _sock_recv_into(self, buf):
+        added = self.sock.recv_into(buf)
+        self._rawtell += added
         return added
 
-    def read_preamble(self):
-        self._fill_buffer()
-        index = self.buf.find(b'\r\n\r\n')
-        if 0 < index < self.stop:
-            pass
+    def _update(self, start, size):
+        """
+        Valid transitions::
+
+            ===========================
+            -->|<--            |  Empty
+               |<---- buf <--  |  Shift
+               |      buf ---->|  Fill
+               |  --> buf      |  Drain
+            ===========================
+        """
+        # Check previous state:
+        assert 0 <= self._start <= self._start + len(self._buf) <= len(self._rawbuf)
+
+        # Check new state:
+        assert 0 <= start <= start + size <= len(self._rawbuf)
+
+        # _update() should only be called when there is a change:
+        assert start != self._start or size != len(self._buf)
+
+        # Check that previous to new is one of the four valid transitions:
+        if size == 0:
+            # empty
+            assert start == 0
+            assert len(self._buf) > 0
+        elif size == len(self._buf):
+            # shift
+            assert size > 0
+            assert start == 0
+            assert self._start > 0
+        elif size > len(self._buf):
+            # fill
+            assert size > 0
+            assert start == self._start == 0
+        elif size < len(self._buf):
+            # drain
+            assert size > 0
+            assert start + size == self._start + len(self._buf)
+        else:
+            raise ValueError(
+                'invalid buffer update: ({},{}) --> ({}, {})'.format(
+                    self._start, len(self._buf), start, size
+                )
+            )
+
+        # Update start, buf:
+        self._start = start
+        self._buf = self._rawbuf[start:start+size].tobytes()
+
+    def expose(self):
+        return self._rawbuf.tobytes()
+
+    def start_stop(self):
+        return (self._start, self._start + len(self._buf))
+
+    def peek(self, size):
+        assert isinstance(size, int)
+        if size < 0:
+            return self._buf
+        return self._buf[0:size]
+
+    def drain(self, size):
+        avail = len(self._buf)
+        src = self.peek(size)
+        if len(src) == 0:
+            return src
+        if len(src) == avail:
+            self._update(0, 0)
+        else:
+            self._update(self._start + len(src), avail - len(src))
+        return src
+
+    def fill_until(self, size, end):
+        assert isinstance(size, int)
+        assert isinstance(end, bytes)
+        if not end:
+            raise ValueError('end cannot be empty')
+        if not (len(end) <= size <= len(self._rawbuf)):
+            raise ValueError(
+                'need {} <= size <= {}; got {}'.format(
+                    len(end), len(self._rawbuf), size
+                )
+            )
+
+        # First, search current buffer:
+        cur = self.peek(size)
+        index = cur.find(end)
+        if index >= 0:
+            return (True, self.peek(index + len(end)))
+        if len(cur) >= size:
+            assert len(cur) == size
+            return (False, cur)
+
+        # Shift buffer if needed:
+        if self._start > 0:
+            assert len(cur) > 0
+            self._rawbuf[0:len(cur)] = cur
+            self._update(0, len(cur))
+
+        # Now search till found:
+        remaining = len(self._rawbuf) - len(cur)
+        while remaining > 0:
+            dst = self._rawbuf[-remaining:]
+            added = self._sock_recv_into(dst)
+            if added <= 0:
+                assert added == 0
+                return (False, cur)
+            self._update(0, len(cur) + added)
+
+            cur = self.peek(size)
+            index = cur.find(end)
+            if index >= 0:
+                assert index + len(end) <= size
+                return (True, self.peek(index + len(end)))
+            if len(cur) >= size:
+                assert len(cur) == size
+                return (False, self.peek(size))
+            remaining = len(self._rawbuf) - len(cur)
+
+        return (False, cur)
+
+    def search(self, size, end, include_end=False, always_return=False):
+        assert isinstance(end, bytes)
+        if not end:
+            raise ValueError('end cannot be empty')
+        (found, src) = self.fill_until(size, end)
+        if len(src) == 0:
+            return src
+        if not found:
+            if always_return:
+                return self.drain(len(src))
+            raise ValueError(
+                '{!r} not found in {!r}...'.format(end, src[:32])
+            )
+        ret = self.drain(len(src))
+        if include_end:
+            return ret
+        return ret[0:-len(end)]
+
+    def readline(self, size):
+        return self.search(size, b'\n', True, True)
+
+    def read_request(self):
+        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        if preamble == b'':
+            raise EmptyPreambleError('request preamble is empty')
+        return parse_request(preamble)
+
+    def read_response(self):
+        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        if preamble == b'':
+            raise EmptyPreambleError('response preamble is empty')
+        return parse_response(preamble)
+
+    def read(self, size):
+        assert isinstance(size, int)
+        if size < 0:
+            raise ValueError(
+                'need size >= 0; got {}'.format(size)
+            )
+        if size == 0:
+            return b''
+        src = self.drain(size)
+        src_len = len(src)
+        if src_len == size:
+            return src
+        assert src_len < size
+        dst = memoryview(bytearray(size))
+        dst[0:src_len] = src
+        stop = src_len
+        while stop < size:
+            added = self._sock_recv_into(dst[stop:])
+            if added <= 0:
+                assert added == 0
+                break
+            assert stop + added <= size
+            stop += added
+        return dst[:stop].tobytes()
 
 
 def format_request_preamble(method, uri, headers):
