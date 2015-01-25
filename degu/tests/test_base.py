@@ -2131,6 +2131,13 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
+    def test_close(self):
+        (sock, reader) = self.new()
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.start_stop(), (0, 0))
+        self.assertEqual(reader.tell(), 0)
+
     def test_expose(self):
         (sock, reader) = self.new()
         self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
@@ -2326,15 +2333,99 @@ class TestReader_Py(TestCase):
             }
         )
 
-    def test_read_response(self):
-        (sock, reader) = self.new()
+    def check_read_response(self, rcvbuf):
+        # Test when exact b'\r\n\r\n' preamble termination is missing:
+        data = b'HTTP/1.1 200 OK\n\r\nhello, world'
+        (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+        with self.assertRaises(ValueError) as cm:
+            reader.read_response()
+        self.assertEqual(str(cm.exception),
+            '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
+        )
+        prefix = b'HTTP/1.1 200 OK'
+        term = b'\r\n\r\n'
+        suffix = b'hello, world'
+        for i in range(len(term)):
+            bad = bytearray(term)
+            del bad[i]
+            data = prefix + bytes(bad) + suffix
+            self.assertNotEqual(data, prefix + term + suffix)
+            (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                reader.read_response()
+            self.assertEqual(str(cm.exception),
+                 '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
+            )
+            g = term[i]
+            for b in range(256):
+                if b == g:
+                    continue
+                bad = bytearray(term)
+                bad[i] = b
+                data = prefix + bytes(bad) + suffix
+                (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+                with self.assertRaises(ValueError) as cm:
+                    reader.read_response()
+                self.assertEqual(str(cm.exception),
+                    '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
+                )
+
+        (sock, reader) = self.new(rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
             reader.read_response()
         self.assertEqual(str(cm.exception), 'response preamble is empty')
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
-        (sock, reader) = self.new(data)
+        (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         self.assertEqual(reader.read_response(), (200, 'OK', {}))
+
+        good = b'HTTP/1.1 200 OK'
+        suffix = b'\r\n\r\nHello naughty nurse!'
+        for i in range(len(good)):
+            bad = bytearray(good)
+            del bad[i]
+            bad = bytes(bad)
+            data = bad + suffix
+            (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                reader.read_response()
+            self.assertEqual(str(cm.exception),
+                'response line too short: {!r}'.format(bad)
+            )
+        indexes = list(range(9))
+        indexes.append(12)
+        for i in indexes:
+            g = good[i]
+            for b in range(256):
+                if b == g:
+                    continue
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
+                data = bad + suffix
+                (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+                with self.assertRaises(ValueError) as cm:
+                    reader.read_response()
+                self.assertEqual(str(cm.exception),
+                    'bad response line: {!r}'.format(bad)
+                )
+
+        template = 'HTTP/1.1 {:03d} OK\r\n\r\nHello naughty nurse!'
+        for status in range(1000):
+            data = template.format(status).encode()
+            (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+            if 100 <= status <= 599:
+                self.assertEqual(reader.read_response(), (status, 'OK', {}))
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    reader.read_response()
+                self.assertEqual(str(cm.exception),
+                    'bad status: {!r}'.format('{:03d}'.format(status).encode())
+                )
+
+    def test_read_response(self):
+        for rcvbuf in (None, 1, 2, 3):
+            self.check_read_response(rcvbuf)
 
     def test_read(self):
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'

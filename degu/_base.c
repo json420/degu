@@ -564,7 +564,7 @@ _parse_status(DeguBuf src)
         _value_error("bad status length: %R", src);
         return NULL;
     }
-    d = src.buf[0];    err =  (d < 49 || d > 57);    accum =  (d - 48) * 100;
+    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  (d - 48) * 100;
     d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
     d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
     if (err || accum < 100 || accum > 599) {
