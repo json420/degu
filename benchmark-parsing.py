@@ -54,28 +54,11 @@ def run(statement, K=250):
 
 print('-' * 80)
 
-run('parse_request(request)')
-run('parse_response(response)')
-
-raise SystemExit()
-
-print('\nCommon formatting:')
-run('format_headers(headers)')
-
-print('\nRequest formatting:')
-run("format_request_preamble('GET', '/foo', {})")
-run("format_request_preamble('PUT', '/foo', {'content-length': 17})")
-run("format_request_preamble('PUT', '/foo', headers)")
-
-print('\nResponse formatting:')
-run("format_response_preamble(200, 'OK', {})")
-run("format_response_preamble(200, 'OK', {'content-length': 17})")
-run("format_response_preamble(200, 'OK', headers)")
-
 print('\nCommon parsing:')
 run("parse_content_length(b'9007199254740992')")
 
 print('\nRequest parsing:')
+run('parse_request(request)')
 run("parse_request(b'GET / HTTP/1.1')")
 run("parse_request(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_request(b'GET / HTTP/1.1\\r\\ncontent-length: 17')")
@@ -92,9 +75,23 @@ run("parse_uri(b'/foo/bar')")
 run("parse_uri(b'/foo/bar?stuff=junk')")
 
 print('\nResponse parsing:')
+run('parse_response(response)')
 run("parse_response_line(b'HTTP/1.1 200 OK')")
 run("parse_response_line(b'HTTP/1.1 404 Not Found')")
-run('parse_response(response)')
+
+print('\nCommon formatting:')
+run('format_headers(headers)')
+
+print('\nRequest formatting:')
+run("format_request_preamble('GET', '/foo', {})")
+run("format_request_preamble('PUT', '/foo', {'content-length': 17})")
+run("format_request_preamble('PUT', '/foo', headers)")
+
+print('\nResponse formatting:')
+run("format_response_preamble(200, 'OK', {})")
+run("format_response_preamble(200, 'OK', {'content-length': 17})")
+run("format_response_preamble(200, 'OK', headers)")
+
 
 print('-' * 80)
 
