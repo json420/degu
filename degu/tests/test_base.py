@@ -154,6 +154,23 @@ for func in _functions:
 BAD_METHODS = tuple(sorted(set(BAD_METHODS)))
 
 
+# Pre-build bad preamble termination permutations:
+def _iter_bad_term(term):
+    for i in range(len(term)):
+        bad = bytearray(term)
+        del bad[i]
+        yield bytes(bad)
+        g = term[i]
+        for b in range(256):
+            if b == g:
+                continue
+            bad = bytearray(term)
+            bad[i] = b
+            yield bytes(bad)
+
+BAD_TERM = tuple(_iter_bad_term(b'\r\n\r\n'))
+
+
 def random_headers(count):
     return dict(
         ('X-' + random_id(), random_id()) for i in range(count)
@@ -2314,14 +2331,19 @@ class TestReader_Py(TestCase):
         (sock, reader) = self.new(data)
         self.assertEqual(reader.readline(size), data)
 
-    def test_read_request(self):
-        (sock, reader) = self.new()
+    def check_read_request(self, rcvbuf):
+        # Empty preamble:
+        (sock, reader) = self.new(b'', rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
             reader.read_request()
         self.assertEqual(str(cm.exception), 'request preamble is empty')
 
-        data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
-        (sock, reader) = self.new(data)
+        # Good preamble termination:
+        prefix = b'GET / HTTP/1.1'
+        term = b'\r\n\r\n'
+        suffix = b'hello, world'
+        data = prefix + term + suffix
+        (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         self.assertEqual(reader.read_request(),
             {
                 'method': 'GET',
@@ -2332,6 +2354,35 @@ class TestReader_Py(TestCase):
                 'headers': {},
             }
         )
+
+        # Bad preamble termination:
+        for bad in BAD_TERM:
+            data = prefix + bad + suffix
+            (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                reader.read_request()
+            self.assertEqual(str(cm.exception),
+                 '{!r} not found in {!r}...'.format(term, data)
+            )
+            self.assertEqual(reader.rawtell(), len(data))
+            self.assertEqual(reader.tell(), 0)
+
+        # Request line too short
+        for i in range(len(prefix)):
+            bad = bytearray(prefix)
+            del bad[i]
+            bad = bytes(bad)
+            data = bad + term + suffix
+            (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                reader.read_request()
+            self.assertEqual(str(cm.exception),
+                'request line too short: {!r}'.format(bad)
+            )
+
+    def test_read_request(self):
+        for rcvbuf in (None, 1, 2, 3):
+            self.check_read_request(rcvbuf)
 
     def check_read_response(self, rcvbuf):
         # Test when exact b'\r\n\r\n' preamble termination is missing:
@@ -2350,42 +2401,14 @@ class TestReader_Py(TestCase):
         prefix = b'HTTP/1.1 200 OK'
         term = b'\r\n\r\n'
         suffix = b'hello, world'
-        for i in range(len(term)):
-            bad = bytearray(term)
-            del bad[i]
-            data = prefix + bytes(bad) + suffix
-            self.assertNotEqual(data, prefix + term + suffix)
+        for bad in BAD_TERM:
+            data = prefix + bad + suffix
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             with self.assertRaises(ValueError) as cm:
                 reader.read_response()
             self.assertEqual(str(cm.exception),
-                 '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
+                 '{!r} not found in {!r}...'.format(term, data)
             )
-            if rcvbuf is None:
-                self.assertEqual(sock._recv_into_calls, 2)
-            else:
-                self.assertEqual(sock._recv_into_calls, len(data) // rcvbuf + 1)
-            g = term[i]
-            for b in range(256):
-                if b == g:
-                    continue
-                bad = bytearray(term)
-                bad[i] = b
-                data = prefix + bytes(bad) + suffix
-                (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-                with self.assertRaises(ValueError) as cm:
-                    reader.read_response()
-                self.assertEqual(str(cm.exception),
-                    '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
-                )
-                if rcvbuf is None:
-                    self.assertEqual(sock._recv_into_calls, 2)
-                else:
-                    extra = (2 if len(data) % rcvbuf > 0 else 1)
-                    calls = len(data) // rcvbuf + extra
-                    self.assertEqual(sock._recv_into_calls, calls,
-                        (rcvbuf, len(data))
-                    )
 
         (sock, reader) = self.new(rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
