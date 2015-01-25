@@ -2342,6 +2342,11 @@ class TestReader_Py(TestCase):
         self.assertEqual(str(cm.exception),
             '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
         )
+        if rcvbuf is None:
+            self.assertEqual(sock._recv_into_calls, 2)
+        else:
+            self.assertEqual(sock._recv_into_calls, len(data) // rcvbuf + 1)
+
         prefix = b'HTTP/1.1 200 OK'
         term = b'\r\n\r\n'
         suffix = b'hello, world'
@@ -2356,6 +2361,10 @@ class TestReader_Py(TestCase):
             self.assertEqual(str(cm.exception),
                  '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
             )
+            if rcvbuf is None:
+                self.assertEqual(sock._recv_into_calls, 2)
+            else:
+                self.assertEqual(sock._recv_into_calls, len(data) // rcvbuf + 1)
             g = term[i]
             for b in range(256):
                 if b == g:
@@ -2369,11 +2378,23 @@ class TestReader_Py(TestCase):
                 self.assertEqual(str(cm.exception),
                     '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
                 )
+                if rcvbuf is None:
+                    self.assertEqual(sock._recv_into_calls, 2)
+                else:
+                    extra = (2 if len(data) % rcvbuf > 0 else 1)
+                    calls = len(data) // rcvbuf + extra
+                    self.assertEqual(sock._recv_into_calls, calls,
+                        (rcvbuf, len(data))
+                    )
 
         (sock, reader) = self.new(rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
             reader.read_response()
         self.assertEqual(str(cm.exception), 'response preamble is empty')
+        if rcvbuf is None:
+            self.assertEqual(sock._recv_into_calls, 1)
+        else:
+            self.assertEqual(sock._recv_into_calls, 1)
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
