@@ -1,6 +1,26 @@
 Changelog
 =========
 
+
+0.13 (unreleased)
+-----------------
+
+`Download Degu 0.13`_
+
+Performance improvements:
+
+    *   ``benchmark.py`` is now on average around 14% faster for ``AF_INET6``
+        and around 17% faster for ``AF_UNIX`` (as measured on an Intel
+        i7-4900MQ).
+
+        This performance improvement is due to a new ``Reader`` class used in
+        place of the ``io.BufferedReader`` plus ``socket.SocketIO`` combo.  This
+        new class allows reading and parsing to be decoupled: the HTTP preamble
+        is read, and then parsed, where as previous each line was read and then
+        parsed.
+
+
+
 0.12 (December 2014)
 --------------------
 
@@ -962,6 +982,7 @@ Two things motivated these breaking API changes:
 
 
 
+.. _`Download Degu 0.13`: https://launchpad.net/degu/+milestone/0.13
 .. _`Download Degu 0.12`: https://launchpad.net/degu/+milestone/0.12
 .. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
 .. _`Download Degu 0.10`: https://launchpad.net/degu/+milestone/0.10
