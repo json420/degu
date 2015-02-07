@@ -30,6 +30,8 @@ This is a reference implementation whose purpose is only to help enforce the
 correctness of the C implementation.
 """
 
+from collections import namedtuple
+
 __all__ = (
     '_MAX_LINE_SIZE',
     '_MAX_HEADER_COUNT',
@@ -48,6 +50,9 @@ POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
+
+
+ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
 
 

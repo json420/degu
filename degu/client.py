@@ -24,7 +24,6 @@ HTTP client.
 """
 
 import socket
-from collections import namedtuple
 import os
 
 from .base import bodies as default_bodies
@@ -32,10 +31,8 @@ from .base import (
     _TYPE_ERROR,
     _makefiles,
     format_request_preamble,
+    Response
 )
-
-
-Response = namedtuple('Response', 'status reason headers body')
 
 
 class ClosedConnectionError(Exception):

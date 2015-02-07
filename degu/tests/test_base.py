@@ -228,6 +228,42 @@ class AlternatesTestCase(FuzzTestCase):
             self.skipTest('cannot import `degu._base` C extension')
 
 
+class BackendTestCase(TestCase):
+    backend = _basepy
+
+    def setUp(self):
+        assert self.backend in (_basepy, _base)
+        assert _basepy is not None
+        if self.backend is None:
+            self.skipTest('cannot import `degu._base` C extension')
+
+    def getattr(self, name):
+        backend = self.backend
+        self.assertIn(backend, (_basepy, _base))
+        self.assertIsNotNone(backend)
+        attr = getattr(backend, name)
+        if _base is None or backend is _base:
+            self.assertIs(attr, getattr(base, name))
+        else:
+            self.assertIs(attr, getattr(_basepy, name))
+        return attr
+
+
+class TestNamedTuples_Py(BackendTestCase):
+    def test_Response(self):
+        status = random_id()
+        reason = random_id()
+        headers = random_id()
+        body = random_id()
+        inst = self.getattr('Response')(status, reason, headers, body)
+        self.assertIsInstance(inst, tuple)
+        self.assertIsInstance(inst, self.getattr('ResponseType'))
+        self.assertIs(inst.status, status)
+        self.assertIs(inst.reason, reason)
+        self.assertIs(inst.headers, headers)
+        self.assertIs(inst.body, body)
+
+
 MiB = 1024 * 1024
 
 class TestConstants(TestCase):

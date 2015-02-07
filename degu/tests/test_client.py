@@ -67,16 +67,6 @@ BAD_TUPLE_ADDRESSES = (
 )
 
 
-class TestNamedTuples(TestCase):
-    def test_Response(self):
-        tup = client.Response('da status', 'da reason', 'da headers', 'da body')
-        self.assertIsInstance(tup, tuple)
-        self.assertEqual(tup.status, 'da status')
-        self.assertEqual(tup.reason, 'da reason')
-        self.assertEqual(tup.headers, 'da headers')
-        self.assertEqual(tup.body, 'da body')
-
-
 class TestClosedConnectionError(TestCase):
     def test_init(self):
         conn = random_id()
@@ -471,7 +461,7 @@ class TestFunctions(TestCase):
         ]).encode('latin_1')
         rfile = base.Reader(MockSocket(lines), base.bodies)
         r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, client.Response)
+        self.assertIsInstance(r, base.ResponseType)
         self.assertEqual(r, (200, 'OK', {}, None))
 
         # Content-Length, body should be base.Body:
@@ -483,7 +473,7 @@ class TestFunctions(TestCase):
         data = os.urandom(17)
         rfile = base.Reader(MockSocket(lines + data), base.bodies)
         r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, client.Response)
+        self.assertIsInstance(r, base.ResponseType)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'content-length': 17})
@@ -500,7 +490,7 @@ class TestFunctions(TestCase):
         # Like above, except this time for a HEAD request:
         rfile = base.Reader(MockSocket(lines + data), base.bodies)
         r = client._read_response(rfile, base.bodies, 'HEAD')
-        self.assertIsInstance(r, client.Response)
+        self.assertIsInstance(r, base.ResponseType)
         self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
 
         # Transfer-Encoding, body should be base.ChunkedBody:
@@ -519,7 +509,7 @@ class TestFunctions(TestCase):
         self.assertEqual(fp.tell(), total)
         rfile = base.Reader(MockSocket(fp.getvalue()), base.bodies)
         r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, client.Response)
+        self.assertIsInstance(r, base.ResponseType)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
         self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})

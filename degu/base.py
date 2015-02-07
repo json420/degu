@@ -32,6 +32,8 @@ try:
         format_request_preamble,
         format_response_preamble,
         Reader,
+        ResponseType,
+        Response,
     )
 except ImportError:
     from ._basepy import (
@@ -41,6 +43,8 @@ except ImportError:
         format_request_preamble,
         format_response_preamble,
         Reader,
+        ResponseType,
+        Response,
     )
 
 
@@ -49,6 +53,8 @@ __all__ = (
     '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'Reader',
+    'ResponseType',
+    'Response',
     'format_request_preamble',
     'format_response_preamble',
 )
