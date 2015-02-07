@@ -226,7 +226,7 @@ def _write_request(wfile, method, uri, headers, body):
 
 
 def _read_response(rfile, bodies, method):
-    (status, reason, headers) = rfile.read_response()
+    (status, reason, headers) = rfile.read_response(method)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:

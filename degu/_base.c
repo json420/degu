@@ -1685,7 +1685,20 @@ Reader_read_request(Reader *self) {
 
 
 static PyObject *
-Reader_read_response(Reader *self) {
+Reader_read_response(Reader *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:", &buf, &len)) {
+        return NULL;
+    }
+    PyObject *method = _parse_method((DeguBuf){buf, len});
+    if (method == NULL) {
+        return NULL;
+    }
+    Py_CLEAR(method);
+
     DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
     if (src.buf == NULL) {
         return NULL;
@@ -1902,8 +1915,8 @@ static PyMethodDef Reader_methods[] = {
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
         "read_request()"
     },
-    {"read_response", (PyCFunction)Reader_read_response, METH_NOARGS,
-        "read_response()"
+    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS,
+        "read_response(method)"
     },
 
     {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,

@@ -2385,11 +2385,20 @@ class TestReader_Py(TestCase):
             self.check_read_request(rcvbuf)
 
     def check_read_response(self, rcvbuf):
+        # Bad method:
+        for method in BAD_METHODS:
+            (sock, reader) = self.new()
+            with self.assertRaises(ValueError) as cm:
+                reader.read_response(method)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
         # Test when exact b'\r\n\r\n' preamble termination is missing:
         data = b'HTTP/1.1 200 OK\n\r\nhello, world'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         with self.assertRaises(ValueError) as cm:
-            reader.read_response()
+            reader.read_response('GET')
         self.assertEqual(str(cm.exception),
             '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
         )
@@ -2405,14 +2414,14 @@ class TestReader_Py(TestCase):
             data = prefix + bad + suffix
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             with self.assertRaises(ValueError) as cm:
-                reader.read_response()
+                reader.read_response('GET')
             self.assertEqual(str(cm.exception),
                  '{!r} not found in {!r}...'.format(term, data)
             )
 
         (sock, reader) = self.new(rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
-            reader.read_response()
+            reader.read_response('GET')
         self.assertEqual(str(cm.exception), 'response preamble is empty')
         if rcvbuf is None:
             self.assertEqual(sock._recv_into_calls, 1)
@@ -2421,7 +2430,7 @@ class TestReader_Py(TestCase):
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-        self.assertEqual(reader.read_response(), (200, 'OK', {}))
+        self.assertEqual(reader.read_response('GET'), (200, 'OK', {}))
 
         good = b'HTTP/1.1 200 OK'
         suffix = b'\r\n\r\nHello naughty nurse!'
@@ -2432,7 +2441,7 @@ class TestReader_Py(TestCase):
             data = bad + suffix
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             with self.assertRaises(ValueError) as cm:
-                reader.read_response()
+                reader.read_response('GET')
             self.assertEqual(str(cm.exception),
                 'response line too short: {!r}'.format(bad)
             )
@@ -2449,7 +2458,7 @@ class TestReader_Py(TestCase):
                 data = bad + suffix
                 (sock, reader) = self.new(data, rcvbuf=rcvbuf)
                 with self.assertRaises(ValueError) as cm:
-                    reader.read_response()
+                    reader.read_response('GET')
                 self.assertEqual(str(cm.exception),
                     'bad response line: {!r}'.format(bad)
                 )
@@ -2459,10 +2468,10 @@ class TestReader_Py(TestCase):
             data = template.format(status).encode()
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             if 100 <= status <= 599:
-                self.assertEqual(reader.read_response(), (status, 'OK', {}))
+                self.assertEqual(reader.read_response('GET'), (status, 'OK', {}))
             else:
                 with self.assertRaises(ValueError) as cm:
-                    reader.read_response()
+                    reader.read_response('GET')
                 self.assertEqual(str(cm.exception),
                     'bad status: {!r}'.format('{:03d}'.format(status).encode())
                 )

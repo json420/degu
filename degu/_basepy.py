@@ -453,7 +453,8 @@ class Reader:
             raise EmptyPreambleError('request preamble is empty')
         return parse_request(preamble)
 
-    def read_response(self):
+    def read_response(self, method):
+        method = parse_method(method)
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('response preamble is empty')
