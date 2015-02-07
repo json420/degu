@@ -1964,6 +1964,56 @@ static PyTypeObject ReaderType = {
 };
 
 
+/* Response namedtuple */
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+
+static PyTypeObject ResponseType;
+
+static PyObject *
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+{
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SetItem(response, 0, status);
+    PyStructSequence_SetItem(response, 1, reason);
+    PyStructSequence_SetItem(response, 2, headers);
+    PyStructSequence_SetItem(response, 3, body);
+    return response;
+}
+
+static PyObject *
+Response(PyObject *self, PyObject *args)
+{
+    PyObject *status = NULL;
+    PyObject *reason = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    if (!PyArg_ParseTuple(args, "OOOO:Response", &status, &reason, &headers, &body)) {
+        return NULL;
+    }
+    Py_INCREF(status);
+    Py_INCREF(reason);
+    Py_INCREF(headers);
+    Py_INCREF(body);
+    return _Response(status, reason, headers, body);
+}
+
+
 
 /* module init */
 static struct PyMethodDef degu_functions[] = {
@@ -1988,6 +2038,11 @@ static struct PyMethodDef degu_functions[] = {
         "format_request_preamble(method, uri, headers)"},
     {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,
         "format_response_preamble(status, reason, headers)"},
+
+    {"Response", Response, METH_VARARGS,
+        "Response(status, reason, headers, body)"
+    },
+
     {NULL, NULL, 0, NULL}
 };
 
@@ -2013,6 +2068,12 @@ PyInit__base(void)
     if (module == NULL) {
         return NULL;
     }
+
+    if (PyStructSequence_InitType2(&ResponseType, &ResponseDesc) != 0) {
+        return NULL;
+    }
+    Py_INCREF(&ResponseType);
+    PyModule_AddObject(module, "ResponseType", (PyObject *)&ResponseType);
 
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
