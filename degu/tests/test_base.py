@@ -264,6 +264,10 @@ class TestNamedTuples_Py(BackendTestCase):
         self.assertIs(inst.body, body)
 
 
+class TestNamedTuples_C(TestNamedTuples_Py):
+    backend = _base
+
+
 MiB = 1024 * 1024
 
 class TestConstants(TestCase):
