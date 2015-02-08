@@ -454,53 +454,6 @@ degu_parse_method(PyObject *self, PyObject *args)
 }
 
 
-static PyObject *
-_parse_header_name(DeguBuf src)
-{
-    PyObject *dst = NULL;
-    uint8_t *dst_buf;
-    uint8_t r;
-    size_t i;
-
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "header name is empty");
-        return NULL; 
-    }
-    if (src.len > MAX_KEY) {
-        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
-        return NULL; 
-    }
-    dst = PyUnicode_New(src.len, 127);
-    if (dst == NULL) {
-        return NULL;
-    }
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (r = i = 0; i < src.len; i++) {
-        r |= dst_buf[i] = _NAMES[src.buf[i]];
-    }
-    if (r & 128) {
-        Py_CLEAR(dst);
-        if (r != 255) {
-            Py_FatalError("internal error in `_parse_header_name()`");
-        }
-        _value_error("bad bytes in header name: %R", src);
-    }
-    return dst;
-}
-
-
-static PyObject *
-parse_header_name(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_header_name((DeguBuf){buf, len});
-}
-
 
 static PyObject *
 _decode(DeguBuf src, const uint8_t mask, const char *format)
@@ -994,7 +947,7 @@ _parse_key(DeguBuf key, uint8_t *scratch)
     }
     if (r & 128) {
         if (r != 255) {
-            Py_FatalError("internal error in `_parse_header_name()`");
+            Py_FatalError("_parse_key: r != 255");
         }
         _value_error("bad bytes in header name: %R", key);
         return false;
@@ -2110,9 +2063,6 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
     {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
 
-    {"parse_header_name", parse_header_name, METH_VARARGS,
-        "parse_header_name(buf)"
-    },
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"
     },
