@@ -956,94 +956,95 @@ _parse_val(DeguBuf val)
 
 
 typedef struct {
-    int8_t flag;
-    PyObject *val;
-} DeguHeaderResult;
+    int8_t flags;
+    PyObject *headers;
+    PyObject *content_length;
+} DeguHeadersResult;
 
 
-static DeguHeaderResult
-_parse_header_line(DeguBuf line, uint8_t *scratch, PyObject *pyheaders)
+static int8_t
+_parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeadersResult *hr)
 {
-    DeguHeaderResult ret = {0, NULL};
+    int8_t flag = 0;
     const uint8_t *sep;
-    PyObject *pykey = NULL;
-    PyObject *pyval = NULL;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
 
     /* Sanity check */
-    if (line.buf == NULL || line.len == 0 || scratch == NULL) {
-        Py_FatalError("_parse_header_line: bad line or scratch");
+    if (src.buf == NULL || src.len == 0 || scratch == NULL) {
+        Py_FatalError("_parse_header_line: bad src or scratch");
     }
-    if (pyheaders == NULL || !PyDict_CheckExact(pyheaders)) {
-        Py_FatalError("_parse_header_line: bad pyheaders");
+    if (hr->headers == NULL || !PyDict_CheckExact(hr->headers)) {
+        Py_FatalError("_parse_header_line: bad headers");
     }
 
     /* Split line around ': ' */
-    if (line.len < 4) {
-        _value_error("header line too short: %R", line);
+    if (src.len < 4) {
+        _value_error("header line too short: %R", src);
         goto error;
     }
-    sep = memmem(line.buf + 1, line.len - 1, ": ", 2);
+    sep = memmem(src.buf + 1, src.len - 1, ": ", 2);
     if (sep == NULL) {
-        _value_error("bad header line: %R", line);
+        _value_error("bad header line: %R", src);
         goto error;
     }
-    DeguBuf rawkey = _slice(line, 0, sep - line.buf);
-    DeguBuf val = _slice(line, rawkey.len + 2, line.len);
+    DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
 
     /* Validate and casefold header name into scratch buffer */
-    if (! _parse_key(rawkey, scratch)) {
+    if (! _parse_key(rawkeysrc, scratch)) {
         goto error;
     }
-    DeguBuf key = {scratch, rawkey.len};
+    DeguBuf keysrc = {scratch, rawkeysrc.len};
+    DeguBuf valsrc = _slice(src, keysrc.len + 2, src.len);
 
     /* Validate header value (with special handling and fast-paths) */
-    if (_equal(key, CONTENT_LENGTH)) {
-        _SET_AND_INC(pykey, str_content_length)
-        _SET(pyval, _parse_content_length(val))
-        ret.flag = CONTENT_LENGTH_BIT;
-        _SET_AND_INC(ret.val, pyval);
+    if (_equal(keysrc, CONTENT_LENGTH)) {
+        _SET_AND_INC(key, str_content_length)
+        _SET(val, _parse_content_length(valsrc))
+        flag = CONTENT_LENGTH_BIT;
+        if (hr->content_length == NULL) {
+            _SET_AND_INC(hr->content_length, val)
+        }
     }
-    else if (_equal(key, TRANSFER_ENCODING)) {
-        if (! _equal(val, CHUNKED)) {
-            _value_error("bad transfer-encoding: %R", val);
+    else if (_equal(keysrc, TRANSFER_ENCODING)) {
+        if (! _equal(valsrc, CHUNKED)) {
+            _value_error("bad transfer-encoding: %R", valsrc);
             goto error;
         }
-        _SET_AND_INC(pykey, str_transfer_encoding)
-        _SET_AND_INC(pyval, str_chunked)
-        ret.flag = TRANSFER_ENCODING_BIT;
+        _SET_AND_INC(key, str_transfer_encoding)
+        _SET_AND_INC(val, str_chunked)
+        flag = TRANSFER_ENCODING_BIT;
     }
     else {
-        _SET(pykey, _tostr(key))
-        _SET(pyval, _parse_val(val))
+        _SET(key, _tostr(keysrc))
+        _SET(val, _parse_val(valsrc))
     }
 
     /* Store in headers dict, make sure it's not a duplicate key */
-    if (PyDict_SetDefault(pyheaders, pykey, pyval) != pyval) {
-        _value_error("duplicate header: %R", line);
+    if (PyDict_SetDefault(hr->headers, key, val) != val) {
+        _value_error("duplicate header: %R", src);
         goto error;
     }
-    goto success;
+    goto cleanup;
 
 error:
-    ret.flag = -1;
-    Py_CLEAR(ret.val);
+    flag = -1;
 
-success:
-    Py_CLEAR(pykey);
-    Py_CLEAR(pyval);
-    return ret;
+cleanup:
+    Py_CLEAR(key);
+    Py_CLEAR(val);
+    return flag;
 }
 
 
-static PyObject *
+DeguHeadersResult
 _parse_headers(DeguBuf src, uint8_t *scratch)
 {
-    PyObject *headers = NULL;
+    DeguHeadersResult hr = {0, NULL, NULL};
     const uint8_t *start, *stop, *final_stop;
-    uint8_t flags = 0;
-    DeguHeaderResult result = {0, NULL};
+    int8_t flag;
 
-    _SET(headers, PyDict_New())
+    _SET(hr.headers, PyDict_New())
     final_stop = src.buf + src.len;
     start = src.buf;
     while (start < final_stop) {
@@ -1051,16 +1052,16 @@ _parse_headers(DeguBuf src, uint8_t *scratch)
         if (stop == NULL) {
             stop = final_stop;
         }
-        result = _parse_header_line(
-            _slice_between(src, start, stop), scratch, headers
+        flag = _parse_header_line(
+            _slice_between(src, start, stop), scratch, &hr
         );
-        if (result.flag < 0) {
+        if (flag < 0) {
             goto error;
         }
-        flags |= result.flag;
+        hr.flags |= flag;
         start = stop + 2;
     }
-    if (flags == 3) {
+    if (hr.flags == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
@@ -1069,11 +1070,12 @@ _parse_headers(DeguBuf src, uint8_t *scratch)
     goto cleanup;
 
 error:
-    Py_CLEAR(headers);
+    hr.flags = -1;
+    Py_CLEAR(hr.headers);
+    Py_CLEAR(hr.content_length);
 
 cleanup:
-    Py_CLEAR(result.val);
-    return headers;
+    return hr;
 }
 
 
@@ -1081,7 +1083,7 @@ static PyObject *
 _parse_request(DeguBuf src, uint8_t *scratch)
 {
     PyObject *request = NULL;
-    PyObject *headers = NULL;
+    DeguHeadersResult hr = {0, NULL, NULL};
     uint8_t *crlf;
     size_t stop_line, start_headers;
 
@@ -1094,22 +1096,23 @@ _parse_request(DeguBuf src, uint8_t *scratch)
         stop_line = crlf - src.buf;
         start_headers = stop_line + 2;
     }
-
     _SET(request, PyDict_New())
     if (! _parse_request_line(_slice(src, 0, stop_line), request)) {
         goto error;
     }
-    _SET(headers,
-        _parse_headers(_slice(src, start_headers, src.len), scratch)
-    )
-    _SET_ITEM(request, str_headers, headers)
+    hr = _parse_headers(_slice(src, start_headers, src.len), scratch);
+    if (hr.flags < 0) {
+        goto error;
+    }
+    _SET_ITEM(request, str_headers, hr.headers)
     goto cleanup;
 
 error:
     Py_CLEAR(request);
 
 cleanup:
-    Py_CLEAR(headers);
+    Py_CLEAR(hr.headers);
+    Py_CLEAR(hr.content_length);
     return request;
 }
 
@@ -1118,7 +1121,7 @@ static PyObject *
 _parse_response(DeguBuf src, uint8_t *scratch)
 {
     PyObject *response = NULL;
-    PyObject *headers = NULL;
+    DeguHeadersResult hr = {0, NULL, NULL};
     uint8_t *crlf;
     size_t stop_line, start_headers;
 
@@ -1135,17 +1138,19 @@ _parse_response(DeguBuf src, uint8_t *scratch)
     if (! _parse_response_line(_slice(src, 0, stop_line), response)) {
         goto error;
     }
-    _SET(headers,
-        _parse_headers(_slice(src, start_headers, src.len), scratch)
-    )
-    PyTuple_SET_ITEM(response, 2, headers);
+    hr = _parse_headers(_slice(src, start_headers, src.len), scratch);
+    if (hr.flags < 0) {
+        goto error;
+    }
+    PyTuple_SET_ITEM(response, 2, hr.headers);
     goto cleanup;
 
 error:
     Py_CLEAR(response);
-    Py_CLEAR(headers);
+    Py_CLEAR(hr.headers);
 
 cleanup:
+    Py_CLEAR(hr.content_length);
     return response;
 }
 
