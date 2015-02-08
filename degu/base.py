@@ -29,8 +29,8 @@ try:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        format_request_preamble,
-        format_response_preamble,
+        format_request,
+        format_response,
         Reader,
         ResponseType,
         Response,
@@ -40,8 +40,8 @@ except ImportError:
         _MAX_LINE_SIZE,
         _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        format_request_preamble,
-        format_response_preamble,
+        format_request,
+        format_response,
         Reader,
         ResponseType,
         Response,
@@ -55,8 +55,8 @@ __all__ = (
     'Reader',
     'ResponseType',
     'Response',
-    'format_request_preamble',
-    'format_response_preamble',
+    'format_request',
+    'format_response',
 )
 
 

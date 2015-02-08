@@ -30,7 +30,7 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_request_preamble,
+    format_request,
     Response
 )
 
@@ -209,7 +209,7 @@ def _validate_request(bodies, method, uri, headers, body):
 
 
 def _write_request(wfile, method, uri, headers, body):
-    preamble = format_request_preamble(method, uri, headers)
+    preamble = format_request(method, uri, headers)
     if body is None:
         total = wfile.write(preamble)
         wfile.flush()

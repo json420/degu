@@ -214,62 +214,6 @@ static const uint8_t _FLAGS[256] = {
     }
 
 
-
-/* typedefs */
-typedef struct {
-    PyObject_HEAD
-    PyObject *sock_recv_into;
-    PyObject *bodies_Body;
-    PyObject *bodies_ChunkedBody;
-    uint8_t *scratch;
-    size_t rawtell;
-    uint8_t *buf;
-    size_t len;
-    size_t start;
-    size_t stop;
-} Reader;
-
-static PyObject * _Reader_Body(Reader *self, PyObject *content_length);
-static PyObject * _Reader_ChunkedBody(Reader *self);
-
-/* Response namedtuple */
-static PyStructSequence_Field ResponseFields[] = {
-    {"status", NULL},
-    {"reason", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {NULL},
-};
-
-static PyStructSequence_Desc ResponseDesc = {
-    "Response",
-    NULL,
-    ResponseFields,  
-    4
-};
-
-static PyTypeObject ResponseType;
-
-static PyObject *
-_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
-{
-    if (status == NULL || reason == NULL || headers == NULL || body == NULL) {
-        Py_FatalError("_Response(): bad internal call");
-        return NULL;
-    }
-
-    PyObject *response = PyStructSequence_New(&ResponseType);
-    if (response == NULL) {
-        return NULL;
-    }
-    PyStructSequence_SET_ITEM(response, 0, status);
-    PyStructSequence_SET_ITEM(response, 1, reason);
-    PyStructSequence_SET_ITEM(response, 2, headers);
-    PyStructSequence_SET_ITEM(response, 3, body);
-    return response;
-}
-
-
 /*******************************************************************************
  * Internal API: Misc
  */
@@ -956,6 +900,7 @@ error:
  * Internal API: Parsing: Response
  */
 
+
 static inline PyObject *
 _parse_status(DeguBuf src)
 {
@@ -1056,68 +1001,45 @@ error:
 }
 
 
-static PyObject *
-degu_parse_method(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_method((DeguBuf){buf, len});
-}
+/*******************************************************************************
+ * Internal API: Formatting:
+ */
 
 
 
+/*******************************************************************************
+ * namedtuples: Response:
+ *     ResponseType
+ *     _Response()   
+ */
 
-
-
-static PyObject *
-parse_content_length(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_content_length((DeguBuf){buf, len});
-}
-
-
-
-
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+static PyTypeObject ResponseType;
 
 static PyObject *
-parse_response_line(PyObject *self, PyObject *args)
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
-    if (!_parse_response_line(src, &dr)) {
-        goto error;
-    }
-    if (dr.status == NULL || dr.reason == NULL) {
-        Py_FatalError("parse_response_line");
-        goto error;
-    }
-    _SET(ret, PyTuple_New(2))
-    PyTuple_SET_ITEM(ret, 0, dr.status);
-    PyTuple_SET_ITEM(ret, 1, dr.reason);
-    goto done;
-
-error:
-    _clear_degu_response(&dr);
-
-done:
-    return ret;
+    PyStructSequence_SetItem(response, 0, status);
+    PyStructSequence_SetItem(response, 1, reason);
+    PyStructSequence_SetItem(response, 2, headers);
+    PyStructSequence_SetItem(response, 3, body);
+    return response;
 }
 
 
@@ -1163,194 +1085,49 @@ cleanup:
 }
 
 
-static PyObject *
-format_headers(PyObject *self, PyObject *args)
-{
-    PyObject *headers = NULL;
-
-    if (!PyArg_ParseTuple(args, "O:format_headers", &headers)) {
-        return NULL;
-    }
-    if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers must be a <class 'dict'>, got a %R", headers->ob_type
-        );
-        return NULL;
-    }
-
-    return _format_headers(headers);
-}
 
 
-static PyObject *
-degu_format_request_preamble(PyObject *self, PyObject *args)
-{
-    PyObject *method, *uri, *headers, *key, *val;
-    ssize_t header_count, pos, i;
-    PyObject *first_line = NULL;
-    PyObject *lines = NULL;
-    PyObject *str = NULL;  /* str version of request preamble */
-    PyObject *ret = NULL;  /* bytes version of request preamble */
-
-    if (!PyArg_ParseTuple(args, "UUO:format_request_preamble", &method, &uri, &headers)) {
-        return NULL;
-    }
-    if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers must be a <class 'dict'>, got a %R", headers->ob_type
-        );
-        return NULL;
-    }
-
-    header_count = PyDict_Size(headers);
-    if (header_count == 0) {
-        /* Fast-path for when there are zero headers */
-        _SET(str, PyUnicode_FromFormat("%S %S HTTP/1.1\r\n\r\n", method, uri))
-    }
-    else if (header_count == 1) {
-        /* Fast-path for when there is one header */
-        pos = 0;
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            _SET(str,
-                PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S: %S\r\n\r\n",
-                    method, uri, key, val
-                )
-            )
-        }        
-    }
-    else if (header_count > 1) {
-        /* Generic path for when header_count > 1 */
-        _SET(lines, PyList_New(header_count))
-        pos = i = 0;
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            PyList_SET_ITEM(lines, i,
-                PyUnicode_FromFormat("%S: %S\r\n", key, val)
-            );
-            i++;
-        }
-        if (PyList_Sort(lines) != 0) {
-            goto error;
-        }
-        _SET(first_line,
-            PyUnicode_FromFormat("%S %S HTTP/1.1\r\n", method, uri)
-        )
-        if (PyList_Insert(lines, 0, first_line) != 0) {
-            goto error;
-        }
-        if (PyList_Append(lines, str_crlf) != 0) {
-            goto error;
-        }
-        _SET(str, PyUnicode_Join(str_empty, lines))
-    }
-    else {
-        goto error;
-    }
-
-    /* Encode str as ASCII bytes */
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(first_line);
-    Py_CLEAR(lines);
-    Py_CLEAR(str);
-    return  ret;
-}
-
-
-static PyObject *
-degu_format_response_preamble(PyObject *self, PyObject *args)
-{
-    PyObject *status, *reason, *headers, *key, *val;
-    ssize_t header_count, pos, i;
-    PyObject *first_line = NULL;
-    PyObject *lines = NULL;
-    PyObject *str = NULL;  /* str version of response preamble */
-    PyObject *ret = NULL;  /* bytes version of response preamble */
-
-    if (!PyArg_ParseTuple(args, "OUO:format_response_preamble", &status, &reason, &headers)) {
-        return NULL;
-    }
-    if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers must be a <class 'dict'>, got a %R", headers->ob_type
-        );
-        return NULL;
-    }
-
-    header_count = PyDict_Size(headers);
-    if (header_count == 0) {
-        /* Fast-path for when there are zero headers */
-        _SET(str, PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n\r\n", status, reason))
-    }
-    else if (header_count == 1) {
-        /* Fast-path for when there is one header */
-        pos = 0;
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            _SET(str,
-                PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S: %S\r\n\r\n",
-                    status, reason, key, val
-                )
-            )
-        }        
-    }
-    else if (header_count > 1) {
-        /* Generic path for when header_count > 1 */
-        _SET(lines, PyList_New(header_count))
-        pos = i = 0;
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            PyList_SET_ITEM(lines, i,
-                PyUnicode_FromFormat("%S: %S\r\n", key, val)
-            );
-            i++;
-        }
-        if (PyList_Sort(lines) != 0) {
-            goto error;
-        }
-        _SET(first_line,
-            PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n", status, reason)
-        )
-        if (PyList_Insert(lines, 0, first_line) != 0) {
-            goto error;
-        }
-        if (PyList_Append(lines, str_crlf) != 0) {
-            goto error;
-        }
-        _SET(str, PyUnicode_Join(str_empty, lines))
-    }
-    else {
-        goto error;
-    }
-
-    /* Encode str as ASCII bytes */
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(first_line);
-    Py_CLEAR(lines);
-    Py_CLEAR(str);
-    return  ret;
-}
 
 /*******************************************************************************
- * Public functions: Parsing:
- *
+ * Public API: Parsing: Headers:
+ *     parse_content_length()
  *     parse_header_line()
  *     parse_headers()
+ */
+
+static PyObject *
+parse_content_length(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_content_length((DeguBuf){buf, len});
+}
+
+
+/*******************************************************************************
+ * Public API: Parsing: Requests:
  *     parse_method()
  *     parse_uri()
  *     parse_request_line()
  *     parse_request()
- *     parse_response_line()
- *     parse_response()
  */
+
+static PyObject *
+parse_method(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_method((DeguBuf){buf, len});
+}
+
 
 static PyObject *
 parse_uri(PyObject *self, PyObject *args)
@@ -1445,9 +1222,268 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
     _clear_degu_request(&dr);
     return ret;
 }
+
+ 
+/*******************************************************************************
+ * Public API: Parsing: Responses:
+ *     parse_response_line()
+ *     parse_response()
+ */
+
+
+static PyObject *
+parse_response_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (!_parse_response_line(src, &dr)) {
+        goto error;
+    }
+    if (dr.status == NULL || dr.reason == NULL) {
+        Py_FatalError("parse_response_line");
+        goto error;
+    }
+    _SET(ret, PyTuple_New(2))
+    PyTuple_SET_ITEM(ret, 0, dr.status);
+    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    goto done;
+
+error:
+    _clear_degu_response(&dr);
+
+done:
+    return ret;
+}
+
+static PyObject *
+parse_response(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    uint8_t *scratch = NULL;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    _SET(scratch, _calloc_buf(MAX_KEY))
+    if (!_parse_response(src, scratch, &dr)) {
+        goto error;
+    }
+    _SET(ret, PyTuple_New(3))
+    PyTuple_SET_ITEM(ret, 0, dr.status);
+    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    PyTuple_SET_ITEM(ret, 2, dr.headers);
+    goto cleanup;
+
+error:
+    _clear_degu_response (&dr);
+
+cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
+    return ret;
+}
+
+
+/*******************************************************************************
+ * Public API: Formatting:
+ *     format_headers()
+ *     format_request()
+ *     format_response()
+ */
+
+static PyObject *
+format_headers(PyObject *self, PyObject *args)
+{
+    PyObject *headers = NULL;
+    if (!PyArg_ParseTuple(args, "O:format_headers", &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+    return _format_headers(headers);
+}
+
+static PyObject *
+format_request(PyObject *self, PyObject *args)
+{
+    PyObject *method, *uri, *headers, *key, *val;
+    ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of request preamble */
+    PyObject *ret = NULL;  /* bytes version of request preamble */
+
+    if (!PyArg_ParseTuple(args, "UUO:format_request", &method, &uri, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("%S %S HTTP/1.1\r\n\r\n", method, uri))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S: %S\r\n\r\n",
+                    method, uri, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("%S %S HTTP/1.1\r\n", method, uri)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
+}
+
+
+static PyObject *
+format_response(PyObject *self, PyObject *args)
+{
+    PyObject *status, *reason, *headers, *key, *val;
+    ssize_t header_count, pos, i;
+    PyObject *first_line = NULL;
+    PyObject *lines = NULL;
+    PyObject *str = NULL;  /* str version of response preamble */
+    PyObject *ret = NULL;  /* bytes version of response preamble */
+
+    if (!PyArg_ParseTuple(args, "OUO:format_response", &status, &reason, &headers)) {
+        return NULL;
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers must be a <class 'dict'>, got a %R", headers->ob_type
+        );
+        return NULL;
+    }
+
+    header_count = PyDict_Size(headers);
+    if (header_count == 0) {
+        /* Fast-path for when there are zero headers */
+        _SET(str, PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n\r\n", status, reason))
+    }
+    else if (header_count == 1) {
+        /* Fast-path for when there is one header */
+        pos = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            _SET(str,
+                PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S: %S\r\n\r\n",
+                    status, reason, key, val
+                )
+            )
+        }        
+    }
+    else if (header_count > 1) {
+        /* Generic path for when header_count > 1 */
+        _SET(lines, PyList_New(header_count))
+        pos = i = 0;
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+        }
+        if (PyList_Sort(lines) != 0) {
+            goto error;
+        }
+        _SET(first_line,
+            PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n", status, reason)
+        )
+        if (PyList_Insert(lines, 0, first_line) != 0) {
+            goto error;
+        }
+        if (PyList_Append(lines, str_crlf) != 0) {
+            goto error;
+        }
+        _SET(str, PyUnicode_Join(str_empty, lines))
+    }
+    else {
+        goto error;
+    }
+
+    /* Encode str as ASCII bytes */
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(first_line);
+    Py_CLEAR(lines);
+    Py_CLEAR(str);
+    return  ret;
+}
+
 
 
 /*******************************************************************************
@@ -1475,31 +1511,34 @@ Response(PyObject *self, PyObject *args)
 
 
 /*******************************************************************************
- * Public functions: PyMethodDef table
+ * Public API: PyMethodDef table
  */
 static struct PyMethodDef degu_functions[] = {
-    {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
-    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
-
+    /* Header Parsing */
     {"parse_content_length", parse_content_length, METH_VARARGS,
-        "parse_content_length(value)"
-    },
-    {"parse_response_line", parse_response_line, METH_VARARGS,
-        "parse_response_line(line)"},
+        "parse_content_length(value)"},
+
+    /* Request Parsing */
+    {"parse_method", parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
 
-    /*
+    /* Response Parsing */
+    {"parse_response_line", parse_response_line, METH_VARARGS,
+        "parse_response_line(line)"},
     {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
-    */
 
-    {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
-    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
-        "format_request_preamble(method, uri, headers)"},
-    {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,
-        "format_response_preamble(status, reason, headers)"},
+    /* Formatting */
+    {"format_headers", format_headers, METH_VARARGS,
+        "format_headers(headers)"},
+    {"format_request", format_request, METH_VARARGS,
+        "format_request(method, uri, headers)"},
+    {"format_response", format_response, METH_VARARGS,
+        "format_response(status, reason, headers)"},
 
+    /* namedtuples */
     {"Response", Response, METH_VARARGS,
         "Response(status, reason, headers, body)"
     },
@@ -1513,6 +1552,18 @@ static struct PyMethodDef degu_functions[] = {
  * Reader class
  */
 
+typedef struct {
+    PyObject_HEAD
+    PyObject *sock_recv_into;
+    PyObject *bodies_Body;
+    PyObject *bodies_ChunkedBody;
+    uint8_t *scratch;
+    size_t rawtell;
+    uint8_t *buf;
+    size_t len;
+    size_t start;
+    size_t stop;
+} Reader;
 
 
 static void
