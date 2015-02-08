@@ -157,6 +157,57 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
+/* typedefs */
+typedef struct {
+    PyObject_HEAD
+    PyObject *sock_recv_into;
+    PyObject *bodies_Body;
+    PyObject *bodies_ChunkedBody;
+    uint8_t *scratch;
+    size_t rawtell;
+    uint8_t *buf;
+    size_t len;
+    size_t start;
+    size_t stop;
+} Reader;
+
+static PyObject * _Reader_Body(Reader *self, PyObject *content_length);
+static PyObject * _Reader_ChunkedBody(Reader *self);
+
+/* Response namedtuple */
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+
+static PyTypeObject ResponseType;
+
+static PyObject *
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+{
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SetItem(response, 0, status);
+    PyStructSequence_SetItem(response, 1, reason);
+    PyStructSequence_SetItem(response, 2, headers);
+    PyStructSequence_SetItem(response, 3, body);
+    return response;
+}
+
+
+
 static inline size_t
 _min(const size_t a, const size_t b)
 {
@@ -1135,11 +1186,12 @@ cleanup:
 
 
 static PyObject *
-_parse_response(DeguBuf src, uint8_t *scratch)
+_parse_response(DeguBuf src, Reader *reader, PyObject *method)
 {
     PyObject *response = NULL;
     DeguResponse dr = {NULL, NULL};
     DeguHeadersResult hr = {0, NULL, NULL};
+    PyObject *body = NULL;
     uint8_t *crlf;
     size_t stop_line, start_headers;
 
@@ -1156,19 +1208,31 @@ _parse_response(DeguBuf src, uint8_t *scratch)
     if (dr.status == NULL || dr.reason == NULL) {
         goto error;
     }
-    hr = _parse_headers(_slice(src, start_headers, src.len), scratch);
+    hr = _parse_headers(_slice(src, start_headers, src.len), reader->scratch);
     if (hr.flags < 0) {
         goto error;
     }
-    _SET(response, PyTuple_New(3))
-    PyTuple_SET_ITEM(response, 0, dr.status);
-    PyTuple_SET_ITEM(response, 1, dr.reason);
-    PyTuple_SET_ITEM(response, 2, hr.headers);
+
+    if (method == str_HEAD || hr.flags == 0) {
+        _SET_AND_INC(body, Py_None)
+    }
+    else if (hr.flags == 1) {
+        _SET(body, _Reader_Body(reader, hr.content_length))
+    }
+    else if (hr.flags == 2) {
+        _SET(body, _Reader_ChunkedBody(reader))
+    }
+    else {
+        Py_FatalError("_parse_response: bad hr.flags");
+    }
+
+    _SET(response, _Response(dr.status, dr.reason, hr.headers, body))
     goto cleanup;
 
 error:
     _clear_degu_response(&dr);
     Py_CLEAR(hr.headers);
+    Py_CLEAR(body);
 
 cleanup:
     Py_CLEAR(hr.content_length);
@@ -1190,25 +1254,6 @@ parse_request(PyObject *self, PyObject *args)
         return NULL;
     }
     PyObject *ret = _parse_request(src, scratch);
-    free(scratch);
-    return ret;
-}
-
-
-static PyObject *
-parse_response(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
-        return NULL;
-    }
-    DeguBuf src = {buf, len};
-    uint8_t *scratch = _calloc_buf(MAX_KEY);
-    if (scratch == NULL) {
-        return NULL;
-    }
-    PyObject *ret = _parse_response(src, scratch);
     free(scratch);
     return ret;
 }
@@ -1433,20 +1478,6 @@ cleanup:
 }
 
 
-typedef struct {
-    PyObject_HEAD
-    PyObject *sock_recv_into;
-    PyObject *bodies_Body;
-    PyObject *bodies_ChunkedBody;
-    uint8_t *scratch;
-    size_t rawtell;
-    uint8_t *buf;
-    size_t len;
-    size_t start;
-    size_t stop;
-} Reader;
-
-
 static void
 Reader_dealloc(Reader *self)
 {
@@ -1501,6 +1532,19 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
 error:
     Reader_dealloc(self);
     return -1;
+}
+
+
+static PyObject *
+_Reader_Body(Reader *self, PyObject *content_length) {
+    return PyObject_CallFunctionObjArgs(
+        self->bodies_Body, self, content_length, NULL
+    );
+}
+
+static PyObject *
+_Reader_ChunkedBody(Reader *self) {
+    return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
 }
 
 
@@ -1730,42 +1774,43 @@ Reader_Body(Reader *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "O:Body", &content_length)) {
         return NULL;
     }
-    return PyObject_CallFunctionObjArgs(
-        self->bodies_Body, self, content_length, NULL
-    );
+    return _Reader_Body(self, content_length);
 }
 
 /* Reader.ChunkedBody() */
 static PyObject *
 Reader_ChunkedBody(Reader *self) {
-    return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
+    return _Reader_ChunkedBody(self);
 }
 
 
 static PyObject *
 Reader_read_response(Reader *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    const uint8_t *method_buf = NULL;
+    size_t method_len = 0;
+    PyObject *method = NULL;
+    PyObject *response = NULL;
 
-    if (!PyArg_ParseTuple(args, "s#:", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "s#:", &method_buf, &method_len)) {
         return NULL;
     }
-    PyObject *method = _parse_method((DeguBuf){buf, len});
-    if (method == NULL) {
-        return NULL;
-    }
-    Py_CLEAR(method);
-
+    _SET(method, _parse_method((DeguBuf){method_buf, method_len}))
     DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
     if (src.buf == NULL) {
-        return NULL;
+        goto error;
     }
     if (src.len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
-        return NULL;
+        goto error;
     }
-    return _parse_response(src, self->scratch);
+    _SET(response, _parse_response(src, self, method))
+    goto cleanup;
+
+error:
+cleanup:
+    Py_CLEAR(method);
+    return response;
 }
 
 
@@ -2042,38 +2087,6 @@ static PyTypeObject ReaderType = {
 };
 
 
-/* Response namedtuple */
-static PyStructSequence_Field ResponseFields[] = {
-    {"status", NULL},
-    {"reason", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {NULL},
-};
-
-static PyStructSequence_Desc ResponseDesc = {
-    "Response",
-    NULL,
-    ResponseFields,  
-    4
-};
-
-static PyTypeObject ResponseType;
-
-static PyObject *
-_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
-{
-    PyObject *response = PyStructSequence_New(&ResponseType);
-    if (response == NULL) {
-        return NULL;
-    }
-    PyStructSequence_SetItem(response, 0, status);
-    PyStructSequence_SetItem(response, 1, reason);
-    PyStructSequence_SetItem(response, 2, headers);
-    PyStructSequence_SetItem(response, 3, body);
-    return response;
-}
-
 static PyObject *
 Response(PyObject *self, PyObject *args)
 {
@@ -2092,7 +2105,6 @@ Response(PyObject *self, PyObject *args)
 }
 
 
-
 /* module init */
 static struct PyMethodDef degu_functions[] = {
     {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
@@ -2109,7 +2121,10 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
+
+    /*
     {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
+    */
 
     {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
     {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
