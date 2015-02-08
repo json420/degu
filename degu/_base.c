@@ -215,6 +215,8 @@ static const uint8_t _FLAGS[256] = {
 
 /*******************************************************************************
  * Internal API: Misc
+ *     _min(a, b)
+ *     _calloc_buf(len)
  */
 
 static inline size_t
@@ -225,7 +227,6 @@ _min(const size_t a, const size_t b)
     }
     return b;
 }
-
 
 static uint8_t *
 _calloc_buf(const size_t len)
@@ -239,16 +240,25 @@ _calloc_buf(const size_t len)
 
 
 /*******************************************************************************
- * Internal API: DeguBuf
+ * Internal API: DeguBuf (safe buffer slicing)
+ *     typedef DeguBuf
+ *     _isnull(src)
+ *     _isempty(src)
+ *     _slice(src, start, stop)
+ *     _equal(a, b)
+ *     _find(haystack, needle)
+ *     _tostr(src)
+ *     _tobytes(src)
+ *     _value_error(format, src)
+ *     _value_error2(format, src1, src2)
+ *     _decode(src, mask, format)
  */
-
 typedef struct {
     const uint8_t *buf;
     const size_t len;
 } DeguBuf;
 
-
-static const DeguBuf NULL_DeguBuf = {NULL, 0}; 
+static DeguBuf NULL_DeguBuf = {NULL, 0}; 
 
 #define _DEGU_BUF_CONSTANT(name, text) \
     static DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
@@ -261,7 +271,6 @@ _DEGU_BUF_CONSTANT(SLASH, "/")
 _DEGU_BUF_CONSTANT(SPACE_SLASH, " /")
 _DEGU_BUF_CONSTANT(QMARK, "?")
 _DEGU_BUF_CONSTANT(SEP, ": ")
-_DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
 _DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
 _DEGU_BUF_CONSTANT(GET, "GET")
@@ -269,10 +278,10 @@ _DEGU_BUF_CONSTANT(PUT, "PUT")
 _DEGU_BUF_CONSTANT(POST, "POST")
 _DEGU_BUF_CONSTANT(HEAD, "HEAD")
 _DEGU_BUF_CONSTANT(DELETE, "DELETE")
+_DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
-
 
 static inline bool
 _isnull(DeguBuf src)
@@ -297,7 +306,6 @@ _slice(DeguBuf src, const size_t start, const size_t stop)
 {
     if (_isempty(src) || start > stop || stop > src.len) {
         Py_FatalError("_slice(): bad internal call");
-        return NULL_DeguBuf;
     }
     return (DeguBuf){src.buf + start, stop - start};
 }
@@ -317,28 +325,15 @@ static size_t
 _find(DeguBuf haystack, DeguBuf needle)
 {
     const uint8_t *ptr;
-
     if (_isempty(haystack) || _isempty(needle)) {
-        goto fatal_error;
+        Py_FatalError("_find(): empty *haystack* or empty *needle*");
     }
     ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
     if (ptr == NULL) {
         return haystack.len;
     }
-    if (ptr < haystack.buf) {
-        goto fatal_error;
-    }
-    const size_t offset = ptr - haystack.buf;
-    if (offset + needle.len > haystack.len) {
-        goto fatal_error;
-    }
-    return offset;
-
-fatal_error:
-    Py_FatalError("_find(): bad internal call, or other fatal error");
-    return 0;
+    return ptr - haystack.buf;
 }
-
 
 static PyObject *
 _tostr(DeguBuf src)
@@ -346,15 +341,8 @@ _tostr(DeguBuf src)
     if (src.buf == NULL) {
         return NULL;
     }
-    PyObject *dst = PyUnicode_New(src.len, 127);
-    if (dst == NULL) {
-        return NULL;
-    }
-    uint8_t *dst_buf = PyUnicode_1BYTE_DATA(dst);
-    memcpy(dst_buf, src.buf, src.len);
-    return dst;
+    return PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, src.buf, src.len);
 }
-
 
 static PyObject *
 _tobytes(DeguBuf src)
@@ -365,7 +353,6 @@ _tobytes(DeguBuf src)
     return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
 }
 
-
 static void
 _value_error(const char *format, DeguBuf src)
 {
@@ -375,7 +362,6 @@ _value_error(const char *format, DeguBuf src)
     }
     Py_CLEAR(tmp);
 }
-
 
 static void
 _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
@@ -388,84 +374,6 @@ _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
     Py_CLEAR(tmp1);
     Py_CLEAR(tmp2);
 }
-
-
-
-/*******************************************************************************
- * Internal API: Parsing
- */
-
-/* DeguHeaders */
-typedef struct {
-    PyObject *headers;
-    PyObject *content_length;
-    uint8_t flags;
-} DeguHeaders;
-
-#define NEW_DEGU_HEADERS \
-    ((DeguHeaders){NULL, NULL, 0})
-
-static void
-_clear_degu_headers(DeguHeaders *dh)
-{
-    Py_CLEAR(dh->headers);
-    Py_CLEAR(dh->content_length);
-}
-
-
-/* DeguRequest */
-typedef struct {
-    PyObject *headers;
-    PyObject *content_length;
-    uint8_t flags;
-
-    PyObject *method;
-    PyObject *uri;
-    PyObject *script;
-    PyObject *path;
-    PyObject *query;
-    PyObject *body;
-} DeguRequest;
-
-#define NEW_DEGU_REQUEST \
-    ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
-
-static void
-_clear_degu_request(DeguRequest *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->method);
-    Py_CLEAR(dr->uri);
-    Py_CLEAR(dr->script);
-    Py_CLEAR(dr->path);
-    Py_CLEAR(dr->query);
-    Py_CLEAR(dr->body);
-}
-
-
-/* DeguResponse */
-typedef struct {
-    PyObject *headers;
-    PyObject *content_length;
-    uint8_t flags;
-
-    PyObject *status;
-    PyObject *reason;
-    PyObject *body;
-} DeguResponse;
-
-#define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
-
-static void
-_clear_degu_response(DeguResponse *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->status);
-    Py_CLEAR(dr->reason);
-    Py_CLEAR(dr->body);
-}
-
 
 static PyObject *
 _decode(DeguBuf src, const uint8_t mask, const char *format)
@@ -503,6 +411,84 @@ error:
 done:
     return dst;
 }
+
+
+/*******************************************************************************
+ * Internal API: DeguHeaders/DeguRequest/DeguResponse:
+ *     typedef DeguHeaders
+ *     typedef DeguRequest
+ *     typedef DeguResponse
+ *     _clear_degu_headers()
+ *     _clear_degu_request()
+ *     _clear_degu_response()   
+ */
+
+#define DEGU_HEADERS_HEAD \
+    PyObject *headers; \
+    PyObject *content_length; \
+    uint8_t flags;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+} DeguHeaders;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+    PyObject *method;
+    PyObject *uri;
+    PyObject *script;
+    PyObject *path;
+    PyObject *query;
+    PyObject *body;
+} DeguRequest;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+    PyObject *status;
+    PyObject *reason;
+    PyObject *body;
+} DeguResponse;
+
+#define NEW_DEGU_HEADERS \
+     ((DeguHeaders){NULL, NULL, 0})
+
+#define NEW_DEGU_REQUEST \
+     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
+
+#define NEW_DEGU_RESPONSE \
+    ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
+
+static void
+_clear_degu_headers(DeguHeaders *dh)
+{
+    Py_CLEAR(dh->headers);
+    Py_CLEAR(dh->content_length);
+}
+
+static void
+_clear_degu_request(DeguRequest *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->method);
+    Py_CLEAR(dr->uri);
+    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->path);
+    Py_CLEAR(dr->query);
+    Py_CLEAR(dr->body);
+}
+
+static void
+_clear_degu_response(DeguResponse *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+    Py_CLEAR(dr->body);
+}
+
+
+
+
 
 
 /*******************************************************************************
