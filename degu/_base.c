@@ -586,11 +586,24 @@ _parse_reason(DeguBuf src)
 }
 
 
-static bool
-_parse_response_line(DeguBuf src, PyObject *response)
+typedef struct {
+    PyObject *status;
+    PyObject *reason;
+} DeguResponse;
+
+
+static void
+_clear_degu_response(DeguResponse *dr)
 {
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+}
+
+
+static DeguResponse
+_parse_response_line(DeguBuf src)
+{
+    DeguResponse dr = {NULL, NULL};
 
     /* Reject any response line shorter than 15 bytes:
      *
@@ -599,7 +612,7 @@ _parse_response_line(DeguBuf src, PyObject *response)
      */
     if (src.len < 15) {
         _value_error("response line too short: %R", src);
-        return false;
+        goto error;
     }
 
     /* protocol, spaces:
@@ -610,10 +623,9 @@ _parse_response_line(DeguBuf src, PyObject *response)
      *     "HTTP/1.1 200 OK"[12:13]
      *                  ^
      */
-
     if (memcmp(src.buf, "HTTP/1.1 ", 9) != 0 || src.buf[12] != ' ') {
         _value_error("bad response line: %R", src);
-        return false;
+        goto error;
     }
 
     /* status:
@@ -621,25 +633,19 @@ _parse_response_line(DeguBuf src, PyObject *response)
      *     "HTTP/1.1 200 OK"[9:12]
      *               ^^^
      */
-
-    _SET(status, _parse_status(_slice(src, 9, 12)))
+    _SET(dr.status, _parse_status(_slice(src, 9, 12)))
 
     /* reason:
      *
      *     "HTTP/1.1 200 OK"[13:]
      *                   ^^
      */
-    _SET(reason, _parse_reason(_slice(src, 13, src.len)))
-
-    /* Success! */
-    PyTuple_SET_ITEM(response, 0, status);
-    PyTuple_SET_ITEM(response, 1, reason);
-    return true;
+    _SET(dr.reason, _parse_reason(_slice(src, 13, src.len)))
+    goto success;
 
 error:
-    Py_CLEAR(status);
-    Py_CLEAR(reason);
-    return false;
+success:
+    return dr;
 }
 
 
@@ -648,19 +654,30 @@ parse_response_line(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
+    PyObject *ret = NULL;
+    DeguResponse dr;
 
     if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
         return NULL;
     }
     DeguBuf src = {buf, len};
-    PyObject *response = PyTuple_New(2);
-    if (response == NULL) {
-        return NULL;
+    dr = _parse_response_line(src);
+    if (dr.status == NULL || dr.reason == NULL) {
+        goto error;
     }
-    if (!_parse_response_line(src, response)) {
-        Py_CLEAR(response);
+    ret = PyTuple_New(2);
+    if (ret == NULL) {
+        goto error;
     }
-    return response;
+    PyTuple_SET_ITEM(ret, 0, dr.status);
+    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    goto done;
+
+error:
+    _clear_degu_response(&dr);
+
+done:
+    return ret;
 }
 
 
@@ -1121,6 +1138,7 @@ static PyObject *
 _parse_response(DeguBuf src, uint8_t *scratch)
 {
     PyObject *response = NULL;
+    DeguResponse dr = {NULL, NULL};
     DeguHeadersResult hr = {0, NULL, NULL};
     uint8_t *crlf;
     size_t stop_line, start_headers;
@@ -1134,19 +1152,22 @@ _parse_response(DeguBuf src, uint8_t *scratch)
         stop_line = crlf - src.buf;
         start_headers = stop_line + 2;
     }
-    _SET(response, PyTuple_New(3))
-    if (! _parse_response_line(_slice(src, 0, stop_line), response)) {
+    dr = _parse_response_line(_slice(src, 0, stop_line));
+    if (dr.status == NULL || dr.reason == NULL) {
         goto error;
     }
     hr = _parse_headers(_slice(src, start_headers, src.len), scratch);
     if (hr.flags < 0) {
         goto error;
     }
+    _SET(response, PyTuple_New(3))
+    PyTuple_SET_ITEM(response, 0, dr.status);
+    PyTuple_SET_ITEM(response, 1, dr.reason);
     PyTuple_SET_ITEM(response, 2, hr.headers);
     goto cleanup;
 
 error:
-    Py_CLEAR(response);
+    _clear_degu_response(&dr);
     Py_CLEAR(hr.headers);
 
 cleanup:
