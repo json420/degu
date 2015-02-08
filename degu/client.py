@@ -281,7 +281,7 @@ class Connection:
                 headers.update(self.base_headers)
             _validate_request(self.bodies, method, uri, headers, body)
             _write_request(self._wfile, method, uri, headers, body)
-            response = _read_response(self._rfile, self.bodies, method)
+            response = self._rfile.read_response(method)
             self._response_body = response.body
             return response
         except Exception:

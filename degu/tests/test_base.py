@@ -2173,6 +2173,10 @@ class TestReader_Py(TestCase):
         return self.backend.Reader
 
     @property
+    def ResponseType(self):
+        return self.backend.ResponseType
+
+    @property
     def EmptyPreambleError(self):
         return self.backend.EmptyPreambleError
 
@@ -2489,7 +2493,13 @@ class TestReader_Py(TestCase):
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-        self.assertEqual(reader.read_response('GET'), (200, 'OK', {}))
+        response = reader.read_response('GET')
+        self.assertIsInstance(response, self.ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {})
+        self.assertIs(response.body, None)
+        self.assertEqual(response, (200, 'OK', {}, None))
 
         good = b'HTTP/1.1 200 OK'
         suffix = b'\r\n\r\nHello naughty nurse!'
@@ -2527,7 +2537,13 @@ class TestReader_Py(TestCase):
             data = template.format(status).encode()
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             if 100 <= status <= 599:
-                self.assertEqual(reader.read_response('GET'), (status, 'OK', {}))
+                response = reader.read_response('GET')
+                self.assertIsInstance(response, self.ResponseType)
+                self.assertEqual(response.status, status)
+                self.assertEqual(response.reason, 'OK')
+                self.assertEqual(response.headers, {})
+                self.assertIs(response.body, None)
+                self.assertEqual(response, (status, 'OK', {}, None))
             else:
                 with self.assertRaises(ValueError) as cm:
                     reader.read_response('GET')

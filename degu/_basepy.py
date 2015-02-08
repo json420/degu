@@ -275,14 +275,8 @@ def parse_request(preamble):
     return request
 
 
-def parse_response(preamble):
-    (line, *header_lines) = preamble.split(b'\r\n')
-    (status, reason) = parse_response_line(line)
-    headers = _parse_header_lines(header_lines)
-    return (status, reason, headers)
-
-
-def parse_response2(preamble, reader, method):
+def parse_response(preamble, reader, method):
+    method = parse_method(method)
     (line, *header_lines) = preamble.split(b'\r\n')
     (status, reason) = parse_response_line(line)
     headers = _parse_header_lines(header_lines)
@@ -291,7 +285,7 @@ def parse_response2(preamble, reader, method):
     elif 'content-length' in headers:
         body = reader.Body(headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = reader.ChunkedBody(reader)
+        body = reader.ChunkedBody()
     else:
         body = None
     return Response(status, reason, headers, body)
@@ -484,8 +478,7 @@ class Reader:
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('response preamble is empty')
-        return parse_response(preamble)
-        #return parse_response(preamble, self, method)
+        return parse_response(preamble, self, method)
 
     def read(self, size):
         assert isinstance(size, int)
