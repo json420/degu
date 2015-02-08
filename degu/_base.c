@@ -53,7 +53,6 @@ static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
 
 static PyObject *str_empty = NULL;    //  ''
-static PyObject *bytes_empty = NULL;  // b''
 
 /* Keys used in the RGI request dict */
 static PyObject *str_method  = NULL;  // 'method'
@@ -344,6 +343,9 @@ fatal_error:
 static PyObject *
 _tostr(DeguBuf src)
 {
+    if (src.buf == NULL) {
+        return NULL;
+    }
     PyObject *dst = PyUnicode_New(src.len, 127);
     if (dst == NULL) {
         return NULL;
@@ -359,10 +361,6 @@ _tobytes(DeguBuf src)
 {
     if (src.buf == NULL) {
         return NULL;
-    }
-    if (src.len == 0) {
-        Py_XINCREF(bytes_empty);
-        return bytes_empty;
     }
     return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
 }
@@ -2296,7 +2294,6 @@ PyInit__base(void)
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
 
     _SET(str_empty, PyUnicode_InternFromString(""))
-    _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
     _SET(str_method, PyUnicode_InternFromString("method"))
     _SET(str_uri, PyUnicode_InternFromString("uri"))
