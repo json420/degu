@@ -32,15 +32,8 @@ correctness of the C implementation.
 
 from collections import namedtuple
 
-__all__ = (
-    '_MAX_LINE_SIZE',
-    '_MAX_HEADER_COUNT',
-    'EmptyPreambleError',
-)
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
-_MAX_HEADER_COUNT = 20
-
 READER_BUFFER_SIZE = 65536  # 64 KiB
 MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
 
@@ -51,9 +44,7 @@ HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
 
-
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
-
 
 
 ################    BEGIN GENERATED TABLES    ##################################

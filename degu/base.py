@@ -27,7 +27,6 @@ from collections import namedtuple
 try:
     from ._base import (
         _MAX_LINE_SIZE,
-        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         format_request,
         format_response,
@@ -38,7 +37,6 @@ try:
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
-        _MAX_HEADER_COUNT,
         EmptyPreambleError,
         format_request,
         format_response,
@@ -50,7 +48,6 @@ except ImportError:
 
 __all__ = (
     '_MAX_LINE_SIZE',
-    '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'Reader',
     'ResponseType',

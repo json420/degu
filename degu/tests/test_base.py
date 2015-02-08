@@ -295,11 +295,6 @@ class TestConstants(TestCase):
         self.assertEqual(base._MAX_LINE_SIZE % 1024, 0)
         self.assertLessEqual(base._MAX_LINE_SIZE, 8192)
 
-    def test__MAX_HEADER_COUNT(self):
-        self.assertIsInstance(base._MAX_HEADER_COUNT, int)
-        self.assertGreaterEqual(base._MAX_HEADER_COUNT, 5)
-        self.assertLessEqual(base._MAX_HEADER_COUNT, 20)
-
     def test_STREAM_BUFFER_SIZE(self):
         self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
         self.assertEqual(base.STREAM_BUFFER_SIZE % 4096, 0)

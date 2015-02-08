@@ -25,8 +25,7 @@
 #include <stdbool.h>
 
 
-#define _MAX_LINE_SIZE 4096  // Hello
-#define _MAX_HEADER_COUNT 20
+#define _MAX_LINE_SIZE 4096
 
 #define READER_BUFFER_SIZE 65536
 
@@ -2245,7 +2244,6 @@ PyInit__base(void)
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
 
     /* Init integer constants */
-    PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
 
 #define _ADD_MODULE_STRING(pyobj, name) \
