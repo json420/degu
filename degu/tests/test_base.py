@@ -2195,6 +2195,25 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
+    def test_Body(self):
+        (sock, reader) = self.new()
+
+        body = reader.Body(0)
+        self.assertIsInstance(body, base.bodies.Body)
+        self.assertIs(body.rfile, reader)
+        self.assertEqual(body.content_length, 0)
+
+        body = reader.Body(17)
+        self.assertIsInstance(body, base.bodies.Body)
+        self.assertIs(body.rfile, reader)
+        self.assertEqual(body.content_length, 17)
+
+    def test_ChunkedBody(self):
+        (sock, reader) = self.new()
+        body = reader.ChunkedBody()
+        self.assertIsInstance(body, base.bodies.ChunkedBody)
+        self.assertIs(body.rfile, reader)
+
     def test_expose(self):
         (sock, reader) = self.new()
         self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)

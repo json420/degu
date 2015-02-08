@@ -1723,6 +1723,24 @@ Reader_read_request(Reader *self) {
     return _parse_request(src, self->scratch);
 }
 
+/* Reader.Body(content_length) */
+static PyObject *
+Reader_Body(Reader *self, PyObject *args) {
+    PyObject *content_length = NULL;
+    if (!PyArg_ParseTuple(args, "O:Body", &content_length)) {
+        return NULL;
+    }
+    return PyObject_CallFunctionObjArgs(
+        self->bodies_Body, self, content_length, NULL
+    );
+}
+
+/* Reader.ChunkedBody() */
+static PyObject *
+Reader_ChunkedBody(Reader *self) {
+    return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
+}
+
 
 static PyObject *
 Reader_read_response(Reader *self, PyObject *args)
@@ -1942,6 +1960,13 @@ Reader_tell(Reader *self) {
 
 
 static PyMethodDef Reader_methods[] = {
+    {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
+        "Body(content_length)"
+    },
+    {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
+        "ChunkedBody()"
+    },
+
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
     {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
         "return (start, stop) tuple"

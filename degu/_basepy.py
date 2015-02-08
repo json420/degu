@@ -282,6 +282,21 @@ def parse_response(preamble):
     return (status, reason, headers)
 
 
+def parse_response2(preamble, reader, method):
+    (line, *header_lines) = preamble.split(b'\r\n')
+    (status, reason) = parse_response_line(line)
+    headers = _parse_header_lines(header_lines)
+    if method == 'HEAD':
+        body = None
+    elif 'content-length' in headers:
+        body = reader.Body(headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = reader.ChunkedBody(reader)
+    else:
+        body = None
+    return Response(status, reason, headers, body)
+
+
 class Reader:
     __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
 
@@ -298,6 +313,12 @@ class Reader:
         self._rawbuf = memoryview(bytearray(2**16))
         self._start = 0
         self._buf = b''
+
+    def Body(self, content_length):
+        return self.bodies.Body(self, content_length)
+
+    def ChunkedBody(self):
+        return self.bodies.ChunkedBody(self)
 
     def rawtell(self):
         return self._rawtell
@@ -464,6 +485,7 @@ class Reader:
         if preamble == b'':
             raise EmptyPreambleError('response preamble is empty')
         return parse_response(preamble)
+        #return parse_response(preamble, self, method)
 
     def read(self, size):
         assert isinstance(size, int)
