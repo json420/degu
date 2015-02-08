@@ -499,8 +499,8 @@ _clear_degu_response(DeguResponse *dr)
  *     _parse_header_line()
  *     _parse_headers()
  */
-static inline bool
-_parse_key(DeguBuf src, uint8_t *dst)
+static bool
+_parse_key(DeguBuf src, uint8_t *dst_buf)
 {
     uint8_t r;
     size_t i;
@@ -509,7 +509,7 @@ _parse_key(DeguBuf src, uint8_t *dst)
         return false;
     }
     for (r = i = 0; i < src.len; i++) {
-        r |= dst[i] = _NAMES[src.buf[i]];
+        r |= dst_buf[i] = _NAMES[src.buf[i]];
     }
     if (r & 128) {
         if (r != 255) {
@@ -654,7 +654,6 @@ _parse_headers(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
 error:
     return false;
 }
-
 
 
 /*******************************************************************************
@@ -845,10 +844,12 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
         goto error;
     }
     uri_start = method_stop + 1;
+    DeguBuf method_src = _slice(src, 0, method_stop);
+    DeguBuf uri_src = _slice(src, uri_start, src.len);
 
-    /* Call the lower level parsers */
-    _SET(dr->method, _parse_method(_slice(src, 0, method_stop)))
-    if (!_parse_uri(_slice(src, uri_start, src.len), dr)) {
+    /* _parse_method(), _parse_uri() handle the rest */
+    _SET(dr->method, _parse_method(method_src))
+    if (!_parse_uri(uri_src, dr)) {
         goto error;
     }
     return true;
@@ -1073,10 +1074,46 @@ cleanup:
 
 /*******************************************************************************
  * Public API: Parsing: Headers:
+ *     parse_header_name()
  *     parse_content_length()
  *     parse_header_line()
  *     parse_headers()
  */
+
+static PyObject *
+parse_header_name(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *dst = NULL;
+    uint8_t *dst_buf;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header name is empty");
+        return NULL;
+    }
+    if (src.len > MAX_KEY) {
+        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
+        return NULL;
+    }
+
+    _SET(dst, PyUnicode_New(src.len, 127))
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    if (!_parse_key(src, dst_buf)) {
+        goto error;
+    }
+    goto done;
+
+error:
+    Py_CLEAR(dst);
+
+done:
+    return dst;
+}
 
 static PyObject *
 parse_content_length(PyObject *self, PyObject *args)
@@ -1498,6 +1535,8 @@ Response(PyObject *self, PyObject *args)
  */
 static struct PyMethodDef degu_functions[] = {
     /* Header Parsing */
+    {"parse_header_name", parse_header_name, METH_VARARGS,
+        "parse_header_name(name)"},
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"},
 
