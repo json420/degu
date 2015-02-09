@@ -2454,6 +2454,7 @@ class TestReader_Py(TestCase):
                 'path': [],
                 'query': None,
                 'headers': {},
+                'body': None,
             }
         )
 
