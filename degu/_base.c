@@ -27,9 +27,9 @@
 
 #define _MAX_LINE_SIZE 4096
 
-#define READER_BUFFER_SIZE 65536
-
-#define MAX_PREAMBLE 32768
+#define MIN_PREAMBLE 4096
+#define MAX_PREAMBLE 65536
+#define DEFAULT_PREAMBLE 32768
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
 
@@ -421,7 +421,6 @@ done:
  *     _clear_degu_request()
  *     _clear_degu_response()   
  */
-
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
     PyObject *content_length; \
@@ -484,10 +483,6 @@ _clear_degu_response(DeguResponse *dr)
     Py_CLEAR(dr->reason);
     Py_CLEAR(dr->body);
 }
-
-
-
-
 
 
 /*******************************************************************************
@@ -1569,9 +1564,8 @@ static struct PyMethodDef degu_functions[] = {
 };
 
 
-
 /*******************************************************************************
- * Reader class
+ * Reader
  */
 
 typedef struct {
@@ -1586,7 +1580,6 @@ typedef struct {
     size_t start;
     size_t stop;
 } Reader;
-
 
 static void
 Reader_dealloc(Reader *self)
@@ -1604,14 +1597,22 @@ Reader_dealloc(Reader *self)
     }
 }
 
-
 static int
 Reader_init(Reader *self, PyObject *args, PyObject *kw)
 {
-    PyObject *sock=NULL, *bodies=NULL;
-    static char *keys[] = {"sock", "bodies", NULL};
+    PyObject *sock = NULL;
+    PyObject *bodies = NULL;
+    ssize_t len = DEFAULT_PREAMBLE;
+    static char *keys[] = {"sock", "bodies", "size", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader", keys, &sock, &bodies, &len)) {
+        return -1;
+    }
+    if (len < MIN_PREAMBLE || len > MAX_PREAMBLE) {
+        PyErr_Format(PyExc_ValueError,
+            "need %zd <= size <= %zd; got %zd",
+            MIN_PREAMBLE, MAX_PREAMBLE, len
+        );
         return -1;
     }
 
@@ -1632,7 +1633,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     }
 
     _SET(self->scratch, _calloc_buf(MAX_KEY))
-    self->len = READER_BUFFER_SIZE;
+    self->len = len;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
     self->start = 0;
@@ -2284,6 +2285,9 @@ PyInit__base(void)
 
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
+    PyModule_AddIntMacro(module, MIN_PREAMBLE);
+    PyModule_AddIntMacro(module, DEFAULT_PREAMBLE);
+    PyModule_AddIntMacro(module, MAX_PREAMBLE);
 
 #define _ADD_MODULE_STRING(pyobj, name) \
     _SET(pyobj, PyUnicode_InternFromString(name)) \

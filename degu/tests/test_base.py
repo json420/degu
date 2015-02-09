@@ -26,6 +26,7 @@ Unit tests for the `degu.base` module`
 from unittest import TestCase
 import os
 import io
+import sys
 from random import SystemRandom
 
 from . import helpers
@@ -2157,15 +2158,24 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(wfile._calls, expected)
 
 
-BUF_SIZE = 64 * 1024
-
-
 class TestReader_Py(TestCase):
     backend = _basepy
 
     @property
     def Reader(self):
         return self.backend.Reader
+
+    @property
+    def MIN_PREAMBLE(self):
+        return self.backend.MIN_PREAMBLE
+
+    @property
+    def DEFAULT_PREAMBLE(self):
+        return self.backend.DEFAULT_PREAMBLE
+
+    @property
+    def MAX_PREAMBLE(self):
+        return self.backend.MAX_PREAMBLE
 
     @property
     def ResponseType(self):
@@ -2181,11 +2191,49 @@ class TestReader_Py(TestCase):
         return (sock, reader)
 
     def test_init(self):
-        (sock, reader) = self.new()
+        default = self.DEFAULT_PREAMBLE
+        _min = self.MIN_PREAMBLE
+        _max = self.MAX_PREAMBLE
+        self.assertTrue(_min <= default <= _max)
+
+        sock = MockSocket(b'')
+        reader = self.Reader(sock, base.bodies)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * default)
+
+        # Test min and max sizes:
+        for good in (_min, _max):
+            reader = self.Reader(sock, base.bodies, size=good)
+            self.assertEqual(reader.expose(), b'\x00' * good)
+
+        # size out of range:
+        for bad in (_min - 1, _max + 1):
+            with self.assertRaises(ValueError) as cm:
+                self.Reader(sock, base.bodies, size=bad)
+            self.assertEqual(str(cm.exception),
+                'need {} <= size <= {}; got {}'.format(_min, _max, bad)
+            )
+
+    def test_del(self):
+        sock = MockSocket(b'')
+        self.assertEqual(sys.getrefcount(sock), 2)
+        bodies = base.bodies
+        c1 = sys.getrefcount(bodies)
+        c2 = sys.getrefcount(bodies.Body)
+        c3 = sys.getrefcount(bodies.ChunkedBody)
+        reader = self.Reader(sock, bodies)
+        self.assertEqual(sys.getrefcount(sock), 3)
+        self.assertEqual(sys.getrefcount(bodies), c1)
+        self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
+        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
+        del reader
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(bodies), c1)
+        self.assertEqual(sys.getrefcount(bodies.Body), c2)
+        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3)
 
     def test_close(self):
         (sock, reader) = self.new()
@@ -2213,14 +2261,11 @@ class TestReader_Py(TestCase):
         self.assertIsInstance(body, base.bodies.ChunkedBody)
         self.assertIs(body.rfile, reader)
 
-    def test_expose(self):
-        (sock, reader) = self.new()
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
-
     def test_fill_until(self):
+        default = self.DEFAULT_PREAMBLE
         end = b'\r\n'
 
-        data = os.urandom(2 * BUF_SIZE)
+        data = os.urandom(2 * default)
         (sock, reader) = self.new(data)
 
         # len(end) == 0:
@@ -2231,65 +2276,65 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < 0:
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(-1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got -1'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got -1'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < 1:
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(0, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got 0'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got 0'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < len(end):
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got 1'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got 1'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(15, os.urandom(16))
         self.assertEqual(str(cm.exception),
-            'need 16 <= size <= {}; got 15'.format(BUF_SIZE)
+            'need 16 <= size <= {}; got 15'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
-        # size > BUF_SIZE:
+        # size > default:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(BUF_SIZE + 1, end)
+            reader.fill_until(default + 1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got {}'.format(BUF_SIZE, BUF_SIZE + 1)
+            'need 2 <= size <= {}; got {}'.format(default, default + 1)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
@@ -2381,10 +2426,9 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.search(512, end, include_end=True), b'')
 
     def test_readline(self):
-        size = 1024 * 64
+        size = self.DEFAULT_PREAMBLE
         (sock, reader) = self.new()
         self.assertEqual(reader.readline(size), b'')
-
         data = b'D' * size
         (sock, reader) = self.new(data)
         self.assertEqual(reader.readline(size), data)
@@ -2551,6 +2595,7 @@ class TestReader_Py(TestCase):
             self.check_read_response(rcvbuf)
 
     def test_read(self):
+        default = self.DEFAULT_PREAMBLE
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
 
         (sock, reader) = self.new(data)
@@ -2569,26 +2614,26 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.tell(), 0)
 
         A = b'A' * 1024
-        B = b'B' * BUF_SIZE
+        B = b'B' * default
         C = b'C' * 512
-        D = b'D' * (BUF_SIZE + 1)
+        D = b'D' * (default + 1)
         (sock, reader) = self.new(A + B + C + D)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
         (sock, reader) = self.new(A + B + C + D, 3)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
         (sock, reader) = self.new(A + B + C + D, 1)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
 
 class TestReader_C(TestReader_Py):

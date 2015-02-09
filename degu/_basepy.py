@@ -37,6 +37,10 @@ _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 READER_BUFFER_SIZE = 65536  # 64 KiB
 MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
 
+MIN_PREAMBLE     =  4096  #  4 KiB
+DEFAULT_PREAMBLE = 32768  # 32 KiB
+MAX_PREAMBLE     = 65536  # 64 KiB
+
 GET = 'GET'
 PUT = 'PUT'
 POST = 'POST'
@@ -275,27 +279,43 @@ def parse_response(preamble):
 
 
 class Reader:
-    __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
+    __slots__ = (
+        '_sock_recv_into',
+        '_bodies_Body',
+        '_bodies_ChunkedBody',
+        '_rawtell',
+        '_rawbuf',
+        '_start',
+        '_buf',
+    )
 
-    def __init__(self, sock, bodies):
+    def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
         if not callable(sock.recv_into):
             raise TypeError('sock.recv_into() is not callable')
         if not callable(bodies.Body):
             raise TypeError('bodies.Body is not callable')
         if not callable(bodies.ChunkedBody):
             raise TypeError('bodies.ChunkedBody is not callable')
-        self.sock = sock
-        self.bodies = bodies
+        assert isinstance(size, int)
+        if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
+            raise ValueError(
+                'need {!r} <= size <= {!r}; got {!r}'.format(
+                    MIN_PREAMBLE, MAX_PREAMBLE, size
+                )
+            )
+        self._sock_recv_into = sock.recv_into
+        self._bodies_Body = bodies.Body
+        self._bodies_ChunkedBody = bodies.ChunkedBody
         self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(2**16))
+        self._rawbuf = memoryview(bytearray(size))
         self._start = 0
         self._buf = b''
 
     def Body(self, content_length):
-        return self.bodies.Body(self, content_length)
+        return self._bodies_Body(self, content_length)
 
     def ChunkedBody(self):
-        return self.bodies.ChunkedBody(self)
+        return self._bodies_ChunkedBody(self)
 
     def rawtell(self):
         return self._rawtell
@@ -303,8 +323,8 @@ class Reader:
     def tell(self):
         return self._rawtell - len(self._buf)
 
-    def _sock_recv_into(self, buf):
-        added = self.sock.recv_into(buf)
+    def _recv_into(self, buf):
+        added = self._sock_recv_into(buf)
         self._rawtell += added
         return added
 
@@ -411,7 +431,7 @@ class Reader:
         remaining = len(self._rawbuf) - len(cur)
         while remaining > 0:
             dst = self._rawbuf[-remaining:]
-            added = self._sock_recv_into(dst)
+            added = self._recv_into(dst)
             if added <= 0:
                 assert added == 0
                 return (False, cur)
@@ -489,7 +509,7 @@ class Reader:
         dst[0:src_len] = src
         stop = src_len
         while stop < size:
-            added = self._sock_recv_into(dst[stop:])
+            added = self._recv_into(dst[stop:])
             if added <= 0:
                 assert added == 0
                 break
