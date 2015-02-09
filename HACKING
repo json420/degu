@@ -1,0 +1,72 @@
+Defines
+Globals
+Generated tables
+Macros
+
+Internal API:
+    Misc:
+        _min()
+        _calloc_buf()
+    DeguBuf:
+        _isnull()
+        _isempty()
+        _slice()
+        _equal()
+        _find()
+        _tostr()
+        _tobytes()
+        _value_error()
+        _value_error2()
+        _decode()
+    DeguHeaders/DeguRequest/DeguResonse:
+        _clear_degu_headers()
+        _clear_degu_request()
+        _clear_degu_response()
+    Parsing:
+        Headers:
+            _parse_key()
+            _parse_val()
+            _parse_content_length()
+            _parse_header_line()
+            _parse_headers()
+        Request:
+            _parse_method()
+            _parse_path_component()
+            _parse_path()
+            _parse_query()
+            _parse_uri()
+            _parse_request_line()
+            _parse_request()
+        Response:
+            _parse_status()
+            _parse_reason()
+            _parse_response_line()
+            _parse_response()
+    Formatting:
+        _format_headers()
+        _format_request()
+        _format_response()
+    namedtuples:
+        ResponseType/_Response()
+
+Public API:
+    Parsing:
+        parse_header_line()
+        parse_headers()
+        parse_method()
+        parse_request_line()
+        parse_request()
+        parse_response_line()
+        parse_response()
+    Formatting:
+        format_headers()
+        format_request()
+        format_response()
+    namedtuples:
+        Response()
+
+Reader class:
+    Internal API:
+    Public methods:
+        Reader
+
