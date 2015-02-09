@@ -27,30 +27,33 @@ from collections import namedtuple
 try:
     from ._base import (
         _MAX_LINE_SIZE,
-        _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        format_request_preamble,
-        format_response_preamble,
+        format_request,
+        format_response,
         Reader,
+        ResponseType,
+        Response,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
-        _MAX_HEADER_COUNT,
         EmptyPreambleError,
-        format_request_preamble,
-        format_response_preamble,
+        format_request,
+        format_response,
         Reader,
+        ResponseType,
+        Response,
     )
 
 
 __all__ = (
     '_MAX_LINE_SIZE',
-    '_MAX_HEADER_COUNT',
     'EmptyPreambleError',
     'Reader',
-    'format_request_preamble',
-    'format_response_preamble',
+    'ResponseType',
+    'Response',
+    'format_request',
+    'format_response',
 )
 
 

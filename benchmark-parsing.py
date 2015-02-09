@@ -9,8 +9,8 @@ from io import BytesIO
 
 from degu._base import (
     format_headers,
-    format_request_preamble,
-    format_response_preamble,
+    format_request,
+    format_response,
 
     parse_content_length,
     parse_request_line,
@@ -32,8 +32,8 @@ headers = {
     'hello': 'World',
     'k': 'V',
 }
-request = format_request_preamble('POST', '/foo/bar?stuff=junk', headers)[:-4]
-response = format_response_preamble(200, 'OK', headers)[:-4]
+request = format_request('POST', '/foo/bar?stuff=junk', headers)[:-4]
+response = format_response(200, 'OK', headers)[:-4]
 """
 
 
@@ -83,14 +83,14 @@ print('\nCommon formatting:')
 run('format_headers(headers)')
 
 print('\nRequest formatting:')
-run("format_request_preamble('GET', '/foo', {})")
-run("format_request_preamble('PUT', '/foo', {'content-length': 17})")
-run("format_request_preamble('PUT', '/foo', headers)")
+run("format_request('GET', '/foo', {})")
+run("format_request('PUT', '/foo', {'content-length': 17})")
+run("format_request('PUT', '/foo', headers)")
 
 print('\nResponse formatting:')
-run("format_response_preamble(200, 'OK', {})")
-run("format_response_preamble(200, 'OK', {'content-length': 17})")
-run("format_response_preamble(200, 'OK', headers)")
+run("format_response(200, 'OK', {})")
+run("format_response(200, 'OK', {'content-length': 17})")
+run("format_response(200, 'OK', headers)")
 
 
 print('-' * 80)

@@ -32,7 +32,7 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_response_preamble,
+    format_response,
 )
 
 
@@ -168,7 +168,7 @@ def _read_request(rfile, bodies):
 
 
 def _write_response(wfile, status, reason, headers, body):
-    preamble = format_response_preamble(status, reason, headers)
+    preamble = format_response(status, reason, headers)
     if body is None:
         total = wfile.write(preamble)
         wfile.flush()
@@ -198,7 +198,7 @@ def _handle_requests(app, sock, max_requests, session, bodies):
 
 def _handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
-    request = _read_request(rfile, bodies)
+    request = rfile.read_request()
     request_method = request['method']
     request_body = request['body']
 

@@ -26,6 +26,7 @@ Unit tests for the `degu.base` module`
 from unittest import TestCase
 import os
 import io
+import sys
 from random import SystemRandom
 
 from . import helpers
@@ -228,6 +229,46 @@ class AlternatesTestCase(FuzzTestCase):
             self.skipTest('cannot import `degu._base` C extension')
 
 
+class BackendTestCase(TestCase):
+    backend = _basepy
+
+    def setUp(self):
+        assert self.backend in (_basepy, _base)
+        assert _basepy is not None
+        if self.backend is None:
+            self.skipTest('cannot import `degu._base` C extension')
+
+    def getattr(self, name):
+        backend = self.backend
+        self.assertIn(backend, (_basepy, _base))
+        self.assertIsNotNone(backend)
+        attr = getattr(backend, name)
+        if _base is None or backend is _base:
+            self.assertIs(attr, getattr(base, name))
+        else:
+            self.assertIs(attr, getattr(_basepy, name))
+        return attr
+
+
+class TestNamedTuples_Py(BackendTestCase):
+    def test_Response(self):
+        status = random_id()
+        reason = random_id()
+        headers = random_id()
+        body = random_id()
+        inst = self.getattr('Response')(status, reason, headers, body)
+        self.assertIsInstance(inst, tuple)
+        self.assertIsInstance(inst, self.getattr('ResponseType'))
+        self.assertIs(inst.status, status)
+        self.assertIs(inst.reason, reason)
+        self.assertIs(inst.headers, headers)
+        self.assertIs(inst.body, body)
+
+
+class TestNamedTuples_C(TestNamedTuples_Py):
+    backend = _base
+
+
 MiB = 1024 * 1024
 
 class TestConstants(TestCase):
@@ -254,11 +295,6 @@ class TestConstants(TestCase):
         self.assertGreaterEqual(base._MAX_LINE_SIZE, 1024)
         self.assertEqual(base._MAX_LINE_SIZE % 1024, 0)
         self.assertLessEqual(base._MAX_LINE_SIZE, 8192)
-
-    def test__MAX_HEADER_COUNT(self):
-        self.assertIsInstance(base._MAX_HEADER_COUNT, int)
-        self.assertGreaterEqual(base._MAX_HEADER_COUNT, 5)
-        self.assertLessEqual(base._MAX_HEADER_COUNT, 20)
 
     def test_STREAM_BUFFER_SIZE(self):
         self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
@@ -883,129 +919,129 @@ class TestFunctions(AlternatesTestCase):
                 self.assertIsInstance(ret, int)
                 self.assertEqual(ret, goodval)
 
-    def check_format_request_preamble(self, backend):
+    def check_format_request(self, backend):
         # Too few arguments:
         with self.assertRaises(TypeError):
-            backend.format_request_preamble()
+            backend.format_request()
         with self.assertRaises(TypeError):
-            backend.format_request_preamble('GET')
+            backend.format_request('GET')
         with self.assertRaises(TypeError):
-            backend.format_request_preamble('GET', '/foo')
+            backend.format_request('GET', '/foo')
 
         # Too many arguments:
         with self.assertRaises(TypeError):
-            backend.format_request_preamble('GET', '/foo', {}, None)
+            backend.format_request('GET', '/foo', {}, None)
 
         # No headers:
         self.assertEqual(
-            backend.format_request_preamble('GET', '/foo', {}),
+            backend.format_request('GET', '/foo', {}),
             b'GET /foo HTTP/1.1\r\n\r\n'
         )
 
         # One header:
         headers = {'content-length': 1776}
         self.assertEqual(
-            backend.format_request_preamble('PUT', '/foo', headers),
+            backend.format_request('PUT', '/foo', headers),
             b'PUT /foo HTTP/1.1\r\ncontent-length: 1776\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked'}
         self.assertEqual(
-            backend.format_request_preamble('POST', '/foo', headers),
+            backend.format_request('POST', '/foo', headers),
             b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n'
         )
 
         # Two headers:
         headers = {'content-length': 1776, 'a': 'A'}
         self.assertEqual(
-            backend.format_request_preamble('PUT', '/foo', headers),
+            backend.format_request('PUT', '/foo', headers),
             b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked', 'z': 'Z'}
         self.assertEqual(
-            backend.format_request_preamble('POST', '/foo', headers),
+            backend.format_request('POST', '/foo', headers),
             b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
         )
 
         # Three headers:
         headers = {'content-length': 1776, 'a': 'A', 'z': 'Z'}
         self.assertEqual(
-            backend.format_request_preamble('PUT', '/foo', headers),
+            backend.format_request('PUT', '/foo', headers),
             b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\nz: Z\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked', 'z': 'Z', 'a': 'A'}
         self.assertEqual(
-            backend.format_request_preamble('POST', '/foo', headers),
+            backend.format_request('POST', '/foo', headers),
             b'POST /foo HTTP/1.1\r\na: A\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
         )
 
-    def test_format_request_preamble_py(self):
-        self.check_format_request_preamble(_basepy)
+    def test_format_request_py(self):
+        self.check_format_request(_basepy)
 
-    def test_format_request_preamble_c(self):
+    def test_format_request_c(self):
         self.skip_if_no_c_ext()
-        self.check_format_request_preamble(_base)
+        self.check_format_request(_base)
 
-    def check_format_response_preamble(self, backend):
+    def check_format_response(self, backend):
         # Too few arguments:
         with self.assertRaises(TypeError):
-            backend.format_response_preamble()
+            backend.format_response()
         with self.assertRaises(TypeError):
-            backend.format_response_preamble(200)
+            backend.format_response(200)
         with self.assertRaises(TypeError):
-            backend.format_response_preamble(200, 'OK')
+            backend.format_response(200, 'OK')
 
         # Too many arguments:
         with self.assertRaises(TypeError):
-            backend.format_response_preamble('200', 'OK', {}, None)
+            backend.format_response('200', 'OK', {}, None)
 
         # No headers:
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', {}),
+            backend.format_response(200, 'OK', {}),
             b'HTTP/1.1 200 OK\r\n\r\n'
         )
 
         # One header:
         headers = {'content-length': 1776}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\ncontent-length: 1776\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked'}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n'
         )
 
         # Two headers:
         headers = {'content-length': 1776, 'a': 'A'}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\na: A\r\ncontent-length: 1776\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked', 'z': 'Z'}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
         )
 
         # Three headers:
         headers = {'content-length': 1776, 'a': 'A', 'z': 'Z'}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\na: A\r\ncontent-length: 1776\r\nz: Z\r\n\r\n'
         )
         headers = {'transfer-encoding': 'chunked', 'z': 'Z', 'a': 'A'}
         self.assertEqual(
-            backend.format_response_preamble(200, 'OK', headers),
+            backend.format_response(200, 'OK', headers),
             b'HTTP/1.1 200 OK\r\na: A\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
         )
 
-    def test_format_response_preamble_py(self):
-        self.check_format_response_preamble(_basepy)
+    def test_format_response_py(self):
+        self.check_format_response(_basepy)
 
-    def test_format_response_preamble_c(self):
+    def test_format_response_c(self):
         self.skip_if_no_c_ext()
-        self.check_format_response_preamble(_base)
+        self.check_format_response(_base)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
@@ -2122,15 +2158,28 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(wfile._calls, expected)
 
 
-BUF_SIZE = 64 * 1024
-
-
 class TestReader_Py(TestCase):
     backend = _basepy
 
     @property
     def Reader(self):
         return self.backend.Reader
+
+    @property
+    def MIN_PREAMBLE(self):
+        return self.backend.MIN_PREAMBLE
+
+    @property
+    def DEFAULT_PREAMBLE(self):
+        return self.backend.DEFAULT_PREAMBLE
+
+    @property
+    def MAX_PREAMBLE(self):
+        return self.backend.MAX_PREAMBLE
+
+    @property
+    def ResponseType(self):
+        return self.backend.ResponseType
 
     @property
     def EmptyPreambleError(self):
@@ -2142,11 +2191,49 @@ class TestReader_Py(TestCase):
         return (sock, reader)
 
     def test_init(self):
-        (sock, reader) = self.new()
+        default = self.DEFAULT_PREAMBLE
+        _min = self.MIN_PREAMBLE
+        _max = self.MAX_PREAMBLE
+        self.assertTrue(_min <= default <= _max)
+
+        sock = MockSocket(b'')
+        reader = self.Reader(sock, base.bodies)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * default)
+
+        # Test min and max sizes:
+        for good in (_min, _max):
+            reader = self.Reader(sock, base.bodies, size=good)
+            self.assertEqual(reader.expose(), b'\x00' * good)
+
+        # size out of range:
+        for bad in (_min - 1, _max + 1):
+            with self.assertRaises(ValueError) as cm:
+                self.Reader(sock, base.bodies, size=bad)
+            self.assertEqual(str(cm.exception),
+                'need {} <= size <= {}; got {}'.format(_min, _max, bad)
+            )
+
+    def test_del(self):
+        sock = MockSocket(b'')
+        self.assertEqual(sys.getrefcount(sock), 2)
+        bodies = base.bodies
+        c1 = sys.getrefcount(bodies)
+        c2 = sys.getrefcount(bodies.Body)
+        c3 = sys.getrefcount(bodies.ChunkedBody)
+        reader = self.Reader(sock, bodies)
+        self.assertEqual(sys.getrefcount(sock), 3)
+        self.assertEqual(sys.getrefcount(bodies), c1)
+        self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
+        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
+        del reader
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(bodies), c1)
+        self.assertEqual(sys.getrefcount(bodies.Body), c2)
+        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3)
 
     def test_close(self):
         (sock, reader) = self.new()
@@ -2155,14 +2242,30 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
-    def test_expose(self):
+    def test_Body(self):
         (sock, reader) = self.new()
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+
+        body = reader.Body(0)
+        self.assertIsInstance(body, base.bodies.Body)
+        self.assertIs(body.rfile, reader)
+        self.assertEqual(body.content_length, 0)
+
+        body = reader.Body(17)
+        self.assertIsInstance(body, base.bodies.Body)
+        self.assertIs(body.rfile, reader)
+        self.assertEqual(body.content_length, 17)
+
+    def test_ChunkedBody(self):
+        (sock, reader) = self.new()
+        body = reader.ChunkedBody()
+        self.assertIsInstance(body, base.bodies.ChunkedBody)
+        self.assertIs(body.rfile, reader)
 
     def test_fill_until(self):
+        default = self.DEFAULT_PREAMBLE
         end = b'\r\n'
 
-        data = os.urandom(2 * BUF_SIZE)
+        data = os.urandom(2 * default)
         (sock, reader) = self.new(data)
 
         # len(end) == 0:
@@ -2173,65 +2276,65 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < 0:
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(-1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got -1'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got -1'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < 1:
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(0, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got 0'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got 0'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         # size < len(end):
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got 1'.format(BUF_SIZE)
+            'need 2 <= size <= {}; got 1'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
         with self.assertRaises(ValueError) as cm:
             reader.fill_until(15, os.urandom(16))
         self.assertEqual(str(cm.exception),
-            'need 16 <= size <= {}; got 15'.format(BUF_SIZE)
+            'need 16 <= size <= {}; got 15'.format(default)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
-        # size > BUF_SIZE:
+        # size > default:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(BUF_SIZE + 1, end)
+            reader.fill_until(default + 1, end)
         self.assertEqual(str(cm.exception),
-            'need 2 <= size <= {}; got {}'.format(BUF_SIZE, BUF_SIZE + 1)
+            'need 2 <= size <= {}; got {}'.format(default, default + 1)
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * BUF_SIZE)
+        self.assertEqual(reader.expose(), b'\x00' * default)
 
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
@@ -2323,10 +2426,9 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.search(512, end, include_end=True), b'')
 
     def test_readline(self):
-        size = 1024 * 64
+        size = self.DEFAULT_PREAMBLE
         (sock, reader) = self.new()
         self.assertEqual(reader.readline(size), b'')
-
         data = b'D' * size
         (sock, reader) = self.new(data)
         self.assertEqual(reader.readline(size), data)
@@ -2352,6 +2454,7 @@ class TestReader_Py(TestCase):
                 'path': [],
                 'query': None,
                 'headers': {},
+                'body': None,
             }
         )
 
@@ -2385,11 +2488,20 @@ class TestReader_Py(TestCase):
             self.check_read_request(rcvbuf)
 
     def check_read_response(self, rcvbuf):
+        # Bad method:
+        for method in BAD_METHODS:
+            (sock, reader) = self.new()
+            with self.assertRaises(ValueError) as cm:
+                reader.read_response(method)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
         # Test when exact b'\r\n\r\n' preamble termination is missing:
         data = b'HTTP/1.1 200 OK\n\r\nhello, world'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         with self.assertRaises(ValueError) as cm:
-            reader.read_response()
+            reader.read_response('GET')
         self.assertEqual(str(cm.exception),
             '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
         )
@@ -2405,14 +2517,14 @@ class TestReader_Py(TestCase):
             data = prefix + bad + suffix
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             with self.assertRaises(ValueError) as cm:
-                reader.read_response()
+                reader.read_response('GET')
             self.assertEqual(str(cm.exception),
                  '{!r} not found in {!r}...'.format(term, data)
             )
 
         (sock, reader) = self.new(rcvbuf=rcvbuf)
         with self.assertRaises(self.backend.EmptyPreambleError) as cm:
-            reader.read_response()
+            reader.read_response('GET')
         self.assertEqual(str(cm.exception), 'response preamble is empty')
         if rcvbuf is None:
             self.assertEqual(sock._recv_into_calls, 1)
@@ -2421,7 +2533,13 @@ class TestReader_Py(TestCase):
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-        self.assertEqual(reader.read_response(), (200, 'OK', {}))
+        response = reader.read_response('GET')
+        self.assertIsInstance(response, self.ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {})
+        self.assertIs(response.body, None)
+        self.assertEqual(response, (200, 'OK', {}, None))
 
         good = b'HTTP/1.1 200 OK'
         suffix = b'\r\n\r\nHello naughty nurse!'
@@ -2432,7 +2550,7 @@ class TestReader_Py(TestCase):
             data = bad + suffix
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             with self.assertRaises(ValueError) as cm:
-                reader.read_response()
+                reader.read_response('GET')
             self.assertEqual(str(cm.exception),
                 'response line too short: {!r}'.format(bad)
             )
@@ -2449,7 +2567,7 @@ class TestReader_Py(TestCase):
                 data = bad + suffix
                 (sock, reader) = self.new(data, rcvbuf=rcvbuf)
                 with self.assertRaises(ValueError) as cm:
-                    reader.read_response()
+                    reader.read_response('GET')
                 self.assertEqual(str(cm.exception),
                     'bad response line: {!r}'.format(bad)
                 )
@@ -2459,10 +2577,16 @@ class TestReader_Py(TestCase):
             data = template.format(status).encode()
             (sock, reader) = self.new(data, rcvbuf=rcvbuf)
             if 100 <= status <= 599:
-                self.assertEqual(reader.read_response(), (status, 'OK', {}))
+                response = reader.read_response('GET')
+                self.assertIsInstance(response, self.ResponseType)
+                self.assertEqual(response.status, status)
+                self.assertEqual(response.reason, 'OK')
+                self.assertEqual(response.headers, {})
+                self.assertIs(response.body, None)
+                self.assertEqual(response, (status, 'OK', {}, None))
             else:
                 with self.assertRaises(ValueError) as cm:
-                    reader.read_response()
+                    reader.read_response('GET')
                 self.assertEqual(str(cm.exception),
                     'bad status: {!r}'.format('{:03d}'.format(status).encode())
                 )
@@ -2472,6 +2596,7 @@ class TestReader_Py(TestCase):
             self.check_read_response(rcvbuf)
 
     def test_read(self):
+        default = self.DEFAULT_PREAMBLE
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
 
         (sock, reader) = self.new(data)
@@ -2490,26 +2615,26 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.tell(), 0)
 
         A = b'A' * 1024
-        B = b'B' * BUF_SIZE
+        B = b'B' * default
         C = b'C' * 512
-        D = b'D' * (BUF_SIZE + 1)
+        D = b'D' * (default + 1)
         (sock, reader) = self.new(A + B + C + D)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
         (sock, reader) = self.new(A + B + C + D, 3)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
         (sock, reader) = self.new(A + B + C + D, 1)
         self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(BUF_SIZE), B)
+        self.assertEqual(reader.read(default), B)
         self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(BUF_SIZE + 1), D)
+        self.assertEqual(reader.read(default + 1), D)
 
 
 class TestReader_C(TestReader_Py):

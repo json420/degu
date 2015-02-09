@@ -30,17 +30,16 @@ This is a reference implementation whose purpose is only to help enforce the
 correctness of the C implementation.
 """
 
-__all__ = (
-    '_MAX_LINE_SIZE',
-    '_MAX_HEADER_COUNT',
-    'EmptyPreambleError',
-)
+from collections import namedtuple
+
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
-_MAX_HEADER_COUNT = 20
-
 READER_BUFFER_SIZE = 65536  # 64 KiB
 MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
+
+MIN_PREAMBLE     =  4096  #  4 KiB
+DEFAULT_PREAMBLE = 32768  # 32 KiB
+MAX_PREAMBLE     = 65536  # 64 KiB
 
 GET = 'GET'
 PUT = 'PUT'
@@ -49,6 +48,7 @@ HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
 
+ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
 
 ################    BEGIN GENERATED TABLES    ##################################
@@ -271,6 +271,7 @@ def parse_request(preamble):
 
 
 def parse_response(preamble):
+    assert isinstance(preamble, bytes)
     (line, *header_lines) = preamble.split(b'\r\n')
     (status, reason) = parse_response_line(line)
     headers = _parse_header_lines(header_lines)
@@ -278,21 +279,43 @@ def parse_response(preamble):
 
 
 class Reader:
-    __slots__ = ('sock', 'bodies', '_rawtell', '_rawbuf', '_start', '_buf')
+    __slots__ = (
+        '_sock_recv_into',
+        '_bodies_Body',
+        '_bodies_ChunkedBody',
+        '_rawtell',
+        '_rawbuf',
+        '_start',
+        '_buf',
+    )
 
-    def __init__(self, sock, bodies):
+    def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
         if not callable(sock.recv_into):
             raise TypeError('sock.recv_into() is not callable')
         if not callable(bodies.Body):
             raise TypeError('bodies.Body is not callable')
         if not callable(bodies.ChunkedBody):
             raise TypeError('bodies.ChunkedBody is not callable')
-        self.sock = sock
-        self.bodies = bodies
+        assert isinstance(size, int)
+        if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
+            raise ValueError(
+                'need {!r} <= size <= {!r}; got {!r}'.format(
+                    MIN_PREAMBLE, MAX_PREAMBLE, size
+                )
+            )
+        self._sock_recv_into = sock.recv_into
+        self._bodies_Body = bodies.Body
+        self._bodies_ChunkedBody = bodies.ChunkedBody
         self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(2**16))
+        self._rawbuf = memoryview(bytearray(size))
         self._start = 0
         self._buf = b''
+
+    def Body(self, content_length):
+        return self._bodies_Body(self, content_length)
+
+    def ChunkedBody(self):
+        return self._bodies_ChunkedBody(self)
 
     def rawtell(self):
         return self._rawtell
@@ -300,8 +323,8 @@ class Reader:
     def tell(self):
         return self._rawtell - len(self._buf)
 
-    def _sock_recv_into(self, buf):
-        added = self.sock.recv_into(buf)
+    def _recv_into(self, buf):
+        added = self._sock_recv_into(buf)
         self._rawtell += added
         return added
 
@@ -408,7 +431,7 @@ class Reader:
         remaining = len(self._rawbuf) - len(cur)
         while remaining > 0:
             dst = self._rawbuf[-remaining:]
-            added = self._sock_recv_into(dst)
+            added = self._recv_into(dst)
             if added <= 0:
                 assert added == 0
                 return (False, cur)
@@ -451,13 +474,33 @@ class Reader:
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
-        return parse_request(preamble)
+        request = parse_request(preamble)
+        headers = request['headers']
+        if 'content-length' in headers:
+            body = self.Body(headers['content-length'])
+        elif 'transfer-encoding' in headers:
+            body = self.ChunkedBody()
+        else:
+            body = None
+        if request.setdefault('body', body) is not body:
+            raise Exception('must already have a body')
+        return request
 
-    def read_response(self):
+    def read_response(self, method):
+        method = parse_method(method)
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('response preamble is empty')
-        return parse_response(preamble)
+        (status, reason, headers) = parse_response(preamble)
+        if method == 'HEAD':
+            body = None
+        elif 'content-length' in headers:
+            body = self.Body(headers['content-length'])
+        elif 'transfer-encoding' in headers:
+            body = self.ChunkedBody()
+        else:
+            body = None
+        return Response(status, reason, headers, body)
 
     def read(self, size):
         assert isinstance(size, int)
@@ -476,7 +519,7 @@ class Reader:
         dst[0:src_len] = src
         stop = src_len
         while stop < size:
-            added = self._sock_recv_into(dst[stop:])
+            added = self._recv_into(dst[stop:])
             if added <= 0:
                 assert added == 0
                 break
@@ -485,7 +528,7 @@ class Reader:
         return dst[:stop].tobytes()
 
 
-def format_request_preamble(method, uri, headers):
+def format_request(method, uri, headers):
     lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
     if headers:
         header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
@@ -495,7 +538,7 @@ def format_request_preamble(method, uri, headers):
     return ''.join(lines).encode()
 
 
-def format_response_preamble(status, reason, headers):
+def format_response(status, reason, headers):
     lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
     if headers:
         header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]

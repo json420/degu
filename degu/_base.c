@@ -24,18 +24,12 @@
 #include <Python.h>
 #include <stdbool.h>
 
-
-#define _MAX_LINE_SIZE 4096  // Hello
-#define _MAX_HEADER_COUNT 20
-
-#define READER_BUFFER_SIZE 65536
-
-#define MAX_PREAMBLE 32768
+#define _MAX_LINE_SIZE 4096
+#define MIN_PREAMBLE 4096
+#define MAX_PREAMBLE 65536
+#define DEFAULT_PREAMBLE 32768
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
-
-#define CONTENT_LENGTH_BIT    1
-#define TRANSFER_ENCODING_BIT 2
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -56,7 +50,6 @@ static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
 
 static PyObject *str_empty = NULL;    //  ''
-static PyObject *bytes_empty = NULL;  // b''
 
 /* Keys used in the RGI request dict */
 static PyObject *str_method  = NULL;  // 'method'
@@ -157,6 +150,37 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
+
+/*******************************************************************************
+ * Internal API: Macros
+ *     _SET()
+ *     _SET_AND_INC()
+ *     _SET_ITEM()
+ */
+#define _SET(pyobj, source) \
+    if (pyobj != NULL) { \
+        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
+    } \
+    pyobj = (source); \
+    if (pyobj == NULL) { \
+        goto error; \
+    }
+
+#define _SET_AND_INC(pyobj, source) \
+    _SET(pyobj, source) \
+    Py_INCREF(pyobj);
+
+#define _SET_ITEM(dict, key, val) \
+    if (PyDict_SetItem(dict, key, val) != 0) { \
+        goto error; \
+    }
+
+
+/*******************************************************************************
+ * Internal API: Misc
+ *     _min(a, b)
+ *     _calloc_buf(len)
+ */
 static inline size_t
 _min(const size_t a, const size_t b)
 {
@@ -166,23 +190,49 @@ _min(const size_t a, const size_t b)
     return b;
 }
 
+static uint8_t *
+_calloc_buf(const size_t len)
+{
+    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (buf == NULL) {
+        PyErr_NoMemory();
+    }
+    return buf;
+}
 
+
+/*******************************************************************************
+ * Internal API: DeguBuf (safe buffer slicing)
+ *     typedef DeguBuf
+ *     _isnull(src)
+ *     _isempty(src)
+ *     _slice(src, start, stop)
+ *     _equal(a, b)
+ *     _find(haystack, needle)
+ *     _tostr(src)
+ *     _tobytes(src)
+ *     _value_error(format, src)
+ *     _value_error2(format, src1, src2)
+ *     _decode(src, mask, format)
+ */
 typedef struct {
     const uint8_t *buf;
     const size_t len;
 } DeguBuf;
 
-
-static const DeguBuf NULL_DeguBuf = {NULL, 0}; 
-
+static DeguBuf NULL_DeguBuf = {NULL, 0}; 
 
 #define _DEGU_BUF_CONSTANT(name, text) \
-    static const DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
+    static DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
 
 _DEGU_BUF_CONSTANT(LF, "\n")
 _DEGU_BUF_CONSTANT(CRLF, "\r\n")
-_DEGU_BUF_CONSTANT(CRLF_CRLF, "\r\n\r\n")
-_DEGU_BUF_CONSTANT(OK, "OK")
+_DEGU_BUF_CONSTANT(CRLFCRLF, "\r\n\r\n")
+_DEGU_BUF_CONSTANT(SPACE, " ")
+_DEGU_BUF_CONSTANT(SLASH, "/")
+_DEGU_BUF_CONSTANT(SPACE_SLASH, " /")
+_DEGU_BUF_CONSTANT(QMARK, "?")
+_DEGU_BUF_CONSTANT(SEP, ": ")
 _DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
 _DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
 _DEGU_BUF_CONSTANT(GET, "GET")
@@ -190,62 +240,71 @@ _DEGU_BUF_CONSTANT(PUT, "PUT")
 _DEGU_BUF_CONSTANT(POST, "POST")
 _DEGU_BUF_CONSTANT(HEAD, "HEAD")
 _DEGU_BUF_CONSTANT(DELETE, "DELETE")
+_DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 
+static inline bool
+_isnull(DeguBuf src)
+{
+    if (src.buf == NULL) {
+        return true;
+    }
+    return false;
+}
 
 static inline bool
-_equal(const DeguBuf a, const DeguBuf b) {
+_isempty(DeguBuf src)
+{
+    if (src.buf == NULL || src.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static DeguBuf
+_slice(DeguBuf src, const size_t start, const size_t stop)
+{
+    if (_isempty(src) || start > stop || stop > src.len) {
+        Py_FatalError("_slice(): bad internal call");
+    }
+    return (DeguBuf){src.buf + start, stop - start};
+}
+
+static bool
+_equal(DeguBuf a, DeguBuf b) {
+    if (_isnull(a) || _isempty(b)) {
+        Py_FatalError("_equal(): bad internal call");
+    }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
         return true;
     }
     return false;
 }
 
-
-static DeguBuf
-_slice(DeguBuf src, const size_t start, const size_t stop)
+static size_t
+_find(DeguBuf haystack, DeguBuf needle)
 {
-    if (src.buf == NULL || src.len == 0) {
-        Py_FatalError("_slice(): NULL src buffer");
+    const uint8_t *ptr;
+    if (_isempty(haystack) || _isempty(needle)) {
+        Py_FatalError("_find(): empty *haystack* or empty *needle*");
     }
-    if (start > stop || stop > src.len) {
-        Py_FatalError("_slice(): requested subslice not within parent");
+    ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return haystack.len;
     }
-    return (DeguBuf){src.buf + start, stop - start};
+    return ptr - haystack.buf;
 }
 
-
-static DeguBuf
-_slice_before(DeguBuf src, const uint8_t *buf)
+static PyObject *
+_tostr(DeguBuf src)
 {
-    if (buf < src.buf) {
-        Py_FatalError("_slice_before: buf < src.buf");
+    if (src.buf == NULL) {
+        return NULL;
     }
-    return _slice(src, 0, buf - src.buf);
+    return PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, src.buf, src.len);
 }
-
-
-static DeguBuf
-_slice_after(DeguBuf src, const uint8_t *buf)
-{
-    if (buf < src.buf) {
-        Py_FatalError("_slice_after: buf < src.buf");
-    }
-    return _slice(src, buf - src.buf, src.len);
-}
-
-
-static DeguBuf
-_slice_between(DeguBuf src, const uint8_t *buf_a, const uint8_t *buf_b)
-{
-    if (buf_a < src.buf || buf_b < src.buf) {
-        Py_FatalError("_slice_between: buf_a < src.buf || buf_b < src.buf");
-    }
-    return _slice(src, buf_a - src.buf, buf_b - src.buf);
-}
-
 
 static PyObject *
 _tobytes(DeguBuf src)
@@ -253,13 +312,8 @@ _tobytes(DeguBuf src)
     if (src.buf == NULL) {
         return NULL;
     }
-    if (src.len == 0) {
-        Py_XINCREF(bytes_empty);
-        return bytes_empty;
-    }
     return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
 }
-
 
 static void
 _value_error(const char *format, DeguBuf src)
@@ -270,7 +324,6 @@ _value_error(const char *format, DeguBuf src)
     }
     Py_CLEAR(tmp);
 }
-
 
 static void
 _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
@@ -284,173 +337,6 @@ _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
     Py_CLEAR(tmp2);
 }
 
-
-static uint8_t *
-_calloc_buf(const size_t len)
-{
-    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (buf == NULL) {
-        PyErr_NoMemory();
-    }
-    return buf;
-}
-
-
-/*
- * _SET() macro: assign a PyObject pointer.
- *
- * Use this when you're assuming *pyobj* has been initialized to NULL.
- *
- * This macro will call Py_FatalError() if *pyobj* does not start equal to NULL
- * (a sign that perhaps you should be using the _RESET() macro instead).
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
- */
-#define _SET(pyobj, source) \
-    if (pyobj != NULL) { \
-        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
-    } \
-    pyobj = (source); \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-
-#define _SET_AND_INC(pyobj, source) \
-    _SET(pyobj, source) \
-    Py_INCREF(pyobj);
-
-
-/*
- * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
- *
- * Use this to decrement the current object pointed to by *pyobj*, and then
- * assign it to the PyObject pointer returned by *source*.
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
- */
-#define _RESET(pyobj, source) \
-    Py_CLEAR(pyobj); \
-    pyobj = source; \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-
-#define _REPLACE(pyobj, source) \
-    _RESET(pyobj, source) \
-    Py_INCREF(pyobj);
-
-
-#define _SET_ITEM(dict, key, val) \
-    if (PyDict_SetItem(dict, key, val) != 0) { \
-        goto error; \
-    }
-
-
-#define _APPEND(list, item) \
-    if (PyList_Append(list, item) != 0) { \
-        goto error; \
-    }
-
-
-static PyObject *
-_parse_method(DeguBuf src)
-{
-    PyObject *method = NULL;
-
-    if (src.len == 3) {
-        if (_equal(src, GET)) {
-            method = str_GET;
-        }
-        else if (_equal(src, PUT)) {
-            method = str_PUT;
-        }
-    }
-    else if (src.len == 4) {
-        if (_equal(src, POST)) {
-            method = str_POST;
-        }
-        else if (_equal(src, HEAD)) {
-            method = str_HEAD;
-        }
-    }
-    else if (_equal(src, DELETE)) {
-        method = str_DELETE;
-    }
-    if (method == NULL) {
-        _value_error("bad HTTP method: %R", src);
-    }
-    else {
-        Py_INCREF(method);
-    }
-    return method;
-}
-
-
-static PyObject *
-degu_parse_method(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_method((DeguBuf){buf, len});
-}
-
-
-static PyObject *
-_parse_header_name(DeguBuf src)
-{
-    PyObject *dst = NULL;
-    uint8_t *dst_buf;
-    uint8_t r;
-    size_t i;
-
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "header name is empty");
-        return NULL; 
-    }
-    if (src.len > MAX_KEY) {
-        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
-        return NULL; 
-    }
-    dst = PyUnicode_New(src.len, 127);
-    if (dst == NULL) {
-        return NULL;
-    }
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (r = i = 0; i < src.len; i++) {
-        r |= dst_buf[i] = _NAMES[src.buf[i]];
-    }
-    if (r & 128) {
-        Py_CLEAR(dst);
-        if (r != 255) {
-            Py_FatalError("internal error in `_parse_header_name()`");
-        }
-        _value_error("bad bytes in header name: %R", src);
-    }
-    return dst;
-}
-
-
-static PyObject *
-parse_header_name(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_header_name((DeguBuf){buf, len});
-}
-
-
 static PyObject *
 _decode(DeguBuf src, const uint8_t mask, const char *format)
 {
@@ -460,7 +346,7 @@ _decode(DeguBuf src, const uint8_t mask, const char *format)
     size_t i;
 
     if (mask == 0 || (mask & 1) != 0) {
-        Py_FatalError("internal error in `_decode()`: bad mask");
+        Py_FatalError("_decode: bad mask");
     }
     if (src.len < 1) {
         _SET_AND_INC(dst, str_empty);
@@ -489,27 +375,122 @@ done:
 }
 
 
-
-/*
- * _parse_content_length(): strictly parse `buf` to build a `PyLongObject`.
- *
- * This is largely to work-around shortcomings in the CPython C API, which
- * has `PyLong_FromString()`, but no `PyLong_FromStringAndSize()`.  This
- * allows us to more strictly parse a content-length header value, and without
- * building an intermediate `PyUnicodeObject` (which carries a fairly large
- * performance hit).
- *
- * This function doesn't allow leading or trailing whitespace, nor does it
- * allow leading zeros (except in the special case when buf == b'0').
- *
+/*******************************************************************************
+ * Internal API: DeguHeaders/DeguRequest/DeguResponse:
+ *     typedef DeguHeaders
+ *     typedef DeguRequest
+ *     typedef DeguResponse
+ *     _clear_degu_headers()
+ *     _clear_degu_request()
+ *     _clear_degu_response()   
  */
+#define DEGU_HEADERS_HEAD \
+    PyObject *headers; \
+    PyObject *content_length; \
+    uint8_t flags;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+} DeguHeaders;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+    PyObject *method;
+    PyObject *uri;
+    PyObject *script;
+    PyObject *path;
+    PyObject *query;
+    PyObject *body;
+} DeguRequest;
+
+typedef struct {
+    DEGU_HEADERS_HEAD
+    PyObject *status;
+    PyObject *reason;
+    PyObject *body;
+} DeguResponse;
+
+#define NEW_DEGU_HEADERS \
+     ((DeguHeaders){NULL, NULL, 0})
+
+#define NEW_DEGU_REQUEST \
+     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
+
+#define NEW_DEGU_RESPONSE \
+    ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
+
+static void
+_clear_degu_headers(DeguHeaders *dh)
+{
+    Py_CLEAR(dh->headers);
+    Py_CLEAR(dh->content_length);
+}
+
+static void
+_clear_degu_request(DeguRequest *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->method);
+    Py_CLEAR(dr->uri);
+    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->path);
+    Py_CLEAR(dr->query);
+    Py_CLEAR(dr->body);
+}
+
+static void
+_clear_degu_response(DeguResponse *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+    Py_CLEAR(dr->body);
+}
+
+
+/*******************************************************************************
+ * Internal API: Parsing: Headers:
+ *
+ *     _parse_key()
+ *     _parse_val()
+ *     _parse_content_length()
+ *     _parse_header_line()
+ *     _parse_headers()
+ */
+static bool
+_parse_key(DeguBuf src, uint8_t *dst_buf)
+{
+    uint8_t r;
+    size_t i;
+    if (src.len > MAX_KEY) {
+        _value_error("header name too long: %R...", _slice(src, 0, MAX_KEY));
+        return false;
+    }
+    for (r = i = 0; i < src.len; i++) {
+        r |= dst_buf[i] = _NAMES[src.buf[i]];
+    }
+    if (r & 128) {
+        if (r != 255) {
+            Py_FatalError("_parse_key: r != 255");
+        }
+        _value_error("bad bytes in header name: %R", src);
+        return false;
+    }
+    return true;
+}
+
+static inline PyObject *
+_parse_val(DeguBuf src)
+{
+    return _decode(src, VALUE_MASK, "bad bytes in header value: %R");
+}
+
 static PyObject *
 _parse_content_length(DeguBuf src)
 {
     uint64_t accum;
     uint8_t flags, c;
     size_t i;
-
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "content-length is empty");
         return NULL; 
@@ -540,177 +521,184 @@ _parse_content_length(DeguBuf src)
     return PyLong_FromUnsignedLongLong(accum);
 }
 
-
-static PyObject *
-parse_content_length(PyObject *self, PyObject *args)
+static bool
+_parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    size_t keystop, valstart;
+    bool success = true;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
 
-    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
-        return NULL;
+    /* Split header line, validate & casefold header name */
+    if (src.len < 4) {
+        _value_error("header line too short: %R", src);
+        goto error;
     }
-    return _parse_content_length((DeguBuf){buf, len});
-}
-
-
-static inline PyObject *
-_parse_status(DeguBuf src)
-{
-    uint8_t d, err;
-    unsigned long accum;
-
-    if (src.len != 3) {
-        _value_error("bad status length: %R", src);
-        return NULL;
+    keystop = _find(src, SEP);
+    if (keystop == 0 || keystop + SEP.len >= src.len) {
+        _value_error("bad header line: %R", src);
+        goto error;
     }
-    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  (d - 48) * 100;
-    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
-    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
-    if (err || accum < 100 || accum > 599) {
-        _value_error("bad status: %R", src);
-        return NULL;
+    valstart = keystop + SEP.len;
+    DeguBuf rawkey = _slice(src, 0, keystop);
+    DeguBuf valsrc = _slice(src, valstart, src.len);
+    if (! _parse_key(rawkey, scratch)) {
+        goto error;
     }
-    return PyLong_FromUnsignedLong(accum);
-}
+    DeguBuf keysrc = {scratch, rawkey.len};
 
-
-static inline PyObject *
-_parse_reason(DeguBuf src)
-{
-    if (_equal(src, OK)) {
-        Py_XINCREF(str_OK);
-        return str_OK;
+    /* Validate header value (with special handling and fast-paths) */
+    if (_equal(keysrc, CONTENT_LENGTH)) {
+        _SET_AND_INC(key, str_content_length)
+        _SET(val, _parse_content_length(valsrc))
+        if (dh->content_length == NULL) {
+            _SET_AND_INC(dh->content_length, val)
+        }
+        dh->flags |= 1;
     }
-    return _decode(src, REASON_MASK, "bad reason: %R");
+    else if (_equal(keysrc, TRANSFER_ENCODING)) {
+        if (! _equal(valsrc, CHUNKED)) {
+            _value_error("bad transfer-encoding: %R", valsrc);
+            goto error;
+        }
+        _SET_AND_INC(key, str_transfer_encoding)
+        _SET_AND_INC(val, str_chunked)
+        dh->flags |= 2;
+    }
+    else {
+        _SET(key, _tostr(keysrc))
+        _SET(val, _parse_val(valsrc))
+    }
+
+    /* Store in headers dict, make sure it's not a duplicate key */
+    if (PyDict_SetDefault(dh->headers, key, val) != val) {
+        _value_error("duplicate header: %R", src);
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    success = false;
+
+cleanup:
+    Py_CLEAR(key);
+    Py_CLEAR(val);
+    return success;
 }
 
 
 static bool
-_parse_response_line(DeguBuf src, PyObject *response)
+_parse_headers(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
 {
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
+    size_t start, stop;
 
-    /* Reject any response line shorter than 15 bytes:
-     *
-     *     "HTTP/1.1 200 OK"[0:15]
-     *      ^^^^^^^^^^^^^^^
-     */
-    if (src.len < 15) {
-        _value_error("response line too short: %R", src);
-        return false;
+    _SET(dh->headers, PyDict_New())
+    start = 0;
+    while (start < src.len) {
+        stop = start + _find(_slice(src, start, src.len), CRLF);
+        if (!_parse_header_line(_slice(src, start, stop), scratch, dh)) {
+            goto error;
+        }
+        start = stop + CRLF.len;
     }
-
-    /* protocol, spaces:
-     *
-     *     "HTTP/1.1 200 OK"[0:9]
-     *      ^^^^^^^^^
-     *
-     *     "HTTP/1.1 200 OK"[12:13]
-     *                  ^
-     */
-
-    if (memcmp(src.buf, "HTTP/1.1 ", 9) != 0 || src.buf[12] != ' ') {
-        _value_error("bad response line: %R", src);
-        return false;
+    if ((dh->flags & 3) == 3) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error; 
     }
-
-    /* status:
-     *
-     *     "HTTP/1.1 200 OK"[9:12]
-     *               ^^^
-     */
-
-    _SET(status, _parse_status(_slice(src, 9, 12)))
-
-    /* reason:
-     *
-     *     "HTTP/1.1 200 OK"[13:]
-     *                   ^^
-     */
-    _SET(reason, _parse_reason(_slice(src, 13, src.len)))
-
-    /* Success! */
-    PyTuple_SET_ITEM(response, 0, status);
-    PyTuple_SET_ITEM(response, 1, reason);
     return true;
 
 error:
-    Py_CLEAR(status);
-    Py_CLEAR(reason);
     return false;
 }
 
 
+/*******************************************************************************
+ * Internal API: Parsing: Request:
+ *
+ *     _parse_method()
+ *     _parse_path_component()
+ *     _parse_path()
+ *     _parse_query()
+ *     _parse_uri()
+ *     _parse_request_line()
+ *     _parse_request()
+ */
 static PyObject *
-parse_response_line(PyObject *self, PyObject *args)
+_parse_method(DeguBuf src)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
-        return NULL;
+    PyObject *method = NULL;
+    if (src.len == 3) {
+        if (_equal(src, GET)) {
+            method = str_GET;
+        }
+        else if (_equal(src, PUT)) {
+            method = str_PUT;
+        }
     }
-    DeguBuf src = {buf, len};
-    PyObject *response = PyTuple_New(2);
-    if (response == NULL) {
-        return NULL;
+    else if (src.len == 4) {
+        if (_equal(src, POST)) {
+            method = str_POST;
+        }
+        else if (_equal(src, HEAD)) {
+            method = str_HEAD;
+        }
     }
-    if (!_parse_response_line(src, response)) {
-        Py_CLEAR(response);
+    else if (_equal(src, DELETE)) {
+        method = str_DELETE;
     }
-    return response;
+    if (method == NULL) {
+        _value_error("bad HTTP method: %R", src);
+    }
+    else {
+        Py_INCREF(method);
+    }
+    return method;
 }
 
+static inline PyObject *
+_parse_path_component(DeguBuf src)
+{
+    return _decode(src, PATH_MASK, "bad bytes in path component: %R");
+}
 
 static PyObject *
 _parse_path(DeguBuf src)
 {
     PyObject *path = NULL;
     PyObject *component = NULL;
-    const uint8_t *start, *stop, *final_stop;
+    size_t start, stop;
 
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "path is empty");
-        return NULL;
+    if (_isempty(src)) {
+        Py_FatalError("_parse_path(): bad internal call");
+        goto error;
     }
     if (src.buf[0] != '/') {
         _value_error("path[0:1] != b'/': %R", src);
-        return NULL;
-    }
-
-    path = PyList_New(0);
-    if (path == NULL) {
         goto error;
     }
+    _SET(path, PyList_New(0))
     if (src.len == 1) {
         goto cleanup;
     }
-    final_stop = src.buf + src.len;
-    start = src.buf + 1;
-    while (start < final_stop) {
-        stop = memchr(start, '/', final_stop - start);
-        if (stop == NULL) {
-            stop = final_stop;
-        }
+    start = 1;
+    while (start < src.len) {
+        stop = start + _find(_slice(src, start, src.len), SLASH);
         if (start >= stop) {
             _value_error("b'//' in path: %R", src);
             goto error;
         }
-        component = _decode(_slice_between(src, start, stop), PATH_MASK,
-            "bad bytes in path component: %R"
-        );
-        if (component == NULL) {
-            goto error;
-        }
+        _SET(component,
+            _parse_path_component(_slice(src, start, stop))
+        )
         if (PyList_Append(path, component) != 0) {
             goto error;
         }
         Py_CLEAR(component);
         start = stop + 1;
     }
-    if (src.buf[src.len - 1] == '/') {
+    if (_equal(_slice(src, src.len - 1, src.len), SLASH)) {
         if (PyList_Append(path, str_empty) != 0) {
             goto error;
         }
@@ -719,12 +707,14 @@ _parse_path(DeguBuf src)
 
 error:
     Py_CLEAR(path);
+    Py_CLEAR(component);
 
 cleanup:
-    Py_CLEAR(component);
+    if (component != NULL) {
+        Py_FatalError("_parse_path(): component != NULL");
+    }
     return path;
 }
-
 
 static inline PyObject *
 _parse_query(DeguBuf src)
@@ -732,74 +722,40 @@ _parse_query(DeguBuf src)
     return _decode(src, QUERY_MASK, "bad bytes in query: %R");
 }
 
-
 static bool
-_parse_uri(DeguBuf src, PyObject *request)
+_parse_uri(DeguBuf src, DeguRequest *dr)
 {
-    bool success = true;
-    const uint8_t *q;
-    PyObject *uri = NULL;
-    PyObject *script = NULL;
-    PyObject *path = NULL;
-    PyObject *query = NULL;
+    size_t path_stop, query_start;
 
-    /* Sanity check */
-    if (src.buf == NULL || request == NULL || !PyDict_CheckExact(request)) {
-        Py_FatalError("bad internal call to _parse_uri()");
+    if (_isnull(src)) {
+        Py_FatalError("_parse_uri(): bad internal call");
+        goto error;
     }
-
-    /* Don't allow an empty uri */
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-
-    /* Build PyObjects used as values in request dict */
-    _SET(uri,
-        _decode(src, URI_MASK, "bad bytes in uri: %R")
-    )
-    _SET(script, PyList_New(0))
-    q = memchr(src.buf, '?', src.len);
-    if (q == NULL) {
-        _SET(path, _parse_path(src))
-        _SET_AND_INC(query, Py_None)
+    path_stop = _find(src, QMARK);
+    _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
+    _SET(dr->script, PyList_New(0))
+    _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
+    if (path_stop < src.len) {
+        query_start = path_stop + QMARK.len;
+        _SET(dr->query, _parse_query(_slice(src, query_start, src.len)))
     }
     else {
-        _SET(path, _parse_path(_slice_before(src, q)))
-        _SET(query, _parse_query(_slice_after(src, q + 1)))
+        _SET_AND_INC(dr->query, Py_None)
     }
-
-    /* Fill in values in request dict */
-    _SET_ITEM(request, str_uri, uri)
-    _SET_ITEM(request, str_script, script)
-    _SET_ITEM(request, str_path, path)
-    _SET_ITEM(request, str_query, query)
-    goto cleanup;
+    return true;
 
 error:
-    success = false;
-
-cleanup:
-    Py_CLEAR(uri);
-    Py_CLEAR(script);
-    Py_CLEAR(path);
-    Py_CLEAR(query);
-    return success;
+    return false;
 }
 
-
 static bool
-_parse_request_line(DeguBuf line, PyObject *request)
+_parse_request_line(DeguBuf line, DeguRequest *dr)
 {
-    bool success = true;
-    uint8_t *sep;
     size_t method_stop, uri_start;
-    PyObject *method = NULL;
-
-    /* Sanity check */
-    if (line.buf == NULL || request == NULL || !PyDict_CheckExact(request)) {
-        Py_FatalError("bad internal call to _parse_request_line()");
-    }
 
     /* Reject any request line shorter than 14 bytes:
      *
@@ -834,346 +790,152 @@ _parse_request_line(DeguBuf line, PyObject *request)
      *     "GET /"
      *         ^^
      */
-    sep = memmem(src.buf, src.len, " /", 2);
-    if (sep == NULL) {
+    method_stop = _find(src, SPACE_SLASH);
+    if (method_stop >= src.len) {
         _value_error("bad request line: %R", line);
         goto error;
     }
-    method_stop = sep - src.buf;
     uri_start = method_stop + 1;
+    DeguBuf method_src = _slice(src, 0, method_stop);
+    DeguBuf uri_src = _slice(src, uri_start, src.len);
 
-    /* Parse the method, add it to the request dict */
-    _SET(method, _parse_method(_slice(src, 0, method_stop)))
-    _SET_ITEM(request, str_method, method)
-
-    /* _parse_uri() will fill in uri, script, request, and query */
-    if (!_parse_uri(_slice(src, uri_start, src.len), request)) {
+    /* _parse_method(), _parse_uri() handle the rest */
+    _SET(dr->method, _parse_method(method_src))
+    if (!_parse_uri(uri_src, dr)) {
         goto error;
-    }
-    goto cleanup;
-
-error:
-    success = false;
-
-cleanup:
-    Py_CLEAR(method);
-    return success;
-}
-
-
-static PyObject *
-parse_uri(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *request = NULL;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
-        return NULL;
-    }
-    _SET(request, PyDict_New())
-    DeguBuf src = {buf, len};
-    if (!_parse_uri(src, request)) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    Py_CLEAR(request);
-
-cleanup:
-    return request;
-}
-
-
-static PyObject *
-parse_request_line(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *request = NULL;
-
-    if (!PyArg_ParseTuple(args, "s#:parse_request_line", &buf, &len)) {
-        return NULL;
-    }
-    DeguBuf src = {buf, len};
-    _SET(request, PyDict_New())
-    if (! _parse_request_line(src, request)) {
-        goto error;
-    }
-    goto done;
-
-error:
-    Py_CLEAR(request);
-
-done:
-    return request;
-}
-
-
-static inline bool
-_parse_key(DeguBuf key, uint8_t *scratch)
-{
-    uint8_t r;
-    size_t i;
-
-    if (key.len > MAX_KEY) {
-        _value_error("header name too long: %R...", _slice(key, 0, MAX_KEY));
-        return false;
-    }
-    for (r = i = 0; i < key.len; i++) {
-        r |= scratch[i] = _NAMES[key.buf[i]];
-    }
-    if (r & 128) {
-        if (r != 255) {
-            Py_FatalError("internal error in `_parse_header_name()`");
-        }
-        _value_error("bad bytes in header name: %R", key);
-        return false;
     }
     return true;
+
+error:
+    return false;
+}
+
+static bool
+_parse_request(DeguBuf src, uint8_t *scratch, DeguRequest *dr)
+{
+    const size_t stop = _find(src, CRLF);
+    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
+    DeguBuf line_src = _slice(src, 0, stop);
+    DeguBuf headers_src = _slice(src, start, src.len);
+    if (!_parse_request_line(line_src, dr)) {
+        goto error;
+    }
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)dr)) {
+        goto error;
+    }
+    return true;
+
+error:
+    return false;
 }
 
 
-static PyObject *
-_tostr(DeguBuf src)
+
+/*******************************************************************************
+ * Internal API: Parsing: Response
+ */
+static inline PyObject *
+_parse_status(DeguBuf src)
 {
-    PyObject *dst = PyUnicode_New(src.len, 127);
-    if (dst == NULL) {
+    uint8_t d, err;
+    unsigned long accum;
+
+    if (src.len != 3) {
+        _value_error("bad status length: %R", src);
         return NULL;
     }
-    uint8_t *dst_buf = PyUnicode_1BYTE_DATA(dst);
-    memcpy(dst_buf, src.buf, src.len);
-    return dst;
+    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  (d - 48) * 100;
+    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
+    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
+    if (err || accum < 100 || accum > 599) {
+        _value_error("bad status: %R", src);
+        return NULL;
+    }
+    return PyLong_FromUnsignedLong(accum);
 }
-
 
 static inline PyObject *
-_parse_val(DeguBuf val)
+_parse_reason(DeguBuf src)
 {
-    return _decode(val, VALUE_MASK, "bad bytes in header value: %R");
+    if (_equal(src, OK)) {
+        Py_XINCREF(str_OK);
+        return str_OK;
+    }
+    return _decode(src, REASON_MASK, "bad reason: %R");
 }
 
-
-static int
-_parse_header_line(DeguBuf src, PyObject *headers, uint8_t *scratch)
+static bool
+_parse_response_line(DeguBuf src, DeguResponse *dr)
 {
-    const uint8_t *sep = NULL;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
-    int flags = 0;
-
-    if (src.len < 4) {
-        _value_error("header line too short: %R", src);
+    /* Reject any response line shorter than 15 bytes:
+     *
+     *     "HTTP/1.1 200 OK"[0:15]
+     *      ^^^^^^^^^^^^^^^
+     */
+    if (src.len < 15) {
+        _value_error("response line too short: %R", src);
         goto error;
     }
 
-    // FIXME: User a better error message here
-    sep = memmem(src.buf + 1, src.len - 1, ": ", 2);
-    if (sep == NULL) {
-        _value_error("bad header line: %R", src);
+    /* protocol, spaces:
+     *
+     *     "HTTP/1.1 200 OK"[0:9]
+     *      ^^^^^^^^^
+     *
+     *     "HTTP/1.1 200 OK"[12:13]
+     *                  ^
+     */
+    DeguBuf pcol = _slice(src, 0, 9);
+    DeguBuf sp = _slice(src, 12, 13);
+    if (! (_equal(pcol, RESPONSE_PROTOCOL) && _equal(sp, SPACE))) {
+        _value_error("bad response line: %R", src);
         goto error;
     }
-    DeguBuf rawkeysrc = _slice(src, 0, sep - src.buf);
-    DeguBuf valsrc = _slice(src, rawkeysrc.len + 2, src.len);
 
-    if (! _parse_key(rawkeysrc, scratch)) {
-        goto error;
-    }
-    DeguBuf keysrc = {scratch, rawkeysrc.len};
+    /* status:
+     *
+     *     "HTTP/1.1 200 OK"[9:12]
+     *               ^^^
+     */
+    _SET(dr->status, _parse_status(_slice(src, 9, 12)))
 
-    if (_equal(keysrc, CONTENT_LENGTH)) {
-        _SET_AND_INC(key, str_content_length)
-        _SET(val, _parse_content_length(valsrc))
-        flags = CONTENT_LENGTH_BIT;
-    }
-    else if (_equal(keysrc, TRANSFER_ENCODING)) {
-        if (! _equal(valsrc, CHUNKED)) {
-            _value_error("bad transfer-encoding: %R", valsrc);
-            goto error;
-        }
-        _SET_AND_INC(key, str_transfer_encoding)
-        _SET_AND_INC(val, str_chunked)
-        flags = TRANSFER_ENCODING_BIT;
-    }
-    else {
-        _SET(key, _tostr(keysrc))
-        _SET(val, _parse_val(valsrc))
-    }
-
-    /* Store in headers dict, make sure it's not a duplicate key */
-    if (PyDict_SetDefault(headers, key, val) != val) {
-        _value_error("duplicate header: %R", src);
-        goto error;
-    }
-    goto cleanup;
-
-error:  
-    flags = -1;
-
-cleanup:
-    Py_CLEAR(key);
-    Py_CLEAR(val);
-    return flags;
-}
-
-
-static PyObject *
-_parse_headers(DeguBuf src, uint8_t *scratch)
-{
-    PyObject *headers = NULL;
-    const uint8_t *start, *stop, *final_stop;
-    uint8_t flags = 0;
-    int newflags;
-
-    _SET(headers, PyDict_New())
-    if (src.len == 0) {
-        goto cleanup;
-    }
-
-    final_stop = src.buf + src.len;
-    start = src.buf;
-    while (start < final_stop) {
-        stop = memmem(start, final_stop - start, CRLF.buf, CRLF.len);
-        if (stop == NULL) {
-            stop = final_stop;
-        }
-        newflags = _parse_header_line(
-            _slice_between(src, start, stop), headers, scratch
-        );
-        if (newflags < 0) {
-            goto error;
-        }
-        flags |= newflags;
-        start = stop + 2;
-    }
-    if (flags == 3) {
-        PyErr_SetString(PyExc_ValueError, 
-            "cannot have both content-length and transfer-encoding headers"
-        );
-        goto error; 
-    }
-    goto cleanup;
+    /* reason:
+     *
+     *     "HTTP/1.1 200 OK"[13:]
+     *                   ^^
+     */
+    _SET(dr->reason, _parse_reason(_slice(src, 13, src.len)))
+    return true;
 
 error:
-    Py_CLEAR(headers);
-
-cleanup:
-    return headers;
+    return false;
 }
 
-
-static PyObject *
-_parse_request(DeguBuf src, uint8_t *scratch)
+static bool
+_parse_response(DeguBuf src, uint8_t *scratch, DeguResponse *dr)
 {
-    PyObject *request = NULL;
-    PyObject *headers = NULL;
-    uint8_t *crlf;
-    size_t stop_line, start_headers;
-
-    crlf = memmem(src.buf, src.len, CRLF.buf, CRLF.len);
-    if (crlf == NULL) {
-        stop_line =  src.len;
-        start_headers = src.len;
-    }
-    else {
-        stop_line = crlf - src.buf;
-        start_headers = stop_line + 2;
-    }
-
-    _SET(request, PyDict_New())
-    if (! _parse_request_line(_slice(src, 0, stop_line), request)) {
+    const size_t stop = _find(src, CRLF);
+    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
+    DeguBuf line_src = _slice(src, 0, stop);
+    DeguBuf headers_src = _slice(src, start, src.len);
+    if (!_parse_response_line(line_src, dr)) {
         goto error;
     }
-    _SET(headers,
-        _parse_headers(_slice(src, start_headers, src.len), scratch)
-    )
-    _SET_ITEM(request, str_headers, headers)
-    goto cleanup;
-
-error:
-    Py_CLEAR(request);
-
-cleanup:
-    Py_CLEAR(headers);
-    return request;
-}
-
-
-static PyObject *
-_parse_response(DeguBuf src, uint8_t *scratch)
-{
-    PyObject *response = NULL;
-    PyObject *headers = NULL;
-    uint8_t *crlf;
-    size_t stop_line, start_headers;
-
-    crlf = memmem(src.buf, src.len, CRLF.buf, CRLF.len);
-    if (crlf == NULL) {
-        stop_line =  src.len;
-        start_headers = src.len;
-    }
-    else {
-        stop_line = crlf - src.buf;
-        start_headers = stop_line + 2;
-    }
-    _SET(response, PyTuple_New(3))
-    if (! _parse_response_line(_slice(src, 0, stop_line), response)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)dr)) {
         goto error;
     }
-    _SET(headers,
-        _parse_headers(_slice(src, start_headers, src.len), scratch)
-    )
-    PyTuple_SET_ITEM(response, 2, headers);
-    goto cleanup;
+    return true;
 
 error:
-    Py_CLEAR(response);
-    Py_CLEAR(headers);
-
-cleanup:
-    return response;
+    return false;
 }
 
 
-static PyObject *
-parse_request(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
-        return NULL;
-    }
-    DeguBuf src = {buf, len};
-    uint8_t *scratch = _calloc_buf(MAX_KEY);
-    if (scratch == NULL) {
-        return NULL;
-    }
-    PyObject *ret = _parse_request(src, scratch);
-    free(scratch);
-    return ret;
-}
 
-
-static PyObject *
-parse_response(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
-        return NULL;
-    }
-    DeguBuf src = {buf, len};
-    uint8_t *scratch = _calloc_buf(MAX_KEY);
-    if (scratch == NULL) {
-        return NULL;
-    }
-    PyObject *ret = _parse_response(src, scratch);
-    free(scratch);
-    return ret;
-}
-
-
+/*******************************************************************************
+ * Internal API: Formatting:
+ *     _format_headers()
+ */
 static PyObject *
 _format_headers(PyObject *headers)
 {
@@ -1216,11 +978,301 @@ cleanup:
 }
 
 
+
+/*******************************************************************************
+ * namedtuples: Response:
+ *     ResponseType
+ *     _Response()   
+ */
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+static PyTypeObject ResponseType;
+
+static PyObject *
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+{
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SetItem(response, 0, status);
+    PyStructSequence_SetItem(response, 1, reason);
+    PyStructSequence_SetItem(response, 2, headers);
+    PyStructSequence_SetItem(response, 3, body);
+    return response;
+}
+
+
+
+/*******************************************************************************
+ * Public API: Parsing: Headers:
+ *     parse_header_name()
+ *     parse_content_length()
+ *     parse_header_line()
+ *     parse_headers()
+ */
+static PyObject *
+parse_header_name(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *dst = NULL;
+    uint8_t *dst_buf;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header name is empty");
+        return NULL;
+    }
+    if (src.len > MAX_KEY) {
+        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
+        return NULL;
+    }
+
+    _SET(dst, PyUnicode_New(src.len, 127))
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    if (!_parse_key(src, dst_buf)) {
+        goto error;
+    }
+    goto done;
+
+error:
+    Py_CLEAR(dst);
+
+done:
+    return dst;
+}
+
+static PyObject *
+parse_content_length(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_content_length((DeguBuf){buf, len});
+}
+
+
+
+/*******************************************************************************
+ * Public API: Parsing: Requests:
+ *     parse_method()
+ *     parse_uri()
+ *     parse_request_line()
+ *     parse_request()
+ */
+static PyObject *
+parse_method(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_method((DeguBuf){buf, len});
+}
+
+static PyObject *
+parse_uri(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (!_parse_uri(src, &dr)) {
+        goto error;
+    }
+    _SET(ret, PyDict_New())
+    _SET_ITEM(ret, str_uri, dr.uri)
+    _SET_ITEM(ret, str_script, dr.script)
+    _SET_ITEM(ret, str_path, dr.path)
+    _SET_ITEM(ret, str_query, dr.query)
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_request(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_request_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_request_line", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (!_parse_request_line(src, &dr)) {
+        goto error;
+    }
+    _SET(ret, PyDict_New())
+    _SET_ITEM(ret, str_method, dr.method)
+    _SET_ITEM(ret, str_uri, dr.uri)
+    _SET_ITEM(ret, str_script, dr.script)
+    _SET_ITEM(ret, str_path, dr.path)
+    _SET_ITEM(ret, str_query, dr.query)
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_request(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_request(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    uint8_t *scratch = NULL;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    _SET(scratch, _calloc_buf(MAX_KEY))
+    if (!_parse_request(src, scratch, &dr)) {
+        goto error;
+    }
+    _SET(ret, PyDict_New())
+    _SET_ITEM(ret, str_method, dr.method)
+    _SET_ITEM(ret, str_uri, dr.uri)
+    _SET_ITEM(ret, str_script, dr.script)
+    _SET_ITEM(ret, str_path, dr.path)
+    _SET_ITEM(ret, str_query, dr.query)
+    _SET_ITEM(ret, str_headers, dr.headers)
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
+    _clear_degu_request(&dr);
+    return ret;
+}
+
+
+
+/*******************************************************************************
+ * Public API: Parsing: Responses:
+ *     parse_response_line()
+ *     parse_response()
+ */
+static PyObject *
+parse_response_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    if (!_parse_response_line(src, &dr)) {
+        goto error;
+    }
+    if (dr.status == NULL || dr.reason == NULL) {
+        Py_FatalError("parse_response_line");
+        goto error;
+    }
+    _SET(ret, PyTuple_New(2))
+    PyTuple_SET_ITEM(ret, 0, dr.status);
+    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    goto done;
+
+error:
+    _clear_degu_response(&dr);
+
+done:
+    return ret;
+}
+
+static PyObject *
+parse_response(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    uint8_t *scratch = NULL;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    _SET(scratch, _calloc_buf(MAX_KEY))
+    if (!_parse_response(src, scratch, &dr)) {
+        goto error;
+    }
+    _SET(ret, PyTuple_New(3))
+    PyTuple_SET_ITEM(ret, 0, dr.status);
+    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    PyTuple_SET_ITEM(ret, 2, dr.headers);
+    goto cleanup;
+
+error:
+    _clear_degu_response (&dr);
+
+cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
+    return ret;
+}
+
+
+
+/*******************************************************************************
+ * Public API: Formatting:
+ *     format_headers()
+ *     format_request()
+ *     format_response()
+ */
 static PyObject *
 format_headers(PyObject *self, PyObject *args)
 {
     PyObject *headers = NULL;
-
     if (!PyArg_ParseTuple(args, "O:format_headers", &headers)) {
         return NULL;
     }
@@ -1230,13 +1282,11 @@ format_headers(PyObject *self, PyObject *args)
         );
         return NULL;
     }
-
     return _format_headers(headers);
 }
 
-
 static PyObject *
-degu_format_request_preamble(PyObject *self, PyObject *args)
+format_request(PyObject *self, PyObject *args)
 {
     PyObject *method, *uri, *headers, *key, *val;
     ssize_t header_count, pos, i;
@@ -1245,7 +1295,7 @@ degu_format_request_preamble(PyObject *self, PyObject *args)
     PyObject *str = NULL;  /* str version of request preamble */
     PyObject *ret = NULL;  /* bytes version of request preamble */
 
-    if (!PyArg_ParseTuple(args, "UUO:format_request_preamble", &method, &uri, &headers)) {
+    if (!PyArg_ParseTuple(args, "UUO:format_request", &method, &uri, &headers)) {
         return NULL;
     }
     if (!PyDict_CheckExact(headers)) {
@@ -1313,9 +1363,8 @@ cleanup:
     return  ret;
 }
 
-
 static PyObject *
-degu_format_response_preamble(PyObject *self, PyObject *args)
+format_response(PyObject *self, PyObject *args)
 {
     PyObject *status, *reason, *headers, *key, *val;
     ssize_t header_count, pos, i;
@@ -1324,7 +1373,7 @@ degu_format_response_preamble(PyObject *self, PyObject *args)
     PyObject *str = NULL;  /* str version of response preamble */
     PyObject *ret = NULL;  /* bytes version of response preamble */
 
-    if (!PyArg_ParseTuple(args, "OUO:format_response_preamble", &status, &reason, &headers)) {
+    if (!PyArg_ParseTuple(args, "OUO:format_response", &status, &reason, &headers)) {
         return NULL;
     }
     if (!PyDict_CheckExact(headers)) {
@@ -1393,6 +1442,73 @@ cleanup:
 }
 
 
+
+/*******************************************************************************
+ * Public functions: namedtuples:
+ *     Response()
+ */
+static PyObject *
+Response(PyObject *self, PyObject *args)
+{
+    PyObject *status = NULL;
+    PyObject *reason = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    if (!PyArg_ParseTuple(args, "OOOO:Response", &status, &reason, &headers, &body)) {
+        return NULL;
+    }
+    Py_INCREF(status);
+    Py_INCREF(reason);
+    Py_INCREF(headers);
+    Py_INCREF(body);
+    return _Response(status, reason, headers, body);
+}
+
+
+
+/*******************************************************************************
+ * Public API: PyMethodDef table
+ */
+static struct PyMethodDef degu_functions[] = {
+    /* Header Parsing */
+    {"parse_header_name", parse_header_name, METH_VARARGS,
+        "parse_header_name(name)"},
+    {"parse_content_length", parse_content_length, METH_VARARGS,
+        "parse_content_length(value)"},
+
+    /* Request Parsing */
+    {"parse_method", parse_method, METH_VARARGS, "parse_method(method)"},
+    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
+    {"parse_request_line", parse_request_line, METH_VARARGS,
+        "parse_request_line(line)"},
+    {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
+
+    /* Response Parsing */
+    {"parse_response_line", parse_response_line, METH_VARARGS,
+        "parse_response_line(line)"},
+    {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
+
+    /* Formatting */
+    {"format_headers", format_headers, METH_VARARGS,
+        "format_headers(headers)"},
+    {"format_request", format_request, METH_VARARGS,
+        "format_request(method, uri, headers)"},
+    {"format_response", format_response, METH_VARARGS,
+        "format_response(status, reason, headers)"},
+
+    /* namedtuples */
+    {"Response", Response, METH_VARARGS,
+        "Response(status, reason, headers, body)"
+    },
+
+    {NULL, NULL, 0, NULL}
+};
+
+
+
+/*******************************************************************************
+ * Reader
+ */
 typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
@@ -1405,7 +1521,6 @@ typedef struct {
     size_t start;
     size_t stop;
 } Reader;
-
 
 static void
 Reader_dealloc(Reader *self)
@@ -1423,14 +1538,22 @@ Reader_dealloc(Reader *self)
     }
 }
 
-
 static int
 Reader_init(Reader *self, PyObject *args, PyObject *kw)
 {
-    PyObject *sock=NULL, *bodies=NULL;
-    static char *keys[] = {"sock", "bodies", NULL};
+    PyObject *sock = NULL;
+    PyObject *bodies = NULL;
+    ssize_t len = DEFAULT_PREAMBLE;
+    static char *keys[] = {"sock", "bodies", "size", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|Reader", keys, &sock, &bodies)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader", keys, &sock, &bodies, &len)) {
+        return -1;
+    }
+    if (len < MIN_PREAMBLE || len > MAX_PREAMBLE) {
+        PyErr_Format(PyExc_ValueError,
+            "need %zd <= size <= %zd; got %zd",
+            MIN_PREAMBLE, MAX_PREAMBLE, len
+        );
         return -1;
     }
 
@@ -1451,7 +1574,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     }
 
     _SET(self->scratch, _calloc_buf(MAX_KEY))
-    self->len = READER_BUFFER_SIZE;
+    self->len = len;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
     self->start = 0;
@@ -1461,6 +1584,22 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
 error:
     Reader_dealloc(self);
     return -1;
+}
+
+
+static PyObject *
+_Reader_Body(Reader *self, PyObject *content_length) {
+    if (content_length == NULL) {
+        Py_FatalError("_Reader_Body(): bad internal call");
+    }
+    return PyObject_CallFunctionObjArgs(
+        self->bodies_Body, self, content_length, NULL
+    );
+}
+
+static PyObject *
+_Reader_ChunkedBody(Reader *self) {
+    return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
 }
 
 
@@ -1669,32 +1808,123 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
     return _slice(ret, 0, ret.len - end.len);
 }
 
+/* Reader.Body(content_length) */
+static PyObject *
+Reader_Body(Reader *self, PyObject *args) {
+    PyObject *content_length = NULL;
+    if (!PyArg_ParseTuple(args, "O:Body", &content_length)) {
+        return NULL;
+    }
+    return _Reader_Body(self, content_length);
+}
+
+/* Reader.ChunkedBody() */
+static PyObject *
+Reader_ChunkedBody(Reader *self) {
+    return _Reader_ChunkedBody(self);
+}
 
 static PyObject *
 Reader_read_request(Reader *self) {
-    DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+
+    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
     if (src.buf == NULL) {
-        return NULL;
+        goto error;
     }
     if (src.len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
-        return NULL;
+        goto error;
     }
-    return _parse_request(src, self->scratch);
+    if (!_parse_request(src, self->scratch, &dr)) {
+        goto error;
+    }
+    const uint8_t bodyflags = (dr.flags & 3);
+    if (bodyflags == 0) {
+        _SET_AND_INC(dr.body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dr.body, _Reader_Body(self, dr.content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dr.body, _Reader_ChunkedBody(self))
+    }
+    _SET(ret, PyDict_New())
+    _SET_ITEM(ret, str_method, dr.method)
+    _SET_ITEM(ret, str_uri, dr.uri)
+    _SET_ITEM(ret, str_script, dr.script)
+    _SET_ITEM(ret, str_path, dr.path)
+    _SET_ITEM(ret, str_query, dr.query)
+    _SET_ITEM(ret, str_headers, dr.headers)
+    _SET_ITEM(ret, str_body, dr.body)
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_request(&dr);
+    return ret;
 }
 
 
 static PyObject *
-Reader_read_response(Reader *self) {
-    DeguBuf src = _Reader_search(self, self->len, CRLF_CRLF, false, false);
-    if (src.buf == NULL) {
+Reader_read_response(Reader *self, PyObject *args)
+{
+    const uint8_t *method_buf = NULL;
+    size_t method_len = 0;
+    PyObject *method = NULL;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    /* Parse args, validate the request method */
+    if (!PyArg_ParseTuple(args, "s#:", &method_buf, &method_len)) {
         return NULL;
+    }
+    _SET(method, _parse_method((DeguBuf){method_buf, method_len}))
+
+    /* Reader.search() will drain up to the end of the preamble */
+    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    if (src.buf == NULL) {
+        goto error;
     }
     if (src.len == 0) {
         PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
-        return NULL;
+        goto error;
     }
-    return _parse_response(src, self->scratch);
+
+    /* Parse response line and header lines */
+    if (!_parse_response(src, self->scratch, &dr)) {
+        goto error;
+    }
+
+    /* Construct the body:
+     *
+     * The 2 low bits in dr.flags are for content-length and transfer_encoding,
+     * so we test (dr.flags & 3).  This allows additional flags to be added in
+     * the future without breaking this logic.
+     */
+    const uint8_t bodyflags = (dr.flags & 3);
+    if (method == str_HEAD || bodyflags == 0) {
+        _SET_AND_INC(dr.body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dr.body, _Reader_Body(self, dr.content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dr.body, _Reader_ChunkedBody(self))
+    }
+    _SET(ret, _Response(dr.status, dr.reason, dr.headers, dr.body))
+    goto cleanup;
+
+error:
+    _clear_degu_response(&dr);
+
+cleanup:
+    Py_CLEAR(method);
+    Py_CLEAR(dr.content_length);
+    return ret;
 }
 
 
@@ -1889,6 +2119,13 @@ Reader_tell(Reader *self) {
 
 
 static PyMethodDef Reader_methods[] = {
+    {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
+        "Body(content_length)"
+    },
+    {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
+        "ChunkedBody()"
+    },
+
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
     {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
         "return (start, stop) tuple"
@@ -1902,8 +2139,8 @@ static PyMethodDef Reader_methods[] = {
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
         "read_request()"
     },
-    {"read_response", (PyCFunction)Reader_read_response, METH_NOARGS,
-        "read_response()"
+    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS,
+        "read_response(method)"
     },
 
     {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,
@@ -1964,33 +2201,6 @@ static PyTypeObject ReaderType = {
 };
 
 
-
-/* module init */
-static struct PyMethodDef degu_functions[] = {
-    {"parse_method", degu_parse_method, METH_VARARGS, "parse_method(method)"},
-    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
-
-    {"parse_header_name", parse_header_name, METH_VARARGS,
-        "parse_header_name(buf)"
-    },
-    {"parse_content_length", parse_content_length, METH_VARARGS,
-        "parse_content_length(value)"
-    },
-    {"parse_response_line", parse_response_line, METH_VARARGS,
-        "parse_response_line(line)"},
-    {"parse_request_line", parse_request_line, METH_VARARGS,
-        "parse_request_line(line)"},
-    {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
-    {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
-
-    {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
-    {"format_request_preamble", degu_format_request_preamble, METH_VARARGS,
-        "format_request_preamble(method, uri, headers)"},
-    {"format_response_preamble", degu_format_response_preamble, METH_VARARGS,
-        "format_response_preamble(status, reason, headers)"},
-    {NULL, NULL, 0, NULL}
-};
-
 static struct PyModuleDef degu = {
     PyModuleDef_HEAD_INIT,
     "degu._base",
@@ -2014,12 +2224,20 @@ PyInit__base(void)
         return NULL;
     }
 
+    if (PyStructSequence_InitType2(&ResponseType, &ResponseDesc) != 0) {
+        return NULL;
+    }
+    Py_INCREF(&ResponseType);
+    PyModule_AddObject(module, "ResponseType", (PyObject *)&ResponseType);
+
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
 
     /* Init integer constants */
-    PyModule_AddIntMacro(module, _MAX_HEADER_COUNT);
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
+    PyModule_AddIntMacro(module, MIN_PREAMBLE);
+    PyModule_AddIntMacro(module, DEFAULT_PREAMBLE);
+    PyModule_AddIntMacro(module, MAX_PREAMBLE);
 
 #define _ADD_MODULE_STRING(pyobj, name) \
     _SET(pyobj, PyUnicode_InternFromString(name)) \
@@ -2053,7 +2271,6 @@ PyInit__base(void)
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
 
     _SET(str_empty, PyUnicode_InternFromString(""))
-    _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
     _SET(str_method, PyUnicode_InternFromString("method"))
     _SET(str_uri, PyUnicode_InternFromString("uri"))

@@ -24,18 +24,15 @@ HTTP client.
 """
 
 import socket
-from collections import namedtuple
 import os
 
 from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_request_preamble,
+    format_request,
+    Response
 )
-
-
-Response = namedtuple('Response', 'status reason headers body')
 
 
 class ClosedConnectionError(Exception):
@@ -212,7 +209,7 @@ def _validate_request(bodies, method, uri, headers, body):
 
 
 def _write_request(wfile, method, uri, headers, body):
-    preamble = format_request_preamble(method, uri, headers)
+    preamble = format_request(method, uri, headers)
     if body is None:
         total = wfile.write(preamble)
         wfile.flush()
@@ -226,7 +223,7 @@ def _write_request(wfile, method, uri, headers, body):
 
 
 def _read_response(rfile, bodies, method):
-    (status, reason, headers) = rfile.read_response()
+    (status, reason, headers) = rfile.read_response(method)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
@@ -284,7 +281,7 @@ class Connection:
                 headers.update(self.base_headers)
             _validate_request(self.bodies, method, uri, headers, body)
             _write_request(self._wfile, method, uri, headers, body)
-            response = _read_response(self._rfile, self.bodies, method)
+            response = self._rfile.read_response(method)
             self._response_body = response.body
             return response
         except Exception:
