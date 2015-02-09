@@ -153,16 +153,16 @@ def _validate_client_sslctx(sslctx):
 
 
 def _validate_request(bodies, method, uri, headers, body):
-    # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ValueError('invalid method: {!r}'.format(method))
+#    # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
+#    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
+#        raise ValueError('invalid method: {!r}'.format(method))
 
-    # Ensure all header keys are lowercase:
-    if not all([key.islower() for key in headers]):
-        for key in sorted(headers):  # Sorted for deterministic unit testing
-            if not key.islower():
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        raise Exception('should not be reached')
+#    # Ensure all header keys are lowercase:
+#    if not all([key.islower() for key in headers]):
+#        for key in sorted(headers):  # Sorted for deterministic unit testing
+#            if not key.islower():
+#                raise ValueError('non-casefolded header name: {!r}'.format(key))
+#        raise Exception('should not be reached')
 
     # A body of None is the most common, so check this case first:
     if body is None:

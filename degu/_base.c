@@ -1899,6 +1899,16 @@ Reader_read_request(Reader *self) {
     if (!_parse_request(src, self->scratch, &dr)) {
         goto error;
     }
+    const uint8_t bodyflags = (dr.flags & 3);
+    if (bodyflags == 0) {
+        _SET_AND_INC(dr.body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dr.body, _Reader_Body(self, dr.content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dr.body, _Reader_ChunkedBody(self))
+    }
     _SET(ret, PyDict_New())
     _SET_ITEM(ret, str_method, dr.method)
     _SET_ITEM(ret, str_uri, dr.uri)
@@ -1906,6 +1916,7 @@ Reader_read_request(Reader *self) {
     _SET_ITEM(ret, str_path, dr.path)
     _SET_ITEM(ret, str_query, dr.query)
     _SET_ITEM(ret, str_headers, dr.headers)
+    _SET_ITEM(ret, str_body, dr.body)
     goto cleanup;
 
 error:

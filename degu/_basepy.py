@@ -474,7 +474,17 @@ class Reader:
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
-        return parse_request(preamble)
+        request = parse_request(preamble)
+        headers = request['headers']
+        if 'content-length' in headers:
+            body = self.Body(headers['content-length'])
+        elif 'transfer-encoding' in headers:
+            body = self.ChunkedBody()
+        else:
+            body = None
+        if request.setdefault('body', body) is not body:
+            raise Exception('must already have a body')
+        return request
 
     def read_response(self, method):
         method = parse_method(method)
