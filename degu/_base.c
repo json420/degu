@@ -24,9 +24,7 @@
 #include <Python.h>
 #include <stdbool.h>
 
-
 #define _MAX_LINE_SIZE 4096
-
 #define MIN_PREAMBLE 4096
 #define MAX_PREAMBLE 65536
 #define DEFAULT_PREAMBLE 32768
@@ -152,16 +150,12 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
-/*
- * _SET() macro: assign a PyObject pointer.
- *
- * Use this when you're assuming *pyobj* has been initialized to NULL.
- *
- * This macro will call Py_FatalError() if *pyobj* does not start equal to NULL
- * (a sign that perhaps you should be using the _RESET() macro instead).
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
+
+/*******************************************************************************
+ * Internal API: Macros
+ *     _SET()
+ *     _SET_AND_INC()
+ *     _SET_ITEM()
  */
 #define _SET(pyobj, source) \
     if (pyobj != NULL) { \
@@ -172,42 +166,12 @@ static const uint8_t _FLAGS[256] = {
         goto error; \
     }
 
-
 #define _SET_AND_INC(pyobj, source) \
     _SET(pyobj, source) \
     Py_INCREF(pyobj);
 
-
-/*
- * _RESET() macro: Py_CLEAR() existing, then assign to a new PyObject pointer.
- *
- * Use this to decrement the current object pointed to by *pyobj*, and then
- * assign it to the PyObject pointer returned by *source*.
- *
- * If *source* returns NULL, this macro will `goto error`, so it can only be
- * used within a function with an appropriate "error" label.
- */
-#define _RESET(pyobj, source) \
-    Py_CLEAR(pyobj); \
-    pyobj = source; \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-
-#define _REPLACE(pyobj, source) \
-    _RESET(pyobj, source) \
-    Py_INCREF(pyobj);
-
-
 #define _SET_ITEM(dict, key, val) \
     if (PyDict_SetItem(dict, key, val) != 0) { \
-        goto error; \
-    }
-
-
-#define _APPEND(list, item) \
-    if (PyList_Append(list, item) != 0) { \
         goto error; \
     }
 
@@ -217,7 +181,6 @@ static const uint8_t _FLAGS[256] = {
  *     _min(a, b)
  *     _calloc_buf(len)
  */
-
 static inline size_t
 _min(const size_t a, const size_t b)
 {
@@ -662,7 +625,6 @@ error:
  *     _parse_request_line()
  *     _parse_request()
  */
-
 static PyObject *
 _parse_method(DeguBuf src)
 {
@@ -695,13 +657,11 @@ _parse_method(DeguBuf src)
     return method;
 }
 
-
 static inline PyObject *
 _parse_path_component(DeguBuf src)
 {
     return _decode(src, PATH_MASK, "bad bytes in path component: %R");
 }
-
 
 static PyObject *
 _parse_path(DeguBuf src)
@@ -756,13 +716,11 @@ cleanup:
     return path;
 }
 
-
 static inline PyObject *
 _parse_query(DeguBuf src)
 {
     return _decode(src, QUERY_MASK, "bad bytes in query: %R");
 }
-
 
 static bool
 _parse_uri(DeguBuf src, DeguRequest *dr)
@@ -793,7 +751,6 @@ _parse_uri(DeguBuf src, DeguRequest *dr)
 error:
     return false;
 }
-
 
 static bool
 _parse_request_line(DeguBuf line, DeguRequest *dr)
@@ -853,7 +810,6 @@ error:
     return false;
 }
 
-
 static bool
 _parse_request(DeguBuf src, uint8_t *scratch, DeguRequest *dr)
 {
@@ -878,8 +834,6 @@ error:
 /*******************************************************************************
  * Internal API: Parsing: Response
  */
-
-
 static inline PyObject *
 _parse_status(DeguBuf src)
 {
@@ -900,7 +854,6 @@ _parse_status(DeguBuf src)
     return PyLong_FromUnsignedLong(accum);
 }
 
-
 static inline PyObject *
 _parse_reason(DeguBuf src)
 {
@@ -910,7 +863,6 @@ _parse_reason(DeguBuf src)
     }
     return _decode(src, REASON_MASK, "bad reason: %R");
 }
-
 
 static bool
 _parse_response_line(DeguBuf src, DeguResponse *dr)
@@ -959,7 +911,6 @@ error:
     return false;
 }
 
-
 static bool
 _parse_response(DeguBuf src, uint8_t *scratch, DeguResponse *dr)
 {
@@ -980,48 +931,11 @@ error:
 }
 
 
+
 /*******************************************************************************
  * Internal API: Formatting:
+ *     _format_headers()
  */
-
-
-
-/*******************************************************************************
- * namedtuples: Response:
- *     ResponseType
- *     _Response()   
- */
-
-static PyStructSequence_Field ResponseFields[] = {
-    {"status", NULL},
-    {"reason", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {NULL},
-};
-static PyStructSequence_Desc ResponseDesc = {
-    "Response",
-    NULL,
-    ResponseFields,  
-    4
-};
-static PyTypeObject ResponseType;
-
-static PyObject *
-_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
-{
-    PyObject *response = PyStructSequence_New(&ResponseType);
-    if (response == NULL) {
-        return NULL;
-    }
-    PyStructSequence_SetItem(response, 0, status);
-    PyStructSequence_SetItem(response, 1, reason);
-    PyStructSequence_SetItem(response, 2, headers);
-    PyStructSequence_SetItem(response, 3, body);
-    return response;
-}
-
-
 static PyObject *
 _format_headers(PyObject *headers)
 {
@@ -1065,6 +979,40 @@ cleanup:
 
 
 
+/*******************************************************************************
+ * namedtuples: Response:
+ *     ResponseType
+ *     _Response()   
+ */
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+static PyTypeObject ResponseType;
+
+static PyObject *
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+{
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SetItem(response, 0, status);
+    PyStructSequence_SetItem(response, 1, reason);
+    PyStructSequence_SetItem(response, 2, headers);
+    PyStructSequence_SetItem(response, 3, body);
+    return response;
+}
+
 
 
 /*******************************************************************************
@@ -1074,7 +1022,6 @@ cleanup:
  *     parse_header_line()
  *     parse_headers()
  */
-
 static PyObject *
 parse_header_name(PyObject *self, PyObject *args)
 {
@@ -1123,6 +1070,7 @@ parse_content_length(PyObject *self, PyObject *args)
 }
 
 
+
 /*******************************************************************************
  * Public API: Parsing: Requests:
  *     parse_method()
@@ -1130,7 +1078,6 @@ parse_content_length(PyObject *self, PyObject *args)
  *     parse_request_line()
  *     parse_request()
  */
-
 static PyObject *
 parse_method(PyObject *self, PyObject *args)
 {
@@ -1142,7 +1089,6 @@ parse_method(PyObject *self, PyObject *args)
     }
     return _parse_method((DeguBuf){buf, len});
 }
-
 
 static PyObject *
 parse_uri(PyObject *self, PyObject *args)
@@ -1174,7 +1120,6 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 parse_request_line(PyObject *self, PyObject *args)
 {
@@ -1205,7 +1150,6 @@ cleanup:
     _clear_degu_request(&dr);
     return ret;
 }
-
 
 static PyObject *
 parse_request(PyObject *self, PyObject *args)
@@ -1245,14 +1189,13 @@ cleanup:
     return ret;
 }
 
- 
+
+
 /*******************************************************************************
  * Public API: Parsing: Responses:
  *     parse_response_line()
  *     parse_response()
  */
-
-
 static PyObject *
 parse_response_line(PyObject *self, PyObject *args)
 {
@@ -1319,13 +1262,13 @@ cleanup:
 }
 
 
+
 /*******************************************************************************
  * Public API: Formatting:
  *     format_headers()
  *     format_request()
  *     format_response()
  */
-
 static PyObject *
 format_headers(PyObject *self, PyObject *args)
 {
@@ -1420,7 +1363,6 @@ cleanup:
     return  ret;
 }
 
-
 static PyObject *
 format_response(PyObject *self, PyObject *args)
 {
@@ -1503,10 +1445,8 @@ cleanup:
 
 /*******************************************************************************
  * Public functions: namedtuples:
- *
  *     Response()
  */
-
 static PyObject *
 Response(PyObject *self, PyObject *args)
 {
@@ -1523,6 +1463,7 @@ Response(PyObject *self, PyObject *args)
     Py_INCREF(body);
     return _Response(status, reason, headers, body);
 }
+
 
 
 /*******************************************************************************
@@ -1564,10 +1505,10 @@ static struct PyMethodDef degu_functions[] = {
 };
 
 
+
 /*******************************************************************************
  * Reader
  */
-
 typedef struct {
     PyObject_HEAD
     PyObject *sock_recv_into;
@@ -1926,8 +1867,6 @@ cleanup:
     _clear_degu_request(&dr);
     return ret;
 }
-
-
 
 
 static PyObject *
