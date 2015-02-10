@@ -2068,35 +2068,17 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-Reader_start_stop(Reader *self)
-{
-    PyObject *ret = NULL;
-    PyObject *start = PyLong_FromSize_t(self->start);
-    PyObject *stop = PyLong_FromSize_t(self->stop);
-    if (start != NULL && stop != NULL) {
-        ret = PyTuple_Pack(2, start, stop);
-    }
-    Py_CLEAR(start);
-    Py_CLEAR(stop);
-    return ret;
-}
-
 
 /*******************************************************************************
  * Reader: PyMethodDef, PyTypeObject:
  */
 static PyMethodDef Reader_methods[] = {
+    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
     {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
         "Body(content_length)"
     },
     {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
         "ChunkedBody()"
-    },
-
-    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
-        "return (start, stop) tuple"
     },
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
         "return number of bytes thus far read from the underlying socket"

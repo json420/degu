@@ -380,9 +380,6 @@ class Reader:
     def expose(self):
         return self._rawbuf.tobytes()
 
-    def start_stop(self):
-        return (self._start, self._start + len(self._buf))
-
     def peek(self, size):
         assert isinstance(size, int)
         if size < 0:

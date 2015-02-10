@@ -2200,7 +2200,6 @@ class TestReader_Py(TestCase):
         reader = self.Reader(sock, base.bodies)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2239,7 +2238,6 @@ class TestReader_Py(TestCase):
         (sock, reader) = self.new()
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
     def test_Body(self):
@@ -2274,7 +2272,6 @@ class TestReader_Py(TestCase):
         self.assertEqual(str(cm.exception), 'end cannot be empty')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2286,7 +2283,6 @@ class TestReader_Py(TestCase):
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2298,7 +2294,6 @@ class TestReader_Py(TestCase):
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2310,7 +2305,6 @@ class TestReader_Py(TestCase):
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
         with self.assertRaises(ValueError) as cm:
@@ -2320,7 +2314,6 @@ class TestReader_Py(TestCase):
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2332,7 +2325,6 @@ class TestReader_Py(TestCase):
         )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
@@ -2605,13 +2597,11 @@ class TestReader_Py(TestCase):
         self.assertEqual(str(cm.exception), 'need size >= 0; got -1')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
         self.assertEqual(reader.read(0), b'')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.start_stop(), (0, 0))
         self.assertEqual(reader.tell(), 0)
 
         A = b'A' * 1024
