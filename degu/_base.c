@@ -61,7 +61,6 @@ static PyObject *str_headers = NULL;  // 'headers'
 static PyObject *str_body    = NULL;  // 'body'
 
 
-
 /***************    BEGIN GENERATED TABLES    *********************************/
 static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
@@ -152,14 +151,15 @@ static const uint8_t _FLAGS[256] = {
 
 
 /*******************************************************************************
- * Internal API: Macros
+ * Internal API: Macros:
  *     _SET()
  *     _SET_AND_INC()
  *     _SET_ITEM()
  */
 #define _SET(pyobj, source) \
     if (pyobj != NULL) { \
-        Py_FatalError("internal error in _SET() macro: pyobj is not NULL at start"); \
+        Py_FatalError("_SET(): pyobj != NULL prior to assignment"); \
+        goto error; \
     } \
     pyobj = (source); \
     if (pyobj == NULL) { \
@@ -177,9 +177,9 @@ static const uint8_t _FLAGS[256] = {
 
 
 /*******************************************************************************
- * Internal API: Misc
- *     _min(a, b)
- *     _calloc_buf(len)
+ * Internal API: Misc:
+ *     _min()
+ *     _calloc_buf()
  */
 static inline size_t
 _min(const size_t a, const size_t b)
@@ -202,18 +202,16 @@ _calloc_buf(const size_t len)
 
 
 /*******************************************************************************
- * Internal API: DeguBuf (safe buffer slicing)
- *     typedef DeguBuf
- *     _isnull(src)
- *     _isempty(src)
- *     _slice(src, start, stop)
- *     _equal(a, b)
- *     _find(haystack, needle)
- *     _tostr(src)
- *     _tobytes(src)
- *     _value_error(format, src)
- *     _value_error2(format, src1, src2)
- *     _decode(src, mask, format)
+ * Internal API: DeguBuf:
+ *     _isempty()
+ *     _slice()
+ *     _equal()
+ *     _find()
+ *     _tostr()
+ *     _tobytes()
+ *     _value_error()
+ *     _value_error2()
+ *     _decode()
  */
 typedef struct {
     const uint8_t *buf;
@@ -246,15 +244,6 @@ _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 
 static inline bool
-_isnull(DeguBuf src)
-{
-    if (src.buf == NULL) {
-        return true;
-    }
-    return false;
-}
-
-static inline bool
 _isempty(DeguBuf src)
 {
     if (src.buf == NULL || src.len == 0) {
@@ -274,7 +263,7 @@ _slice(DeguBuf src, const size_t start, const size_t stop)
 
 static bool
 _equal(DeguBuf a, DeguBuf b) {
-    if (_isnull(a) || _isempty(b)) {
+    if (a.buf == NULL || _isempty(b)) {
         Py_FatalError("_equal(): bad internal call");
     }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
@@ -377,9 +366,6 @@ done:
 
 /*******************************************************************************
  * Internal API: DeguHeaders/DeguRequest/DeguResponse:
- *     typedef DeguHeaders
- *     typedef DeguRequest
- *     typedef DeguResponse
  *     _clear_degu_headers()
  *     _clear_degu_request()
  *     _clear_degu_response()   
@@ -450,7 +436,6 @@ _clear_degu_response(DeguResponse *dr)
 
 /*******************************************************************************
  * Internal API: Parsing: Headers:
- *
  *     _parse_key()
  *     _parse_val()
  *     _parse_content_length()
@@ -586,7 +571,6 @@ cleanup:
     return success;
 }
 
-
 static bool
 _parse_headers(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
 {
@@ -616,7 +600,6 @@ error:
 
 /*******************************************************************************
  * Internal API: Parsing: Request:
- *
  *     _parse_method()
  *     _parse_path_component()
  *     _parse_path()
@@ -727,7 +710,7 @@ _parse_uri(DeguBuf src, DeguRequest *dr)
 {
     size_t path_stop, query_start;
 
-    if (_isnull(src)) {
+    if (src.buf == NULL) {
         Py_FatalError("_parse_uri(): bad internal call");
         goto error;
     }
@@ -830,9 +813,12 @@ error:
 }
 
 
-
 /*******************************************************************************
- * Internal API: Parsing: Response
+ * Internal API: Parsing: Response:
+ *     _parse_status()
+ *     _parse_reason()
+ *     _parse_response_line()
+ *     _parse_response()
  */
 static inline PyObject *
 _parse_status(DeguBuf src)
@@ -868,7 +854,6 @@ static bool
 _parse_response_line(DeguBuf src, DeguResponse *dr)
 {
     /* Reject any response line shorter than 15 bytes:
-     *
      *     "HTTP/1.1 200 OK"[0:15]
      *      ^^^^^^^^^^^^^^^
      */
@@ -878,7 +863,6 @@ _parse_response_line(DeguBuf src, DeguResponse *dr)
     }
 
     /* protocol, spaces:
-     *
      *     "HTTP/1.1 200 OK"[0:9]
      *      ^^^^^^^^^
      *
@@ -893,14 +877,12 @@ _parse_response_line(DeguBuf src, DeguResponse *dr)
     }
 
     /* status:
-     *
      *     "HTTP/1.1 200 OK"[9:12]
      *               ^^^
      */
     _SET(dr->status, _parse_status(_slice(src, 9, 12)))
 
     /* reason:
-     *
      *     "HTTP/1.1 200 OK"[13:]
      *                   ^^
      */
@@ -929,7 +911,6 @@ _parse_response(DeguBuf src, uint8_t *scratch, DeguResponse *dr)
 error:
     return false;
 }
-
 
 
 /*******************************************************************************
@@ -978,11 +959,9 @@ cleanup:
 }
 
 
-
 /*******************************************************************************
- * namedtuples: Response:
- *     ResponseType
- *     _Response()   
+ * Internal API: namedtuples:
+ *     _Response()
  */
 static PyStructSequence_Field ResponseFields[] = {
     {"status", NULL},
@@ -1012,7 +991,6 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
     PyStructSequence_SetItem(response, 3, body);
     return response;
 }
-
 
 
 /*******************************************************************************
@@ -1070,7 +1048,6 @@ parse_content_length(PyObject *self, PyObject *args)
 }
 
 
-
 /*******************************************************************************
  * Public API: Parsing: Requests:
  *     parse_method()
@@ -1083,7 +1060,6 @@ parse_method(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-
     if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         return NULL;
     }
@@ -1097,7 +1073,6 @@ parse_uri(PyObject *self, PyObject *args)
     size_t len = 0;
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
-
     if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
         return NULL;
     }
@@ -1111,10 +1086,8 @@ parse_uri(PyObject *self, PyObject *args)
     _SET_ITEM(ret, str_path, dr.path)
     _SET_ITEM(ret, str_query, dr.query)
     goto cleanup;
-
 error:
     Py_CLEAR(ret);
-
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1127,7 +1100,6 @@ parse_request_line(PyObject *self, PyObject *args)
     size_t len = 0;
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
-
     if (!PyArg_ParseTuple(args, "y#:parse_request_line", &buf, &len)) {
         return NULL;
     }
@@ -1142,10 +1114,8 @@ parse_request_line(PyObject *self, PyObject *args)
     _SET_ITEM(ret, str_path, dr.path)
     _SET_ITEM(ret, str_query, dr.query)
     goto cleanup;
-
 error:
     Py_CLEAR(ret);
-
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1159,7 +1129,6 @@ parse_request(PyObject *self, PyObject *args)
     uint8_t *scratch = NULL;
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
-
     if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
         return NULL;
     }
@@ -1176,10 +1145,8 @@ parse_request(PyObject *self, PyObject *args)
     _SET_ITEM(ret, str_query, dr.query)
     _SET_ITEM(ret, str_headers, dr.headers)
     goto cleanup;
-
 error:
     Py_CLEAR(ret);
-
 cleanup:
     if (scratch != NULL) {
         free(scratch);
@@ -1188,7 +1155,6 @@ cleanup:
     _clear_degu_request(&dr);
     return ret;
 }
-
 
 
 /*******************************************************************************
@@ -1203,7 +1169,6 @@ parse_response_line(PyObject *self, PyObject *args)
     size_t len = 0;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
-
     if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
         return NULL;
     }
@@ -1219,10 +1184,8 @@ parse_response_line(PyObject *self, PyObject *args)
     PyTuple_SET_ITEM(ret, 0, dr.status);
     PyTuple_SET_ITEM(ret, 1, dr.reason);
     goto done;
-
 error:
     _clear_degu_response(&dr);
-
 done:
     return ret;
 }
@@ -1235,7 +1198,6 @@ parse_response(PyObject *self, PyObject *args)
     uint8_t *scratch = NULL;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
-
     if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
         return NULL;
     }
@@ -1249,10 +1211,8 @@ parse_response(PyObject *self, PyObject *args)
     PyTuple_SET_ITEM(ret, 1, dr.reason);
     PyTuple_SET_ITEM(ret, 2, dr.headers);
     goto cleanup;
-
 error:
     _clear_degu_response (&dr);
-
 cleanup:
     if (scratch != NULL) {
         free(scratch);
@@ -1260,7 +1220,6 @@ cleanup:
     }
     return ret;
 }
-
 
 
 /*******************************************************************************
@@ -1442,9 +1401,8 @@ cleanup:
 }
 
 
-
 /*******************************************************************************
- * Public functions: namedtuples:
+ * Public API: namedtuples:
  *     Response()
  */
 static PyObject *
@@ -1465,9 +1423,8 @@ Response(PyObject *self, PyObject *args)
 }
 
 
-
 /*******************************************************************************
- * Public API: PyMethodDef table
+ * Public API: PyMethodDef table:
  */
 static struct PyMethodDef degu_functions[] = {
     /* Header Parsing */
@@ -1505,9 +1462,8 @@ static struct PyMethodDef degu_functions[] = {
 };
 
 
-
 /*******************************************************************************
- * Reader
+ * Reader:
  */
 typedef struct {
     PyObject_HEAD
@@ -1587,6 +1543,9 @@ error:
 }
 
 
+/*******************************************************************************
+ * Reader: Internal API:
+ */
 static PyObject *
 _Reader_Body(Reader *self, PyObject *content_length) {
     if (content_length == NULL) {
@@ -1601,7 +1560,6 @@ static PyObject *
 _Reader_ChunkedBody(Reader *self) {
     return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
 }
-
 
 /* _Reader_recv_into():
  *     -1  general error code for when _SET() goes to error
@@ -1673,7 +1631,6 @@ cleanup:
     return ret;
 }
 
-
 static DeguBuf
 _Reader_peek(Reader *self, const size_t size)
 {
@@ -1691,7 +1648,6 @@ _Reader_peek(Reader *self, const size_t size)
     return (DeguBuf){cur_buf, _min(size, cur_len)};
 }
 
-
 static DeguBuf
 _Reader_drain(Reader *self, const size_t size)
 {
@@ -1703,7 +1659,6 @@ _Reader_drain(Reader *self, const size_t size)
     }
     return  cur;
 }
-
 
 static DeguBuf
 _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
@@ -1778,7 +1733,6 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
     return _Reader_peek(self, size); 
 }
 
-
 static DeguBuf
 _Reader_search(Reader *self, const size_t size, DeguBuf end,
                const int include_end, const int always_return)
@@ -1808,7 +1762,31 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
     return _slice(ret, 0, ret.len - end.len);
 }
 
-/* Reader.Body(content_length) */
+
+/*******************************************************************************
+ * Reader: Public API:
+ *     Reader.close()
+ *     Reader.shutdown()
+ *     Reader.Body()
+ *     Reader.ChunkedBody()
+ *     Reader.rawtell()
+ *     Reader.tell()
+ *     Reader.expose()
+ *     Reader.peek()
+ *     Reader.drain()
+ *     Reader.fill_until()
+ *     Reader.search()
+ *     Reader.readline()
+ *     Reader.read_request()
+ *     Reader.read_response()
+ *     Reader.read()
+ */
+static PyObject *
+Reader_close(Reader *self)
+{
+    Py_RETURN_NONE;
+}
+
 static PyObject *
 Reader_Body(Reader *self, PyObject *args) {
     PyObject *content_length = NULL;
@@ -1818,10 +1796,106 @@ Reader_Body(Reader *self, PyObject *args) {
     return _Reader_Body(self, content_length);
 }
 
-/* Reader.ChunkedBody() */
 static PyObject *
 Reader_ChunkedBody(Reader *self) {
     return _Reader_ChunkedBody(self);
+}
+
+static PyObject *
+Reader_rawtell(Reader *self) {
+    return PyLong_FromSize_t(self->rawtell);
+}
+
+static PyObject *
+Reader_tell(Reader *self) {
+    DeguBuf cur = _Reader_peek(self, self->len);
+    return PyLong_FromSize_t(self->rawtell - cur.len);
+}
+
+static PyObject *
+Reader_expose(Reader *self) {
+    DeguBuf rawbuf = {self->buf, self->len};
+    return _tobytes(rawbuf);
+}
+
+static PyObject *
+Reader_peek(Reader *self, PyObject *args) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_peek(self, size));
+}
+
+static PyObject *
+Reader_drain(Reader *self, PyObject *args) {
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_drain(self, size));
+}
+
+static PyObject *
+Reader_fill_until(Reader *self, PyObject *args)
+{
+    ssize_t size = -1;
+    uint8_t *end_buf = NULL;
+    size_t end_len = 0;
+    bool found = false;
+    PyObject *pyfound = NULL;
+    PyObject *pydata = NULL;
+    PyObject *ret = NULL;
+    if (!PyArg_ParseTuple(args, "ny#", &size, &end_buf, &end_len)) {
+        return NULL;
+    }
+    DeguBuf end = {end_buf, end_len};
+    DeguBuf src = _Reader_fill_until(self, size, end, &found);
+    if (found) {
+        pyfound = Py_True;
+    }
+    else {
+        pyfound = Py_False;
+    }
+    Py_INCREF(pyfound);
+    _SET(pydata, _tobytes(src))
+    _SET(ret, PyTuple_Pack(2, pyfound, pydata))
+    goto cleanup;
+error:
+    Py_CLEAR(ret);
+cleanup:
+    Py_CLEAR(pyfound);
+    Py_CLEAR(pydata);
+    return ret;
+}
+
+static PyObject *
+Reader_search(Reader *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
+    ssize_t size = -1;
+    uint8_t *end_buf = NULL;
+    size_t end_len = 0;
+    int include_end = false;
+    int always_return = false;
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:search", keys,
+            &size, &end_buf, &end_len, &include_end, &always_return)) {
+        return NULL;
+    }
+    DeguBuf end = {end_buf, end_len};
+    return _tobytes(
+        _Reader_search(self, size, end, include_end, always_return)
+    );
+}
+
+static PyObject *
+Reader_readline(Reader *self, PyObject *args)
+{
+    ssize_t size = -1;
+    if (!PyArg_ParseTuple(args, "n", &size)) {
+        return NULL;
+    }
+    return _tobytes(_Reader_search(self, size, LF, true, true));
 }
 
 static PyObject *
@@ -1929,102 +2003,6 @@ cleanup:
 
 
 static PyObject *
-Reader_expose(Reader *self) {
-    DeguBuf rawbuf = {self->buf, self->len};
-    return _tobytes(rawbuf);
-}
-
-
-static PyObject *
-Reader_peek(Reader *self, PyObject *args) {
-    ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_peek(self, size));
-}
-
-
-static PyObject *
-Reader_drain(Reader *self, PyObject *args) {
-    ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_drain(self, size));
-}
-
-
-static PyObject *
-Reader_fill_until(Reader *self, PyObject *args)
-{
-    ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    bool found = false;
-    PyObject *pyfound = NULL;
-    PyObject *pydata = NULL;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "ny#", &size, &end_buf, &end_len)) {
-        return NULL;
-    }
-    DeguBuf end = {end_buf, end_len};
-    DeguBuf src = _Reader_fill_until(self, size, end, &found);
-    if (found) {
-        pyfound = Py_True;
-    }
-    else {
-        pyfound = Py_False;
-    }
-    Py_INCREF(pyfound);
-    _SET(pydata, _tobytes(src))
-    _SET(ret, PyTuple_Pack(2, pyfound, pydata))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(pyfound);
-    Py_CLEAR(pydata);
-    return ret;
-}
-
-
-static PyObject *
-Reader_search(Reader *self, PyObject *args, PyObject *kw)
-{
-    static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
-    ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    int include_end = false;
-    int always_return = false;
-
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:search", keys,
-            &size, &end_buf, &end_len, &include_end, &always_return)) {
-        return NULL;
-    }
-    DeguBuf end = {end_buf, end_len};
-    return _tobytes(
-        _Reader_search(self, size, end, include_end, always_return)
-    );
-}
-
-
-static PyObject *
-Reader_readline(Reader *self, PyObject *args)
-{
-    ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_search(self, size, LF, true, true));
-}
-
-
-static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
@@ -2082,53 +2060,16 @@ cleanup:
 }
 
 
-static PyObject *
-Reader_close(Reader *self)
-{
-    Py_RETURN_NONE;
-}
-
-
-static PyObject *
-Reader_start_stop(Reader *self)
-{
-    PyObject *ret = NULL;
-    PyObject *start = PyLong_FromSize_t(self->start);
-    PyObject *stop = PyLong_FromSize_t(self->stop);
-    if (start != NULL && stop != NULL) {
-        ret = PyTuple_Pack(2, start, stop);
-    }
-    Py_CLEAR(start);
-    Py_CLEAR(stop);
-    return ret;
-}
-
-
-/* Reader.rawtell() */
-static PyObject *
-Reader_rawtell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell);
-}
-
-/* Reader.tell() */
-static PyObject *
-Reader_tell(Reader *self) {
-    DeguBuf cur = _Reader_peek(self, self->len);
-    return PyLong_FromSize_t(self->rawtell - cur.len);
-}
-
-
+/*******************************************************************************
+ * Reader: PyMethodDef, PyTypeObject:
+ */
 static PyMethodDef Reader_methods[] = {
+    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
     {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
         "Body(content_length)"
     },
     {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
         "ChunkedBody()"
-    },
-
-    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"start_stop", (PyCFunction)Reader_start_stop, METH_NOARGS,
-        "return (start, stop) tuple"
     },
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
         "return number of bytes thus far read from the underlying socket"
@@ -2157,7 +2098,6 @@ static PyMethodDef Reader_methods[] = {
 
     {NULL}
 };
-
 
 static PyTypeObject ReaderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -2201,6 +2141,10 @@ static PyTypeObject ReaderType = {
 };
 
 
+
+/*******************************************************************************
+ * Module Init:
+ */
 static struct PyModuleDef degu = {
     PyModuleDef_HEAD_INIT,
     "degu._base",
@@ -2208,7 +2152,6 @@ static struct PyModuleDef degu = {
     -1,
     degu_functions
 };
-
 
 PyMODINIT_FUNC
 PyInit__base(void)
@@ -2285,3 +2228,4 @@ PyInit__base(void)
 error:
     return NULL;
 }
+
