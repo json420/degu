@@ -47,7 +47,7 @@ Internal API:
         _format_request()
         _format_response()
     namedtuples:
-        ResponseType/_Response()
+        _Response()
 
 Public API:
     Parsing:
@@ -65,8 +65,29 @@ Public API:
     namedtuples:
         Response()
 
-Reader class:
+Reader:
     Internal API:
-    Public methods:
-        Reader
+        _Reader_Body()
+        _Reader_ChunkedBody()
+        _Reader_sock_recv_into()
+        _Reader_peek()
+        _Reader_drain()
+        _Reader_fill_until()
+        _Reader_search()
+    Public API:
+        Reader.close()
+        Reader.shutdown()
+        Reader.Body()
+        Reader.ChunkedBody()
+        Reader.rawtell()
+        Reader.tell()
+        Reader.expose()
+        Reader.peek()
+        Reader.drain()
+        Reader.fill_until()
+        Reader.search()
+        Reader.readline()
+        Reader.read_request()
+        Reader.read_response()
+        Reader.read()
 
