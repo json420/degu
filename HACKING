@@ -1,14 +1,16 @@
 Defines
 Globals
 Generated tables
-Macros
 
 Internal API:
+    Macros:
+        _SET()
+        _SET_AND_INC()
+        _SET_ITEM()
     Misc:
         _min()
         _calloc_buf()
     DeguBuf:
-        _isnull()
         _isempty()
         _slice()
         _equal()

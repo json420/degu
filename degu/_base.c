@@ -159,6 +159,7 @@ static const uint8_t _FLAGS[256] = {
 #define _SET(pyobj, source) \
     if (pyobj != NULL) { \
         Py_FatalError("_SET(): pyobj != NULL prior to assignment"); \
+        goto error; \
     } \
     pyobj = (source); \
     if (pyobj == NULL) { \
@@ -202,7 +203,6 @@ _calloc_buf(const size_t len)
 
 /*******************************************************************************
  * Internal API: DeguBuf:
- *     _isnull()
  *     _isempty()
  *     _slice()
  *     _equal()
@@ -244,15 +244,6 @@ _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 
 static inline bool
-_isnull(DeguBuf src)
-{
-    if (src.buf == NULL) {
-        return true;
-    }
-    return false;
-}
-
-static inline bool
 _isempty(DeguBuf src)
 {
     if (src.buf == NULL || src.len == 0) {
@@ -272,7 +263,7 @@ _slice(DeguBuf src, const size_t start, const size_t stop)
 
 static bool
 _equal(DeguBuf a, DeguBuf b) {
-    if (_isnull(a) || _isempty(b)) {
+    if (a.buf == NULL || _isempty(b)) {
         Py_FatalError("_equal(): bad internal call");
     }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
@@ -719,7 +710,7 @@ _parse_uri(DeguBuf src, DeguRequest *dr)
 {
     size_t path_stop, query_start;
 
-    if (_isnull(src)) {
+    if (src.buf == NULL) {
         Py_FatalError("_parse_uri(): bad internal call");
         goto error;
     }
