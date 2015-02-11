@@ -23,6 +23,7 @@
 
 #include <Python.h>
 #include <stdbool.h>
+#include <sys/socket.h>
 
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
@@ -35,6 +36,8 @@
 static PyObject *degu_EmptyPreambleError = NULL;
 
 /* Pre-built global Python object for performance */
+static PyObject *str_close = NULL;              //  'close'
+static PyObject *str_shutdown = NULL;           //  'shutdown'
 static PyObject *str_recv_into = NULL;          //  'recv_into'
 static PyObject *str_Body = NULL;               //  'Body'
 static PyObject *str_ChunkedBody = NULL;        //  'ChunkedBody'
@@ -48,8 +51,9 @@ static PyObject *str_POST   = NULL;  // 'POST'
 static PyObject *str_HEAD   = NULL;  // 'HEAD'
 static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
-
 static PyObject *str_empty = NULL;    //  ''
+
+static PyObject *int_SHUT_RDWR = NULL;  // socket.SHUT_RDWR (2)
 
 /* Keys used in the RGI request dict */
 static PyObject *str_method  = NULL;  // 'method'
@@ -741,7 +745,6 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
     size_t method_stop, uri_start;
 
     /* Reject any request line shorter than 14 bytes:
-     *
      *     "GET / HTTP/1.1"[0:14]
      *      ^^^^^^^^^^^^^^
      */
@@ -751,7 +754,6 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
     }
 
     /* verify final 9 bytes (protocol):
-     *
      *     "GET / HTTP/1.1"[-9:]
      *           ^^^^^^^^^
      */
@@ -762,14 +764,12 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
     }
 
     /* Now we'll work with line[0:-9]
-     *
      *     "GET / HTTP/1.1"[0:-9]
      *      ^^^^^
      */
     DeguBuf src = _slice(line, 0, line.len - protocol.len);
 
     /* Search for method terminating space, plus start of uri:
-     *
      *     "GET /"
      *         ^^
      */
@@ -1467,6 +1467,8 @@ static struct PyMethodDef degu_functions[] = {
  */
 typedef struct {
     PyObject_HEAD
+    PyObject *sock_close;
+    PyObject *sock_shutdown;
     PyObject *sock_recv_into;
     PyObject *bodies_Body;
     PyObject *bodies_ChunkedBody;
@@ -1481,6 +1483,8 @@ typedef struct {
 static void
 Reader_dealloc(Reader *self)
 {
+    Py_CLEAR(self->sock_close);
+    Py_CLEAR(self->sock_shutdown);
     Py_CLEAR(self->sock_recv_into);
     Py_CLEAR(self->bodies_Body);
     Py_CLEAR(self->bodies_ChunkedBody);
@@ -1501,7 +1505,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     PyObject *bodies = NULL;
     ssize_t len = DEFAULT_PREAMBLE;
     static char *keys[] = {"sock", "bodies", "size", NULL};
-
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader", keys, &sock, &bodies, &len)) {
         return -1;
     }
@@ -1512,7 +1515,16 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         );
         return -1;
     }
-
+    _SET(self->sock_close, PyObject_GetAttr(sock, str_close))
+    if (!PyCallable_Check(self->sock_close)) {
+        PyErr_SetString(PyExc_TypeError, "sock.close() is not callable");
+        goto error;
+    }
+    _SET(self->sock_shutdown, PyObject_GetAttr(sock, str_shutdown))
+    if (!PyCallable_Check(self->sock_shutdown)) {
+        PyErr_SetString(PyExc_TypeError, "sock.shutdown() is not callable");
+        goto error;
+    }
     _SET(self->sock_recv_into, PyObject_GetAttr(sock, str_recv_into))
     if (!PyCallable_Check(self->sock_recv_into)) {
         PyErr_SetString(PyExc_TypeError, "sock.recv_into() is not callable");
@@ -1528,7 +1540,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         PyErr_SetString(PyExc_TypeError, "bodies.ChunkedBody() is not callable");
         goto error;
     }
-
     _SET(self->scratch, _calloc_buf(MAX_KEY))
     self->len = len;
     _SET(self->buf, _calloc_buf(self->len))
@@ -1536,7 +1547,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     self->start = 0;
     self->stop = 0;
     return 0;
-
 error:
     Reader_dealloc(self);
     return -1;
@@ -1784,7 +1794,15 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
 static PyObject *
 Reader_close(Reader *self)
 {
-    Py_RETURN_NONE;
+    return PyObject_CallFunctionObjArgs(self->sock_close, NULL);
+}
+
+static PyObject *
+Reader_shutdown(Reader *self)
+{
+    return PyObject_CallFunctionObjArgs(self->sock_shutdown,
+        int_SHUT_RDWR, NULL
+    );
 }
 
 static PyObject *
@@ -2065,6 +2083,7 @@ cleanup:
  */
 static PyMethodDef Reader_methods[] = {
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
+    {"shutdown", (PyCFunction)Reader_shutdown, METH_NOARGS, "shutdown()"},
     {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
         "Body(content_length)"
     },
@@ -2205,6 +2224,8 @@ PyInit__base(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     /* Init global Python `int` and `str` objects we need for performance */
+    _SET(str_close, PyUnicode_InternFromString("close"))
+    _SET(str_shutdown, PyUnicode_InternFromString("shutdown"))
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
     _SET(str_Body, PyUnicode_InternFromString("Body"))
     _SET(str_ChunkedBody, PyUnicode_InternFromString("ChunkedBody"))
@@ -2212,7 +2233,6 @@ PyInit__base(void)
     _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
-
     _SET(str_empty, PyUnicode_InternFromString(""))
 
     _SET(str_method, PyUnicode_InternFromString("method"))
@@ -2222,6 +2242,8 @@ PyInit__base(void)
     _SET(str_query, PyUnicode_InternFromString("query"))
     _SET(str_headers, PyUnicode_InternFromString("headers"))
     _SET(str_body, PyUnicode_InternFromString("body"))
+
+    _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
 
     return module;
 

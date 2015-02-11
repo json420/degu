@@ -31,6 +31,7 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
+import socket
 
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
@@ -280,6 +281,8 @@ def parse_response(preamble):
 
 class Reader:
     __slots__ = (
+        '_sock_close',
+        '_sock_shutdown',
         '_sock_recv_into',
         '_bodies_Body',
         '_bodies_ChunkedBody',
@@ -290,6 +293,10 @@ class Reader:
     )
 
     def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
+        if not callable(sock.close):
+            raise TypeError('sock.close() is not callable')
+        if not callable(sock.shutdown):
+            raise TypeError('sock.shutdown() is not callable')
         if not callable(sock.recv_into):
             raise TypeError('sock.recv_into() is not callable')
         if not callable(bodies.Body):
@@ -303,6 +310,8 @@ class Reader:
                     MIN_PREAMBLE, MAX_PREAMBLE, size
                 )
             )
+        self._sock_close = sock.close
+        self._sock_shutdown = sock.shutdown
         self._sock_recv_into = sock.recv_into
         self._bodies_Body = bodies.Body
         self._bodies_ChunkedBody = bodies.ChunkedBody
@@ -310,6 +319,12 @@ class Reader:
         self._rawbuf = memoryview(bytearray(size))
         self._start = 0
         self._buf = b''
+
+    def close(self):
+        return self._sock_close()
+
+    def shutdown(self, _how=socket.SHUT_RDWR):
+        return self._sock_shutdown(_how)        
 
     def Body(self, content_length):
         return self._bodies_Body(self, content_length)

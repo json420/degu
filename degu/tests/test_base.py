@@ -28,6 +28,7 @@ import os
 import io
 import sys
 from random import SystemRandom
+import socket
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -2224,7 +2225,7 @@ class TestReader_Py(TestCase):
         c2 = sys.getrefcount(bodies.Body)
         c3 = sys.getrefcount(bodies.ChunkedBody)
         reader = self.Reader(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 3)
+        self.assertEqual(sys.getrefcount(sock), 5)
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
@@ -2236,9 +2237,13 @@ class TestReader_Py(TestCase):
 
     def test_close(self):
         (sock, reader) = self.new()
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
+        self.assertIsNone(reader.close())
+        self.assertEqual(sock._calls, ['close'])
+
+    def test_shutdown(self):
+        (sock, reader) = self.new()
+        self.assertIsNone(reader.shutdown())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_Body(self):
         (sock, reader) = self.new()
