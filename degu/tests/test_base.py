@@ -51,6 +51,7 @@ random = SystemRandom()
 
 CRLF = b'\r\n'
 TERM = CRLF * 2
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
 BAD_HEADER_LINES = (
@@ -234,21 +235,122 @@ class BackendTestCase(TestCase):
     backend = _basepy
 
     def setUp(self):
-        assert self.backend in (_basepy, _base)
-        assert _basepy is not None
-        if self.backend is None:
+        backend = self.backend
+        name = self.__class__.__name__
+        if name.endswith('_Py'):
+            self.assertIs(backend, _basepy)
+        elif name.endswith('_C'):
+            self.assertIs(backend, _base)
+        else:
+            raise Exception(
+                'bad BackendTestCase subclass name: {!r}'.format(name)
+            )
+        if backend is None:
             self.skipTest('cannot import `degu._base` C extension')
 
     def getattr(self, name):
         backend = self.backend
         self.assertIn(backend, (_basepy, _base))
         self.assertIsNotNone(backend)
-        attr = getattr(backend, name)
-        if _base is None or backend is _base:
-            self.assertIs(attr, getattr(base, name))
-        else:
-            self.assertIs(attr, getattr(_basepy, name))
-        return attr
+        if not hasattr(backend, name):
+            raise Exception(
+                '{!r} has no attribute {!r}'.format(backend.__name__, name)
+            )
+        # FIXME: check imported alias in degu.base (when needed)
+        return getattr(backend, name)
+
+
+class dict_subclass(dict):
+    pass
+
+
+class str_subclass(str):
+    pass
+
+
+class TestFormatting_Py(BackendTestCase):
+    def test_format_headers(self):
+        format_headers = self.getattr('format_headers')
+
+        # Bad headers type:
+        bad = [('foo', 'bar')]
+        with self.assertRaises(TypeError) as cm:
+            format_headers(bad)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('headers', dict, list, bad)
+        )
+        bad = dict_subclass({'foo': 'bar'})
+        with self.assertRaises(TypeError) as cm:
+            format_headers(bad)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('headers', dict, dict_subclass, bad)
+        )
+
+        good_items = (
+            None,
+            ('content-length', 17),
+            ('foo', 'bar'),
+        )
+        good = dict()
+        for item in good_items:
+            if item:
+                (key, value) = item
+                good[key] = value
+
+            # Bad key type:
+            headers = {b'foo': 'bar'}
+            headers.update(good)
+            with self.assertRaises(TypeError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('key', str, bytes, b'foo')
+            )
+            headers = {str_subclass('foo'): 'bar'}
+            headers.update(good)
+            with self.assertRaises(TypeError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('key', str, str_subclass, 'foo')
+            )
+
+            # key contains non-ascii codepoints:
+            headers = {'¡': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: '¡'")
+            headers = {'™': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: '™'")
+
+            # key is not lowercase:
+            headers = {'Foo': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: 'Foo'")
+            headers = {'f\no': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: 'f\\no'")
+
+        self.assertEqual(format_headers({}), '')
+        self.assertEqual(format_headers({'foo': 17}), 'foo: 17\r\n')
+        self.assertEqual(
+            format_headers({'foo': 17, 'bar': 18}),
+            'bar: 18\r\nfoo: 17\r\n'
+        )
+        self.assertEqual(
+            format_headers({'foo': '17', 'bar': '18'}),
+            'bar: 18\r\nfoo: 17\r\n'
+        )
+
+
+class TestFormatting_C(TestFormatting_Py):
+    backend = _base
 
 
 class TestNamedTuples_Py(BackendTestCase):

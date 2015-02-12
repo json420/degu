@@ -34,6 +34,8 @@ from collections import namedtuple
 import socket
 
 
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 READER_BUFFER_SIZE = 65536  # 64 KiB
 MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
@@ -65,6 +67,7 @@ _URI   = b'/?'
 _SPACE = b' '
 _VALUE = b'"\'()*,;[]'
 
+KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
 DIGIT  = frozenset(_DIGIT)
 PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
 QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
@@ -538,6 +541,24 @@ class Reader:
             assert stop + added <= size
             stop += added
         return dst[:stop].tobytes()
+
+
+def format_headers(headers):
+    if type(headers) is not dict:
+        raise TypeError(
+            TYPE_ERROR.format('headers', dict, type(headers), headers)
+        )
+    lines = []
+    for (key,  value) in headers.items():
+        if type(key) is not str:
+            raise TypeError(
+                TYPE_ERROR.format('key', str, type(key), key)
+            )
+        if not KEY.issuperset(key):
+            raise ValueError('bad key: {!r}'.format(key))
+        lines.append('{}: {}\r\n'.format(key, value))
+    lines.sort()
+    return ''.join(lines)
 
 
 def format_request(method, uri, headers):

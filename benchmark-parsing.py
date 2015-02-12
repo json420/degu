@@ -79,8 +79,11 @@ run('parse_response(response)')
 run("parse_response_line(b'HTTP/1.1 200 OK')")
 run("parse_response_line(b'HTTP/1.1 404 Not Found')")
 
-print('\nCommon formatting:')
+print('\nHeader formating:')
 run('format_headers(headers)')
+run('format_headers({})')
+run("format_headers({'content-length': 17})")
+run("format_headers({'content-length': 17, 'content-type': 'text/plain'})")
 
 print('\nRequest formatting:')
 run("format_request('GET', '/foo', {})")

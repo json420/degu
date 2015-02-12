@@ -915,39 +915,96 @@ error:
 
 /*******************************************************************************
  * Internal API: Formatting:
+ *     _validate_key()
  *     _format_headers()
  */
+static bool
+_validate_key(PyObject *key)
+{
+    size_t i;
+    uint8_t c;
+
+    if (!PyUnicode_CheckExact(key)) {
+        PyErr_Format(PyExc_TypeError,
+            "key: need a <class 'str'>; got a %R: %R", Py_TYPE(key), key
+        );
+        return false;
+    }
+    if (PyUnicode_MAX_CHAR_VALUE(key) != 127) {
+        goto bad_key;
+    }
+    const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
+    const ssize_t key_len = PyUnicode_GET_LENGTH(key);
+    if (key_len < 1) {
+        if (key_len < 0) {
+            Py_FatalError("_validate_key(): key < 0");
+        }
+        PyErr_SetString(PyExc_ValueError, "key is empty");
+        return false;
+    }
+    for (i = 0; i < key_len; i++) {
+        c = key_buf[i];
+        if (! (islower(c) || isdigit(c) || c == '-')) {
+            goto bad_key;
+        }
+    }
+    return true;
+
+bad_key:
+    PyErr_Format(PyExc_ValueError, "bad key: %R", key);
+    return false;
+}
+
+
 static PyObject *
 _format_headers(PyObject *headers)
 {
-    PyObject *key, *val;
-    ssize_t header_count, pos, i;
+    ssize_t pos = 0;
+    ssize_t i = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
     PyObject *lines = NULL;
-    PyObject *ret = NULL;  /* str version of request preamble */
+    PyObject *ret = NULL;
 
-    header_count = PyDict_Size(headers);
-    _SET(lines, PyList_New(header_count))
-    pos = i = 0;
-    while (PyDict_Next(headers, &pos, &key, &val)) {
-        PyList_SET_ITEM(lines, i,
-            PyUnicode_FromFormat("%S: %S\r\n", key, val)
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers: need a <class 'dict'>; got a %R: %R",
+            Py_TYPE(headers), headers
         );
-        i++;
+        goto error;
     }
-    /* Sorting is really expensive!
-     *
-     * 8 headers, sorted:
-     *     597,177: format_headers(headers)
-     * 
-     * 8 headers, unsorted:
-     *     752,831: format_headers(headers)
-     */
-    if (header_count > 1) {
+    const ssize_t count = PyDict_Size(headers);
+    if (count < 1) {
+        if (count < 0) {
+            Py_FatalError("_format_headers(): count < 0");
+        }
+        _SET_AND_INC(ret, str_empty);
+    }
+    else if (count == 1) {
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            if (! _validate_key(key)) {
+                goto error;
+            }
+            _SET(ret, PyUnicode_FromFormat("%S: %S\r\n", key, val))
+        }
+    }
+    else {
+        _SET(lines, PyList_New(count))
+        while (PyDict_Next(headers, &pos, &key, &val)) {
+            if (! _validate_key(key)) {
+                goto error;
+            }
+            PyList_SET_ITEM(lines, i,
+                PyUnicode_FromFormat("%S: %S\r\n", key, val)
+            );
+            i++;
+            key = val = NULL;
+        }
         if (PyList_Sort(lines) != 0) {
             goto error;
         }
+        _SET(ret, PyUnicode_Join(str_empty, lines))
     }
-    _SET(ret, PyUnicode_Join(str_empty, lines))
     goto cleanup;
 
 error:
@@ -1235,12 +1292,6 @@ format_headers(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O:format_headers", &headers)) {
         return NULL;
     }
-    if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers must be a <class 'dict'>, got a %R", headers->ob_type
-        );
-        return NULL;
-    }
     return _format_headers(headers);
 }
 
@@ -1446,8 +1497,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
 
     /* Formatting */
-    {"format_headers", format_headers, METH_VARARGS,
-        "format_headers(headers)"},
+    {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
     {"format_request", format_request, METH_VARARGS,
         "format_request(method, uri, headers)"},
     {"format_response", format_response, METH_VARARGS,
