@@ -32,6 +32,7 @@ correctness of the C implementation.
 
 from collections import namedtuple
 import socket
+import sys
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -343,6 +344,20 @@ class Reader:
 
     def _recv_into(self, buf):
         added = self._sock_recv_into(buf)
+        if type(added) is not int:
+            raise TypeError(
+                'need a {!r}; recv_into() returned a {!r}: {!r}'.format(
+                    int, type(added), added
+                )
+            )
+        if added > sys.maxsize:
+            raise OverflowError('Python int too large to convert to C ssize_t')
+        if not (0 <= added <= len(buf)):
+            raise IOError(
+                'need 0 <= size <= {}; recv_into() returned {}'.format(
+                    len(buf), added
+                )
+            )
         self._rawtell += added
         return added
 
@@ -541,6 +556,23 @@ class Reader:
             assert stop + added <= size
             stop += added
         return dst[:stop].tobytes()
+
+    def readinto(self, dst):
+        dst = memoryview(dst)
+        dst_len = len(dst)
+        if dst_len < 1:
+            raise ValueError('dst cannot be empty')
+        src = self.drain(dst_len)
+        src_len = len(src)
+        dst[0:src_len] = src
+        start = src_len
+        while start < dst_len:
+            added = self._recv_into(dst[start:])
+            if added <= 0:
+                assert added == 0
+                break
+            start += added
+        return start
 
 
 def format_headers(headers):

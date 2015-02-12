@@ -1638,7 +1638,6 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
     if (self == NULL || buf == NULL || len < 1) {
         Py_FatalError("bad internal call to _Reader_recv_into()");
     }
-
     _SET(view,
         PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
     )
@@ -1649,14 +1648,14 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
     /* sock.recv_into() must return an `int` */
     if (!PyLong_CheckExact(int_size)) {
         PyErr_Format(PyExc_TypeError,
-            "sock.recv_into() returned %R, should return <class 'int'>",
-            int_size->ob_type
+            "need a <class 'int'>; recv_into() returned a %R: %R",
+            Py_TYPE(int_size), int_size
         );
         ret = -2;
         goto error;
     }
 
-    /* Convert to size_t, check for OverflowError */
+    /* Convert to ssize_t, check for OverflowError */
     size = PyLong_AsSsize_t(int_size);
     if (PyErr_Occurred()) {
         ret = -3;
@@ -1666,8 +1665,7 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
     /* sock.recv_into() must return (0 <= size <= len) */
     if (size < 0 || size > len) {
         PyErr_Format(PyExc_IOError,
-            "sock.recv_into() returned size=%zd; need 0 <= size <= %zd",
-            size, len
+            "need 0 <= size <= %zd; recv_into() returned %zd", len, size
         );
         ret = - 4;
         goto error;
@@ -1681,7 +1679,7 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
 error:
     if (ret >= 0) {
         Py_FatalError(
-            "internal error in _Reader_recv_into(): in error, but ret >= 0"
+            "_Reader_recv_into(): in error, but ret >= 0"
         );
     }
 
@@ -2128,6 +2126,56 @@ cleanup:
 }
 
 
+static PyObject *
+Reader_readinto(Reader *self, PyObject *args)
+{
+    Py_buffer dst;
+    size_t start;
+    ssize_t added;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "w*", &dst)) {
+        return NULL;
+    }
+    if (dst.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "dst cannot be empty");
+        goto error;
+    }
+    DeguBuf src = _Reader_drain(self, dst.len);
+    if (src.len > dst.len) {
+        Py_FatalError("_Reader_readinto(): src.len > dst.len");
+    }
+    if (src.len > 0) {
+        memcpy(dst.buf, src.buf, src.len);
+    }
+    start = src.len;
+    while (start < dst.len) {
+        added = _Reader_sock_recv_into(self,
+            (uint8_t *)dst.buf + start, dst.len - start
+        );
+        if (added < 0) {
+            goto error;
+        }
+        if (added == 0) {
+            break;
+        }
+        start += added;
+    }
+    if (start > dst.len) {
+        Py_FatalError("_Reader_readinto(): start > dst.len");
+    }
+    _SET(ret, PyLong_FromSize_t(start))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    PyBuffer_Release(&dst);
+    return ret;
+}
+
+
 /*******************************************************************************
  * Reader: PyMethodDef, PyTypeObject:
  */
@@ -2164,6 +2212,7 @@ static PyMethodDef Reader_methods[] = {
     },
     {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
     {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
+    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, "readinto(buf)"},
 
     {NULL}
 };

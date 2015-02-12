@@ -2261,9 +2261,24 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(wfile._calls, expected)
 
 
-class TestReader_Py(TestCase):
-    backend = _basepy
 
+class BadSocket:
+    def __init__(self, ret):
+        self._ret = ret
+
+    def close(self):
+        pass
+
+    def shutdown(self, how):
+        pass
+
+    def recv_into(self, buf):
+        if isinstance(self._ret, Exception):
+            raise self._ret
+        return self._ret
+
+
+class TestReader_Py(BackendTestCase):
     @property
     def Reader(self):
         return self.backend.Reader
@@ -2733,10 +2748,92 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.read(512), C)
         self.assertEqual(reader.read(default + 1), D)
 
+        badsocket = BadSocket(17.0)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(TypeError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+        )
+
+        badsocket = BadSocket(sys.maxsize + 1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OverflowError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'Python int too large to convert to C ssize_t'
+        )
+
+        badsocket = BadSocket(-1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned -1'
+        )
+
+        badsocket = BadSocket(12346)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        marker = random_id()
+        exc = ValueError(marker)
+        badsocket = BadSocket(exc)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            reader.read(12345)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+
+    def test_readinto(self):
+        dst = memoryview(bytearray(12345))
+        badsocket = BadSocket(17.0)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(TypeError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+        )
+
+        badsocket = BadSocket(sys.maxsize + 1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OverflowError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'Python int too large to convert to C ssize_t'
+        )
+
+        badsocket = BadSocket(-1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned -1'
+        )
+
+        badsocket = BadSocket(12346)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        marker = random_id()
+        exc = ValueError(marker)
+        badsocket = BadSocket(exc)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(dst)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        
+
 
 class TestReader_C(TestReader_Py):
     backend = _base
 
-    def setUp(self):
-        if self.backend is None:
-            self.skipTest('cannot import `degu._base` C extension')
