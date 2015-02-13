@@ -52,6 +52,9 @@ HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
 
+RequestType = Request = namedtuple('Request',
+    'method uri script path query headers body'
+)
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
 

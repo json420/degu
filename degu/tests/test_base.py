@@ -354,6 +354,20 @@ class TestFormatting_C(TestFormatting_Py):
 
 
 class TestNamedTuples_Py(BackendTestCase):
+    def test_Request(self):
+        args = tuple(random_id() for i in range(7))
+        inst = self.getattr('Request')(*args)
+        self.assertIsInstance(inst, tuple)
+        self.assertIsInstance(inst, self.getattr('RequestType'))
+        self.assertEqual(inst, args)
+        self.assertIs(inst.method,  args[0])
+        self.assertIs(inst.uri,     args[1])
+        self.assertIs(inst.script,  args[2])
+        self.assertIs(inst.path,    args[3])
+        self.assertIs(inst.query,   args[4])
+        self.assertIs(inst.headers, args[5])
+        self.assertIs(inst.body,    args[6])
+
     def test_Response(self):
         status = random_id()
         reason = random_id()

@@ -1050,6 +1050,48 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
 }
 
 
+static PyStructSequence_Field RequestFields[] = {
+    {"method", NULL},
+    {"uri", NULL},
+    {"script", NULL},
+    {"path", NULL},
+    {"query", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc RequestDesc = {
+    "Request",
+    NULL,
+    RequestFields,  
+    7
+};
+static PyTypeObject RequestType;
+
+static PyObject *
+_Request(PyObject *method,
+         PyObject *uri,
+         PyObject *script,
+         PyObject *path,
+         PyObject *query,
+         PyObject *headers,
+         PyObject *body)
+{
+    PyObject *request = PyStructSequence_New(&RequestType);
+    if (request == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SetItem(request, 0, method);
+    PyStructSequence_SetItem(request, 1, uri);
+    PyStructSequence_SetItem(request, 2, script);
+    PyStructSequence_SetItem(request, 3, path);
+    PyStructSequence_SetItem(request, 4, query);
+    PyStructSequence_SetItem(request, 5, headers);
+    PyStructSequence_SetItem(request, 6, body);
+    return request;
+}
+
+
 /*******************************************************************************
  * Public API: Parsing: Headers:
  *     parse_header_name()
@@ -1457,6 +1499,32 @@ cleanup:
  *     Response()
  */
 static PyObject *
+Request(PyObject *self, PyObject *args)
+{
+
+    PyObject *method = NULL;
+    PyObject *uri = NULL;
+    PyObject *script = NULL;
+    PyObject *path = NULL;
+    PyObject *query = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+
+    if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
+            &method, &uri, &script, &path, &query, &headers, &body)) {
+        return NULL;
+    }
+    Py_INCREF(method);
+    Py_INCREF(uri);
+    Py_INCREF(script);
+    Py_INCREF(path);
+    Py_INCREF(query);
+    Py_INCREF(headers);
+    Py_INCREF(body);
+    return _Request(method, uri, script, path, query, headers, body);
+}
+
+static PyObject *
 Response(PyObject *self, PyObject *args)
 {
     PyObject *status = NULL;
@@ -1504,6 +1572,9 @@ static struct PyMethodDef degu_functions[] = {
         "format_response(status, reason, headers)"},
 
     /* namedtuples */
+    {"Request", Request, METH_VARARGS,
+        "Request(method, uri, script, path, query, headers, body)"
+    },
     {"Response", Response, METH_VARARGS,
         "Response(status, reason, headers, body)"
     },
@@ -2284,6 +2355,12 @@ PyInit__base(void)
     if (module == NULL) {
         return NULL;
     }
+
+    if (PyStructSequence_InitType2(&RequestType, &RequestDesc) != 0) {
+        return NULL;
+    }
+    Py_INCREF(&RequestType);
+    PyModule_AddObject(module, "RequestType", (PyObject *)&RequestType);
 
     if (PyStructSequence_InitType2(&ResponseType, &ResponseDesc) != 0) {
         return NULL;
