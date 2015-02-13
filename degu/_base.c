@@ -1042,10 +1042,10 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
     if (response == NULL) {
         return NULL;
     }
-    PyStructSequence_SetItem(response, 0, status);
-    PyStructSequence_SetItem(response, 1, reason);
-    PyStructSequence_SetItem(response, 2, headers);
-    PyStructSequence_SetItem(response, 3, body);
+    PyStructSequence_SET_ITEM(response, 0, status);
+    PyStructSequence_SET_ITEM(response, 1, reason);
+    PyStructSequence_SET_ITEM(response, 2, headers);
+    PyStructSequence_SET_ITEM(response, 3, body);
     return response;
 }
 
@@ -1081,13 +1081,13 @@ _Request(PyObject *method,
     if (request == NULL) {
         return NULL;
     }
-    PyStructSequence_SetItem(request, 0, method);
-    PyStructSequence_SetItem(request, 1, uri);
-    PyStructSequence_SetItem(request, 2, script);
-    PyStructSequence_SetItem(request, 3, path);
-    PyStructSequence_SetItem(request, 4, query);
-    PyStructSequence_SetItem(request, 5, headers);
-    PyStructSequence_SetItem(request, 6, body);
+    PyStructSequence_SET_ITEM(request, 0, method);
+    PyStructSequence_SET_ITEM(request, 1, uri);
+    PyStructSequence_SET_ITEM(request, 2, script);
+    PyStructSequence_SET_ITEM(request, 3, path);
+    PyStructSequence_SET_ITEM(request, 4, query);
+    PyStructSequence_SET_ITEM(request, 5, headers);
+    PyStructSequence_SET_ITEM(request, 6, body);
     return request;
 }
 
@@ -1252,6 +1252,36 @@ cleanup:
         scratch = NULL;
     }
     _clear_degu_request(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_request2(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    uint8_t *scratch = NULL;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    _SET(scratch, _calloc_buf(MAX_KEY))
+    if (!_parse_request(src, scratch, &dr)) {
+        goto error;
+    }
+    _SET(ret,
+        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
+    )
+    goto cleanup;
+error:
+    _clear_degu_request(&dr);
+cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
     return ret;
 }
 
@@ -1558,6 +1588,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
+    {"parse_request2", parse_request2, METH_VARARGS, "parse_request2(preamble)"},
 
     /* Response Parsing */
     {"parse_response_line", parse_response_line, METH_VARARGS,
@@ -2079,6 +2110,44 @@ cleanup:
     return ret;
 }
 
+static PyObject *
+Reader_read_request2(Reader *self) {
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+
+    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    if (src.buf == NULL) {
+        goto error;
+    }
+    if (src.len == 0) {
+        PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
+        goto error;
+    }
+    if (!_parse_request(src, self->scratch, &dr)) {
+        goto error;
+    }
+    const uint8_t bodyflags = (dr.flags & 3);
+    if (bodyflags == 0) {
+        _SET_AND_INC(dr.body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dr.body, _Reader_Body(self, dr.content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dr.body, _Reader_ChunkedBody(self))
+    }
+    _SET(ret,
+        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
+    )
+    goto cleanup;
+
+error:
+    _clear_degu_request(&dr);
+
+cleanup:
+    return ret;
+}
+
 
 static PyObject *
 Reader_read_response(Reader *self, PyObject *args)
@@ -2267,6 +2336,9 @@ static PyMethodDef Reader_methods[] = {
     },
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
         "read_request()"
+    },
+    {"read_request2", (PyCFunction)Reader_read_request2, METH_NOARGS,
+        "read_request2()"
     },
     {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS,
         "read_response(method)"
