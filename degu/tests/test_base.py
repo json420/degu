@@ -354,33 +354,57 @@ class TestFormatting_C(TestFormatting_Py):
 
 
 class TestNamedTuples_Py(BackendTestCase):
+    def new(self, name, count):
+        args = tuple(random_id() for i in range(count))
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
+        tup = self.getattr(name)(*args)
+        self.assertIsInstance(tup, tuple)
+        self.assertIsInstance(tup, self.getattr(name + 'Type'))
+        self.assertEqual(tup, args)
+        self.assertEqual(len(tup), count)
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        return (tup, args)
+
+    def test_Bodies(self):
+        (tup, args) = self.new('Bodies', 4)
+        self.assertIs(tup.Body,            args[0])
+        self.assertIs(tup.BodyIter,        args[1])
+        self.assertIs(tup.ChunkedBody,     args[2])
+        self.assertIs(tup.ChunkedBodyIter, args[3])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
+
     def test_Request(self):
-        args = tuple(random_id() for i in range(7))
-        inst = self.getattr('Request')(*args)
-        self.assertIsInstance(inst, tuple)
-        self.assertIsInstance(inst, self.getattr('RequestType'))
-        self.assertEqual(inst, args)
-        self.assertIs(inst.method,  args[0])
-        self.assertIs(inst.uri,     args[1])
-        self.assertIs(inst.script,  args[2])
-        self.assertIs(inst.path,    args[3])
-        self.assertIs(inst.query,   args[4])
-        self.assertIs(inst.headers, args[5])
-        self.assertIs(inst.body,    args[6])
+        (tup, args) = self.new('Request', 7)
+        self.assertIs(tup.method,  args[0])
+        self.assertIs(tup.uri,     args[1])
+        self.assertIs(tup.script,  args[2])
+        self.assertIs(tup.path,    args[3])
+        self.assertIs(tup.query,   args[4])
+        self.assertIs(tup.headers, args[5])
+        self.assertIs(tup.body,    args[6])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
 
     def test_Response(self):
-        status = random_id()
-        reason = random_id()
-        headers = random_id()
-        body = random_id()
-        inst = self.getattr('Response')(status, reason, headers, body)
-        self.assertIsInstance(inst, tuple)
-        self.assertIsInstance(inst, self.getattr('ResponseType'))
-        self.assertIs(inst.status, status)
-        self.assertIs(inst.reason, reason)
-        self.assertIs(inst.headers, headers)
-        self.assertIs(inst.body, body)
-
+        (tup, args) = self.new('Response', 4)
+        self.assertIs(tup.status,  args[0])
+        self.assertIs(tup.reason,  args[1])
+        self.assertIs(tup.headers, args[2])
+        self.assertIs(tup.body,    args[3])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
 
 class TestNamedTuples_C(TestNamedTuples_Py):
     backend = _base
@@ -428,9 +452,8 @@ class TestConstants(TestCase):
         self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
-        self.assertTrue(issubclass(base.BodiesAPI, tuple))
         self.assertIsInstance(base.bodies, tuple)
-        self.assertIsInstance(base.bodies, base.BodiesAPI)
+        self.assertIsInstance(base.bodies, base.BodiesType)
 
         self.assertIs(base.bodies.Body, base.Body)
         self.assertIs(base.bodies.BodyIter, base.BodyIter)

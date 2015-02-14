@@ -23,35 +23,37 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
-from collections import namedtuple
 try:
     from ._base import (
         _MAX_LINE_SIZE,
+        Bodies, BodiesType,
+        Request, RequestType,
+        Response, ResponseType,
         EmptyPreambleError,
         format_request,
         format_response,
         Reader,
-        ResponseType,
-        Response,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
+        Bodies, BodiesType,
+        Request, RequestType,
+        Response, ResponseType,
         EmptyPreambleError,
         format_request,
         format_response,
         Reader,
-        ResponseType,
-        Response,
     )
 
 
 __all__ = (
     '_MAX_LINE_SIZE',
+    'Bodies', 'BodiesType',
+    'Request', 'RequestType',
+    'Response', 'ResponseType',
     'EmptyPreambleError',
     'Reader',
-    'ResponseType',
-    'Response',
     'format_request',
     'format_response',
 )
@@ -419,5 +421,4 @@ class ChunkedBodyIter:
 
 
 # Used to expose the RGI IO wrappers:
-BodiesAPI = namedtuple('BodiesAPI', 'Body BodyIter ChunkedBody ChunkedBodyIter')
-bodies = BodiesAPI(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

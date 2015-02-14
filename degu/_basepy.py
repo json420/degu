@@ -52,6 +52,9 @@ HEAD = 'HEAD'
 DELETE = 'DELETE'
 OK = 'OK'
 
+BodiesType = Bodies = namedtuple('Bodies',
+    'Body BodyIter ChunkedBody ChunkedBodyIter'
+)
 RequestType = Request = namedtuple('Request',
     'method uri script path query headers body'
 )

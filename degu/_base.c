@@ -1017,39 +1017,48 @@ cleanup:
 
 
 /*******************************************************************************
- * Internal API: namedtuples:
+ * Internal API: namedtuple:
+ *     _Bodies()
+ *     _Request()
  *     _Response()
+ *     _init_namedtuple()
+ *     _init_all_namedtuples()
  */
-static PyStructSequence_Field ResponseFields[] = {
-    {"status", NULL},
-    {"reason", NULL},
-    {"headers", NULL},
-    {"body", NULL},
+
+/* Bodies */
+static PyTypeObject BodiesType;
+static PyStructSequence_Field BodiesFields[] = {
+    {"Body", NULL},
+    {"BodyIter", NULL},
+    {"ChunkedBody", NULL},
+    {"ChunkedBodyIter", NULL},
     {NULL},
 };
-static PyStructSequence_Desc ResponseDesc = {
-    "Response",
+static PyStructSequence_Desc BodiesDesc = {
+    "Bodies",
     NULL,
-    ResponseFields,  
+    BodiesFields,  
     4
 };
-static PyTypeObject ResponseType;
-
 static PyObject *
-_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+_Bodies(PyObject *Body,
+        PyObject *BodyIter,
+        PyObject *ChunkedBody,
+        PyObject *ChunkedBodyIter)
 {
-    PyObject *response = PyStructSequence_New(&ResponseType);
-    if (response == NULL) {
+    PyObject *bodies = PyStructSequence_New(&BodiesType);
+    if (bodies == NULL) {
         return NULL;
     }
-    PyStructSequence_SET_ITEM(response, 0, status);
-    PyStructSequence_SET_ITEM(response, 1, reason);
-    PyStructSequence_SET_ITEM(response, 2, headers);
-    PyStructSequence_SET_ITEM(response, 3, body);
-    return response;
+    PyStructSequence_SET_ITEM(bodies, 0, Body);
+    PyStructSequence_SET_ITEM(bodies, 1, BodyIter);
+    PyStructSequence_SET_ITEM(bodies, 2, ChunkedBody);
+    PyStructSequence_SET_ITEM(bodies, 3, ChunkedBodyIter);
+    return bodies;
 }
 
-
+/* Request */
+static PyTypeObject RequestType;
 static PyStructSequence_Field RequestFields[] = {
     {"method", NULL},
     {"uri", NULL},
@@ -1066,8 +1075,6 @@ static PyStructSequence_Desc RequestDesc = {
     RequestFields,  
     7
 };
-static PyTypeObject RequestType;
-
 static PyObject *
 _Request(PyObject *method,
          PyObject *uri,
@@ -1089,6 +1096,65 @@ _Request(PyObject *method,
     PyStructSequence_SET_ITEM(request, 5, headers);
     PyStructSequence_SET_ITEM(request, 6, body);
     return request;
+}
+
+/* Response */
+static PyTypeObject ResponseType;
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc ResponseDesc = {
+    "Response",
+    NULL,
+    ResponseFields,  
+    4
+};
+static PyObject *
+_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+{
+    PyObject *response = PyStructSequence_New(&ResponseType);
+    if (response == NULL) {
+        return NULL;
+    }
+    PyStructSequence_SET_ITEM(response, 0, status);
+    PyStructSequence_SET_ITEM(response, 1, reason);
+    PyStructSequence_SET_ITEM(response, 2, headers);
+    PyStructSequence_SET_ITEM(response, 3, body);
+    return response;
+}
+
+/* _init_namedtuple(), _init_all_namedtuples() */
+static bool
+_init_namedtuple(PyObject *module, const char *name,
+                 PyTypeObject *type, PyStructSequence_Desc *desc)
+{
+    if (PyStructSequence_InitType2(type, desc) != 0) {
+        return false;
+    }
+    Py_INCREF(type);
+    if (PyModule_AddObject(module, name, (PyObject *)type) != 0) {
+        return false;
+    }
+    return true;
+}
+
+static bool
+_init_all_namedtuples(PyObject *module)
+{
+    if (!_init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
+        return false;
+    }
+    if (!_init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
+        return false;
+    }
+    if (!_init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
+        return false;
+    }
+    return true;
 }
 
 
@@ -1529,9 +1595,26 @@ cleanup:
  *     Response()
  */
 static PyObject *
+Bodies(PyObject *self, PyObject *args)
+{
+    PyObject *Body = NULL;
+    PyObject *BodyIter = NULL;
+    PyObject *ChunkedBody = NULL;
+    PyObject *ChunkedBodyIter = NULL;
+    if (!PyArg_ParseTuple(args, "OOOO:Bodies",
+            &Body, &BodyIter, &ChunkedBody, &ChunkedBodyIter)) {
+        return NULL;
+    }
+    Py_INCREF(Body);
+    Py_INCREF(BodyIter);
+    Py_INCREF(ChunkedBody);
+    Py_INCREF(ChunkedBodyIter);
+    return _Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter);
+}
+
+static PyObject *
 Request(PyObject *self, PyObject *args)
 {
-
     PyObject *method = NULL;
     PyObject *uri = NULL;
     PyObject *script = NULL;
@@ -1539,7 +1622,6 @@ Request(PyObject *self, PyObject *args)
     PyObject *query = NULL;
     PyObject *headers = NULL;
     PyObject *body = NULL;
-
     if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
             &method, &uri, &script, &path, &query, &headers, &body)) {
         return NULL;
@@ -1561,7 +1643,8 @@ Response(PyObject *self, PyObject *args)
     PyObject *reason = NULL;
     PyObject *headers = NULL;
     PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "OOOO:Response", &status, &reason, &headers, &body)) {
+    if (!PyArg_ParseTuple(args, "OUOO:Response",
+            &status, &reason, &headers, &body)) {
         return NULL;
     }
     Py_INCREF(status);
@@ -1603,6 +1686,9 @@ static struct PyMethodDef degu_functions[] = {
         "format_response(status, reason, headers)"},
 
     /* namedtuples */
+    {"Bodies", Bodies, METH_VARARGS,
+        "Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)"
+    },
     {"Request", Request, METH_VARARGS,
         "Request(method, uri, script, path, query, headers, body)"
     },
@@ -2414,6 +2500,7 @@ static struct PyModuleDef degu = {
     degu_functions
 };
 
+
 PyMODINIT_FUNC
 PyInit__base(void)
 {
@@ -2427,19 +2514,9 @@ PyInit__base(void)
     if (module == NULL) {
         return NULL;
     }
-
-    if (PyStructSequence_InitType2(&RequestType, &RequestDesc) != 0) {
+    if (!_init_all_namedtuples(module)) {
         return NULL;
     }
-    Py_INCREF(&RequestType);
-    PyModule_AddObject(module, "RequestType", (PyObject *)&RequestType);
-
-    if (PyStructSequence_InitType2(&ResponseType, &ResponseDesc) != 0) {
-        return NULL;
-    }
-    Py_INCREF(&ResponseType);
-    PyModule_AddObject(module, "ResponseType", (PyObject *)&ResponseType);
-
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
 
