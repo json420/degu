@@ -451,6 +451,10 @@ _parse_key(DeguBuf src, uint8_t *dst_buf)
 {
     uint8_t r;
     size_t i;
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header name is empty");
+        return false; 
+    }
     if (src.len > MAX_KEY) {
         _value_error("header name too long: %R...", _slice(src, 0, MAX_KEY));
         return false;
@@ -471,6 +475,10 @@ _parse_key(DeguBuf src, uint8_t *dst_buf)
 static inline PyObject *
 _parse_val(DeguBuf src)
 {
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header value is empty");
+        return NULL; 
+    }
     return _decode(src, VALUE_MASK, "bad bytes in header value: %R");
 }
 
@@ -1212,6 +1220,33 @@ parse_content_length(PyObject *self, PyObject *args)
     return _parse_content_length((DeguBuf){buf, len});
 }
 
+static PyObject *
+parse_headers(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    uint8_t *scratch = NULL;
+    DeguHeaders dh = NEW_DEGU_HEADERS;
+    if (!PyArg_ParseTuple(args, "y#:parse_headers", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    _SET(scratch, _calloc_buf(MAX_KEY))
+    if (!_parse_headers(src, scratch, &dh)) {
+        goto error;
+    }
+    goto cleanup;
+error:
+    Py_CLEAR(dh.headers);
+cleanup:
+    if (scratch != NULL) {
+        free(scratch);
+        scratch = NULL;
+    }
+    Py_CLEAR(dh.content_length);
+    return dh.headers;
+}
+
 
 /*******************************************************************************
  * Public API: Parsing: Requests:
@@ -1664,6 +1699,7 @@ static struct PyMethodDef degu_functions[] = {
         "parse_header_name(name)"},
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"},
+    {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
 
     /* Request Parsing */
     {"parse_method", parse_method, METH_VARARGS, "parse_method(method)"},

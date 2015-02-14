@@ -90,6 +90,12 @@ def _decode(src, allowed, message):
     raise ValueError(message.format(src))
 
 
+def _parse_val(src):
+    if VALUE.issuperset(src):
+        return src.decode('ascii')
+    raise ValueError('bad bytes in header value: {!r}'.format(src))
+
+
 def parse_method(method):
     if isinstance(method, str):
         method = method.encode()
@@ -244,34 +250,39 @@ def parse_request_line(line):
 
 def _parse_header_lines(header_lines):
     headers = {}
+    flags = 0
     for line in header_lines:
-        (key, value) = (None, None)
         parts = line.split(b': ', 1)
-        if len(parts) >= 2:
-            (key, value) = parts
-        if not (key and value):
+        if len(parts) != 2:
             raise ValueError('bad header line: {!r}'.format(line))
+        (key, val) = parts
         key = parse_header_name(key)
-        value = _decode_value(value, 'bad bytes in header value: {!r}')
-        if headers.setdefault(key, value) is not value:
+        if key == 'content-length':
+            flags |= 1
+            val = parse_content_length(val)
+        elif key == 'transfer-encoding':
+            flags |= 2
+            if val != b'chunked':
+                raise ValueError(
+                    'bad transfer-encoding: {!r}'.format(val)
+                )
+            val = 'chunked'
+        else:
+            val = _parse_val(val)
+        if headers.setdefault(key, val) is not val:
             raise ValueError(
                 'duplicate header: {!r}'.format(line)
             )
-    cl = headers.get('content-length')
-    if cl is not None:
-        headers['content-length'] = parse_content_length(cl.encode())
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                'cannot have both content-length and transfer-encoding headers'
-            )
-    elif 'transfer-encoding' in headers:
-        if headers['transfer-encoding'] != 'chunked':
-            raise ValueError(
-                'bad transfer-encoding: {!r}'.format(
-                    headers['transfer-encoding'].encode()
-                )
-            )
+    if (flags & 3) == 3:
+        raise ValueError(
+            'cannot have both content-length and transfer-encoding headers'
+        )
     return headers
+
+def parse_headers(src):
+    if src == b'':
+        return {}
+    return _parse_header_lines(src.split(b'\r\n'))
 
 
 def parse_request(preamble):

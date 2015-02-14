@@ -260,13 +260,107 @@ class BackendTestCase(TestCase):
         return getattr(backend, name)
 
 
+def _iter_sep_permutations(good=b': '):
+    (g0, g1) = good
+    yield bytes([g0])
+    yield bytes([g1])
+    for v in range(256):
+        yield bytes([v, g1])
+        yield bytes([g0, v])
+
+SEP_PERMUTATIONS = tuple(_iter_sep_permutations())
+
+def _iter_crlf_permutations(good=b'\r\n'):
+    (g0, g1) = good
+    yield bytes([g0])
+    yield bytes([g1])
+    for v in range(256):
+        yield bytes([v, g1])
+        yield bytes([g0, v])
+
+CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
+
+
+class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_headers(self):
+        parse_headers = self.getattr('parse_headers')
+
+        length =  b'Content-Length: 17'
+        encoding = b'Transfer-Encoding: chunked'
+        _type = b'Content-Type: text/plain'
+
+        self.assertEqual(parse_headers(b''), {})
+        self.assertEqual(parse_headers(length),
+            {'content-length': 17}
+        )
+        self.assertEqual(parse_headers(encoding),
+            {'transfer-encoding': 'chunked'}
+        )
+        self.assertEqual(parse_headers(_type),
+            {'content-type': 'text/plain'}
+        )
+        self.assertEqual(parse_headers(b'\r\n'.join([_type, length])),
+            {'content-type': 'text/plain', 'content-length': 17}
+        )
+        self.assertEqual(parse_headers(b'\r\n'.join([_type, encoding])),
+            {'content-type': 'text/plain', 'transfer-encoding': 'chunked'}
+        )
+
+        key = b'Content-Length'
+        val = b'17'
+        self.assertEqual(len(SEP_PERMUTATIONS), 514)
+        good_count = 0
+        for sep in SEP_PERMUTATIONS:
+            line = b''.join([key, sep, val])
+            if sep == b': ':
+                good_count += 1
+                self.assertEqual(parse_headers(line), {'content-length': 17})
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(line)
+                self.assertEqual(str(cm.exception),
+                    'bad header line: {!r}'.format(line)
+                )
+        self.assertEqual(good_count, 2)
+
+        self.assertEqual(len(CRLF_PERMUTATIONS), 514)
+        good_count = 0
+        for crlf in CRLF_PERMUTATIONS:
+            src1 = b''.join([length, crlf, _type])
+            src2 = b''.join([_type, crlf, length])
+            if crlf == b'\r\n':
+                good_count += 1
+                self.assertEqual(parse_headers(src1),
+                    {'content-type': 'text/plain', 'content-length': 17}
+                )
+                self.assertEqual(parse_headers(src2),
+                    {'content-type': 'text/plain', 'content-length': 17}
+                )
+            else:
+                badval1 = b''.join([b'17', crlf, _type])
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(src1)
+                self.assertEqual(str(cm.exception),
+                    'content-length too long: {!r}...'.format(badval1[:16])
+                )
+                badval2 = b''.join([b'text/plain', crlf, length])
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(src2)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header value: {!r}'.format(badval2)
+                )
+        self.assertEqual(good_count, 2)
+
+
+class TestParsingFunctions_C(TestParsingFunctions_Py):
+    backend = _base
+
+
 class dict_subclass(dict):
     pass
 
-
 class str_subclass(str):
     pass
-
 
 class TestFormatting_Py(BackendTestCase):
     def test_format_headers(self):

@@ -8,18 +8,21 @@ gc.enable()
 from io import BytesIO
 
 from degu._base import (
-    format_headers,
-    format_request,
-    format_response,
-
+    parse_headers,
     parse_content_length,
+
+    parse_request,
+    parse_request2,
     parse_request_line,
     parse_method,
     parse_uri,
-    parse_request,
-    parse_request2,
-    parse_response_line,
+
     parse_response,
+    parse_response_line,
+
+    format_headers,
+    format_request,
+    format_response,
 )
 
 
@@ -33,6 +36,7 @@ headers = {
     'hello': 'World',
     'k': 'V',
 }
+headers_src = format_headers(headers).encode()
 request = format_request('POST', '/foo/bar?stuff=junk', headers)[:-4]
 response = format_response(200, 'OK', headers)[:-4]
 """
@@ -55,8 +59,16 @@ def run(statement, K=250):
 
 print('-' * 80)
 
-print('\nCommon parsing:')
-run("parse_content_length(b'9007199254740992')")
+print('\nHeader parsing:')
+run('parse_headers(headers_src)')
+run("parse_headers(b'Content-Length: 123456')")
+run("parse_headers(b'Transfer-Encoding: chunked')")
+run("parse_headers(b'Content-Length: 123456\\r\\nContent-Type: text/plain')")
+run("parse_headers(b'Transfer-Encoding: chunked\\r\\nContent-Type: text/plain')")
+run("parse_content_length(b'123456')")
+
+
+raise SystemExit()
 
 print('\nRequest parsing:')
 run('parse_request2(request)')
