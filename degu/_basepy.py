@@ -91,6 +91,8 @@ def _decode(src, allowed, message):
 
 
 def _parse_val(src):
+    if len(src) < 1:
+        raise ValueError('header value is empty')
     if VALUE.issuperset(src):
         return src.decode('ascii')
     raise ValueError('bad bytes in header value: {!r}'.format(src))
@@ -131,7 +133,6 @@ def _parse_path(src):
 def parse_uri(src):
     if not src:
         raise ValueError('uri is empty')
-
     uri = _decode(src, URI, 'bad bytes in uri: {!r}')
     parts = src.split(b'?', 1)
     assert len(parts) in (1, 2)
@@ -252,6 +253,8 @@ def _parse_header_lines(header_lines):
     headers = {}
     flags = 0
     for line in header_lines:
+        if len(line) < 4:
+            raise ValueError('header line too short: {!r}'.format(line))
         parts = line.split(b': ', 1)
         if len(parts) != 2:
             raise ValueError('bad header line: {!r}'.format(line))
@@ -278,6 +281,7 @@ def _parse_header_lines(header_lines):
             'cannot have both content-length and transfer-encoding headers'
         )
     return headers
+
 
 def parse_headers(src):
     if src == b'':

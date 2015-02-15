@@ -285,11 +285,24 @@ class TestParsingFunctions_Py(BackendTestCase):
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
 
+        self.assertEqual(parse_headers(b''), {})
+        self.assertEqual(parse_headers(b'K: V'), {'k': 'V'})
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b': V')
+        self.assertEqual(str(cm.exception), "header line too short: b': V'")
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b': VV')
+        self.assertEqual(str(cm.exception), 'header name is empty')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b'K: ')
+        self.assertEqual(str(cm.exception), "header line too short: b'K: '")
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b'KK: ')
+        self.assertEqual(str(cm.exception), 'header value is empty')
+
         length =  b'Content-Length: 17'
         encoding = b'Transfer-Encoding: chunked'
         _type = b'Content-Type: text/plain'
-
-        self.assertEqual(parse_headers(b''), {})
         self.assertEqual(parse_headers(length),
             {'content-length': 17}
         )
@@ -304,6 +317,12 @@ class TestParsingFunctions_Py(BackendTestCase):
         )
         self.assertEqual(parse_headers(b'\r\n'.join([_type, encoding])),
             {'content-type': 'text/plain', 'transfer-encoding': 'chunked'}
+        )
+        badsrc = b'\r\n'.join([length, encoding])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot have both content-length and transfer-encoding headers'
         )
 
         key = b'Content-Length'

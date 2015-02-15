@@ -65,6 +65,7 @@ static PyObject *str_headers = NULL;  // 'headers'
 static PyObject *str_body    = NULL;  // 'body'
 
 
+
 /***************    BEGIN GENERATED TABLES    *********************************/
 static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
@@ -532,7 +533,7 @@ _parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
         goto error;
     }
     keystop = _find(src, SEP);
-    if (keystop == 0 || keystop + SEP.len >= src.len) {
+    if (keystop == src.len) {
         _value_error("bad header line: %R", src);
         goto error;
     }
