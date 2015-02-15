@@ -34,6 +34,14 @@ from .base import (
     Response
 )
 
+__all__ = (
+    'Client',
+    'SSLClient',
+    'build_client_sslctx',
+    'Connection',
+    'Response',
+)
+
 
 class ClosedConnectionError(Exception):
     """
@@ -220,19 +228,6 @@ def _write_request(wfile, method, uri, headers, body):
         total = wfile.write(preamble)
         total += body.write_to(wfile)
     return total
-
-
-def _read_response(rfile, bodies, method):
-    (status, reason, headers) = rfile.read_response(method)
-    if method == 'HEAD':
-        body = None
-    elif 'content-length' in headers:
-        body = bodies.Body(rfile, headers['content-length'])
-    elif 'transfer-encoding' in headers:
-        body = bodies.ChunkedBody(rfile)
-    else:
-        body = None
-    return Response(status, reason, headers, body)
 
 
 class Connection:
