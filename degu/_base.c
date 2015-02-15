@@ -1230,7 +1230,7 @@ parse_content_length(PyObject *self, PyObject *args)
     const uint8_t *buf = NULL;
     size_t len = 0;
 
-    if (!PyArg_ParseTuple(args, "s#:parse_content_length", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
         return NULL;
     }
     return _parse_content_length((DeguBuf){buf, len});
@@ -1415,7 +1415,7 @@ parse_response_line(PyObject *self, PyObject *args)
     size_t len = 0;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
-    if (!PyArg_ParseTuple(args, "s#:parse_response_line", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "y#:parse_response_line", &buf, &len)) {
         return NULL;
     }
     DeguBuf src = {buf, len};
@@ -2182,7 +2182,7 @@ Reader_read_response(Reader *self, PyObject *args)
     DeguResponse dr = NEW_DEGU_RESPONSE;
 
     /* Parse args, validate the request method */
-    if (!PyArg_ParseTuple(args, "s#:", &method_buf, &method_len)) {
+    if (!PyArg_ParseTuple(args, "s#:read_response", &method_buf, &method_len)) {
         return NULL;
     }
     _SET(method, _parse_method((DeguBuf){method_buf, method_len}))

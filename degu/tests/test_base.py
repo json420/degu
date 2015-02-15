@@ -2981,7 +2981,6 @@ class TestReader_Py(BackendTestCase):
             reader.readinto(dst)
         self.assertIs(cm.exception, exc)
         self.assertEqual(str(cm.exception), marker)
-        
 
 
 class TestReader_C(TestReader_Py):

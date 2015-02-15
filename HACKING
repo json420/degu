@@ -53,6 +53,7 @@ Internal API:
 
 Public API:
     Parsing:
+        parse_content_length()
         parse_header_line()
         parse_headers()
         parse_method()

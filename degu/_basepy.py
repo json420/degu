@@ -38,9 +38,6 @@ import sys
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
-READER_BUFFER_SIZE = 65536  # 64 KiB
-MAX_PREAMBLE_SIZE  = 32768  # 32 KiB
-
 MIN_PREAMBLE     =  4096  #  4 KiB
 DEFAULT_PREAMBLE = 32768  # 32 KiB
 MAX_PREAMBLE     = 65536  # 64 KiB
@@ -50,7 +47,16 @@ PUT = 'PUT'
 POST = 'POST'
 HEAD = 'HEAD'
 DELETE = 'DELETE'
+_METHODS = {
+    b'GET': GET,
+    b'PUT': PUT,
+    b'POST': POST,
+    b'HEAD': HEAD,
+    b'DELETE': DELETE,
+}
+
 OK = 'OK'
+
 
 BodiesType = Bodies = namedtuple('Bodies',
     'Body BodyIter ChunkedBody ChunkedBodyIter'
@@ -59,6 +65,10 @@ RequestType = Request = namedtuple('Request',
     'method uri script path query headers body'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
+
+
+class EmptyPreambleError(ConnectionError):
+    pass
 
 
 ################    BEGIN GENERATED TABLES    ##################################
@@ -84,10 +94,34 @@ VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
 
-def _decode(src, allowed, message):
-    if allowed.issuperset(src):
-        return src.decode('ascii')
-    raise ValueError(message.format(src))
+
+def _getcallable(objname, obj, name):
+    attr = getattr(obj, name)
+    if not callable(attr):
+        raise TypeError('{}.{}() is not callable'.format(objname, name))
+    return attr
+
+
+################################################################################
+# Header parsing:
+
+def _parse_key(src):
+    if len(src) < 1:
+        raise ValueError('header name is empty')
+    if len(src) > 32:
+        raise ValueError('header name too long: {!r}...'.format(src[:32]))
+    if NAME.issuperset(src):
+        return src.decode('ascii').lower()
+    raise ValueError('bad bytes in header name: {!r}'.format(src))
+
+
+def parse_header_name(src):
+    """
+    Used to decode, validate, and case-fold header keys.
+
+    FIXME: drop from public API, replaced by _parse_key().
+    """
+    return _parse_key(src)
 
 
 def _parse_val(src):
@@ -98,155 +132,23 @@ def _parse_val(src):
     raise ValueError('bad bytes in header value: {!r}'.format(src))
 
 
-def parse_method(method):
-    if isinstance(method, str):
-        method = method.encode()
-    if method == b'GET':
-        return GET
-    if method == b'PUT':
-        return PUT
-    if method == b'POST':
-        return POST
-    if method == b'HEAD':
-        return HEAD
-    if method == b'DELETE':
-        return DELETE
-    raise ValueError('bad HTTP method: {!r}'.format(method))
-
-
-def _parse_path(src):
-    if not src:
-        raise ValueError('path is empty')
-    if src[0:1] != b'/':
-        raise ValueError("path[0:1] != b'/': {!r}".format(src))
-    if b'//' in src:
-        raise ValueError("b'//' in path: {!r}".format(src))
-
-    if src == b'/':
-        return []
-    return [
-        _decode(c, PATH, 'bad bytes in path component: {!r}')
-        for c in src[1:].split(b'/')
-    ]
-
-
-def parse_uri(src):
-    if not src:
-        raise ValueError('uri is empty')
-    uri = _decode(src, URI, 'bad bytes in uri: {!r}')
-    parts = src.split(b'?', 1)
-    assert len(parts) in (1, 2)
-    path = _parse_path(parts[0])
-    if len(parts) == 1:
-        query = None
-    else:
-        query = _decode(parts[1], QUERY, 'bad bytes in query: {!r}')
-    return {
-        'uri': uri,
-        'script': [],
-        'path': path,
-        'query': query,
-    }
-
-
-def _decode_value(src, message):
-    """
-    Used to decode and validate header values, plus the preamble first line.
-    """
-    text = None
-    try:
-        text = src.decode('ascii')
-    except ValueError:
-        pass
-    if text is None or not text.isprintable():
-        raise ValueError(message.format(src))
-    return text
-
-
-def parse_header_name(buf):
-    """
-    Used to decode, validate, and case-fold header keys.
-    """
-    if len(buf) < 1:
-        raise ValueError('header name is empty')
-    if len(buf) > 32:
-        raise ValueError('header name too long: {!r}...'.format(buf[:32]))
-    if NAME.issuperset(buf):
-        return buf.decode('ascii').lower()
-    raise ValueError('bad bytes in header name: {!r}'.format(buf))
-
-
-def _decode_uri(src):
-    if URI.issuperset(src):
-        return src.decode()
-    raise ValueError(
-        'bad uri in request line: {!r}'.format(src)
-    )
-
-
-def parse_content_length(buf):
-    assert isinstance(buf, bytes)
-    if len(buf) < 1:
+def parse_content_length(src):
+    assert isinstance(src, bytes)
+    if len(src) < 1:
         raise ValueError('content-length is empty')
-    if len(buf) > 16:
+    if len(src) > 16:
         raise ValueError(
-            'content-length too long: {!r}...'.format(buf[:16])
+            'content-length too long: {!r}...'.format(src[:16])
         )
-    if not DIGIT.issuperset(buf):
+    if not DIGIT.issuperset(src):
         raise ValueError(
-            'bad bytes in content-length: {!r}'.format(buf)
+            'bad bytes in content-length: {!r}'.format(src)
         )
-    if buf[0:1] == b'0' and buf != b'0':
+    if src[0:1] == b'0' and src != b'0':
         raise ValueError(
-            'content-length has leading zero: {!r}'.format(buf)
+            'content-length has leading zero: {!r}'.format(src)
         )
-    return int(buf)
-
-
-class EmptyPreambleError(ConnectionError):
-    pass
-
-
-def parse_response_line(line):
-    if isinstance(line, str):
-        line = line.encode()
-
-    if len(line) < 15:
-        raise ValueError('response line too short: {!r}'.format(line))
-    if line[0:9] != b'HTTP/1.1 ' or line[12:13] != b' ':
-        raise ValueError('bad response line: {!r}'.format(line))
-
-    # status:
-    status = None
-    try:
-        status = int(line[9:12])
-    except ValueError:
-        pass
-    if status is None or not (100 <= status <= 599):
-        raise ValueError('bad status: {!r}'.format(line[9:12]))
-
-    # reason:
-    if line[13:] == b'OK':
-        reason = OK
-    else:
-        reason = _decode_value(line[13:], 'bad reason in response line: {!r}')
-
-    # Return (status, reason) 2-tuple:
-    return (status, reason)
-
-
-def parse_request_line(line):
-    if len(line) < 14:
-        raise ValueError('request line too short: {!r}'.format(line))
-    if line[-9:] != b' HTTP/1.1':
-        raise ValueError('bad protocol in request line: {!r}'.format(line[-9:]))
-    src = line[:-9]
-    items = src.split(b' /', 1)
-    if len(items) < 2:
-        raise ValueError('bad request line: {!r}'.format(line))
-    request = {'method': parse_method(items[0])}
-    request.update(parse_uri(b'/' + items[1]))
-    return request
+    return int(src)
 
 
 def _parse_header_lines(header_lines):
@@ -259,7 +161,7 @@ def _parse_header_lines(header_lines):
         if len(parts) != 2:
             raise ValueError('bad header line: {!r}'.format(line))
         (key, val) = parts
-        key = parse_header_name(key)
+        key = _parse_key(key)
         if key == 'content-length':
             flags |= 1
             val = parse_content_length(val)
@@ -289,6 +191,82 @@ def parse_headers(src):
     return _parse_header_lines(src.split(b'\r\n'))
 
 
+
+################################################################################
+# Request parsing:
+
+def _parse_method(src):
+    assert isinstance(src, bytes)
+    method = _METHODS.get(src)
+    if method is None:
+        raise ValueError('bad HTTP method: {!r}'.format(src))
+    return method
+
+
+def parse_method(src):
+    if isinstance(src, str):
+        src = src.encode()
+    return _parse_method(src)
+
+
+def _parse_path_component(src):
+    if PATH.issuperset(src):
+        return src.decode('ascii')
+    raise ValueError('bad bytes in path component: {!r}'.format(src))
+
+
+def _parse_path(src):
+    if not src:
+        raise ValueError('path is empty')
+    if src[0:1] != b'/':
+        raise ValueError("path[0:1] != b'/': {!r}".format(src))
+    if b'//' in src:
+        raise ValueError("b'//' in path: {!r}".format(src))
+    if src == b'/':
+        return []
+    return [_parse_path_component(c) for c in src[1:].split(b'/')]
+
+
+def _parse_query(src):
+    if QUERY.issuperset(src):
+        return src.decode('ascii')
+    raise ValueError('bad bytes in query: {!r}'.format(src))
+
+
+def parse_uri(src):
+    if not src:
+        raise ValueError('uri is empty')
+    if not URI.issuperset(src):
+        raise ValueError('bad bytes in uri: {!r}'.format(src))
+    uri = src.decode('ascii')
+    parts = src.split(b'?', 1)
+    path = _parse_path(parts[0])
+    if len(parts) == 1:
+        query = None
+    else:
+        query = _parse_query(parts[1])
+    return {
+        'uri': uri,
+        'script': [],
+        'path': path,
+        'query': query,
+    }
+
+
+def parse_request_line(line):
+    if len(line) < 14:
+        raise ValueError('request line too short: {!r}'.format(line))
+    if line[-9:] != b' HTTP/1.1':
+        raise ValueError('bad protocol in request line: {!r}'.format(line[-9:]))
+    src = line[:-9]
+    items = src.split(b' /', 1)
+    if len(items) < 2:
+        raise ValueError('bad request line: {!r}'.format(line))
+    request = {'method': _parse_method(items[0])}
+    request.update(parse_uri(b'/' + items[1]))
+    return request
+
+
 def parse_request(preamble):
     (line, *header_lines) = preamble.split(b'\r\n')
     request = parse_request_line(line)
@@ -296,21 +274,90 @@ def parse_request(preamble):
     return request
 
 
-def parse_response(preamble):
-    assert isinstance(preamble, bytes)
-    (line, *header_lines) = preamble.split(b'\r\n')
-    (status, reason) = parse_response_line(line)
+
+################################################################################
+# Response parsing:
+
+def _parse_status(src):
+    if DIGIT.issuperset(src):
+        status = int(src)
+        if 100 <= status <= 599:
+            return status
+    raise ValueError('bad status: {!r}'.format(src))
+
+
+def _parse_reason(src):
+    if REASON.issuperset(src):
+        if src == b'OK':
+            return OK
+        return src.decode('ascii')
+    raise ValueError('bad reason: {!r}'.format(src))
+
+
+def parse_response_line(src):
+    assert isinstance(src, bytes)
+    if len(src) < 15:
+        raise ValueError('response line too short: {!r}'.format(src))
+    if src[0:9] != b'HTTP/1.1 ' or src[12:13] != b' ':
+        raise ValueError('bad response line: {!r}'.format(src))
+    status = _parse_status(src[9:12])
+    reason = _parse_reason(src[13:])
+    return (status, reason)
+
+
+def parse_response(src):
+    assert isinstance(src, bytes)
+    (first_line, *header_lines) = src.split(b'\r\n')
+    (status, reason) = parse_response_line(first_line)
     headers = _parse_header_lines(header_lines)
     return (status, reason, headers)
 
 
+################################################################################
+# Formatting:
 
-def _getcallable(objname, obj, name):
-    attr = getattr(obj, name)
-    if not callable(attr):
-        raise TypeError('{}.{}() is not callable'.format(objname, name))
-    return attr
+def format_headers(headers):
+    if type(headers) is not dict:
+        raise TypeError(
+            TYPE_ERROR.format('headers', dict, type(headers), headers)
+        )
+    lines = []
+    for (key,  value) in headers.items():
+        if type(key) is not str:
+            raise TypeError(
+                TYPE_ERROR.format('key', str, type(key), key)
+            )
+        if not KEY.issuperset(key):
+            raise ValueError('bad key: {!r}'.format(key))
+        lines.append('{}: {}\r\n'.format(key, value))
+    lines.sort()
+    return ''.join(lines)
 
+
+def format_request(method, uri, headers):
+    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
+    if headers:
+        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
+        header_lines.sort()
+        lines.extend(header_lines)
+    lines.append('\r\n')
+    return ''.join(lines).encode()
+
+
+def format_response(status, reason, headers):
+    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
+    if headers:
+        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
+        header_lines.sort()
+        lines.extend(header_lines)
+    lines.append('\r\n')
+    return ''.join(lines).encode()
+
+
+
+
+################################################################################
+# Reader:
 
 class Reader:
     __slots__ = (
@@ -592,42 +639,4 @@ class Reader:
                 break
             start += added
         return start
-
-
-def format_headers(headers):
-    if type(headers) is not dict:
-        raise TypeError(
-            TYPE_ERROR.format('headers', dict, type(headers), headers)
-        )
-    lines = []
-    for (key,  value) in headers.items():
-        if type(key) is not str:
-            raise TypeError(
-                TYPE_ERROR.format('key', str, type(key), key)
-            )
-        if not KEY.issuperset(key):
-            raise ValueError('bad key: {!r}'.format(key))
-        lines.append('{}: {}\r\n'.format(key, value))
-    lines.sort()
-    return ''.join(lines)
-
-
-def format_request(method, uri, headers):
-    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
-
-
-def format_response(status, reason, headers):
-    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
 
