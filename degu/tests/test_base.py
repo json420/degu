@@ -3063,4 +3063,91 @@ class TestWriter_Py(BackendTestCase):
         del writer
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
 
+    def test_set_default_headers(self):
+        bodies = base.bodies
+        writer = self.Writer(None, bodies)
+
+        # body is None:
+        headers = {}
+        self.assertIsNone(writer.set_default_headers(headers, None))
+        self.assertEqual(headers, {})
+
+        headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
+        self.assertIsNone(writer.set_default_headers(headers, None))
+        self.assertEqual(headers,
+            {'content-length': 17, 'transfer-encoding': 'chunked'}
+        )
+
+        # bodies with a content-length:
+        length_bodies = (
+            os.urandom(17),
+            bytearray(os.urandom(17)),
+            bodies.Body(io.BytesIO(), 17),
+            bodies.BodyIter([], 17),
+        )
+        for body in length_bodies:
+            headers = {}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'content-length': 17})
+
+            headers = {'content-length': 17}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'content-length': 17})
+
+            headers = {'content-length': 16}
+            with self.assertRaises(ValueError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                "'content-length' mismatch: 17 != 16"
+            )
+            self.assertEqual(headers, {'content-length': 16})
+
+        # chunk-encoded bodies:
+        chunked_bodies = (
+            bodies.ChunkedBody(io.BytesIO()),
+            bodies.ChunkedBodyIter([]),
+        )
+        for body in chunked_bodies:
+            headers = {}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+    
+            headers = {'transfer-encoding': 'chunked'}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+
+            headers = {'transfer-encoding': 'clumped'}
+            with self.assertRaises(ValueError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                "'transfer-encoding' mismatch: 'chunked' != 'clumped'"
+            )
+
+        # bad body types:
+        bad_bodies = (
+            random_id()[:17],
+            io.BytesIO(os.urandom(17)),
+        )
+        for body in bad_bodies:
+            headers = {}
+            with self.assertRaises(TypeError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+            self.assertEqual(headers, {})
+
+            headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
+            with self.assertRaises(TypeError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+            self.assertEqual(headers,
+                {'content-length': 17, 'transfer-encoding': 'chunked'}
+            )
+
+
+class TestWriter_C(TestWriter_Py):
+    backend = _base
 

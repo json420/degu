@@ -666,10 +666,13 @@ class Writer:
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
 
     def set_default_headers(self, headers, body):
-        assert isinstance(headers, body)
+        assert isinstance(headers, dict)
         if isinstance(body, self._length_types):
             set_default_header(headers, 'content-length', len(body))
         elif isinstance(body, self._chunked_types):
             set_default_header(headers, 'transfer-encoding', 'chunked')
-    
-    
+        elif body is not None:
+            raise TypeError(
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+
