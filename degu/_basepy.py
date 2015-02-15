@@ -304,6 +304,14 @@ def parse_response(preamble):
     return (status, reason, headers)
 
 
+
+def _getcallable(objname, obj, name):
+    attr = getattr(obj, name)
+    if not callable(attr):
+        raise TypeError('{}.{}() is not callable'.format(objname, name))
+    return attr
+
+
 class Reader:
     __slots__ = (
         '_sock_close',
@@ -318,16 +326,6 @@ class Reader:
     )
 
     def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
-        if not callable(sock.close):
-            raise TypeError('sock.close() is not callable')
-        if not callable(sock.shutdown):
-            raise TypeError('sock.shutdown() is not callable')
-        if not callable(sock.recv_into):
-            raise TypeError('sock.recv_into() is not callable')
-        if not callable(bodies.Body):
-            raise TypeError('bodies.Body is not callable')
-        if not callable(bodies.ChunkedBody):
-            raise TypeError('bodies.ChunkedBody is not callable')
         assert isinstance(size, int)
         if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
             raise ValueError(
@@ -335,11 +333,11 @@ class Reader:
                     MIN_PREAMBLE, MAX_PREAMBLE, size
                 )
             )
-        self._sock_close = sock.close
-        self._sock_shutdown = sock.shutdown
-        self._sock_recv_into = sock.recv_into
-        self._bodies_Body = bodies.Body
-        self._bodies_ChunkedBody = bodies.ChunkedBody
+        self._sock_close = _getcallable('sock', sock, 'close')
+        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
+        self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
+        self._bodies_Body = _getcallable('bodies', bodies, 'Body')
+        self._bodies_ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')
         self._rawtell = 0
         self._rawbuf = memoryview(bytearray(size))
         self._start = 0

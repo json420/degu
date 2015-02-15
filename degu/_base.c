@@ -185,6 +185,7 @@ static const uint8_t _FLAGS[256] = {
  * Internal API: Misc:
  *     _min()
  *     _calloc_buf()
+ *     _get_callable()
  */
 static inline size_t
 _min(const size_t a, const size_t b)
@@ -203,6 +204,20 @@ _calloc_buf(const size_t len)
         PyErr_NoMemory();
     }
     return buf;
+}
+
+static PyObject *
+_getcallable(const char *objname, PyObject *obj, PyObject *name)
+{
+    PyObject *attr = PyObject_GetAttr(obj, name);
+    if (attr == NULL) {
+        return NULL;
+    }
+    if (!PyCallable_Check(attr)) {
+        Py_CLEAR(attr);
+        PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", objname, name);
+    }
+    return attr;
 }
 
 
@@ -1682,7 +1697,8 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     PyObject *bodies = NULL;
     ssize_t len = DEFAULT_PREAMBLE;
     static char *keys[] = {"sock", "bodies", "size", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader", keys, &sock, &bodies, &len)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader",
+            keys, &sock, &bodies, &len)) {
         return -1;
     }
     if (len < MIN_PREAMBLE || len > MAX_PREAMBLE) {
@@ -1692,31 +1708,13 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         );
         return -1;
     }
-    _SET(self->sock_close, PyObject_GetAttr(sock, str_close))
-    if (!PyCallable_Check(self->sock_close)) {
-        PyErr_SetString(PyExc_TypeError, "sock.close() is not callable");
-        goto error;
-    }
-    _SET(self->sock_shutdown, PyObject_GetAttr(sock, str_shutdown))
-    if (!PyCallable_Check(self->sock_shutdown)) {
-        PyErr_SetString(PyExc_TypeError, "sock.shutdown() is not callable");
-        goto error;
-    }
-    _SET(self->sock_recv_into, PyObject_GetAttr(sock, str_recv_into))
-    if (!PyCallable_Check(self->sock_recv_into)) {
-        PyErr_SetString(PyExc_TypeError, "sock.recv_into() is not callable");
-        goto error;
-    }
-    _SET(self->bodies_Body, PyObject_GetAttr(bodies, str_Body))
-    if (!PyCallable_Check(self->bodies_Body)) {
-        PyErr_SetString(PyExc_TypeError, "bodies.Body() is not callable");
-        goto error;
-    }
-    _SET(self->bodies_ChunkedBody, PyObject_GetAttr(bodies, str_ChunkedBody))
-    if (!PyCallable_Check(self->bodies_ChunkedBody)) {
-        PyErr_SetString(PyExc_TypeError, "bodies.ChunkedBody() is not callable");
-        goto error;
-    }
+    _SET(self->sock_close, _getcallable("sock", sock, str_close))
+    _SET(self->sock_shutdown, _getcallable("sock", sock, str_shutdown))
+    _SET(self->sock_recv_into, _getcallable("sock", sock, str_recv_into))
+    _SET(self->bodies_Body, _getcallable("bodies", bodies, str_Body))
+    _SET(self->bodies_ChunkedBody,
+        _getcallable("bodies", bodies, str_ChunkedBody)
+    )
     _SET(self->scratch, _calloc_buf(MAX_KEY))
     self->len = len;
     _SET(self->buf, _calloc_buf(self->len))
