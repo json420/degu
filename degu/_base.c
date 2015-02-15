@@ -35,12 +35,15 @@
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
 
-/* Pre-built global Python object for performance */
-static PyObject *str_close = NULL;              //  'close'
-static PyObject *str_shutdown = NULL;           //  'shutdown'
-static PyObject *str_recv_into = NULL;          //  'recv_into'
-static PyObject *str_Body = NULL;               //  'Body'
-static PyObject *str_ChunkedBody = NULL;        //  'ChunkedBody'
+static PyObject *str_close = NULL;            //  'close'
+static PyObject *str_shutdown = NULL;         //  'shutdown'
+static PyObject *str_recv_into = NULL;        //  'recv_into'
+static PyObject *str_send = NULL;             //  'send'
+static PyObject *str_Body = NULL;             //  'Body'
+static PyObject *str_BodyIter = NULL;         //  'BodyIter'
+static PyObject *str_ChunkedBody = NULL;      //  'ChunkedBody'
+static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
+
 static PyObject *str_content_length = NULL;     //  'content-length'
 static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
@@ -2480,6 +2483,184 @@ static PyTypeObject ReaderType = {
 };
 
 
+/*******************************************************************************
+ * Writer:
+ */
+typedef struct {
+    PyObject_HEAD
+    PyObject *close;
+    PyObject *shutdown;
+    PyObject *send;
+    PyObject *length_types;
+    PyObject *chunked_types;
+} Writer;
+
+static void
+Writer_dealloc(Writer *self)
+{
+    Py_CLEAR(self->close);
+    Py_CLEAR(self->shutdown);
+    Py_CLEAR(self->send);
+    Py_CLEAR(self->length_types);
+    Py_CLEAR(self->chunked_types);
+}
+
+static int
+Writer_init(Writer *self, PyObject *args, PyObject *kw)
+{
+    int ret = 0;
+    PyObject *sock = NULL;
+    PyObject *bodies = NULL;
+    PyObject *Body = NULL;
+    PyObject *BodyIter = NULL;
+    PyObject *ChunkedBody = NULL;
+    PyObject *ChunkedBodyIter = NULL;
+    static char *keys[] = {"sock", "bodies", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Writer", keys,
+            &sock, &bodies)) {
+        goto error;
+    }
+    _SET(Body,            PyObject_GetAttr(bodies, str_Body))
+    _SET(BodyIter,        PyObject_GetAttr(bodies, str_BodyIter))
+    _SET(ChunkedBody,     PyObject_GetAttr(bodies, str_ChunkedBody))
+    _SET(ChunkedBodyIter, PyObject_GetAttr(bodies, str_ChunkedBodyIter))
+    _SET(self->length_types, PyTuple_Pack(2, Body, BodyIter))
+    _SET(self->chunked_types, PyTuple_Pack(2, ChunkedBody, ChunkedBodyIter))
+    goto cleanup;
+error:
+    ret = -1;
+    Writer_dealloc(self);
+cleanup:
+    Py_CLEAR(Body);
+    Py_CLEAR(BodyIter);
+    Py_CLEAR(ChunkedBody);
+    Py_CLEAR(ChunkedBodyIter);
+    return ret;
+}
+
+
+/*******************************************************************************
+ * Writer: Internal API:
+ *     _set_default_headers()
+ */
+static bool
+_Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
+    if (body == Py_None) {
+        return true;
+    }
+    if (PyBytes_CheckExact(body) || PyByteArray_CheckExact(body) ||
+            PyObject_IsInstance(body, self->length_types)) {
+        ssize_t len = PyObject_Length(body);
+        if (len < 0) {
+            return false;
+        }
+        PyObject *val = PyLong_FromSsize_t(len);
+        if (val == NULL) {
+            return false;
+        }
+        bool ret = _set_default_header(headers, str_content_length, val);
+        Py_CLEAR(val);
+        return ret;
+    }
+    if (PyObject_IsInstance(body, self->chunked_types)) {
+        return _set_default_header(headers, str_transfer_encoding, str_chunked);
+    }
+    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
+    return false;
+}
+
+/*******************************************************************************
+ * Writer: Public API:
+ *     Writer.close()
+ *     Writer.shutdown()
+ *     Writer.flush()
+ */
+static PyObject *
+Writer_close(Writer *self)
+{
+    return PyObject_CallFunctionObjArgs(self->close, NULL);
+}
+
+static PyObject *
+Writer_shutdown(Writer *self)
+{
+    return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
+}
+
+static PyObject *
+Writer_flush(Writer *self)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+Writer_set_default_headers(Writer *self, PyObject *args) {
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    if (!PyArg_ParseTuple(args, "OO", &headers, &body)) {
+        return NULL;
+    }
+    if (!_Writer_set_default_headers(self, headers, body)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+
+/*******************************************************************************
+ * Writer: PyMethodDef, PyTypeObject:
+ */
+static PyMethodDef Writer_methods[] = {
+    {"close", (PyCFunction)Writer_close, METH_NOARGS, "close()"},
+    {"shutdown", (PyCFunction)Writer_shutdown, METH_NOARGS, "shutdown()"},
+    {"shutdown", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
+
+    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, "peek(size)"},
+    {NULL}
+};
+
+static PyTypeObject WriterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Writer",          /* tp_name */
+    sizeof(Writer),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Writer_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Writer(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Writer_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Writer_init,        /* tp_init */
+    0,                            /* tp_alloc */
+    0,                            /* tp_new */
+};
+
+
 
 /*******************************************************************************
  * Module Init:
@@ -2496,21 +2677,27 @@ static struct PyModuleDef degu = {
 PyMODINIT_FUNC
 PyInit__base(void)
 {
-    PyObject *module = NULL;
-
-    ReaderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&ReaderType) < 0)
-        return NULL;
-
-    module = PyModule_Create(&degu);
+    PyObject *module = PyModule_Create(&degu);
     if (module == NULL) {
         return NULL;
     }
     if (!_init_all_namedtuples(module)) {
         return NULL;
     }
+
+    ReaderType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ReaderType) < 0) {
+        return NULL;
+    }
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
+
+    WriterType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&WriterType) < 0) {
+        return NULL;
+    }
+    Py_INCREF(&WriterType);
+    PyModule_AddObject(module, "Writer", (PyObject *)&WriterType);
 
     /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
@@ -2540,12 +2727,18 @@ PyInit__base(void)
     Py_INCREF(degu_EmptyPreambleError);
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
-    /* Init global Python `int` and `str` objects we need for performance */
-    _SET(str_close, PyUnicode_InternFromString("close"))
-    _SET(str_shutdown, PyUnicode_InternFromString("shutdown"))
+    /* socket methods */
+    _SET(str_close,     PyUnicode_InternFromString("close"))
+    _SET(str_shutdown,  PyUnicode_InternFromString("shutdown"))
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
-    _SET(str_Body, PyUnicode_InternFromString("Body"))
-    _SET(str_ChunkedBody, PyUnicode_InternFromString("ChunkedBody"))
+    _SET(str_send,      PyUnicode_InternFromString("send"))
+
+    /* bodies attributes */
+    _SET(str_Body,            PyUnicode_InternFromString("Body"))
+    _SET(str_BodyIter,        PyUnicode_InternFromString("BodyIter"))
+    _SET(str_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
+    _SET(str_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
+
     _SET(str_content_length, PyUnicode_InternFromString("content-length"))
     _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
