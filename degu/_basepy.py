@@ -640,3 +640,36 @@ class Reader:
             start += added
         return start
 
+
+################################################################################
+# Writer:
+
+def set_default_header(headers, key, val):
+    assert isinstance(headers, dict)
+    assert isinstance(key, str)
+    assert isinstance(val, (str, int))
+    cur = headers.setdefault(key, val)
+    if val != cur:
+        raise ValueError(
+            '{!r} mismatch: {!r} != {!r}'.format(key, val, cur)
+        )
+
+
+class Writer:
+    __slots__ = (
+        '_length_types',
+        '_chunked_types',
+    )
+
+    def __init__(self, sock, bodies):
+        self._length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
+        self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
+
+    def set_default_headers(self, headers, body):
+        assert isinstance(headers, body)
+        if isinstance(body, self._length_types):
+            set_default_header(headers, 'content-length', len(body))
+        elif isinstance(body, self._chunked_types):
+            set_default_header(headers, 'transfer-encoding', 'chunked')
+    
+    

@@ -382,6 +382,62 @@ class str_subclass(str):
     pass
 
 class TestFormatting_Py(BackendTestCase):
+    def test_set_default_header(self):
+        set_default_header = self.getattr('set_default_header')
+
+        # key not yet present:
+        headers = {}
+        key = random_id().lower()
+        rawval = random_id(20)
+        val1 = rawval[:24]
+        self.assertEqual(sys.getrefcount(key), 2)
+        self.assertEqual(sys.getrefcount(val1), 2)
+        self.assertIsNone(set_default_header(headers, key, val1))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+
+        # same val instance:
+        self.assertIsNone(set_default_header(headers, key, val1))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+
+        # equal val but different val instance:
+        val2 = rawval[:24]
+        self.assertIsNot(val2, val1)
+        self.assertEqual(val2, val1)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertIsNone(set_default_header(headers, key, val2))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+        self.assertEqual(sys.getrefcount(val2), 2)
+
+        # non-equal val:
+        val3 = random_id()
+        self.assertNotEqual(val3, val2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+        with self.assertRaises(ValueError) as cm:
+            set_default_header(headers, key, val3)
+        self.assertEqual(str(cm.exception),
+            '{!r} mismatch: {!r} != {!r}'.format(key, val3, val1)
+        )
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+
+        # delete headers:
+        del headers
+        self.assertEqual(sys.getrefcount(key), 2)
+        self.assertEqual(sys.getrefcount(val1), 2)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+
     def test_format_headers(self):
         format_headers = self.getattr('format_headers')
 
@@ -2985,4 +3041,26 @@ class TestReader_Py(BackendTestCase):
 
 class TestReader_C(TestReader_Py):
     backend = _base
+
+
+################################################################################
+# Writer:
+
+class TestWriter_Py(BackendTestCase):
+    @property
+    def Writer(self):
+        return self.getattr('Writer')
+
+    def test_init(self):
+        bodies = base.bodies
+        bcount = sys.getrefcount(bodies)
+        counts = tuple(sys.getrefcount(b) for b in bodies)
+        writer = self.Writer(None, bodies)
+        self.assertEqual(sys.getrefcount(bodies), bcount)
+        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
+            tuple(c + 1 for c in counts)
+        )
+        del writer
+        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
+
 

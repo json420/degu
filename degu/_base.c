@@ -206,6 +206,22 @@ _calloc_buf(const size_t len)
     return buf;
 }
 
+static bool
+_check_headers(PyObject *headers)
+{
+    if (headers == NULL) {
+        Py_FatalError("_check_headers(): headers == NULL");
+    }
+    if (!PyDict_CheckExact(headers)) {
+        PyErr_Format(PyExc_TypeError,
+            "headers: need a <class 'dict'>; got a %R: %R",
+            Py_TYPE(headers), headers
+        );
+        return false;
+    }
+    return true;
+}
+
 static PyObject *
 _getcallable(const char *objname, PyObject *obj, PyObject *name)
 {
@@ -939,9 +955,34 @@ error:
 
 /*******************************************************************************
  * Internal API: Formatting:
+ *     _set_default_header()
  *     _validate_key()
  *     _format_headers()
  */
+
+static bool
+_set_default_header(PyObject *headers, PyObject *key, PyObject *val)
+{
+    if (!_check_headers(headers)) {
+        return false;
+    }
+    PyObject *cur = PyDict_SetDefault(headers, key, val);
+    if (cur == NULL) {
+        return false;
+    }
+    if (val == cur) {
+        return true;
+    }
+    int cmp = PyObject_RichCompareBool(val, cur, Py_EQ);
+    if (cmp == 1) {
+        return true;
+    }
+    if (cmp == 0) {
+        PyErr_Format(PyExc_ValueError, "%R mismatch: %R != %R", key, val, cur);
+    }
+    return false;
+}
+ 
 static bool
 _validate_key(PyObject *key)
 {
@@ -990,11 +1031,7 @@ _format_headers(PyObject *headers)
     PyObject *lines = NULL;
     PyObject *ret = NULL;
 
-    if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers: need a <class 'dict'>; got a %R: %R",
-            Py_TYPE(headers), headers
-        );
+    if (!_check_headers(headers)) {
         goto error;
     }
     const ssize_t count = PyDict_Size(headers);
@@ -1475,6 +1512,22 @@ cleanup:
  *     format_response()
  */
 static PyObject *
+set_default_header(PyObject *self, PyObject *args)
+{
+    PyObject *headers = NULL;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+    if (!PyArg_ParseTuple(args, "OUO:set_default_header",
+            &headers, &key, &val)) {
+        return NULL;
+    }
+    if (!_set_default_header(headers, key, val)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+ 
+static PyObject *
 format_headers(PyObject *self, PyObject *args)
 {
     PyObject *headers = NULL;
@@ -1633,6 +1686,8 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
 
     /* Formatting */
+    {"set_default_header", set_default_header, METH_VARARGS,
+        "set_default_header(headers, key, val)"},
     {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
     {"format_request", format_request, METH_VARARGS,
         "format_request(method, uri, headers)"},
