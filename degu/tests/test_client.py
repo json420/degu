@@ -29,7 +29,7 @@ import io
 import socket
 import ssl
 
-from .helpers import DummySocket, FuzzTestCase, MockSocket
+from .helpers import DummySocket, FuzzTestCase
 from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -251,11 +251,6 @@ class TestFunctions(TestCase):
             base.ChunkedBody(io.BytesIO()),
             base.ChunkedBodyIter([])
         )
-
-        # Bad method:
-        with self.assertRaises(ValueError) as cm:
-            client._validate_request(base.bodies, 'get', '/foo', {}, None)
-        self.assertEqual(str(cm.exception), "invalid method: 'get'")
 
         # Non-casefolded header name:
         headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
