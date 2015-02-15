@@ -67,9 +67,6 @@ run("parse_headers(b'Content-Length: 123456\\r\\nContent-Type: text/plain')")
 run("parse_headers(b'Transfer-Encoding: chunked\\r\\nContent-Type: text/plain')")
 run("parse_content_length(b'123456')")
 
-
-raise SystemExit()
-
 print('\nRequest parsing:')
 run('parse_request2(request)')
 run('parse_request(request)')
