@@ -657,13 +657,51 @@ def set_default_header(headers, key, val):
 
 class Writer:
     __slots__ = (
+        '_sock_close',
+        '_sock_shutdown',
+        '_sock_send',
         '_length_types',
         '_chunked_types',
+        '_tell',
     )
 
     def __init__(self, sock, bodies):
+        self._sock_close = _getcallable('sock', sock, 'close')
+        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
+        self._sock_send = _getcallable('sock', sock, 'send')
         self._length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
+        self._tell = 0
+
+    def close(self):
+        return self._sock_close()
+
+    def shutdown(self, _how=socket.SHUT_RDWR):
+        return self._sock_shutdown(_how)  
+
+    def tell(self):
+        return self._tell
+
+    def flush(self):
+        pass
+
+    def write(self, buf):
+        buf = memoryview(buf)
+        size = self._sock_send(buf)
+        if type(size) is not int:
+            raise TypeError(
+                'need a {!r}; send() returned a {!r}: {!r}'.format(
+                    int, type(size), size
+                )
+            )
+        if not (-1 - sys.maxsize <= size <= sys.maxsize):
+            raise OverflowError('Python int too large to convert to C ssize_t')
+        if size != len(buf):
+            raise OSError(
+                'expected {!r}; send() returned {!r}'.format(len(buf), size)
+            )
+        self._tell += size
+        return size
 
     def set_default_headers(self, headers, body):
         assert isinstance(headers, dict)
@@ -675,4 +713,5 @@ class Writer:
             raise TypeError(
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
+
 

@@ -1847,7 +1847,7 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
 
     /* sock.recv_into() must return (0 <= size <= len) */
     if (size < 0 || size > len) {
-        PyErr_Format(PyExc_IOError,
+        PyErr_Format(PyExc_OSError,
             "need 0 <= size <= %zd; recv_into() returned %zd", len, size
         );
         ret = - 4;
@@ -2493,6 +2493,7 @@ typedef struct {
     PyObject *send;
     PyObject *length_types;
     PyObject *chunked_types;
+    size_t tell;
 } Writer;
 
 static void
@@ -2520,6 +2521,11 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
             &sock, &bodies)) {
         goto error;
     }
+
+    self->tell = 0;
+    _SET(self->close,     _getcallable("sock", sock, str_close))
+    _SET(self->shutdown,  _getcallable("sock", sock, str_shutdown))
+    _SET(self->send,      _getcallable("sock", sock, str_send))
     _SET(Body,            PyObject_GetAttr(bodies, str_Body))
     _SET(BodyIter,        PyObject_GetAttr(bodies, str_BodyIter))
     _SET(ChunkedBody,     PyObject_GetAttr(bodies, str_ChunkedBody))
@@ -2541,8 +2547,46 @@ cleanup:
 
 /*******************************************************************************
  * Writer: Internal API:
- *     _set_default_headers()
+ *     _Writer_write()
+ *     _Writer_set_default_headers()
  */
+
+static PyObject *
+_Writer_write(Writer *self, DeguBuf src)
+{
+    PyObject *view = NULL;
+    PyObject *ret = NULL;
+    ssize_t size;
+
+    _SET(view, PyMemoryView_FromMemory((char *)src.buf, src.len, PyBUF_READ))
+    _SET(ret, PyObject_CallFunctionObjArgs(self->send, view, NULL))
+    if (!PyLong_CheckExact(ret)) {
+        PyErr_Format(PyExc_TypeError,
+            "need a <class 'int'>; send() returned a %R: %R", Py_TYPE(ret), ret
+        );
+        goto error;
+    }
+    size = PyLong_AsSsize_t(ret);
+    if (PyErr_Occurred()) {
+        goto error;
+    }
+    if (size != src.len) {
+        PyErr_Format(PyExc_OSError,
+            "expected %zd; send() returned %zd", src.len, size
+        );
+        goto error;
+    }
+    self->tell += size;
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(view);
+    return ret;
+}
+
 static bool
 _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
     if (body == Py_None) {
@@ -2569,10 +2613,13 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
     return false;
 }
 
+
 /*******************************************************************************
  * Writer: Public API:
  *     Writer.close()
  *     Writer.shutdown()
+ *     Writer.tell()
+ *     Writer.write()
  *     Writer.flush()
  */
 static PyObject *
@@ -2585,6 +2632,23 @@ static PyObject *
 Writer_shutdown(Writer *self)
 {
     return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
+}
+
+static PyObject *
+Writer_tell(Writer *self) {
+    return PyLong_FromSize_t(self->tell);
+}
+
+static PyObject *
+Writer_write(Writer *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    if (!PyArg_ParseTuple(args, "y#:write", &buf, &len)) {
+        return NULL;
+    }
+    DeguBuf src = {buf, len};
+    return _Writer_write(self, src);
 }
 
 static PyObject *
@@ -2613,9 +2677,12 @@ Writer_set_default_headers(Writer *self, PyObject *args) {
 static PyMethodDef Writer_methods[] = {
     {"close", (PyCFunction)Writer_close, METH_NOARGS, "close()"},
     {"shutdown", (PyCFunction)Writer_shutdown, METH_NOARGS, "shutdown()"},
-    {"shutdown", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
+    {"tell", (PyCFunction)Writer_tell, METH_NOARGS, "tell()"},
+    {"flush", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
+    {"write", (PyCFunction)Writer_write, METH_VARARGS, "write(buf)"},
 
-    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, "peek(size)"},
+    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS,
+        "set_default_headers(headers, body)"},
     {NULL}
 };
 

@@ -381,6 +381,10 @@ class dict_subclass(dict):
 class str_subclass(str):
     pass
 
+class int_subclass(int):
+    pass
+
+
 class TestFormatting_Py(BackendTestCase):
     def test_set_default_header(self):
         set_default_header = self.getattr('set_default_header')
@@ -3046,26 +3050,160 @@ class TestReader_C(TestReader_Py):
 ################################################################################
 # Writer:
 
+
+
+class WSocket:
+    __slots__ = ('_ret', '_fp', '_calls')
+
+    def __init__(self, **ret):
+        self._ret = ret
+        self._fp = io.BytesIO()
+        self._calls = []
+
+    def _return_or_raise(self, key, default):
+        ret = self._ret.get(key, default)
+        if isinstance(ret, Exception):
+            raise ret
+        return ret
+
+    def close(self):
+        self._calls.append('close')
+        return None
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+        return None
+
+    def send(self, buf):
+        assert isinstance(buf, memoryview)
+        self._calls.append(('send', buf.tobytes()))
+        size = self._fp.write(buf)
+        return  self._return_or_raise('send', size)
+
+
 class TestWriter_Py(BackendTestCase):
     @property
     def Writer(self):
         return self.getattr('Writer')
 
     def test_init(self):
+        sock = WSocket()
+        self.assertEqual(sys.getrefcount(sock), 2)
         bodies = base.bodies
         bcount = sys.getrefcount(bodies)
         counts = tuple(sys.getrefcount(b) for b in bodies)
-        writer = self.Writer(None, bodies)
+
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(sys.getrefcount(sock), 5)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
             tuple(c + 1 for c in counts)
         )
+
         del writer
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
+
+    def test_close(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        self.assertIsNone(writer.close())
+        self.assertEqual(sock._calls, ['close'])
+
+    def test_shutdown(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        self.assertIsNone(writer.shutdown())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+
+    def test_tell(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        tell = writer.tell()
+        self.assertIsInstance(tell, int)
+        self.assertEqual(tell, 0)
+        self.assertEqual(sock._calls, [])
+
+    def test_write(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+
+        data1 = os.urandom(17)
+        self.assertEqual(writer.write(data1), 17)
+        self.assertEqual(writer.tell(), 17)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
+
+        data2 = os.urandom(18)
+        self.assertEqual(writer.write(data2), 18)
+        self.assertEqual(writer.tell(), 35)
+        self.assertEqual(sock._fp.getvalue(), data1 + data2)
+        self.assertEqual(sock._calls, [('send', data1), ('send', data2)])
+
+        marker = random_id()
+        exc = ValueError(marker)
+        sock = WSocket(send=exc)
+        writer = self.Writer(sock, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            writer.write(data1)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
+
+        for bad in (17.0, int_subclass(17)):
+            self.assertEqual(bad, 17)
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(TypeError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'need a {!r}; send() returned a {!r}: {!r}'.format(
+                    int, type(bad), bad
+                )
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        smax = sys.maxsize
+        smin = -smax - 1
+        for bad in (smin - 2, smin - 1, smax + 1, smax + 2): 
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OverflowError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'Python int too large to convert to C ssize_t'
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        for bad in (smin, smin + 1, -1, 0, 1, 16, 18, smax - 1, smax):
+            self.assertNotEqual(bad, 17)
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OSError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'expected 17; send() returned {!r}'.format(bad)
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+    def test_flush(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        self.assertIsNone(writer.flush())
+        self.assertEqual(sock._calls, [])
 
     def test_set_default_headers(self):
         bodies = base.bodies
-        writer = self.Writer(None, bodies)
+        writer = self.Writer(WSocket(), bodies)
 
         # body is None:
         headers = {}
