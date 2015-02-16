@@ -685,14 +685,20 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test__makefiles(self):
+    def test_makefiles(self):
         sock = DummySocket()
-        (reader, wfile) = base._makefiles(sock, base.bodies)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        (reader, writer) = base._makefiles(sock, base.bodies)
         self.assertIsInstance(reader, base.Reader)
-        self.assertIs(wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(writer, base.Writer)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 8)
+        del reader
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 5)
+        del writer
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 2)
 
     def check_parse_method(self, backend):
         self.assertIn(backend, (_base, _basepy))

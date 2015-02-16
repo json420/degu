@@ -33,6 +33,7 @@ try:
         format_request,
         format_response,
         Reader,
+        Writer,
     )
 except ImportError:
     from ._basepy import (
@@ -44,6 +45,7 @@ except ImportError:
         format_request,
         format_response,
         Reader,
+        Writer,
     )
 
 
@@ -54,6 +56,7 @@ __all__ = (
     'Response', 'ResponseType',
     'EmptyPreambleError',
     'Reader',
+    'Writer',
     'format_request',
     'format_response',
 )
@@ -74,8 +77,9 @@ def _makefiles(sock, bodies):
     """
     return (
         Reader(sock, bodies),
-        #sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
-        sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
+        #sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
+        #sock.makefile('wb', buffering=0)
+        Writer(sock, bodies)
     )
 
 

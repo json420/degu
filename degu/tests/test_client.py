@@ -460,13 +460,10 @@ class TestConnection(TestCase):
         self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
         self.assertIsInstance(inst._rfile, base.Reader)
-        self.assertIs(inst._wfile, sock._wfile)
+        self.assertIsInstance(inst._wfile, base.Writer)
         self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, False)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertEqual(sock._calls, [])
 
     def test_del(self):
         class ConnectionSubclass(client.Connection):
@@ -768,11 +765,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIs(conn._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # Should return a new Connection instance each time:
         conn2 = inst.connect()
@@ -782,13 +776,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn2._rfile, base.Reader)
-        self.assertIs(conn2._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn2._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # on_connect() returns True:
         def on_connect_true(conn):
@@ -803,11 +792,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIs(conn._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn2._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # on_connect() does not return True:
         def on_connect_false(conn):
