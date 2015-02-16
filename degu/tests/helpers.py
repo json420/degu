@@ -137,9 +137,6 @@ class DummySocket:
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
 
-    def close(self):
-        self._calls.append('close')
-
     def recv_into(self, buf):
         self._calls.append(('recv_into', buf))
 
@@ -165,10 +162,6 @@ class MockSocket:
         self._rcvbuf = rcvbuf
         self._recv_into_calls = 0
         self._calls = []
-
-    def close(self):
-        self._calls.append('close')
-        return None
 
     def shutdown(self, how):
         self._calls.append(('shutdown', how))

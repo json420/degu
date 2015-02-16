@@ -79,7 +79,6 @@ Reader:
         _Reader_search()
     Public API:
         Reader.close()
-        Reader.shutdown()
         Reader.Body()
         Reader.ChunkedBody()
         Reader.rawtell()

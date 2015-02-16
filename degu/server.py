@@ -193,7 +193,7 @@ def _handle_requests(app, sock, max_requests, session, bodies):
                 requests, session['client']
             )
             break
-    wfile.close()  # Will block till write buffer is flushed
+    sock.close()
 
 
 def _handle_one(app, rfile, wfile, session, bodies):

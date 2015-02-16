@@ -361,7 +361,6 @@ def format_response(status, reason, headers):
 
 class Reader:
     __slots__ = (
-        '_sock_close',
         '_sock_shutdown',
         '_sock_recv_into',
         '_bodies_Body',
@@ -370,6 +369,7 @@ class Reader:
         '_rawbuf',
         '_start',
         '_buf',
+        '_closed',
     )
 
     def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
@@ -380,7 +380,6 @@ class Reader:
                     MIN_PREAMBLE, MAX_PREAMBLE, size
                 )
             )
-        self._sock_close = _getcallable('sock', sock, 'close')
         self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._bodies_Body = _getcallable('bodies', bodies, 'Body')
@@ -389,12 +388,14 @@ class Reader:
         self._rawbuf = memoryview(bytearray(size))
         self._start = 0
         self._buf = b''
+        self._closed = False
 
     def close(self):
-        return self._sock_close()
-
-    def shutdown(self, _how=socket.SHUT_RDWR):
-        return self._sock_shutdown(_how)        
+        if self._closed is True:
+            return None
+        assert self._closed is False
+        self._closed = True
+        return self._sock_shutdown(socket.SHUT_RDWR)    
 
     def Body(self, content_length):
         return self._bodies_Body(self, content_length)
@@ -657,27 +658,28 @@ def set_default_header(headers, key, val):
 
 class Writer:
     __slots__ = (
-        '_sock_close',
         '_sock_shutdown',
         '_sock_send',
         '_length_types',
         '_chunked_types',
         '_tell',
+        '_closed',
     )
 
     def __init__(self, sock, bodies):
-        self._sock_close = _getcallable('sock', sock, 'close')
         self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_send = _getcallable('sock', sock, 'send')
         self._length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
+        self._closed = False
 
     def close(self):
-        return self._sock_close()
-
-    def shutdown(self, _how=socket.SHUT_RDWR):
-        return self._sock_shutdown(_how)  
+        if self._closed is True:
+            return None
+        assert self._closed is False
+        self._closed = True
+        return self._sock_shutdown(socket.SHUT_RDWR)
 
     def tell(self):
         return self._tell

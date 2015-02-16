@@ -692,10 +692,10 @@ class TestFunctions(AlternatesTestCase):
         self.assertIsInstance(reader, base.Reader)
         self.assertIsInstance(writer, base.Writer)
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 8)
+        self.assertEqual(sys.getrefcount(sock), 6)
         del reader
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 4)
         del writer
         self.assertEqual(sock._calls, [])
         self.assertEqual(sys.getrefcount(sock), 2)
@@ -2482,9 +2482,6 @@ class BadSocket:
     def __init__(self, ret):
         self._ret = ret
 
-    def close(self):
-        pass
-
     def shutdown(self, how):
         pass
 
@@ -2558,7 +2555,7 @@ class TestReader_Py(BackendTestCase):
         c2 = sys.getrefcount(bodies.Body)
         c3 = sys.getrefcount(bodies.ChunkedBody)
         reader = self.Reader(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 4)
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
@@ -2571,11 +2568,8 @@ class TestReader_Py(BackendTestCase):
     def test_close(self):
         (sock, reader) = self.new()
         self.assertIsNone(reader.close())
-        self.assertEqual(sock._calls, ['close'])
-
-    def test_shutdown(self):
-        (sock, reader) = self.new()
-        self.assertIsNone(reader.shutdown())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(reader.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_Body(self):
@@ -3072,10 +3066,6 @@ class WSocket:
             raise ret
         return ret
 
-    def close(self):
-        self._calls.append('close')
-        return None
-
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
         return None
@@ -3100,7 +3090,7 @@ class TestWriter_Py(BackendTestCase):
         counts = tuple(sys.getrefcount(b) for b in bodies)
 
         writer = self.Writer(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 4)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
             tuple(c + 1 for c in counts)
@@ -3115,12 +3105,8 @@ class TestWriter_Py(BackendTestCase):
         sock = WSocket()
         writer = self.Writer(sock, base.bodies)
         self.assertIsNone(writer.close())
-        self.assertEqual(sock._calls, ['close'])
-
-    def test_shutdown(self):
-        sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
-        self.assertIsNone(writer.shutdown())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(writer.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_tell(self):

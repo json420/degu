@@ -35,7 +35,6 @@
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
 
-static PyObject *str_close = NULL;            //  'close'
 static PyObject *str_shutdown = NULL;         //  'shutdown'
 static PyObject *str_recv_into = NULL;        //  'recv_into'
 static PyObject *str_send = NULL;             //  'send'
@@ -1717,9 +1716,9 @@ static struct PyMethodDef degu_functions[] = {
  */
 typedef struct {
     PyObject_HEAD
-    PyObject *sock_close;
-    PyObject *sock_shutdown;
-    PyObject *sock_recv_into;
+    bool closed;
+    PyObject *shutdown;
+    PyObject *recv_into;
     PyObject *bodies_Body;
     PyObject *bodies_ChunkedBody;
     uint8_t *scratch;
@@ -1733,9 +1732,8 @@ typedef struct {
 static void
 Reader_dealloc(Reader *self)
 {
-    Py_CLEAR(self->sock_close);
-    Py_CLEAR(self->sock_shutdown);
-    Py_CLEAR(self->sock_recv_into);
+    Py_CLEAR(self->shutdown);
+    Py_CLEAR(self->recv_into);
     Py_CLEAR(self->bodies_Body);
     Py_CLEAR(self->bodies_ChunkedBody);
     if (self->scratch != NULL) {
@@ -1766,9 +1764,8 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         );
         return -1;
     }
-    _SET(self->sock_close, _getcallable("sock", sock, str_close))
-    _SET(self->sock_shutdown, _getcallable("sock", sock, str_shutdown))
-    _SET(self->sock_recv_into, _getcallable("sock", sock, str_recv_into))
+    _SET(self->shutdown,  _getcallable("sock", sock, str_shutdown))
+    _SET(self->recv_into, _getcallable("sock", sock, str_recv_into))
     _SET(self->bodies_Body, _getcallable("bodies", bodies, str_Body))
     _SET(self->bodies_ChunkedBody,
         _getcallable("bodies", bodies, str_ChunkedBody)
@@ -1779,6 +1776,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
+    self->closed = false;
     return 0;
 error:
     Reader_dealloc(self);
@@ -1825,7 +1823,7 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
         PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
     )
     _SET(int_size,
-        PyObject_CallFunctionObjArgs(self->sock_recv_into, view, NULL)
+        PyObject_CallFunctionObjArgs(self->recv_into, view, NULL)
     )
 
     /* sock.recv_into() must return an `int` */
@@ -2007,7 +2005,6 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
 /*******************************************************************************
  * Reader: Public API:
  *     Reader.close()
- *     Reader.shutdown()
  *     Reader.Body()
  *     Reader.ChunkedBody()
  *     Reader.rawtell()
@@ -2025,15 +2022,11 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
 static PyObject *
 Reader_close(Reader *self)
 {
-    return PyObject_CallFunctionObjArgs(self->sock_close, NULL);
-}
-
-static PyObject *
-Reader_shutdown(Reader *self)
-{
-    return PyObject_CallFunctionObjArgs(self->sock_shutdown,
-        int_SHUT_RDWR, NULL
-    );
+    if (self->closed) {
+        Py_RETURN_NONE;
+    }
+    self->closed = true;
+    return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
 }
 
 static PyObject *
@@ -2402,7 +2395,6 @@ cleanup:
  */
 static PyMethodDef Reader_methods[] = {
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"shutdown", (PyCFunction)Reader_shutdown, METH_NOARGS, "shutdown()"},
     {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
         "Body(content_length)"
     },
@@ -2488,7 +2480,7 @@ static PyTypeObject ReaderType = {
  */
 typedef struct {
     PyObject_HEAD
-    PyObject *close;
+    bool closed;
     PyObject *shutdown;
     PyObject *send;
     PyObject *length_types;
@@ -2499,7 +2491,6 @@ typedef struct {
 static void
 Writer_dealloc(Writer *self)
 {
-    Py_CLEAR(self->close);
     Py_CLEAR(self->shutdown);
     Py_CLEAR(self->send);
     Py_CLEAR(self->length_types);
@@ -2522,8 +2513,8 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
         goto error;
     }
 
+    self->closed = false;
     self->tell = 0;
-    _SET(self->close,     _getcallable("sock", sock, str_close))
     _SET(self->shutdown,  _getcallable("sock", sock, str_shutdown))
     _SET(self->send,      _getcallable("sock", sock, str_send))
     _SET(Body,            PyObject_GetAttr(bodies, str_Body))
@@ -2617,7 +2608,6 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
 /*******************************************************************************
  * Writer: Public API:
  *     Writer.close()
- *     Writer.shutdown()
  *     Writer.tell()
  *     Writer.write()
  *     Writer.flush()
@@ -2625,12 +2615,10 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
 static PyObject *
 Writer_close(Writer *self)
 {
-    return PyObject_CallFunctionObjArgs(self->close, NULL);
-}
-
-static PyObject *
-Writer_shutdown(Writer *self)
-{
+    if (self->closed) {
+        Py_RETURN_NONE;
+    }
+    self->closed = true;
     return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
 }
 
@@ -2676,7 +2664,6 @@ Writer_set_default_headers(Writer *self, PyObject *args) {
  */
 static PyMethodDef Writer_methods[] = {
     {"close", (PyCFunction)Writer_close, METH_NOARGS, "close()"},
-    {"shutdown", (PyCFunction)Writer_shutdown, METH_NOARGS, "shutdown()"},
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, "tell()"},
     {"flush", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, "write(buf)"},
@@ -2795,7 +2782,6 @@ PyInit__base(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     /* socket methods */
-    _SET(str_close,     PyUnicode_InternFromString("close"))
     _SET(str_shutdown,  PyUnicode_InternFromString("shutdown"))
     _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
     _SET(str_send,      PyUnicode_InternFromString("send"))
