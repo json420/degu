@@ -2544,12 +2544,13 @@ cleanup:
  *     _Writer_set_default_headers()
  */
 
-static PyObject *
-_Writer_write(Writer *self, DeguBuf src)
+
+static ssize_t
+_Writer_write1(Writer *self, DeguBuf src)
 {
     PyObject *view = NULL;
     PyObject *ret = NULL;
-    ssize_t size;
+    ssize_t size = -2;
 
     _SET(view, PyMemoryView_FromMemory((char *)src.buf, src.len, PyBUF_READ))
     _SET(ret, PyObject_CallFunctionObjArgs(self->send, view, NULL))
@@ -2563,21 +2564,46 @@ _Writer_write(Writer *self, DeguBuf src)
     if (PyErr_Occurred()) {
         goto error;
     }
+    if (size < 0 || size > src.len) {
+        PyErr_Format(PyExc_OSError,
+            "need 0 <= size <= %zd; send() returned %zd", src.len, size
+        );
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    size = -1;
+
+cleanup:
+    Py_CLEAR(view);
+    Py_CLEAR(ret);
+    return size;
+}
+
+static PyObject *
+_Writer_write(Writer *self, DeguBuf src)
+{
+    ssize_t added;
+    size_t size = 0;
+    while (size < src.len) {
+        added = _Writer_write1(self, _slice(src, size, src.len));
+        if (added < 0) {
+            return NULL;
+        }
+        if (added == 0) {
+            break;
+        }
+        size += added;
+    }
     if (size != src.len) {
         PyErr_Format(PyExc_OSError,
             "expected %zd; send() returned %zd", src.len, size
         );
-        goto error;
+        return NULL;
     }
     self->tell += size;
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(view);
-    return ret;
+    return PyLong_FromSize_t(size);
 }
 
 

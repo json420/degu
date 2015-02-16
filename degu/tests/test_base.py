@@ -3174,18 +3174,27 @@ class TestWriter_Py(BackendTestCase):
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        for bad in (smin, smin + 1, -1, 0, 1, 16, 18, smax - 1, smax):
+        for bad in (smin, smin + 1, -1, 18, smax - 1, smax):
             self.assertNotEqual(bad, 17)
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
             with self.assertRaises(OSError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'expected 17; send() returned {!r}'.format(bad)
+                'need 0 <= size <= 17; send() returned {!r}'.format(bad)
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
+
+        sock = WSocket(send=0)
+        writer = self.Writer(sock, base.bodies)
+        with self.assertRaises(OSError) as cm:
+            writer.write(data1)
+        self.assertEqual(str(cm.exception), 'expected 17; send() returned 0')
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
 
     def test_flush(self):
         sock = WSocket()

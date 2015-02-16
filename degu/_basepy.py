@@ -687,8 +687,7 @@ class Writer:
     def flush(self):
         pass
 
-    def write(self, buf):
-        buf = memoryview(buf)
+    def _write1(self, buf):
         size = self._sock_send(buf)
         if type(size) is not int:
             raise TypeError(
@@ -698,6 +697,20 @@ class Writer:
             )
         if not (-1 - sys.maxsize <= size <= sys.maxsize):
             raise OverflowError('Python int too large to convert to C ssize_t')
+        if not (0 <= size <= len(buf)):
+            raise OSError(
+                'need 0 <= size <= {!r}; send() returned {!r}'.format(len(buf), size)
+            )
+        return size
+
+    def write(self, buf):
+        buf = memoryview(buf)
+        size = 0
+        while size < len(buf):
+            added = self._write1(buf[size:])
+            if added == 0:
+                break
+            size += added
         if size != len(buf):
             raise OSError(
                 'expected {!r}; send() returned {!r}'.format(len(buf), size)
