@@ -43,8 +43,10 @@ static PyObject *str_BodyIter = NULL;         //  'BodyIter'
 static PyObject *str_ChunkedBody = NULL;      //  'ChunkedBody'
 static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 
-static PyObject *str_content_length = NULL;     //  'content-length'
-static PyObject *str_transfer_encoding = NULL;  //  'transfer-encoding'
+
+static PyObject *str_content_length = NULL;     //  'content_length'
+static PyObject *key_content_length = NULL;     //  'content-length'
+static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
 static PyObject *str_GET    = NULL;  // 'GET'
@@ -580,7 +582,7 @@ _parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
 
     /* Validate header value (with special handling and fast-paths) */
     if (_equal(keysrc, CONTENT_LENGTH)) {
-        _SET_AND_INC(key, str_content_length)
+        _SET_AND_INC(key, key_content_length)
         _SET(val, _parse_content_length(valsrc))
         if (dh->content_length == NULL) {
             _SET_AND_INC(dh->content_length, val)
@@ -592,7 +594,7 @@ _parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
             _value_error("bad transfer-encoding: %R", valsrc);
             goto error;
         }
-        _SET_AND_INC(key, str_transfer_encoding)
+        _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
         dh->flags |= 2;
     }
@@ -2578,27 +2580,43 @@ cleanup:
     return ret;
 }
 
+
 static bool
-_Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body) {
+_set_default_content_length(PyObject *headers, PyObject *val)
+{
+    if (val == NULL) {
+        return false;
+    }
+    bool result = _set_default_header(headers, key_content_length, val);
+    Py_CLEAR(val);
+    return result;
+}
+
+
+static bool
+_Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
+{
+    size_t len;
+    PyObject *val;
+
     if (body == Py_None) {
         return true;
     }
-    if (PyBytes_CheckExact(body) || PyByteArray_CheckExact(body) ||
-            PyObject_IsInstance(body, self->length_types)) {
-        ssize_t len = PyObject_Length(body);
+    if (PyBytes_CheckExact(body) || PyByteArray_CheckExact(body)) {
+        len = PyObject_Length(body);
         if (len < 0) {
             return false;
         }
-        PyObject *val = PyLong_FromSsize_t(len);
-        if (val == NULL) {
-            return false;
-        }
-        bool ret = _set_default_header(headers, str_content_length, val);
-        Py_CLEAR(val);
-        return ret;
+        val = PyLong_FromSsize_t(len);
+        return _set_default_content_length(headers, val);
+    }
+    if (PyObject_IsInstance(body, self->length_types)) {
+        val = PyObject_GetAttr(body, str_content_length);
+        return _set_default_content_length(headers, val);
+        
     }
     if (PyObject_IsInstance(body, self->chunked_types)) {
-        return _set_default_header(headers, str_transfer_encoding, str_chunked);
+        return _set_default_header(headers, key_transfer_encoding, str_chunked);
     }
     PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
     return false;
@@ -2792,8 +2810,9 @@ PyInit__base(void)
     _SET(str_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
     _SET(str_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
 
-    _SET(str_content_length, PyUnicode_InternFromString("content-length"))
-    _SET(str_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
+    _SET(str_content_length, PyUnicode_InternFromString("content_length"))
+    _SET(key_content_length, PyUnicode_InternFromString("content-length"))
+    _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
