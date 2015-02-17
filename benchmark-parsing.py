@@ -8,17 +8,21 @@ gc.enable()
 from io import BytesIO
 
 from degu._base import (
-    format_headers,
-    format_request,
-    format_response,
-
+    parse_headers,
     parse_content_length,
+
+    parse_request,
+    parse_request2,
     parse_request_line,
     parse_method,
     parse_uri,
-    parse_request,
-    parse_response_line,
+
     parse_response,
+    parse_response_line,
+
+    format_headers,
+    format_request,
+    format_response,
 )
 
 
@@ -32,6 +36,7 @@ headers = {
     'hello': 'World',
     'k': 'V',
 }
+headers_src = format_headers(headers).encode()
 request = format_request('POST', '/foo/bar?stuff=junk', headers)[:-4]
 response = format_response(200, 'OK', headers)[:-4]
 """
@@ -54,14 +59,28 @@ def run(statement, K=250):
 
 print('-' * 80)
 
-print('\nCommon parsing:')
-run("parse_content_length(b'9007199254740992')")
+print('\nHeader parsing:')
+run('parse_headers(headers_src)')
+run("parse_headers(b'Content-Length: 123456')")
+run("parse_headers(b'Transfer-Encoding: chunked')")
+run("parse_headers(b'Content-Length: 123456\\r\\nContent-Type: text/plain')")
+run("parse_headers(b'Transfer-Encoding: chunked\\r\\nContent-Type: text/plain')")
+run("parse_content_length(b'123456')")
 
 print('\nRequest parsing:')
+run('parse_request2(request)')
 run('parse_request(request)')
+
+run("parse_request2(b'GET / HTTP/1.1')")
 run("parse_request(b'GET / HTTP/1.1')")
+
+run("parse_request2(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_request(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
+
+run("parse_request2(b'GET / HTTP/1.1\\r\\ncontent-length: 17')")
 run("parse_request(b'GET / HTTP/1.1\\r\\ncontent-length: 17')")
+
+print('')
 run("parse_request_line(b'GET / HTTP/1.1')")
 run("parse_request_line(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_method(b'GET')")
@@ -79,8 +98,11 @@ run('parse_response(response)')
 run("parse_response_line(b'HTTP/1.1 200 OK')")
 run("parse_response_line(b'HTTP/1.1 404 Not Found')")
 
-print('\nCommon formatting:')
+print('\nHeader formating:')
 run('format_headers(headers)')
+run('format_headers({})')
+run("format_headers({'content-length': 17})")
+run("format_headers({'content-length': 17, 'content-type': 'text/plain'})")
 
 print('\nRequest formatting:')
 run("format_request('GET', '/foo', {})")

@@ -28,6 +28,7 @@ import os
 import io
 import sys
 from random import SystemRandom
+import socket
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -50,6 +51,7 @@ random = SystemRandom()
 
 CRLF = b'\r\n'
 TERM = CRLF * 2
+TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
 BAD_HEADER_LINES = (
@@ -233,37 +235,349 @@ class BackendTestCase(TestCase):
     backend = _basepy
 
     def setUp(self):
-        assert self.backend in (_basepy, _base)
-        assert _basepy is not None
-        if self.backend is None:
+        backend = self.backend
+        name = self.__class__.__name__
+        if name.endswith('_Py'):
+            self.assertIs(backend, _basepy)
+        elif name.endswith('_C'):
+            self.assertIs(backend, _base)
+        else:
+            raise Exception(
+                'bad BackendTestCase subclass name: {!r}'.format(name)
+            )
+        if backend is None:
             self.skipTest('cannot import `degu._base` C extension')
 
     def getattr(self, name):
         backend = self.backend
         self.assertIn(backend, (_basepy, _base))
         self.assertIsNotNone(backend)
-        attr = getattr(backend, name)
-        if _base is None or backend is _base:
-            self.assertIs(attr, getattr(base, name))
-        else:
-            self.assertIs(attr, getattr(_basepy, name))
-        return attr
+        if not hasattr(backend, name):
+            raise Exception(
+                '{!r} has no attribute {!r}'.format(backend.__name__, name)
+            )
+        # FIXME: check imported alias in degu.base (when needed)
+        return getattr(backend, name)
+
+
+def _iter_sep_permutations(good=b': '):
+    (g0, g1) = good
+    yield bytes([g0])
+    yield bytes([g1])
+    for v in range(256):
+        yield bytes([v, g1])
+        yield bytes([g0, v])
+
+SEP_PERMUTATIONS = tuple(_iter_sep_permutations())
+
+def _iter_crlf_permutations(good=b'\r\n'):
+    (g0, g1) = good
+    yield bytes([g0])
+    yield bytes([g1])
+    for v in range(256):
+        yield bytes([v, g1])
+        yield bytes([g0, v])
+
+CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
+
+
+class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_headers(self):
+        parse_headers = self.getattr('parse_headers')
+
+        self.assertEqual(parse_headers(b''), {})
+        self.assertEqual(parse_headers(b'K: V'), {'k': 'V'})
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b': V')
+        self.assertEqual(str(cm.exception), "header line too short: b': V'")
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b': VV')
+        self.assertEqual(str(cm.exception), 'header name is empty')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b'K: ')
+        self.assertEqual(str(cm.exception), "header line too short: b'K: '")
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b'KK: ')
+        self.assertEqual(str(cm.exception), 'header value is empty')
+
+        length =  b'Content-Length: 17'
+        encoding = b'Transfer-Encoding: chunked'
+        _type = b'Content-Type: text/plain'
+        self.assertEqual(parse_headers(length),
+            {'content-length': 17}
+        )
+        self.assertEqual(parse_headers(encoding),
+            {'transfer-encoding': 'chunked'}
+        )
+        self.assertEqual(parse_headers(_type),
+            {'content-type': 'text/plain'}
+        )
+        self.assertEqual(parse_headers(b'\r\n'.join([_type, length])),
+            {'content-type': 'text/plain', 'content-length': 17}
+        )
+        self.assertEqual(parse_headers(b'\r\n'.join([_type, encoding])),
+            {'content-type': 'text/plain', 'transfer-encoding': 'chunked'}
+        )
+        badsrc = b'\r\n'.join([length, encoding])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot have both content-length and transfer-encoding headers'
+        )
+
+        key = b'Content-Length'
+        val = b'17'
+        self.assertEqual(len(SEP_PERMUTATIONS), 514)
+        good_count = 0
+        for sep in SEP_PERMUTATIONS:
+            line = b''.join([key, sep, val])
+            if sep == b': ':
+                good_count += 1
+                self.assertEqual(parse_headers(line), {'content-length': 17})
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(line)
+                self.assertEqual(str(cm.exception),
+                    'bad header line: {!r}'.format(line)
+                )
+        self.assertEqual(good_count, 2)
+
+        self.assertEqual(len(CRLF_PERMUTATIONS), 514)
+        good_count = 0
+        for crlf in CRLF_PERMUTATIONS:
+            src1 = b''.join([length, crlf, _type])
+            src2 = b''.join([_type, crlf, length])
+            if crlf == b'\r\n':
+                good_count += 1
+                self.assertEqual(parse_headers(src1),
+                    {'content-type': 'text/plain', 'content-length': 17}
+                )
+                self.assertEqual(parse_headers(src2),
+                    {'content-type': 'text/plain', 'content-length': 17}
+                )
+            else:
+                badval1 = b''.join([b'17', crlf, _type])
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(src1)
+                self.assertEqual(str(cm.exception),
+                    'content-length too long: {!r}...'.format(badval1[:16])
+                )
+                badval2 = b''.join([b'text/plain', crlf, length])
+                with self.assertRaises(ValueError) as cm:
+                    parse_headers(src2)
+                self.assertEqual(str(cm.exception),
+                    'bad bytes in header value: {!r}'.format(badval2)
+                )
+        self.assertEqual(good_count, 2)
+
+
+class TestParsingFunctions_C(TestParsingFunctions_Py):
+    backend = _base
+
+
+class dict_subclass(dict):
+    pass
+
+class str_subclass(str):
+    pass
+
+class int_subclass(int):
+    pass
+
+
+class TestFormatting_Py(BackendTestCase):
+    def test_set_default_header(self):
+        set_default_header = self.getattr('set_default_header')
+
+        # key not yet present:
+        headers = {}
+        key = random_id().lower()
+        rawval = random_id(20)
+        val1 = rawval[:24]
+        self.assertEqual(sys.getrefcount(key), 2)
+        self.assertEqual(sys.getrefcount(val1), 2)
+        self.assertIsNone(set_default_header(headers, key, val1))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+
+        # same val instance:
+        self.assertIsNone(set_default_header(headers, key, val1))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+
+        # equal val but different val instance:
+        val2 = rawval[:24]
+        self.assertIsNot(val2, val1)
+        self.assertEqual(val2, val1)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertIsNone(set_default_header(headers, key, val2))
+        self.assertEqual(headers, {key: val1})
+        self.assertIs(headers[key], val1)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+        self.assertEqual(sys.getrefcount(val2), 2)
+
+        # non-equal val:
+        val3 = random_id()
+        self.assertNotEqual(val3, val2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+        with self.assertRaises(ValueError) as cm:
+            set_default_header(headers, key, val3)
+        self.assertEqual(str(cm.exception),
+            '{!r} mismatch: {!r} != {!r}'.format(key, val3, val1)
+        )
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertEqual(sys.getrefcount(val1), 3)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+
+        # delete headers:
+        del headers
+        self.assertEqual(sys.getrefcount(key), 2)
+        self.assertEqual(sys.getrefcount(val1), 2)
+        self.assertEqual(sys.getrefcount(val2), 2)
+        self.assertEqual(sys.getrefcount(val3), 2)
+
+    def test_format_headers(self):
+        format_headers = self.getattr('format_headers')
+
+        # Bad headers type:
+        bad = [('foo', 'bar')]
+        with self.assertRaises(TypeError) as cm:
+            format_headers(bad)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('headers', dict, list, bad)
+        )
+        bad = dict_subclass({'foo': 'bar'})
+        with self.assertRaises(TypeError) as cm:
+            format_headers(bad)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('headers', dict, dict_subclass, bad)
+        )
+
+        good_items = (
+            None,
+            ('content-length', 17),
+            ('foo', 'bar'),
+        )
+        good = dict()
+        for item in good_items:
+            if item:
+                (key, value) = item
+                good[key] = value
+
+            # Bad key type:
+            headers = {b'foo': 'bar'}
+            headers.update(good)
+            with self.assertRaises(TypeError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('key', str, bytes, b'foo')
+            )
+            headers = {str_subclass('foo'): 'bar'}
+            headers.update(good)
+            with self.assertRaises(TypeError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('key', str, str_subclass, 'foo')
+            )
+
+            # key contains non-ascii codepoints:
+            headers = {'¡': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: '¡'")
+            headers = {'™': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: '™'")
+
+            # key is not lowercase:
+            headers = {'Foo': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: 'Foo'")
+            headers = {'f\no': 'bar'}
+            headers.update(good)
+            with self.assertRaises(ValueError) as cm:
+                format_headers(headers)
+            self.assertEqual(str(cm.exception), "bad key: 'f\\no'")
+
+        self.assertEqual(format_headers({}), '')
+        self.assertEqual(format_headers({'foo': 17}), 'foo: 17\r\n')
+        self.assertEqual(
+            format_headers({'foo': 17, 'bar': 18}),
+            'bar: 18\r\nfoo: 17\r\n'
+        )
+        self.assertEqual(
+            format_headers({'foo': '17', 'bar': '18'}),
+            'bar: 18\r\nfoo: 17\r\n'
+        )
+
+
+class TestFormatting_C(TestFormatting_Py):
+    backend = _base
 
 
 class TestNamedTuples_Py(BackendTestCase):
-    def test_Response(self):
-        status = random_id()
-        reason = random_id()
-        headers = random_id()
-        body = random_id()
-        inst = self.getattr('Response')(status, reason, headers, body)
-        self.assertIsInstance(inst, tuple)
-        self.assertIsInstance(inst, self.getattr('ResponseType'))
-        self.assertIs(inst.status, status)
-        self.assertIs(inst.reason, reason)
-        self.assertIs(inst.headers, headers)
-        self.assertIs(inst.body, body)
+    def new(self, name, count):
+        args = tuple(random_id() for i in range(count))
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
+        tup = self.getattr(name)(*args)
+        self.assertIsInstance(tup, tuple)
+        self.assertIsInstance(tup, self.getattr(name + 'Type'))
+        self.assertEqual(tup, args)
+        self.assertEqual(len(tup), count)
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        return (tup, args)
 
+    def test_Bodies(self):
+        (tup, args) = self.new('Bodies', 4)
+        self.assertIs(tup.Body,            args[0])
+        self.assertIs(tup.BodyIter,        args[1])
+        self.assertIs(tup.ChunkedBody,     args[2])
+        self.assertIs(tup.ChunkedBodyIter, args[3])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
+
+    def test_Request(self):
+        (tup, args) = self.new('Request', 7)
+        self.assertIs(tup.method,  args[0])
+        self.assertIs(tup.uri,     args[1])
+        self.assertIs(tup.script,  args[2])
+        self.assertIs(tup.path,    args[3])
+        self.assertIs(tup.query,   args[4])
+        self.assertIs(tup.headers, args[5])
+        self.assertIs(tup.body,    args[6])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
+
+    def test_Response(self):
+        (tup, args) = self.new('Response', 4)
+        self.assertIs(tup.status,  args[0])
+        self.assertIs(tup.reason,  args[1])
+        self.assertIs(tup.headers, args[2])
+        self.assertIs(tup.body,    args[3])
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 4)
+        del tup
+        for a in args:
+            self.assertEqual(sys.getrefcount(a), 3)
 
 class TestNamedTuples_C(TestNamedTuples_Py):
     backend = _base
@@ -311,9 +625,8 @@ class TestConstants(TestCase):
         self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
-        self.assertTrue(issubclass(base.BodiesAPI, tuple))
         self.assertIsInstance(base.bodies, tuple)
-        self.assertIsInstance(base.bodies, base.BodiesAPI)
+        self.assertIsInstance(base.bodies, base.BodiesType)
 
         self.assertIs(base.bodies.Body, base.Body)
         self.assertIs(base.bodies.BodyIter, base.BodyIter)
@@ -372,14 +685,20 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test__makefiles(self):
+    def test_makefiles(self):
         sock = DummySocket()
-        (reader, wfile) = base._makefiles(sock, base.bodies)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        (reader, writer) = base._makefiles(sock, base.bodies)
         self.assertIsInstance(reader, base.Reader)
-        self.assertIs(wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(writer, base.Writer)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 6)
+        del reader
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 4)
+        del writer
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 2)
 
     def check_parse_method(self, backend):
         self.assertIn(backend, (_base, _basepy))
@@ -2158,9 +2477,21 @@ class TestChunkedBodyIter(TestCase):
         self.assertEqual(wfile._calls, expected)
 
 
-class TestReader_Py(TestCase):
-    backend = _basepy
 
+class BadSocket:
+    def __init__(self, ret):
+        self._ret = ret
+
+    def shutdown(self, how):
+        pass
+
+    def recv_into(self, buf):
+        if isinstance(self._ret, Exception):
+            raise self._ret
+        return self._ret
+
+
+class TestReader_Py(BackendTestCase):
     @property
     def Reader(self):
         return self.backend.Reader
@@ -2224,7 +2555,7 @@ class TestReader_Py(TestCase):
         c2 = sys.getrefcount(bodies.Body)
         c3 = sys.getrefcount(bodies.ChunkedBody)
         reader = self.Reader(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 3)
+        self.assertEqual(sys.getrefcount(sock), 4)
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
@@ -2236,9 +2567,10 @@ class TestReader_Py(TestCase):
 
     def test_close(self):
         (sock, reader) = self.new()
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
+        self.assertIsNone(reader.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(reader.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_Body(self):
         (sock, reader) = self.new()
@@ -2626,10 +2958,335 @@ class TestReader_Py(TestCase):
         self.assertEqual(reader.read(512), C)
         self.assertEqual(reader.read(default + 1), D)
 
+        badsocket = BadSocket(17.0)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(TypeError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+        )
+
+        badsocket = BadSocket(sys.maxsize + 1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OverflowError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'Python int too large to convert to C ssize_t'
+        )
+
+        badsocket = BadSocket(-1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned -1'
+        )
+
+        badsocket = BadSocket(12346)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.read(12345)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        marker = random_id()
+        exc = ValueError(marker)
+        badsocket = BadSocket(exc)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            reader.read(12345)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+
+    def test_readinto(self):
+        dst = memoryview(bytearray(12345))
+        badsocket = BadSocket(17.0)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(TypeError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+        )
+
+        badsocket = BadSocket(sys.maxsize + 1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OverflowError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'Python int too large to convert to C ssize_t'
+        )
+
+        badsocket = BadSocket(-1)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned -1'
+        )
+
+        badsocket = BadSocket(12346)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(IOError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        marker = random_id()
+        exc = ValueError(marker)
+        badsocket = BadSocket(exc)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(dst)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+
 
 class TestReader_C(TestReader_Py):
     backend = _base
 
-    def setUp(self):
-        if self.backend is None:
-            self.skipTest('cannot import `degu._base` C extension')
+
+################################################################################
+# Writer:
+
+
+
+class WSocket:
+    __slots__ = ('_ret', '_fp', '_calls')
+
+    def __init__(self, **ret):
+        self._ret = ret
+        self._fp = io.BytesIO()
+        self._calls = []
+
+    def _return_or_raise(self, key, default):
+        ret = self._ret.get(key, default)
+        if isinstance(ret, Exception):
+            raise ret
+        return ret
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+        return None
+
+    def send(self, buf):
+        assert isinstance(buf, memoryview)
+        self._calls.append(('send', buf.tobytes()))
+        size = self._fp.write(buf)
+        return  self._return_or_raise('send', size)
+
+
+class TestWriter_Py(BackendTestCase):
+    @property
+    def Writer(self):
+        return self.getattr('Writer')
+
+    def test_init(self):
+        sock = WSocket()
+        self.assertEqual(sys.getrefcount(sock), 2)
+        bodies = base.bodies
+        bcount = sys.getrefcount(bodies)
+        counts = tuple(sys.getrefcount(b) for b in bodies)
+
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(bodies), bcount)
+        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
+            tuple(c + 1 for c in counts)
+        )
+
+        del writer
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(bodies), bcount)
+        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
+
+    def test_close(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        self.assertIsNone(writer.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+        self.assertIsNone(writer.close())
+        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
+
+    def test_tell(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        tell = writer.tell()
+        self.assertIsInstance(tell, int)
+        self.assertEqual(tell, 0)
+        self.assertEqual(sock._calls, [])
+
+    def test_write(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+
+        data1 = os.urandom(17)
+        self.assertEqual(writer.write(data1), 17)
+        self.assertEqual(writer.tell(), 17)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
+
+        data2 = os.urandom(18)
+        self.assertEqual(writer.write(data2), 18)
+        self.assertEqual(writer.tell(), 35)
+        self.assertEqual(sock._fp.getvalue(), data1 + data2)
+        self.assertEqual(sock._calls, [('send', data1), ('send', data2)])
+
+        marker = random_id()
+        exc = ValueError(marker)
+        sock = WSocket(send=exc)
+        writer = self.Writer(sock, base.bodies)
+        with self.assertRaises(ValueError) as cm:
+            writer.write(data1)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
+
+        for bad in (17.0, int_subclass(17)):
+            self.assertEqual(bad, 17)
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(TypeError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'need a {!r}; send() returned a {!r}: {!r}'.format(
+                    int, type(bad), bad
+                )
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        smax = sys.maxsize
+        smin = -smax - 1
+        for bad in (smin - 2, smin - 1, smax + 1, smax + 2): 
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OverflowError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'Python int too large to convert to C ssize_t'
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        for bad in (smin, smin + 1, -1, 18, smax - 1, smax):
+            self.assertNotEqual(bad, 17)
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OSError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= size <= 17; send() returned {!r}'.format(bad)
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        sock = WSocket(send=0)
+        writer = self.Writer(sock, base.bodies)
+        with self.assertRaises(OSError) as cm:
+            writer.write(data1)
+        self.assertEqual(str(cm.exception), 'expected 17; send() returned 0')
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._fp.getvalue(), data1)
+        self.assertEqual(sock._calls, [('send', data1)])
+
+    def test_flush(self):
+        sock = WSocket()
+        writer = self.Writer(sock, base.bodies)
+        self.assertIsNone(writer.flush())
+        self.assertEqual(sock._calls, [])
+
+    def test_set_default_headers(self):
+        bodies = base.bodies
+        writer = self.Writer(WSocket(), bodies)
+
+        # body is None:
+        headers = {}
+        self.assertIsNone(writer.set_default_headers(headers, None))
+        self.assertEqual(headers, {})
+
+        headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
+        self.assertIsNone(writer.set_default_headers(headers, None))
+        self.assertEqual(headers,
+            {'content-length': 17, 'transfer-encoding': 'chunked'}
+        )
+
+        # bodies with a content-length:
+        length_bodies = (
+            os.urandom(17),
+            bytearray(os.urandom(17)),
+            bodies.Body(io.BytesIO(), 17),
+            bodies.BodyIter([], 17),
+        )
+        for body in length_bodies:
+            headers = {}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'content-length': 17})
+
+            headers = {'content-length': 17}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'content-length': 17})
+
+            headers = {'content-length': 16}
+            with self.assertRaises(ValueError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                "'content-length' mismatch: 17 != 16"
+            )
+            self.assertEqual(headers, {'content-length': 16})
+
+        # chunk-encoded bodies:
+        chunked_bodies = (
+            bodies.ChunkedBody(io.BytesIO()),
+            bodies.ChunkedBodyIter([]),
+        )
+        for body in chunked_bodies:
+            headers = {}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+    
+            headers = {'transfer-encoding': 'chunked'}
+            self.assertIsNone(writer.set_default_headers(headers, body))
+            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+
+            headers = {'transfer-encoding': 'clumped'}
+            with self.assertRaises(ValueError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                "'transfer-encoding' mismatch: 'chunked' != 'clumped'"
+            )
+
+        # bad body types:
+        bad_bodies = (
+            random_id()[:17],
+            io.BytesIO(os.urandom(17)),
+        )
+        for body in bad_bodies:
+            headers = {}
+            with self.assertRaises(TypeError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+            self.assertEqual(headers, {})
+
+            headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
+            with self.assertRaises(TypeError) as cm:
+                writer.set_default_headers(headers, body)
+            self.assertEqual(str(cm.exception),
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+            self.assertEqual(headers,
+                {'content-length': 17, 'transfer-encoding': 'chunked'}
+            )
+
+
+class TestWriter_C(TestWriter_Py):
+    backend = _base
+

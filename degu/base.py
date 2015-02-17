@@ -23,35 +23,40 @@
 Common HTTP parser and IO abstractions used by server and client.
 """
 
-from collections import namedtuple
 try:
     from ._base import (
         _MAX_LINE_SIZE,
+        Bodies, BodiesType,
+        Request, RequestType,
+        Response, ResponseType,
         EmptyPreambleError,
         format_request,
         format_response,
         Reader,
-        ResponseType,
-        Response,
+        Writer,
     )
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,
+        Bodies, BodiesType,
+        Request, RequestType,
+        Response, ResponseType,
         EmptyPreambleError,
         format_request,
         format_response,
         Reader,
-        ResponseType,
-        Response,
+        Writer,
     )
 
 
 __all__ = (
     '_MAX_LINE_SIZE',
+    'Bodies', 'BodiesType',
+    'Request', 'RequestType',
+    'Response', 'ResponseType',
     'EmptyPreambleError',
     'Reader',
-    'ResponseType',
-    'Response',
+    'Writer',
     'format_request',
     'format_response',
 )
@@ -72,8 +77,9 @@ def _makefiles(sock, bodies):
     """
     return (
         Reader(sock, bodies),
-        #sock.makefile('rb', buffering=STREAM_BUFFER_SIZE),
-        sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
+        #sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
+        #sock.makefile('wb', buffering=0)
+        Writer(sock, bodies)
     )
 
 
@@ -419,5 +425,4 @@ class ChunkedBodyIter:
 
 
 # Used to expose the RGI IO wrappers:
-BodiesAPI = namedtuple('BodiesAPI', 'Body BodyIter ChunkedBody ChunkedBodyIter')
-bodies = BodiesAPI(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

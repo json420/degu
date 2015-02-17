@@ -34,6 +34,14 @@ from .base import (
     Response
 )
 
+__all__ = (
+    'Client',
+    'SSLClient',
+    'build_client_sslctx',
+    'Connection',
+    'Response',
+)
+
 
 class ClosedConnectionError(Exception):
     """
@@ -153,10 +161,6 @@ def _validate_client_sslctx(sslctx):
 
 
 def _validate_request(bodies, method, uri, headers, body):
-    # FIXME: Perhaps relax this a bit, only require the method to be uppercase?
-    if method not in {'GET', 'PUT', 'POST', 'DELETE', 'HEAD'}:
-        raise ValueError('invalid method: {!r}'.format(method))
-
     # Ensure all header keys are lowercase:
     if not all([key.islower() for key in headers]):
         for key in sorted(headers):  # Sorted for deterministic unit testing
@@ -220,19 +224,6 @@ def _write_request(wfile, method, uri, headers, body):
         total = wfile.write(preamble)
         total += body.write_to(wfile)
     return total
-
-
-def _read_response(rfile, bodies, method):
-    (status, reason, headers) = rfile.read_response(method)
-    if method == 'HEAD':
-        body = None
-    elif 'content-length' in headers:
-        body = bodies.Body(rfile, headers['content-length'])
-    elif 'transfer-encoding' in headers:
-        body = bodies.ChunkedBody(rfile)
-    else:
-        body = None
-    return Response(status, reason, headers, body)
 
 
 class Connection:

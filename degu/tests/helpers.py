@@ -129,26 +129,19 @@ class TempDir:
 
 
 class DummySocket:
+    __slots__ = ('_calls',)
+
     def __init__(self):
         self._calls = []
-        self._rfile = random_id()
-        self._wfile = random_id()
-
-    def makefile(self, mode, **kw):
-        self._calls.append(('makefile', mode, kw))
-        if mode == 'rb':
-            return self._rfile
-        if mode == 'wb':
-            return self._wfile
 
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
 
-    def close(self):
-        self._calls.append('close')
-
     def recv_into(self, buf):
-        pass
+        self._calls.append(('recv_into', buf))
+
+    def send(self, buf):
+        self._calls.append(('send', buf))
 
 
 class DummyFile:
@@ -160,7 +153,7 @@ class DummyFile:
 
 
 class MockSocket:
-    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_recv_into_calls')
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_recv_into_calls', '_calls')
 
     def __init__(self, data, rcvbuf=None):
         assert rcvbuf is None or (isinstance(rcvbuf, int) and rcvbuf > 0)
@@ -168,9 +161,15 @@ class MockSocket:
         self._wfile = io.BytesIO()
         self._rcvbuf = rcvbuf
         self._recv_into_calls = 0
+        self._calls = []
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+        return None
 
     def recv_into(self, buf):
         assert isinstance(buf, memoryview)
+        self._calls.append(('recv_into', len(buf)))
         if self._rcvbuf is not None and len(buf) > self._rcvbuf:
             buf = buf[0:self._rcvbuf]
         self._recv_into_calls += 1

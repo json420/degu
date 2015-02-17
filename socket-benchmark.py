@@ -35,8 +35,21 @@ def create_socket(address):
     return socket.socket(family, socket.SOCK_STREAM)
 
 
+def get_socket_bufsizes(sock):
+    return (
+        sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF),
+        sock.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF),
+    )
+
+
+def print_socket_bufsizes(sock, endpoint):
+    (rcvbuf, sndbuf) = get_socket_bufsizes(sock)
+    print('    {}: rcvbuf={!r}, sndbuf={!r}'.format(endpoint, rcvbuf, sndbuf))
+
+
 def run_server(q, address):
     sock = create_socket(address)
+    print_socket_bufsizes(sock, 'server')
     sock.bind(address)
     sock.listen(5)
     q.put(sock.getsockname())
@@ -60,6 +73,7 @@ def start_server(address):
 
 def run_client(address, count):
     sock = create_socket(address)
+    print_socket_bufsizes(sock, 'client')
     sock.connect(address)
     for i in range(count):
         sock.send(request)
@@ -67,12 +81,13 @@ def run_client(address, count):
 
 
 def run_benchmark(label, address):
+    print('{}:'.format(label))
     (process, address) = start_server(address)
     count = 150 * 1000
     start = time.monotonic()
     run_client(address, count)
     elapsed = time.monotonic() - start
-    print('{:>8,}  {:<8}  {!r}'.format(int(count / elapsed), label, address))
+    print('{:,} messages per second\n'.format(int(count / elapsed)))
     process.terminate()
     process.join()
 

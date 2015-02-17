@@ -29,7 +29,7 @@ import io
 import socket
 import ssl
 
-from .helpers import DummySocket, FuzzTestCase, MockSocket
+from .helpers import DummySocket, FuzzTestCase
 from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -252,11 +252,6 @@ class TestFunctions(TestCase):
             base.ChunkedBodyIter([])
         )
 
-        # Bad method:
-        with self.assertRaises(ValueError) as cm:
-            client._validate_request(base.bodies, 'get', '/foo', {}, None)
-        self.assertEqual(str(cm.exception), "invalid method: 'get'")
-
         # Non-casefolded header name:
         headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
         with self.assertRaises(ValueError) as cm:
@@ -453,82 +448,6 @@ class TestFunctions(TestCase):
             b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
 
-    def test__read_response(self):
-        self.skipTest('FIXME')
-        # No headers, no body:
-        lines = ''.join([
-            'HTTP/1.1 200 OK\r\n',
-            '\r\n',
-        ]).encode('latin_1')
-        rfile = base.Reader(MockSocket(lines), base.bodies)
-        r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, base.ResponseType)
-        self.assertEqual(r, (200, 'OK', {}, None))
-
-        # Content-Length, body should be base.Body:
-        lines = ''.join([
-            'HTTP/1.1 200 OK\r\n',
-            'Content-Length: 17\r\n',
-            '\r\n',
-        ]).encode('latin_1')
-        data = os.urandom(17)
-        rfile = base.Reader(MockSocket(lines + data), base.bodies)
-        r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, base.ResponseType)
-        self.assertEqual(r.status, 200)
-        self.assertEqual(r.reason, 'OK')
-        self.assertEqual(r.headers, {'content-length': 17})
-        self.assertIsInstance(r.body, base.Body)
-        self.assertIs(r.body.rfile, rfile)
-        self.assertIs(r.body.closed, False)
-        self.assertEqual(r.body._remaining, 17)
-        self.assertEqual(rfile.tell(), len(lines))
-        self.assertEqual(r.body.read(), data)
-        self.assertEqual(rfile.tell(), len(lines) + len(data))
-        self.assertIs(r.body.closed, True)
-        self.assertEqual(r.body._remaining, 0)
-
-        # Like above, except this time for a HEAD request:
-        rfile = base.Reader(MockSocket(lines + data), base.bodies)
-        r = client._read_response(rfile, base.bodies, 'HEAD')
-        self.assertIsInstance(r, base.ResponseType)
-        self.assertEqual(r, (200, 'OK', {'content-length': 17}, None))
-
-        # Transfer-Encoding, body should be base.ChunkedBody:
-        lines = ''.join([
-            'HTTP/1.1 200 OK\r\n',
-            'Transfer-Encoding: chunked\r\n',
-            '\r\n',
-        ]).encode('latin_1')
-        chunk1 = os.urandom(21)
-        chunk2 = os.urandom(17)
-        chunk3 = os.urandom(19)
-        fp = io.BytesIO()
-        total = fp.write(lines)
-        for chunk in [chunk1, chunk2, chunk3, b'']:
-            total += base.write_chunk(fp, (None, chunk))
-        self.assertEqual(fp.tell(), total)
-        rfile = base.Reader(MockSocket(fp.getvalue()), base.bodies)
-        r = client._read_response(rfile, base.bodies, 'GET')
-        self.assertIsInstance(r, base.ResponseType)
-        self.assertEqual(r.status, 200)
-        self.assertEqual(r.reason, 'OK')
-        self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(r.body, base.ChunkedBody)
-        self.assertIs(r.body.rfile, rfile)
-        self.assertEqual(rfile.tell(), len(lines))
-        self.assertIs(r.body.closed, False)
-        self.assertEqual(list(r.body),
-            [
-                (None, chunk1),
-                (None, chunk2),
-                (None, chunk3),
-                (None, b''),
-            ]
-        )
-        self.assertIs(r.body.closed, True)
-        self.assertEqual(rfile.tell(), total)
-
 
 class TestConnection(TestCase):
     def test_init(self):
@@ -541,13 +460,10 @@ class TestConnection(TestCase):
         self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
         self.assertIs(inst.bodies, base.bodies)
         self.assertIsInstance(inst._rfile, base.Reader)
-        self.assertIs(inst._wfile, sock._wfile)
+        self.assertIsInstance(inst._wfile, base.Writer)
         self.assertIsNone(inst._response_body)
         self.assertIs(inst.closed, False)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertEqual(sock._calls, [])
 
     def test_del(self):
         class ConnectionSubclass(client.Connection):
@@ -764,7 +680,7 @@ class TestClient(TestCase):
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `bodies` option:
-            my_bodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
+            my_bodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
             inst = client.Client(address, bodies=my_bodies)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': my_bodies})
@@ -849,11 +765,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIs(conn._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # Should return a new Connection instance each time:
         conn2 = inst.connect()
@@ -863,13 +776,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn2._rfile, base.Reader)
-        self.assertIs(conn2._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn2._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # on_connect() returns True:
         def on_connect_true(conn):
@@ -884,11 +792,8 @@ class TestClient(TestCase):
         self.assertIs(conn.base_headers, inst._base_headers)
         self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIs(conn._wfile, sock._wfile)
-        self.assertEqual(sock._calls, [
-            #('makefile', 'rb', {'buffering': base.STREAM_BUFFER_SIZE}),
-            ('makefile', 'wb', {'buffering': base.STREAM_BUFFER_SIZE}),
-        ])
+        self.assertIsInstance(conn2._wfile, base.Writer)
+        self.assertEqual(sock._calls, [])
 
         # on_connect() does not return True:
         def on_connect_false(conn):
@@ -1036,7 +941,7 @@ class TestSSLClient(TestCase):
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `bodies` option:
-            my_bodies = base.BodiesAPI('foo', 'bar', 'stuff', 'junk')
+            my_bodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
             inst = client.SSLClient(sslctx, address, bodies=my_bodies)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'bodies': my_bodies})
