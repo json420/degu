@@ -1724,7 +1724,7 @@ typedef struct {
     PyObject *bodies_Body;
     PyObject *bodies_ChunkedBody;
     uint8_t *scratch;
-    size_t rawtell;
+    uint64_t rawtell;
     uint8_t *buf;
     size_t len;
     size_t start;
@@ -2047,13 +2047,16 @@ Reader_ChunkedBody(Reader *self) {
 
 static PyObject *
 Reader_rawtell(Reader *self) {
-    return PyLong_FromSize_t(self->rawtell);
+    return PyLong_FromUnsignedLongLong(self->rawtell);
 }
 
 static PyObject *
 Reader_tell(Reader *self) {
     DeguBuf cur = _Reader_peek(self, self->len);
-    return PyLong_FromSize_t(self->rawtell - cur.len);
+    if (cur.len > self->rawtell) {
+        Py_FatalError("Reader_tell(): cur.len > self->rawtell");
+    }
+    return PyLong_FromUnsignedLongLong(self->rawtell - cur.len);
 }
 
 static PyObject *
@@ -2487,7 +2490,7 @@ typedef struct {
     PyObject *send;
     PyObject *length_types;
     PyObject *chunked_types;
-    size_t tell;
+    uint64_t tell;
 } Writer;
 
 static void
@@ -2668,7 +2671,7 @@ Writer_close(Writer *self)
 
 static PyObject *
 Writer_tell(Writer *self) {
-    return PyLong_FromSize_t(self->tell);
+    return PyLong_FromUnsignedLongLong(self->tell);
 }
 
 static PyObject *
