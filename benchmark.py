@@ -41,7 +41,7 @@ response_body = json.dumps({'pong': pong}).encode()
 
 
 def ping_pong_app(session, request, bodies):
-    request['body'].read()
+    request.body.read()
     #assert json.loads(data.decode()) == {'ping': ping}
     return (200, 'OK', {}, response_body)
 

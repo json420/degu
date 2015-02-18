@@ -48,9 +48,9 @@ random = SystemRandom()
 
 
 def standard_harness_app(session, request, bodies):
-    if len(request['path']) == 3 and request['path'][0] == 'status':
-        code = int(request['path'][1])
-        reason = request['path'][2]
+    if len(request.path) == 3 and request.path[0] == 'status':
+        code = int(request.path[1])
+        reason = request.path[2]
         return (code, reason, {}, None)
 
 
@@ -959,13 +959,13 @@ del wfile
 
 
 def chunked_request_app(session, request, bodies):
-    assert request['method'] == 'POST'
-    assert request['script'] == []
-    assert request['path'] == []
-    assert isinstance(request['body'], base.ChunkedBody)
-    assert request['headers']['transfer-encoding'] == 'chunked'
+    assert request.method == 'POST'
+    assert request.script == []
+    assert request.path == []
+    assert isinstance(request.body, base.ChunkedBody)
+    assert request.headers['transfer-encoding'] == 'chunked'
     result = []
-    for (extension, data) in request['body']:
+    for (extension, data) in request.body:
         result.append(sha1(data).hexdigest())
     body = json.dumps(result).encode('utf-8')
     headers = {'content-length': len(body), 'content-type': 'application/json'}
@@ -973,13 +973,13 @@ def chunked_request_app(session, request, bodies):
 
 
 def chunked_response_app(session, request, bodies):
-    assert request['method'] == 'GET'
-    assert request['script'] == []
-    assert request['body'] is None
+    assert request.method == 'GET'
+    assert request.script == []
+    assert request.body is None
     headers = {'transfer-encoding': 'chunked'}
-    if request['path'] == ['foo']:
+    if request.path == ['foo']:
         rfile = io.BytesIO(ENCODED_CHUNKS)
-    elif request['path'] == ['bar']:
+    elif request.path == ['bar']:
         rfile = io.BytesIO(b'0\r\n\r\n')
     else:
         return (404, 'Not Found', {}, None)
@@ -993,12 +993,12 @@ DATA = DATA1 + DATA2
 
 
 def response_app(session, request, bodies):
-    assert request['method'] == 'GET'
-    assert request['script'] == []
-    assert request['body'] is None
-    if request['path'] == ['foo']:
+    assert request.method == 'GET'
+    assert request.script == []
+    assert request.body is None
+    if request.path == ['foo']:
         body = bodies.Body(io.BytesIO(DATA), len(DATA))
-    elif request['path'] == ['bar']:
+    elif request.path == ['bar']:
         body = bodies.Body(io.BytesIO(), 0)
     else:
         return (404, 'Not Found', {}, None)
@@ -1007,13 +1007,13 @@ def response_app(session, request, bodies):
 
 
 def timeout_app(session, request, bodies):
-    assert request['method'] == 'POST'
-    assert request['script'] == []
-    assert request['body'] is None
-    if request['path'] == ['foo']:
+    assert request.method == 'POST'
+    assert request.script == []
+    assert request.body is None
+    if request.path == ['foo']:
         # Used to test timeout on server side:
         return (200, 'OK', {}, None)
-    if request['path'] == ['bar']:
+    if request.path == ['bar']:
         # Used to test timeout on client side:
         #time.sleep(CLIENT_SOCKET_TIMEOUT + 2)
         return (400, 'Bad Request', {}, None)
@@ -1331,9 +1331,9 @@ def ssl_app(session, request, bodies):
         'ECDHE-RSA-AES128-GCM-SHA256', 'TLSv1/SSLv3', 128
     )
     assert session['ssl_compression'] is None
-    assert request['method'] == 'GET'
-    assert request['script'] == []
-    assert request['body'] is None
+    assert request.method == 'GET'
+    assert request.script == []
+    assert request.body is None
     return (200, 'OK', {}, None)
 
 

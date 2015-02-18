@@ -522,6 +522,7 @@ class Validator:
         return '{}({!r})'.format(self.__class__.__name__, self.app)
 
     def __call__(self, session, request, bodies):
+        return self.app(session, request, bodies)
         _validate_session(session)
         _validate_request(bodies, request)
         _check_uri_invariant(request)
