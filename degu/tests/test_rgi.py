@@ -101,7 +101,7 @@ def build_request(**kw):
     }
     for (key, value) in kw.items():
         request[key] = value
-    return request
+    return MockObject(**request)
 
 
 class TestMockObject(TestCase):
@@ -465,107 +465,121 @@ class TestFunctions(TestCase):
 
     def test_reconstruct_uri(self):
         # script, path, and query are all empty:
-        request = {'script': [], 'path': [], 'query': None}
+        kw = {'script': [], 'path': [], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/')
-        self.assertEqual(request, {'script': [], 'path': [], 'query': None})
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
 
         # only script:
-        request = {'script': ['foo'], 'path': [], 'query': None}
+        kw = {'script': ['foo'], 'path': [], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', ''], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, [])
+
+        kw = {'script': ['foo', ''], 'path': [], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
-        self.assertEqual(request,
-            {'script': ['foo', ''], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo', ''])
+        self.assertEqual(request.path, [])
+
+        kw = {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo', 'bar'])
+        self.assertEqual(request.path, [])
+
+        kw = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
-        )
+        self.assertEqual(request.script, ['foo', 'bar', ''])
+        self.assertEqual(request.path, [])
 
         # only path:
-        request = {'script': [], 'path': ['foo'], 'query': None}
+        kw = {'script': [], 'path': ['foo'], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', ''], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo'])
+
+        kw = {'script': [], 'path': ['foo', ''], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', ''], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', ''])
+
+        kw = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', 'bar'])
+
+        kw = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
-        )
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', 'bar', ''])
 
         # only query:
-        request = {'script': [], 'path': [], 'query': 'hello'}
+        kw = {'script': [], 'path': [], 'query': 'hello'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/?hello')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'hello'}
-        )
-        request = {'script': [], 'path': [], 'query': 'stuff=junk'}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
+
+        kw = {'script': [], 'path': [], 'query': 'stuff=junk'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/?stuff=junk')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'stuff=junk'}
-        )
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
 
         # All of the above:
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        kw = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar'])
+
+        kw = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar', ''])
+
+        kw = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar'])
+
+        kw = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
-        )
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar', ''])
 
     def test_check_uri_invariant(self):
-        request = {
+        good = {
             'uri': '/foo/bar/baz?stuff=junk',
             'script': [],
             'path': ['foo', 'bar', 'baz'],
             'query': 'stuff=junk',
         }
+        request = MockObject(**good)
         self.assertIsNone(rgi._check_uri_invariant(request))
 
-        request = {
+        bad = {
             'uri': '/foo/bar/baz?stuff=junk',
             'script': ['foo'],
             'path': ['baz'],
             'query': 'stuff=junk',
         }
+        request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
             rgi._check_uri_invariant(request)
         self.assertEqual(str(cm.exception),
-            "reconstruct_uri(request) != request['uri']: "
+            "reconstruct_uri(request) != request.uri: "
             "'/foo/baz?stuff=junk' != '/foo/bar/baz?stuff=junk'"
         )
 
@@ -729,7 +743,7 @@ class TestFunctions(TestCase):
             "request.body is None but 'transfer-encoding' header is included"
         )
 
-        # All valid request.method should work when request['body'] is None:
+        # All valid request.method should work when request.body is None:
         for method in rgi.REQUEST_METHODS:
             also_good = deepcopy(good)
             also_good['method'] = method
@@ -941,14 +955,7 @@ class TestFunctions(TestCase):
         # the Body, BodyIter, ChunkedBody, and ChunkedBodyIter classes are
         # exposed in a server-agnostic fashion.
 
-        request = {
-            'method': 'GET',
-            'uri': '/foo/bar?',
-            'script': ['foo'],
-            'path': ['bar'],
-            'query': '',
-            'body': None,
-        }
+        request = MockObject(method='GET')
 
         # response isn't a `tuple`:
         bad = [200, 'OK', {}, None]
@@ -1026,8 +1033,7 @@ class TestFunctions(TestCase):
 
         # request method is 'HEAD', but response headers include neither
         # 'content-length' nor 'transfer-encoding'
-        r = deepcopy(request)
-        r['method'] = 'HEAD'
+        r = MockObject(method='HEAD')
         bad = (200, 'OK', {}, None)
         with self.assertRaises(ValueError) as cm:
             rgi._validate_response(default_bodies, r, bad)
@@ -1036,12 +1042,9 @@ class TestFunctions(TestCase):
         )
 
         # Test valid responses to 'HEAD' request:
-        r = deepcopy(request)
-        r['method'] = 'HEAD'
+        r = MockObject(method='HEAD')
         good = (200, 'OK', {'content-length': 17}, None)
         self.assertIsNone(rgi._validate_response(default_bodies, r, good))
-        r = deepcopy(request)
-        r['method'] = 'HEAD'
         good = (200, 'OK', {'transfer-encoding': 'chunked'}, None)
         self.assertIsNone(rgi._validate_response(default_bodies, r, good))
 
@@ -1063,8 +1066,7 @@ class TestFunctions(TestCase):
             ChunkedBodyIter(closed=False, chunked=False),
         )
         for body in bad_bodies:
-            r = deepcopy(request)
-            r['method'] = 'HEAD'
+            r = MockObject(method='HEAD')
             if isinstance(body, (ChunkedBody, ChunkedBodyIter)):
                 headers = {'transfer-encoding': 'chunked'}
             else:
@@ -1073,7 +1075,7 @@ class TestFunctions(TestCase):
             with self.assertRaises(TypeError) as cm:
                 rgi._validate_response(default_bodies, r, bad)
             self.assertEqual(str(cm.exception),
-                "response[3]: must be None when request['method'] is 'HEAD'; got a {!r}".format(
+                "response[3]: must be None when request.method is 'HEAD'; got a {!r}".format(
                     type(body)
                 )
             )
@@ -1354,7 +1356,7 @@ class TestValidator(TestCase):
         self.assertEqual(repr(inst), 'Example({!r})'.format(my_app))
 
     def test_call(self):
-        # request['body'].closed is not True after app() was called:
+        # request.body.closed is not True after app() was called:
         def my_app(session, request, bodies):
             return (200, 'OK', {}, None)
 
@@ -1367,12 +1369,12 @@ class TestValidator(TestCase):
         with self.assertRaises(ValueError) as cm:
             inst(session, request, default_bodies)
         self.assertEqual(str(cm.exception),
-            "request['body'].closed must be True after app() was called; got False"
+            "request.body.closed must be True after app() was called; got False"
         )
 
-        # request['body'].closed is True after app() is called:
+        # request.body.closed is True after app() is called:
         def my_app(session, request, bodies):
-            request['body'].closed = True
+            request.body.closed = True
             return (200, 'OK', {}, None)
 
         inst = rgi.Validator(my_app)

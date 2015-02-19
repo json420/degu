@@ -42,7 +42,7 @@ can better act as an independent RGI validation tool.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Allowed values for request['method']:
+# Allowed values for request.method:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 # 'content-length' and 'transfer-encoding' header keys, defined as constants
@@ -75,17 +75,17 @@ def _ensure_attr_is(label, obj, name, expected):
 
     >>> import io
     >>> body = io.BytesIO()
-    >>> _ensure_attr_is("request['body']", body, 'closed', True)
+    >>> _ensure_attr_is('request.body', body, 'closed', True)
     Traceback (most recent call last):
       ...
-    ValueError: request['body'].closed must be True; got False
+    ValueError: request.body.closed must be True; got False
     
     Or when *obj* has no attribute *name*:
 
-    >>> _ensure_attr_is("request['body']", body, 'chunked', False)
+    >>> _ensure_attr_is('request.body', body, 'chunked', False)
     Traceback (most recent call last):
       ...
-    ValueError: request['body']: 'BytesIO' object has no attribute 'chunked'
+    ValueError: request.body: 'BytesIO' object has no attribute 'chunked'
 
     """
     (label, value) = _getattr(label, obj, name)
@@ -258,19 +258,18 @@ def _validate_session(session):
 
 
 def _reconstruct_uri(request):
-    uri = '/' + '/'.join(request['script'] + request['path'])
-    query = request['query']
-    if query is None:
+    uri = '/' + '/'.join(request.script + request.path)
+    if request.query is None:
         return uri
-    return '?'.join([uri, query])
+    return '?'.join([uri, request.query])
 
 
 def _check_uri_invariant(request):
     uri = _reconstruct_uri(request)
-    if uri != request['uri']:
+    if uri != request.uri:
         raise ValueError(
-            "reconstruct_uri(request) != request['uri']: {!r} != {!r}".format(
-                uri, request['uri']
+            "reconstruct_uri(request) != request.uri: {!r} != {!r}".format(
+                uri, request.uri
             )
         )
 
@@ -420,7 +419,7 @@ def _validate_response(bodies, request, response):
     # response[2] (headers):
     (label, value) = _get_path('response', response, 2)
     _check_headers(label, value)
-    if request['method'] == 'HEAD':
+    if request.method == 'HEAD':
         # response to 'HEAD' request must include either a 'content-length' or a
         # 'transfer-encoding' header (but not both):
         if not {LENGTH, ENCODING}.intersection(value):
@@ -432,11 +431,11 @@ def _validate_response(bodies, request, response):
 
     # response[3] (body):
     (label, value) = _get_path('response', response, 3)
-    if request['method'] == 'HEAD':
+    if request.method == 'HEAD':
         # response body must be None when request method is 'HEAD':
         if value is not None:
             raise TypeError(
-                "{}: must be None when request['method'] is 'HEAD'; got a {!r}".format(
+                "{}: must be None when request.method is 'HEAD'; got a {!r}".format(
                     label, type(value)
                 )
             )
@@ -517,18 +516,16 @@ class Validator:
         return '{}({!r})'.format(self.__class__.__name__, self.app)
 
     def __call__(self, session, request, bodies):
-        return self.app(session, request, bodies)
         _validate_session(session)
         _validate_request(bodies, request)
         _check_uri_invariant(request)
-        request_body = request['body']
         response = self.app(session, request, bodies)
         _check_uri_invariant(request)
-        if request_body is not None and request_body.closed is not True:
+        if request.body is not None and request.body.closed is not True:
             # request body was not fully consumed:
             raise ValueError(
                 '{} must be True after app() was called; got {!r}'.format(
-                    "request['body'].closed", request_body.closed
+                    "request.body.closed", request.body.closed
                 )
             )
         _validate_response(bodies, request, response)
