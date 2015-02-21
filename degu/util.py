@@ -26,6 +26,7 @@ The module is heavily inspired by the `wsgiref.util` module in the Python3
 standard library:
 
     https://docs.python.org/3/library/wsgiref.html
+
 """
 
 
@@ -33,22 +34,25 @@ def shift_path(request):
     """
     Shift path to script in an RGI *request* argument.
 
-    For example:
+    This function only uses the `script` and `path` attributes from the
+    *request* namedtuple:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz']}
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'script path')
+    >>> request = Request(['foo'], ['bar', 'baz'])
     >>> shift_path(request)
     'bar'
 
     And you can see *request* was updated in place:
 
-    >>> request['script']
+    >>> request.script
     ['foo', 'bar']
-    >>> request['path']
+    >>> request.path
     ['baz']
 
     """
-    next = request['path'].pop(0)
-    request['script'].append(next)
+    next = request.path.pop(0)
+    request.script.append(next)
     return next
 
 
@@ -56,59 +60,69 @@ def relative_uri(request):
     """
     Reconstruct a relative URI from an RGI *request* argument.
 
+    This function uses the `path` and `query` attributes from the *request*
+    namedtuple:
+
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'path query')
+
     For example, when there is no query:
 
-    >>> request = {'path': ['bar', 'baz'], 'query': None}
+    >>> request = Request(['bar', 'baz'], None)
     >>> relative_uri(request)
     '/bar/baz'
 
     Or when there is merely an empty query:
 
-    >>> request = {'path': ['bar', 'baz'], 'query': ''}
+    >>> request = Request(['bar', 'baz'], '')
     >>> relative_uri(request)
     '/bar/baz?'
 
     And when there is a query:
 
-    >>> request = {'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = Request(['bar', 'baz'], 'stuff=junk')
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
-    Note that ``request['script']`` is ignored by this function.
+    Note that ``request.script`` is ignored by this function.
     """
-    uri = '/' + '/'.join(request['path'])
-    query = request['query']
-    if query is None:
+    uri = '/' + '/'.join(request.path)
+    if request.query is None:
         return uri
-    return '?'.join([uri, query])
+    return '?'.join([uri, request.query])
 
 
 def absolute_uri(request):
     """
     Reconstruct an absolute URI from an RGI *request* argument.
 
+    This function uses the `script`, `path`, and `query` attributes from the
+    *request* namedtuple:
+
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'script path query')
+
     For example, when there is no query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': None}
+    >>> request = Request(['foo'], ['bar', 'baz'], None)
     >>> absolute_uri(request)
     '/foo/bar/baz'
 
     Or when there is merely an empty query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': ''}
+    >>> request = Request(['foo'], ['bar', 'baz'], '')
     >>> absolute_uri(request)
     '/foo/bar/baz?'
 
     And when there is a query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = Request(['foo'], ['bar', 'baz'], 'stuff=junk')
     >>> absolute_uri(request)
     '/foo/bar/baz?stuff=junk'
 
     """
-    uri = '/' + '/'.join(request['script'] + request['path'])
-    query = request['query']
-    if query is None:
+    uri = '/' + '/'.join(request.script + request.path)
+    if request.query is None:
         return uri
-    return '?'.join([uri, query])
+    return '?'.join([uri, request.query])
 

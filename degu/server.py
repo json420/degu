@@ -198,9 +198,9 @@ def _handle_requests(app, sock, max_requests, session, bodies):
 
 def _handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
-    request = rfile.read_request()
-    request_method = request['method']
-    request_body = request['body']
+    request = rfile.read_request2()
+    request_method = request.method
+    request_body = request.body
 
     # Call the application:
     (status, reason, headers, body) = app(session, request, bodies)

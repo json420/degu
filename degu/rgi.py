@@ -42,7 +42,7 @@ can better act as an independent RGI validation tool.
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-# Allowed values for request['method']:
+# Allowed values for request.method:
 REQUEST_METHODS = ('GET', 'PUT', 'POST', 'DELETE', 'HEAD')
 
 # 'content-length' and 'transfer-encoding' header keys, defined as constants
@@ -75,17 +75,17 @@ def _ensure_attr_is(label, obj, name, expected):
 
     >>> import io
     >>> body = io.BytesIO()
-    >>> _ensure_attr_is("request['body']", body, 'closed', True)
+    >>> _ensure_attr_is('request.body', body, 'closed', True)
     Traceback (most recent call last):
       ...
-    ValueError: request['body'].closed must be True; got False
+    ValueError: request.body.closed must be True; got False
     
     Or when *obj* has no attribute *name*:
 
-    >>> _ensure_attr_is("request['body']", body, 'chunked', False)
+    >>> _ensure_attr_is('request.body', body, 'chunked', False)
     Traceback (most recent call last):
       ...
-    ValueError: request['body']: 'BytesIO' object has no attribute 'chunked'
+    ValueError: request.body: 'BytesIO' object has no attribute 'chunked'
 
     """
     (label, value) = _getattr(label, obj, name)
@@ -258,19 +258,18 @@ def _validate_session(session):
 
 
 def _reconstruct_uri(request):
-    uri = '/' + '/'.join(request['script'] + request['path'])
-    query = request['query']
-    if query is None:
+    uri = '/' + '/'.join(request.script + request.path)
+    if request.query is None:
         return uri
-    return '?'.join([uri, query])
+    return '?'.join([uri, request.query])
 
 
 def _check_uri_invariant(request):
     uri = _reconstruct_uri(request)
-    if uri != request['uri']:
+    if uri != request.uri:
         raise ValueError(
-            "reconstruct_uri(request) != request['uri']: {!r} != {!r}".format(
-                uri, request['uri']
+            "reconstruct_uri(request) != request.uri: {!r} != {!r}".format(
+                uri, request.uri
             )
         )
 
@@ -279,111 +278,106 @@ def _validate_request(bodies, request):
     """
     Validate the *request* argument.
     """
-    _check_dict('request', request)
 
-    # request['method']:
-    (label, value) = _get_path('request', request, 'method')
+    # request.method:
+    (label, value) = _getattr('request', request, 'method')
     if value not in REQUEST_METHODS:
         raise ValueError(
             "{}: value {!r} not in {!r}".format(label, value, REQUEST_METHODS)
         )
-    if not (request.get('body') is None or value in {'PUT', 'POST'}):
+    if not (getattr(request, 'body', None) is None or value in {'PUT', 'POST'}):
         raise ValueError(
-            "{} cannot be {!r} when request['body'] is not None".format(label, value)
+            "{} cannot be {!r} when request.body is not None".format(label, value)
         )
 
-    # request['uri']:
-    (label, value) = _get_path('request', request, 'uri')
+    # request.uri:
+    (label, value) = _getattr('request', request, 'uri')
     if not isinstance(value, str):
         raise TypeError(
             TYPE_ERROR.format(label, str, type(value), value) 
         )
 
-    # request['script']:
-    (label, value) = _get_path('request', request, 'script')
+    # request.script:
+    (label, value) = _getattr('request', request, 'script')
     if not isinstance(value, list):
         raise TypeError(
             TYPE_ERROR.format(label, list, type(value), value) 
         )
     for i in range(len(value)):
-        (label, value) = _get_path('request', request, 'script', i)
-        if not isinstance(value, str):
-            raise TypeError(
-                TYPE_ERROR.format(label, str, type(value), value) 
-            )
+        (l, v) = _get_path(label, value, i)
+        if not isinstance(v, str):
+            raise TypeError(TYPE_ERROR.format(l, str, type(v), v))
 
-    # request['path']:
-    (label, value) = _get_path('request', request, 'path')
+    # request.path:
+    (label, value) = _getattr('request', request, 'path')
     if not isinstance(value, list):
         raise TypeError(
             TYPE_ERROR.format(label, list, type(value), value) 
         )
     for i in range(len(value)):
-        (label, value) = _get_path('request', request, 'path', i)
-        if not isinstance(value, str):
-            raise TypeError(
-                TYPE_ERROR.format(label, str, type(value), value) 
-            )
+        (l, v) = _get_path(label, value, i)
+        if not isinstance(v, str):
+            raise TypeError(TYPE_ERROR.format(l, str, type(v), v))
 
-    # request['query']:
-    (label, value) = _get_path('request', request, 'query')
+    # request.query:
+    (label, value) = _getattr('request', request, 'query')
     if not (value is None or isinstance(value, str)):
         raise TypeError(
             TYPE_ERROR.format(label, str, type(value), value) 
         )
 
-    # request['headers']:
-    (label, value) = _get_path('request', request, 'headers')
+    # request.headers:
+    (label, value) = _getattr('request', request, 'headers')
     _check_headers(label, value)
 
-    # request['body']:
-    (label, value) = _get_path('request', request, 'body')
+    # request.body:
+    (label, value) = _getattr('request', request, 'body')
     if value is None:
         # When there is no request body, there should be neither 'content-length'
         # nor 'tranfer-encoding' headers:
         for key in (LENGTH, ENCODING):
-            if key in request['headers']:
+            if key in request.headers:
                 raise ValueError(
                     "{} is None but {!r} header is included".format(label, key)
                 )
         return  # Skip remaining checks when request body is None
 
-    # request['body'] is not None:
+    # request.body is not None:
     assert value is not None
     if isinstance(value, bodies.Body):
         _ensure_attr_is(label, value, 'chunked', False)
-        if ENCODING in request['headers']:
+        if ENCODING in request.headers:
             raise ValueError(
                 "{}: bodies.Body with {!r} header".format(label, ENCODING)
             )
         (l1, v1) = _getattr(label, value, 'content_length')
-        if LENGTH not in request['headers']:
+        if LENGTH not in request.headers:
             raise ValueError(
                 "{}: bodies.Body, but missing {!r} header".format(label, LENGTH)
             )
-        (l2, v2) = _get_path('request', request, 'headers', LENGTH)
+        (l2, v2) = _get_path('request.headers', request.headers, LENGTH)
         if v1 != v2:
             raise ValueError(
                 '{} != {}: {!r} != {!r}'.format(l1, l2, v1, v2)
             )
     elif isinstance(value, bodies.ChunkedBody):
         _ensure_attr_is(label, value, 'chunked', True)
-        if LENGTH in request['headers']:
+        if LENGTH in request.headers:
             raise ValueError(
                 "{}: bodies.ChunkedBody with {!r} header".format(label, LENGTH)
             )
-        if ENCODING not in request['headers']:
+        if ENCODING not in request.headers:
             raise ValueError(
                 "{}: bodies.ChunkedBody, but missing {!r} header".format(label, ENCODING)
             )
-        assert request['headers'][ENCODING] == 'chunked'
+        assert request.headers[ENCODING] == 'chunked'
     else:
         body_types = (bodies.Body, bodies.ChunkedBody)
         raise TypeError(
             TYPE_ERROR.format(label, body_types, type(value), value) 
         )
 
-    # request['body'].closed must be False prior to calling the application:
+    # request.body.closed must be False prior to calling the application:
     _ensure_attr_is(label, value, 'closed', False)
 
 
@@ -425,7 +419,7 @@ def _validate_response(bodies, request, response):
     # response[2] (headers):
     (label, value) = _get_path('response', response, 2)
     _check_headers(label, value)
-    if request['method'] == 'HEAD':
+    if request.method == 'HEAD':
         # response to 'HEAD' request must include either a 'content-length' or a
         # 'transfer-encoding' header (but not both):
         if not {LENGTH, ENCODING}.intersection(value):
@@ -437,11 +431,11 @@ def _validate_response(bodies, request, response):
 
     # response[3] (body):
     (label, value) = _get_path('response', response, 3)
-    if request['method'] == 'HEAD':
+    if request.method == 'HEAD':
         # response body must be None when request method is 'HEAD':
         if value is not None:
             raise TypeError(
-                "{}: must be None when request['method'] is 'HEAD'; got a {!r}".format(
+                "{}: must be None when request.method is 'HEAD'; got a {!r}".format(
                     label, type(value)
                 )
             )
@@ -525,14 +519,13 @@ class Validator:
         _validate_session(session)
         _validate_request(bodies, request)
         _check_uri_invariant(request)
-        request_body = request['body']
         response = self.app(session, request, bodies)
         _check_uri_invariant(request)
-        if request_body is not None and request_body.closed is not True:
+        if request.body is not None and request.body.closed is not True:
             # request body was not fully consumed:
             raise ValueError(
                 '{} must be True after app() was called; got {!r}'.format(
-                    "request['body'].closed", request_body.closed
+                    "request.body.closed", request.body.closed
                 )
             )
         _validate_response(bodies, request, response)

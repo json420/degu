@@ -24,206 +24,247 @@ Unit tests for the `degu.util` module`
 """
 
 from unittest import TestCase
+from collections import namedtuple
 
 from degu import util
 
 
 class TestFunctions(TestCase):
     def test_shift_path(self):
+        Request = namedtuple('Request', 'script path')
+
         # both script and path are empty:
-        request = {'script': [], 'path': []}
+        request = Request([], [])
         with self.assertRaises(IndexError):
             util.shift_path(request)
-        self.assertEqual(request, {'script': [], 'path': []})
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
 
         # path is empty:
-        request = {'script': ['foo'], 'path': []}
+        request = Request(['foo'], [])
         with self.assertRaises(IndexError):
             util.shift_path(request)
-        self.assertEqual(request, {'script': ['foo'], 'path': []})
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, [])
 
         # start with populated path:
-        request = {'script': [], 'path': ['foo', 'bar', 'baz']}
+        request = Request([], ['foo', 'bar', 'baz'])
         self.assertEqual(util.shift_path(request), 'foo')
-        self.assertEqual(request, {'script': ['foo'], 'path': ['bar', 'baz']})
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar', 'baz'])
+
         self.assertEqual(util.shift_path(request), 'bar')
-        self.assertEqual(request, {'script': ['foo', 'bar'], 'path': ['baz']})
+        self.assertEqual(request.script, ['foo', 'bar'])
+        self.assertEqual(request.path, ['baz'])
+
         self.assertEqual(util.shift_path(request), 'baz')
-        self.assertEqual(request, {'script': ['foo', 'bar', 'baz'], 'path': []})
+        self.assertEqual(request.script, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.path, [])
+
         with self.assertRaises(IndexError):
             util.shift_path(request)
-        self.assertEqual(request, {'script': ['foo', 'bar', 'baz'], 'path': []})
+        self.assertEqual(request.script, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.path, [])
 
     def test_relative_uri(self):
-        # script, path, and query are all empty:
-        request = {'script': [], 'path': [], 'query': ''}
+        Request = namedtuple('Request', 'path query')
+
+        path_permutations = (
+            (tuple(),            '/'),
+            (('',),              '/'),
+            (('foo',),           '/foo'),
+            (('foo', ''),        '/foo/'),
+            (('foo', 'bar'),     '/foo/bar'),
+            (('foo', 'bar', ''), '/foo/bar/'),
+        )
+        query_permutations = (
+            (None,      ''),
+            ('',        '?'),
+            ('foo',     '?foo'),
+            ('foo=bar', '?foo=bar'),
+        )
+        for (path, uri) in path_permutations:
+            request = Request(list(path), None)
+            self.assertEqual(util.relative_uri(request), uri)
+            self.assertEqual(request.path, list(path))
+        for (query, end) in query_permutations:
+            request = Request([], query)
+            self.assertEqual(util.relative_uri(request), '/' + end)
+            self.assertEqual(request.path, [])
+        for (path, uri) in path_permutations:
+            for (query, end) in query_permutations:
+                request = Request(list(path), query)
+                self.assertEqual(util.relative_uri(request), uri + end)
+                self.assertEqual(request.path, list(path))
+
+        # path is empty:
+        request = Request([], None)
+        self.assertEqual(util.relative_uri(request), '/')
+        self.assertEqual(request.path, [])
+
+        request = Request([], '')
         self.assertEqual(util.relative_uri(request), '/?')
-        self.assertEqual(request, {'script': [], 'path': [], 'query': ''})
+        self.assertEqual(request.path, [])
 
-        # script and path are empty, query is None:
-        request = {'script': [], 'path': [], 'query': None}
-        self.assertEqual(util.relative_uri(request), '/')
-        self.assertEqual(request, {'script': [], 'path': [], 'query': None})
+        request = Request([], 'foo')
+        self.assertEqual(util.relative_uri(request), '/?foo')
+        self.assertEqual(request.path, [])
 
-        # only script:
-        request = {'script': ['foo'], 'path': [], 'query': None}
-        self.assertEqual(util.relative_uri(request), '/')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', ''], 'path': [], 'query': None}
-        self.assertEqual(util.relative_uri(request), '/')
-        self.assertEqual(request,
-            {'script': ['foo', ''], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar'], 'path': [], 'query': None}
-        self.assertEqual(util.relative_uri(request), '/')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
-        self.assertEqual(util.relative_uri(request), '/')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
-        )
+        request = Request([], 'foo=bar')
+        self.assertEqual(util.relative_uri(request), '/?foo=bar')
+        self.assertEqual(request.path, [])
 
-        # only path:
-        request = {'script': [], 'path': ['foo'], 'query': None}
+        # No query
+        request = Request([''], None)
+        self.assertEqual(util.relative_uri(request), '/')
+        self.assertEqual(request.path, [''])
+
+        request = Request(['foo'], None)
         self.assertEqual(util.relative_uri(request), '/foo')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', ''], 'query': None}
+        self.assertEqual(request.path, ['foo'])
+
+        request = Request(['foo', ''], None)
         self.assertEqual(util.relative_uri(request), '/foo/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', ''], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        self.assertEqual(request.path, ['foo', ''])
+
+        request = Request(['foo', 'bar'], None)
         self.assertEqual(util.relative_uri(request), '/foo/bar')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        self.assertEqual(request.path, ['foo', 'bar'])
+
+        request = Request(['foo', 'bar', ''], None)
         self.assertEqual(util.relative_uri(request), '/foo/bar/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
-        )
-
-        # only query:
-        request = {'script': [], 'path': [], 'query': 'hello'}
-        self.assertEqual(util.relative_uri(request), '/?hello')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'hello'}
-        )
-        request = {'script': [], 'path': [], 'query': 'stuff=junk'}
-        self.assertEqual(util.relative_uri(request), '/?stuff=junk')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'stuff=junk'}
-        )
-
-        # All of the above:
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
-        self.assertEqual(util.relative_uri(request), '/bar?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
-        self.assertEqual(util.relative_uri(request), '/bar/?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
-        self.assertEqual(util.relative_uri(request), '/bar?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
-        self.assertEqual(util.relative_uri(request), '/bar/?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
-        )
+        self.assertEqual(request.path, ['foo', 'bar', ''])
 
     def test_absolute_uri(self):
+        Request = namedtuple('Request', 'script path query')
+
+        path_permutations = (
+            (tuple(),            '/'),
+            (('',),              '/'),
+            (('foo',),           '/foo'),
+            (('foo', ''),        '/foo/'),
+            (('foo', 'bar'),     '/foo/bar'),
+            (('foo', 'bar', ''), '/foo/bar/'),
+        )
+        query_permutations = (
+            (None,      ''),
+            ('',        '?'),
+            ('foo',     '?foo'),
+            ('foo=bar', '?foo=bar'),
+        )
+
+        for (path, uri) in path_permutations:
+            request = Request([], list(path), None)
+            self.assertEqual(util.absolute_uri(request), uri)
+            self.assertEqual(request.script, [])
+            self.assertEqual(request.path, list(path))
+            s = []
+            p = list(path)
+            while p:
+                s.append(p.pop(0))
+                request = Request(list(s), list(p), None)
+                self.assertEqual(util.absolute_uri(request), uri)
+                self.assertEqual(request.script, s)
+                self.assertEqual(request.path, p)
+
+        for (query, end) in query_permutations:
+            request = Request([], [], query)
+            self.assertEqual(util.absolute_uri(request), '/' + end)
+            self.assertEqual(request.script, [])
+            self.assertEqual(request.path, [])
+
+        for (path, uri) in path_permutations:
+            for (query, end) in query_permutations:
+                request = Request([], list(path), query)
+                self.assertEqual(util.absolute_uri(request), uri + end)
+                self.assertEqual(request.script, [])
+                self.assertEqual(request.path, list(path))
+                s = []
+                p = list(path)
+                while p:
+                    s.append(p.pop(0))
+                    request = Request(list(s), list(p), query)
+                    self.assertEqual(util.absolute_uri(request), uri + end)
+                    self.assertEqual(request.script, s)
+                    self.assertEqual(request.path, p)
+
         # script, path, and query are all empty:
-        request = {'script': [], 'path': [], 'query': None}
+        request = Request([], [], None)
         self.assertEqual(util.absolute_uri(request), '/')
-        self.assertEqual(request, {'script': [], 'path': [], 'query': None})
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
 
         # only script:
-        request = {'script': ['foo'], 'path': [], 'query': None}
+        request = Request(['foo'], [], None)
         self.assertEqual(util.absolute_uri(request), '/foo')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', ''], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, [])
+
+        request = Request(['foo', ''], [], None)
         self.assertEqual(util.absolute_uri(request), '/foo/')
-        self.assertEqual(request,
-            {'script': ['foo', ''], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo', ''])
+        self.assertEqual(request.path, [])
+
+        request = Request(['foo', 'bar'], [], None)
         self.assertEqual(util.absolute_uri(request), '/foo/bar')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar'], 'path': [], 'query': None}
-        )
-        request = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        self.assertEqual(request.script, ['foo', 'bar'])
+        self.assertEqual(request.path, [])
+
+        request = Request(['foo', 'bar', ''], [], None)
         self.assertEqual(util.absolute_uri(request), '/foo/bar/')
-        self.assertEqual(request,
-            {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
-        )
+        self.assertEqual(request.script, ['foo', 'bar', ''])
+        self.assertEqual(request.path, [])
 
         # only path:
-        request = {'script': [], 'path': ['foo'], 'query': None}
+        request = Request([], ['foo'], None)
         self.assertEqual(util.absolute_uri(request), '/foo')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', ''], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo'])
+
+        request = Request([], ['foo', ''], None)
         self.assertEqual(util.absolute_uri(request), '/foo/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', ''], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', ''])
+
+        request = Request([], ['foo', 'bar'], None)
         self.assertEqual(util.absolute_uri(request), '/foo/bar')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar'], 'query': None}
-        )
-        request = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', 'bar'])
+
+        request = Request([], ['foo', 'bar', ''], None)
         self.assertEqual(util.absolute_uri(request), '/foo/bar/')
-        self.assertEqual(request,
-            {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
-        )
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, ['foo', 'bar', ''])
 
         # only query:
-        request = {'script': [], 'path': [], 'query': 'hello'}
+        request = Request([], [], 'hello')
         self.assertEqual(util.absolute_uri(request), '/?hello')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'hello'}
-        )
-        request = {'script': [], 'path': [], 'query': 'stuff=junk'}
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
+
+        request = Request([], [], 'stuff=junk')
         self.assertEqual(util.absolute_uri(request), '/?stuff=junk')
-        self.assertEqual(request,
-            {'script': [], 'path': [], 'query': 'stuff=junk'}
-        )
+        self.assertEqual(request.script, [])
+        self.assertEqual(request.path, [])
 
         # All of the above:
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        request = Request(['foo'], ['bar'], 'hello')
         self.assertEqual(util.absolute_uri(request), '/foo/bar?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar'])
+
+        request = Request(['foo'], ['bar', ''], 'hello')
         self.assertEqual(util.absolute_uri(request), '/foo/bar/?hello')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
-        )
-        request = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar', ''])
+
+        request = Request(['foo'], ['bar'], 'one=two')
         self.assertEqual(util.absolute_uri(request), '/foo/bar?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
-        )
-        request = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar'])
+
+        request = Request(['foo'], ['bar', ''], 'one=two')
         self.assertEqual(util.absolute_uri(request), '/foo/bar/?one=two')
-        self.assertEqual(request,
-            {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
-        )
+        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.path, ['bar', ''])
 

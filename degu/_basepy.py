@@ -583,6 +583,18 @@ class Reader:
             raise Exception('must already have a body')
         return request
 
+    def read_request2(self):
+        d = self.read_request()
+        return Request(
+            d['method'],
+            d['uri'],
+            d['script'],
+            d['path'],
+            d['query'],
+            d['headers'],
+            d['body'],
+        )
+
     def read_response(self, method):
         method = parse_method(method)
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')

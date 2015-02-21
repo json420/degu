@@ -24,19 +24,31 @@ Functions
     This is an extremely common need when it comes to request routing, and in
     particular for RGI middleware applications that do request routing.
 
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'script path')
+
     For example:
 
     >>> from degu.util import shift_path
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz']}
+    >>> request = Request(['foo'], ['bar', 'baz'])
     >>> shift_path(request)
     'bar'
 
     As you can see *request* was updated in place:
 
-    >>> request['script']
-    ['foo', 'bar']
-    >>> request['path']
-    ['baz']
+    >>> request
+    Request(script=['foo', 'bar'], path=['baz'])
+
+    An ``IndexError is raised if ``request.path`` is empty:
+
+    >>> shift_path(request)
+    'baz'
+    >>> request
+    Request(script=['foo', 'bar', 'baz'], path=[])
+    >>> shift_path(request)
+    Traceback (most recent call last):
+      ...
+    IndexError: pop from empty list
 
 
 .. function:: relative_uri(request)
@@ -46,20 +58,23 @@ Functions
     This function is especially useful for RGI reverse-proxy applications when
     building the URI used in their forwarded HTTP client request.
 
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'path query')
+
     For example, when there is no query:
 
     >>> from degu.util import relative_uri
-    >>> request = {'path': ['bar', 'baz'], 'query': None}
+    >>> request = Request(['bar', 'baz'], None)
     >>> relative_uri(request)
     '/bar/baz'
 
     And when there is a query:
 
-    >>> request = {'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = Request(['bar', 'baz'], 'stuff=junk')
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
-    Note that if present, ``request['script']`` is ignored by this function.
+    Note that if present, ``request.script`` is ignored by this function.
     If you need the original, absolute request URI, please use
     :func:`absolute_uri()`.
 
@@ -68,16 +83,19 @@ Functions
 
     Create an absolute URI from an RGI *request* argument.
 
+    >>> from collections import namedtuple
+    >>> Request = namedtuple('Request', 'script path query')
+
     For example, when there is no query:
 
     >>> from degu.util import absolute_uri
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': None}
+    >>> request = Request(['foo'], ['bar', 'baz'], None)
     >>> absolute_uri(request)
     '/foo/bar/baz'
 
     And when there is a query:
 
-    >>> request = {'script': ['foo'], 'path': ['bar', 'baz'], 'query': 'stuff=junk'}
+    >>> request = Request(['foo'], ['bar', 'baz'], 'stuff=junk')
     >>> absolute_uri(request)
     '/foo/bar/baz?stuff=junk'
 

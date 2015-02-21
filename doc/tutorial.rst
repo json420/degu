@@ -130,10 +130,10 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...             session['__conn'] = self.client.connect()
 ...         conn = session['__conn']
 ...         return conn.request(
-...             request['method'],
-...             request['uri'],
-...             request['headers'],
-...             request['body']
+...             request.method,
+...             request.uri,
+...             request.headers,
+...             request.body
 ...         )
 ... 
 
@@ -362,10 +362,10 @@ needs only a tiny change:
 ...             session['__conn'] = self.client.connect(bodies=bodies)  # Changed
 ...         conn = session['__conn']
 ...         return conn.request(
-...             request['method'],
-...             request['uri'],
-...             request['headers'],
-...             request['body']
+...             request.method,
+...             request.uri,
+...             request.headers,
+...             request.body
 ...         )
 ... 
 
@@ -427,14 +427,14 @@ chunked transfer encoding if we ``POST /chunked``, and that will return a body
 with a content-length if we ``POST /length``:
 
 >>> def rgi_io_app(session, request, bodies):
-...     if request['path'] not in (['length'], ['chunked']):
+...     if request.path not in (['length'], ['chunked']):
 ...         return (404, 'Not Found', {}, None)
-...     if request['method'] != 'POST':
+...     if request.method != 'POST':
 ...         return (405, 'Method Not Allowed', {}, None)
-...     if request['body'] is None:
+...     if request.body is None:
 ...         return (400, 'Bad Request', {}, None)
-...     echo = request['body'].read()  # Body/ChunkedBody agnostic
-...     if request['path'][0] == 'chunked':
+...     echo = request.body.read()  # Body/ChunkedBody agnostic
+...     if request.path[0] == 'chunked':
 ...         body = bodies.ChunkedBodyIter(chunked_response_body(echo))
 ...     else:
 ...         body = bodies.BodyIter(response_body(echo), len(echo) + 17)
