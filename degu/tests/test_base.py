@@ -818,6 +818,13 @@ class TestFunctions(AlternatesTestCase):
                     "b'//' in path: {!r}".format(bad)
                 )
 
+        ret = parse_uri(b'/')
+        self.assertIsInstance(ret, tuple)
+        self.assertEqual(len(ret), 4)
+        self.assertEqual(ret, ('/', [], [] , None))
+        self.assertEqual(sys.getrefcount(ret[1]), 2)
+        self.assertEqual(sys.getrefcount(ret[2]), 2)
+
         self.assertEqual(parse_uri(b'/'), ('/', [], [] , None))
         self.assertEqual(parse_uri(b'/?'), ('/?', [], [] , ''))
         self.assertEqual(parse_uri(b'/?q'), ('/?q', [], [] , 'q'))

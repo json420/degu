@@ -59,15 +59,6 @@ static PyObject *str_empty = NULL;    //  ''
 
 static PyObject *int_SHUT_RDWR = NULL;  // socket.SHUT_RDWR (2)
 
-/* Keys used in the RGI request dict */
-static PyObject *str_method  = NULL;  // 'method'
-static PyObject *str_uri     = NULL;  // 'uri'
-static PyObject *str_script  = NULL;  // 'script'
-static PyObject *str_path    = NULL;  // 'path'
-static PyObject *str_query   = NULL;  // 'query'
-static PyObject *str_headers = NULL;  // 'headers'
-static PyObject *str_body    = NULL;  // 'body'
-
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/
@@ -1337,11 +1328,9 @@ parse_uri(PyObject *self, PyObject *args)
     if (!_parse_uri(src, &dr)) {
         goto error;
     }
-    _SET(ret, PyDict_New())
-    _SET_ITEM(ret, str_uri, dr.uri)
-    _SET_ITEM(ret, str_script, dr.script)
-    _SET_ITEM(ret, str_path, dr.path)
-    _SET_ITEM(ret, str_query, dr.query)
+    _SET(ret,
+        PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
+    )
     goto cleanup;
 error:
     Py_CLEAR(ret);
@@ -1364,12 +1353,9 @@ parse_request_line(PyObject *self, PyObject *args)
     if (!_parse_request_line(src, &dr)) {
         goto error;
     }
-    _SET(ret, PyDict_New())
-    _SET_ITEM(ret, str_method, dr.method)
-    _SET_ITEM(ret, str_uri, dr.uri)
-    _SET_ITEM(ret, str_script, dr.script)
-    _SET_ITEM(ret, str_path, dr.path)
-    _SET_ITEM(ret, str_query, dr.query)
+    _SET(ret,
+        PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
+    )
     goto cleanup;
 error:
     Py_CLEAR(ret);
@@ -1394,13 +1380,9 @@ parse_request(PyObject *self, PyObject *args)
     if (!_parse_request(src, scratch, &dr)) {
         goto error;
     }
-    _SET(ret, PyDict_New())
-    _SET_ITEM(ret, str_method, dr.method)
-    _SET_ITEM(ret, str_uri, dr.uri)
-    _SET_ITEM(ret, str_script, dr.script)
-    _SET_ITEM(ret, str_path, dr.path)
-    _SET_ITEM(ret, str_query, dr.query)
-    _SET_ITEM(ret, str_headers, dr.headers)
+    _SET(ret,
+        PyTuple_Pack(6, dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers)
+    )
     goto cleanup;
 error:
     Py_CLEAR(ret);
@@ -1413,35 +1395,6 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-parse_request2(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    uint8_t *scratch = NULL;
-    PyObject *ret = NULL;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
-        return NULL;
-    }
-    DeguBuf src = {buf, len};
-    _SET(scratch, _calloc_buf(MAX_KEY))
-    if (!_parse_request(src, scratch, &dr)) {
-        goto error;
-    }
-    _SET(ret,
-        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
-    )
-    goto cleanup;
-error:
-    _clear_degu_request(&dr);
-cleanup:
-    if (scratch != NULL) {
-        free(scratch);
-        scratch = NULL;
-    }
-    return ret;
-}
 
 
 /*******************************************************************************
@@ -1682,7 +1635,6 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_request_line", parse_request_line, METH_VARARGS,
         "parse_request_line(line)"},
     {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
-    {"parse_request2", parse_request2, METH_VARARGS, "parse_request2(preamble)"},
 
     /* Response Parsing */
     {"parse_response_line", parse_response_line, METH_VARARGS,
@@ -2171,50 +2123,6 @@ Reader_read_request(Reader *self) {
     else if (bodyflags == 2) {
         _SET(dr.body, _Reader_ChunkedBody(self))
     }
-    _SET(ret, PyDict_New())
-    _SET_ITEM(ret, str_method, dr.method)
-    _SET_ITEM(ret, str_uri, dr.uri)
-    _SET_ITEM(ret, str_script, dr.script)
-    _SET_ITEM(ret, str_path, dr.path)
-    _SET_ITEM(ret, str_query, dr.query)
-    _SET_ITEM(ret, str_headers, dr.headers)
-    _SET_ITEM(ret, str_body, dr.body)
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    _clear_degu_request(&dr);
-    return ret;
-}
-
-static PyObject *
-Reader_read_request2(Reader *self) {
-    PyObject *ret = NULL;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-
-    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
-    if (src.buf == NULL) {
-        goto error;
-    }
-    if (src.len == 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
-        goto error;
-    }
-    if (!_parse_request(src, self->scratch, &dr)) {
-        goto error;
-    }
-    const uint8_t bodyflags = (dr.flags & 3);
-    if (bodyflags == 0) {
-        _SET_AND_INC(dr.body, Py_None)
-    }
-    else if (bodyflags == 1) {
-        _SET(dr.body, _Reader_Body(self, dr.content_length))
-    }
-    else if (bodyflags == 2) {
-        _SET(dr.body, _Reader_ChunkedBody(self))
-    }
     _SET(ret,
         _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
     )
@@ -2414,9 +2322,6 @@ static PyMethodDef Reader_methods[] = {
     },
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
         "read_request()"
-    },
-    {"read_request2", (PyCFunction)Reader_read_request2, METH_NOARGS,
-        "read_request2()"
     },
     {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS,
         "read_response(method)"
@@ -2845,14 +2750,6 @@ PyInit__base(void)
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
-
-    _SET(str_method, PyUnicode_InternFromString("method"))
-    _SET(str_uri, PyUnicode_InternFromString("uri"))
-    _SET(str_script, PyUnicode_InternFromString("script"))
-    _SET(str_path, PyUnicode_InternFromString("path"))
-    _SET(str_query, PyUnicode_InternFromString("query"))
-    _SET(str_headers, PyUnicode_InternFromString("headers"))
-    _SET(str_body, PyUnicode_InternFromString("body"))
 
     _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
 
