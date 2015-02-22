@@ -818,81 +818,29 @@ class TestFunctions(AlternatesTestCase):
                     "b'//' in path: {!r}".format(bad)
                 )
 
-        self.assertEqual(parse_uri(b'/'), {
-            'uri': '/',
-            'script': [],
-            'path': [],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/?'), {
-            'uri': '/?',
-            'script': [],
-            'path': [],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/?q'), {
-            'uri': '/?q',
-            'script': [],
-            'path': [],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/'), ('/', [], [] , None))
+        self.assertEqual(parse_uri(b'/?'), ('/?', [], [] , ''))
+        self.assertEqual(parse_uri(b'/?q'), ('/?q', [], [] , 'q'))
 
-        self.assertEqual(parse_uri(b'/foo'), {
-            'uri': '/foo',
-            'script': [],
-            'path': ['foo'],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo?'), {
-            'uri': '/foo?',
-            'script': [],
-            'path': ['foo'],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo?q'), {
-            'uri': '/foo?q',
-            'script': [],
-            'path': ['foo'],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/foo'), ('/foo', [], ['foo'], None))
+        self.assertEqual(parse_uri(b'/foo?'), ('/foo?', [], ['foo'], ''))
+        self.assertEqual(parse_uri(b'/foo?q'), ('/foo?q', [], ['foo'], 'q'))
 
-        self.assertEqual(parse_uri(b'/foo/'), {
-            'uri': '/foo/',
-            'script': [],
-            'path': ['foo', ''],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo/?'), {
-            'uri': '/foo/?',
-            'script': [],
-            'path': ['foo', ''],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo/?q'), {
-            'uri': '/foo/?q',
-            'script': [],
-            'path': ['foo', ''],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/foo/'), ('/foo/', [], ['foo', ''], None))
+        self.assertEqual(parse_uri(b'/foo/?'), ('/foo/?', [], ['foo', ''], ''))
+        self.assertEqual(parse_uri(b'/foo/?q'),
+            ('/foo/?q', [], ['foo', ''], 'q')
+        )
 
-        self.assertEqual(parse_uri(b'/foo/bar'), {
-            'uri': '/foo/bar',
-            'script': [],
-            'path': ['foo', 'bar'],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo/bar?'), {
-            'uri': '/foo/bar?',
-            'script': [],
-            'path': ['foo', 'bar'],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo/?q'), {
-            'uri': '/foo/?q',
-            'script': [],
-            'path': ['foo', ''],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/foo/bar'),
+            ('/foo/bar', [], ['foo', 'bar'], None)
+        )
+        self.assertEqual(parse_uri(b'/foo/bar?'),
+             ('/foo/bar?', [], ['foo', 'bar'], '')
+        )
+        self.assertEqual(parse_uri(b'/foo/bar?q'),
+             ('/foo/bar?q', [], ['foo', 'bar'], 'q')
+        )
 
     def test_parse_uri_py(self):
         self.check_parse_uri(_basepy)
@@ -1063,13 +1011,9 @@ class TestFunctions(AlternatesTestCase):
     def check_parse_request_line(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_request_line = backend.parse_request_line
-        self.assertEqual(parse_request_line(b'GET / HTTP/1.1'), {
-            'method': 'GET',
-            'uri': '/',
-            'script': [],
-            'path': [],
-            'query': None,
-        })
+        self.assertEqual(parse_request_line(b'GET / HTTP/1.1'),
+            ('GET', '/', [], [], None)
+        )
 
     def test_parse_request_line_py(self):
         self.check_parse_request_line(_basepy)
@@ -2770,17 +2714,9 @@ class TestReader_Py(BackendTestCase):
         suffix = b'hello, world'
         data = prefix + term + suffix
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-        self.assertEqual(reader.read_request(),
-            {
-                'method': 'GET',
-                'uri': '/',
-                'script': [],
-                'path': [],
-                'query': None,
-                'headers': {},
-                'body': None,
-            }
-        )
+        request = reader.read_request()
+        self.assertIsInstance(request, self.getattr('RequestType'))
+        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:

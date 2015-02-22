@@ -245,12 +245,8 @@ def parse_uri(src):
         query = None
     else:
         query = _parse_query(parts[1])
-    return {
-        'uri': uri,
-        'script': [],
-        'path': path,
-        'query': query,
-    }
+    # (uri, script, path, query):
+    return (uri, [], path, query)
 
 
 def parse_request_line(line):
@@ -262,16 +258,16 @@ def parse_request_line(line):
     items = src.split(b' /', 1)
     if len(items) < 2:
         raise ValueError('bad request line: {!r}'.format(line))
-    request = {'method': _parse_method(items[0])}
-    request.update(parse_uri(b'/' + items[1]))
-    return request
+    method = _parse_method(items[0])
+    (uri, script, path, query) = parse_uri(b'/' + items[1])
+    return (method, uri, script, path, query)
 
 
 def parse_request(preamble):
     (line, *header_lines) = preamble.split(b'\r\n')
-    request = parse_request_line(line)
-    request['headers'] = _parse_header_lines(header_lines)
-    return request
+    (method, uri, script, path, query) = parse_request_line(line)
+    headers = _parse_header_lines(header_lines)
+    return (method, uri, script, path, query, headers)
 
 
 
@@ -571,29 +567,14 @@ class Reader:
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
-        request = parse_request(preamble)
-        headers = request['headers']
+        (method, uri, script, path, query, headers) = parse_request(preamble)
         if 'content-length' in headers:
             body = self.Body(headers['content-length'])
         elif 'transfer-encoding' in headers:
             body = self.ChunkedBody()
         else:
             body = None
-        if request.setdefault('body', body) is not body:
-            raise Exception('must already have a body')
-        return request
-
-    def read_request2(self):
-        d = self.read_request()
-        return Request(
-            d['method'],
-            d['uri'],
-            d['script'],
-            d['path'],
-            d['query'],
-            d['headers'],
-            d['body'],
-        )
+        return Request(method, uri, script, path, query, headers, body)
 
     def read_response(self, method):
         method = parse_method(method)
