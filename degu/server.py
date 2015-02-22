@@ -139,34 +139,6 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def _read_request(rfile, bodies):
-    request = rfile.read_request()
-    method = request['method']
-    headers = request['headers']
-    # Only one dictionary lookup for content-length:
-    content_length = headers.get('content-length')
-
-    # Build request body:
-    if content_length is not None:
-        # Hack for compatibility with the CouchDB replicator, which annoyingly
-        # sends a {'content-length': 0} header with all GET and HEAD requests:
-        if method in {'GET', 'HEAD'} and content_length == 0:
-            del headers['content-length']
-        else:
-            body = bodies.Body(rfile, content_length)
-    elif 'transfer-encoding' in headers:
-        body = bodies.ChunkedBody(rfile)
-    else:
-        body = None
-    if body is not None and method not in {'POST', 'PUT'}:
-        raise ValueError(
-            'Request body with wrong method: {!r}'.format(method)
-        )
-
-    request['body'] = body
-    return request
-
-
 def _write_response(wfile, status, reason, headers, body):
     preamble = format_response(status, reason, headers)
     if body is None:
@@ -199,18 +171,16 @@ def _handle_requests(app, sock, max_requests, session, bodies):
 def _handle_one(app, rfile, wfile, session, bodies):
     # Read the next request:
     request = rfile.read_request2()
-    request_method = request.method
-    request_body = request.body
 
     # Call the application:
     (status, reason, headers, body) = app(session, request, bodies)
 
     # Make sure application fully consumed request body:
-    if request_body and not request_body.closed:
-        raise UnconsumedRequestError(request_body)
+    if request.body and not request.body.closed:
+        raise UnconsumedRequestError(request.body)
 
     # Make sure HEAD requests are properly handled:
-    if request_method == 'HEAD':
+    if request.method == 'HEAD':
         if body is not None:
             raise TypeError(
                 'response body must be None when request method is HEAD'
