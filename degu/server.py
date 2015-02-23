@@ -32,7 +32,6 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_response,
 )
 
 
@@ -139,48 +138,6 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def _read_request(rfile, bodies):
-    request = rfile.read_request()
-    method = request['method']
-    headers = request['headers']
-    # Only one dictionary lookup for content-length:
-    content_length = headers.get('content-length')
-
-    # Build request body:
-    if content_length is not None:
-        # Hack for compatibility with the CouchDB replicator, which annoyingly
-        # sends a {'content-length': 0} header with all GET and HEAD requests:
-        if method in {'GET', 'HEAD'} and content_length == 0:
-            del headers['content-length']
-        else:
-            body = bodies.Body(rfile, content_length)
-    elif 'transfer-encoding' in headers:
-        body = bodies.ChunkedBody(rfile)
-    else:
-        body = None
-    if body is not None and method not in {'POST', 'PUT'}:
-        raise ValueError(
-            'Request body with wrong method: {!r}'.format(method)
-        )
-
-    request['body'] = body
-    return request
-
-
-def _write_response(wfile, status, reason, headers, body):
-    preamble = format_response(status, reason, headers)
-    if body is None:
-        total = wfile.write(preamble)
-        wfile.flush()
-    elif isinstance(body, (bytes, bytearray)):
-        total = wfile.write(preamble + body)
-        wfile.flush()
-    else:
-        total = wfile.write(preamble)
-        total += body.write_to(wfile)          
-    return total
-
-
 def _handle_requests(app, sock, max_requests, session, bodies):
     (rfile, wfile) = _makefiles(sock, bodies)
     assert session['requests'] == 0
@@ -196,21 +153,16 @@ def _handle_requests(app, sock, max_requests, session, bodies):
     sock.close()
 
 
-def _handle_one(app, rfile, wfile, session, bodies):
-    # Read the next request:
-    request = rfile.read_request2()
-    request_method = request.method
-    request_body = request.body
-
-    # Call the application:
+def _handle_one(app, reader, writer, session, bodies):
+    request = reader.read_request()
     (status, reason, headers, body) = app(session, request, bodies)
 
     # Make sure application fully consumed request body:
-    if request_body and not request_body.closed:
-        raise UnconsumedRequestError(request_body)
+    if request.body and not request.body.closed:
+        raise UnconsumedRequestError(request.body)
 
     # Make sure HEAD requests are properly handled:
-    if request_method == 'HEAD':
+    if request.method == 'HEAD':
         if body is not None:
             raise TypeError(
                 'response body must be None when request method is HEAD'
@@ -225,37 +177,10 @@ def _handle_one(app, rfile, wfile, session, bodies):
                 'response to HEAD request must include content-length or transfer-encoding'
             )
 
-    # Set default content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
-        length = len(body)
-        if headers.setdefault('content-length', length) != length:
-            raise ValueError(
-                "headers['content-length'] != len(body): {!r} != {!r}".format(
-                    headers['content-length'], length
-                )
-            )
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                "headers['transfer-encoding'] with length-encoded body"
-            )
-    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
-        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
-            raise ValueError(
-                "headers['transfer-encoding'] is invalid: {!r}".format(
-                    headers['transfer-encoding']
-                )
-            )
-        if 'content-length' in headers:
-            raise ValueError(
-                "headers['content-length'] with chunk-encoded body"
-            )
-    elif body is not None:
-        raise TypeError(
-            'body: not valid type: {!r}: {!r}'.format(type(body), body)
-        )
-
-    # Write response
-    _write_response(wfile, status, reason, headers, body)
+    # Write response:
+    tell = writer.tell()
+    wrote = writer.write_response(status, reason, headers, body)
+    assert writer.tell() == tell + wrote
 
     # Possibly close the connection:
     if status >= 400 and status not in {404, 409, 412}:
@@ -345,6 +270,8 @@ class Server:
             # that's why we use `timeout=2` rather than `blocking=False`:
             if semaphore.acquire(timeout=2) is True:
                 sock.settimeout(timeout)
+                if isinstance(address, tuple):
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
                 thread = threading.Thread(
                     target=worker,
                     args=(semaphore, max_requests, bodies, sock, address),

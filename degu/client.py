@@ -30,7 +30,6 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_request,
     Response
 )
 
@@ -212,20 +211,6 @@ def _validate_request(bodies, method, uri, headers, body):
         raise ValueError('cannot include body in a {} request'.format(method))
 
 
-def _write_request(wfile, method, uri, headers, body):
-    preamble = format_request(method, uri, headers)
-    if body is None:
-        total = wfile.write(preamble)
-        wfile.flush()
-    elif isinstance(body, (bytes, bytearray)):
-        total = wfile.write(preamble + body)
-        wfile.flush()
-    else:
-        total = wfile.write(preamble)
-        total += body.write_to(wfile)
-    return total
-
-
 class Connection:
     """
     Provides an HTTP client request API atop an arbitrary socket connection.
@@ -253,14 +238,14 @@ class Connection:
 
     def close(self):
         if self.sock is not None:
+            self._rfile = None
+            self._wfile = None
+            self._response_body = None
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except (OSError, TypeError):
                 pass
             self.sock = None
-            self._rfile = None
-            self._wfile = None
-            self._response_body = None
 
     def request(self, method, uri, headers, body):
         if self.sock is None:
@@ -270,8 +255,9 @@ class Connection:
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
-            _validate_request(self.bodies, method, uri, headers, body)
-            _write_request(self._wfile, method, uri, headers, body)
+            tell = self._wfile.tell()
+            wrote = self._wfile.write_request(method, uri, headers, body)
+            assert self._wfile.tell() == tell + wrote
             response = self._rfile.read_response(method)
             self._response_body = response.body
             return response
@@ -421,10 +407,13 @@ class Client:
 
     def create_socket(self):
         if self._family is None:
-            return socket.create_connection(self.address, timeout=self.timeout)
-        sock = socket.socket(self._family, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
-        sock.connect(self.address)
+            sock = socket.create_connection(self.address, timeout=self.timeout)
+        else:
+            sock = socket.socket(self._family, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            sock.connect(self.address)
+        if self._family is not socket.AF_UNIX:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
         return sock
 
     def connect(self, bodies=None):

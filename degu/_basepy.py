@@ -245,12 +245,8 @@ def parse_uri(src):
         query = None
     else:
         query = _parse_query(parts[1])
-    return {
-        'uri': uri,
-        'script': [],
-        'path': path,
-        'query': query,
-    }
+    # (uri, script, path, query):
+    return (uri, [], path, query)
 
 
 def parse_request_line(line):
@@ -262,16 +258,16 @@ def parse_request_line(line):
     items = src.split(b' /', 1)
     if len(items) < 2:
         raise ValueError('bad request line: {!r}'.format(line))
-    request = {'method': _parse_method(items[0])}
-    request.update(parse_uri(b'/' + items[1]))
-    return request
+    method = _parse_method(items[0])
+    (uri, script, path, query) = parse_uri(b'/' + items[1])
+    return (method, uri, script, path, query)
 
 
 def parse_request(preamble):
     (line, *header_lines) = preamble.split(b'\r\n')
-    request = parse_request_line(line)
-    request['headers'] = _parse_header_lines(header_lines)
-    return request
+    (method, uri, script, path, query) = parse_request_line(line)
+    headers = _parse_header_lines(header_lines)
+    return (method, uri, script, path, query, headers)
 
 
 
@@ -571,29 +567,14 @@ class Reader:
         preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
-        request = parse_request(preamble)
-        headers = request['headers']
+        (method, uri, script, path, query, headers) = parse_request(preamble)
         if 'content-length' in headers:
             body = self.Body(headers['content-length'])
         elif 'transfer-encoding' in headers:
             body = self.ChunkedBody()
         else:
             body = None
-        if request.setdefault('body', body) is not body:
-            raise Exception('must already have a body')
-        return request
-
-    def read_request2(self):
-        d = self.read_request()
-        return Request(
-            d['method'],
-            d['uri'],
-            d['script'],
-            d['path'],
-            d['query'],
-            d['headers'],
-            d['body'],
-        )
+        return Request(method, uri, script, path, query, headers, body)
 
     def read_response(self, method):
         method = parse_method(method)
@@ -741,4 +722,37 @@ class Writer:
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
 
+    def write_output(self, preamble, body):
+        if body is None:
+            return self.write(preamble)
+        if isinstance(body, (bytes, bytearray)):
+            return self.write(preamble + body)
+        self.write(preamble)
+        orig_tell = self.tell()
+        total = body.write_to(self)
+        if type(total) is not int:
+            raise TypeError(
+                'need a {!r}; write_to() returned a {!r}: {!r}'.format(
+                    int, type(total), total
+                )
+            )
+        delta = self.tell() - orig_tell
+        if delta != total:
+            raise ValueError(
+                '{!r} bytes were written, but write_to() returned {!r}'.format(
+                    delta, total
+                )
+            )
+        return total + len(preamble)
+
+    def write_request(self, method, uri, headers, body):
+        method = parse_method(method)
+        self.set_default_headers(headers, body)
+        preamble = format_request(method, uri, headers)
+        return self.write_output(preamble, body)
+
+    def write_response(self, status, reason, headers, body):
+        self.set_default_headers(headers, body)
+        preamble = format_response(status, reason, headers)
+        return self.write_output(preamble, body)
 

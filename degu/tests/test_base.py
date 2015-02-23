@@ -818,81 +818,36 @@ class TestFunctions(AlternatesTestCase):
                     "b'//' in path: {!r}".format(bad)
                 )
 
-        self.assertEqual(parse_uri(b'/'), {
-            'uri': '/',
-            'script': [],
-            'path': [],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/?'), {
-            'uri': '/?',
-            'script': [],
-            'path': [],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/?q'), {
-            'uri': '/?q',
-            'script': [],
-            'path': [],
-            'query': 'q',
-        })
+        ret = parse_uri(b'/')
+        self.assertIsInstance(ret, tuple)
+        self.assertEqual(len(ret), 4)
+        self.assertEqual(ret, ('/', [], [] , None))
+        self.assertEqual(sys.getrefcount(ret[1]), 2)
+        self.assertEqual(sys.getrefcount(ret[2]), 2)
 
-        self.assertEqual(parse_uri(b'/foo'), {
-            'uri': '/foo',
-            'script': [],
-            'path': ['foo'],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo?'), {
-            'uri': '/foo?',
-            'script': [],
-            'path': ['foo'],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo?q'), {
-            'uri': '/foo?q',
-            'script': [],
-            'path': ['foo'],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/'), ('/', [], [] , None))
+        self.assertEqual(parse_uri(b'/?'), ('/?', [], [] , ''))
+        self.assertEqual(parse_uri(b'/?q'), ('/?q', [], [] , 'q'))
 
-        self.assertEqual(parse_uri(b'/foo/'), {
-            'uri': '/foo/',
-            'script': [],
-            'path': ['foo', ''],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo/?'), {
-            'uri': '/foo/?',
-            'script': [],
-            'path': ['foo', ''],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo/?q'), {
-            'uri': '/foo/?q',
-            'script': [],
-            'path': ['foo', ''],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/foo'), ('/foo', [], ['foo'], None))
+        self.assertEqual(parse_uri(b'/foo?'), ('/foo?', [], ['foo'], ''))
+        self.assertEqual(parse_uri(b'/foo?q'), ('/foo?q', [], ['foo'], 'q'))
 
-        self.assertEqual(parse_uri(b'/foo/bar'), {
-            'uri': '/foo/bar',
-            'script': [],
-            'path': ['foo', 'bar'],
-            'query': None,
-        })
-        self.assertEqual(parse_uri(b'/foo/bar?'), {
-            'uri': '/foo/bar?',
-            'script': [],
-            'path': ['foo', 'bar'],
-            'query': '',
-        })
-        self.assertEqual(parse_uri(b'/foo/?q'), {
-            'uri': '/foo/?q',
-            'script': [],
-            'path': ['foo', ''],
-            'query': 'q',
-        })
+        self.assertEqual(parse_uri(b'/foo/'), ('/foo/', [], ['foo', ''], None))
+        self.assertEqual(parse_uri(b'/foo/?'), ('/foo/?', [], ['foo', ''], ''))
+        self.assertEqual(parse_uri(b'/foo/?q'),
+            ('/foo/?q', [], ['foo', ''], 'q')
+        )
+
+        self.assertEqual(parse_uri(b'/foo/bar'),
+            ('/foo/bar', [], ['foo', 'bar'], None)
+        )
+        self.assertEqual(parse_uri(b'/foo/bar?'),
+             ('/foo/bar?', [], ['foo', 'bar'], '')
+        )
+        self.assertEqual(parse_uri(b'/foo/bar?q'),
+             ('/foo/bar?q', [], ['foo', 'bar'], 'q')
+        )
 
     def test_parse_uri_py(self):
         self.check_parse_uri(_basepy)
@@ -1063,13 +1018,9 @@ class TestFunctions(AlternatesTestCase):
     def check_parse_request_line(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_request_line = backend.parse_request_line
-        self.assertEqual(parse_request_line(b'GET / HTTP/1.1'), {
-            'method': 'GET',
-            'uri': '/',
-            'script': [],
-            'path': [],
-            'query': None,
-        })
+        self.assertEqual(parse_request_line(b'GET / HTTP/1.1'),
+            ('GET', '/', [], [], None)
+        )
 
     def test_parse_request_line_py(self):
         self.check_parse_request_line(_basepy)
@@ -2770,17 +2721,9 @@ class TestReader_Py(BackendTestCase):
         suffix = b'hello, world'
         data = prefix + term + suffix
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
-        self.assertEqual(reader.read_request(),
-            {
-                'method': 'GET',
-                'uri': '/',
-                'script': [],
-                'path': [],
-                'query': None,
-                'headers': {},
-                'body': None,
-            }
-        )
+        request = reader.read_request()
+        self.assertIsInstance(request, self.getattr('RequestType'))
+        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -3202,6 +3145,196 @@ class TestWriter_Py(BackendTestCase):
         self.assertIsNone(writer.flush())
         self.assertEqual(sock._calls, [])
 
+    def test_write_output(self):
+        bodies = base.bodies
+
+        # Empty preamble and empty body:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(b'', None), 0)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(b'', b''), 0)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
+
+        # Preamble plus empty body:
+        preamble = os.urandom(34)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(preamble, None), 34)
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(preamble, b''), 34)
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
+
+        # body plus empty preamble:
+        body = os.urandom(969)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(b'', body), 969)
+        self.assertEqual(writer.tell(), 969)
+        self.assertEqual(sock._calls, [('send', body)])
+        self.assertEqual(sock._fp.getvalue(), body)
+
+        # Body preamble and body are non-empty:
+        body = os.urandom(969)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(preamble, body), 1003)
+        self.assertEqual(writer.tell(), 1003)
+        self.assertEqual(sock._calls, [('send', preamble + body)])
+        self.assertEqual(sock._fp.getvalue(), preamble + body)
+
+        # no body.write_to attribute:
+        class Body1:
+            pass
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        body = Body1()
+        with self.assertRaises(AttributeError) as cm:
+            writer.write_output(preamble, body)
+        self.assertEqual(str(cm.exception),
+            "'Body1' object has no attribute 'write_to'"
+        )
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
+
+        # body.write_to isn't callable:
+        class Body2:
+            write_to = 'nope'
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        body = Body2()
+        with self.assertRaises(TypeError) as cm:
+            writer.write_output(preamble, body)
+        self.assertEqual(str(cm.exception),
+            "'str' object is not callable"
+        )
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
+
+        class Body:
+            def __init__(self, *chunks, **ret):
+                self._chunks = chunks
+                self._ret = ret
+
+            def _return_or_raise(self, key, default):
+                value = self._ret.get(key, default)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            def write_to(self, wfile):
+                chunks = self._chunks
+                self._chunks = None
+                total = 0
+                write = wfile.write
+                total = sum(write(data) for data in chunks)
+                return self._return_or_raise('write_to', total)
+
+        data1 = os.urandom(17)
+        data2 = os.urandom(18)
+        chunks_permutations = (
+            tuple(),
+            (data1,),
+            (data1, data2),
+        )
+
+        # body.write_to() raises an exception:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks) + len(preamble)
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            marker = random_id()
+            bad = ValueError(marker)
+            body = Body(*chunks, write_to=bad)
+            with self.assertRaises(ValueError) as cm:
+                writer.write_output(preamble, body)
+            self.assertIs(cm.exception, bad)
+            self.assertEqual(str(cm.exception), marker)
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls,
+                [('send', preamble)] + [('send', d) for d in chunks]
+            )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+        # body.write_to() doesn't return an int:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks) + len(preamble)
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            body = Body(*chunks, write_to=17.0)
+            with self.assertRaises(TypeError) as cm:
+                writer.write_output(preamble, body)
+            self.assertEqual(str(cm.exception),
+                "need a <class 'int'>; write_to() returned a <class 'float'>: 17.0"
+            )
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls,
+                [('send', preamble)] + [('send', d) for d in chunks]
+            )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+        # body.write_to() doesn't return the amount written with writer.write():
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for offset in (-2, -1, 1, 2):
+                bad = total + offset
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(ValueError) as cm:
+                    writer.write_output(preamble, body)
+                self.assertEqual(str(cm.exception),
+                    '{!r} bytes were written, but write_to() returned {!r}'.format(
+                        total, bad
+                    )
+                )
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+        # All good:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks) + len(preamble)
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            body = Body(*chunks)
+            self.assertEqual(writer.write_output(preamble, body), total)
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+            p = os.urandom(19)
+            b = os.urandom(23)
+            c = p + b
+            self.assertEqual(writer.write_output(p, b), 42)
+            self.assertEqual(writer.tell(), total + 42)
+            self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks] + [('send', c)]
+                )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks) + c)
+
     def test_set_default_headers(self):
         bodies = base.bodies
         writer = self.Writer(WSocket(), bodies)
@@ -3285,6 +3418,305 @@ class TestWriter_Py(BackendTestCase):
             self.assertEqual(headers,
                 {'content-length': 17, 'transfer-encoding': 'chunked'}
             )
+
+    def test_write_request(self):
+        bodies = self.getattr('Bodies')(
+            base.Body,
+            base.BodyIter,
+            base.ChunkedBody,
+            base.ChunkedBodyIter,
+        )
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        for method in BAD_METHODS:
+            with self.assertRaises(ValueError) as cm:
+                writer.write_request(method, '/', {}, None)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
+        # Empty headers, no body:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            18
+        )
+        self.assertEqual(headers, {})
+        self.assertEqual(writer.tell(), 18)
+        self.assertEqual(sock._fp.getvalue(), b'GET / HTTP/1.1\r\n\r\n')
+
+        # One header:
+        headers = {'foo': 17}  # Make sure to test with int header value
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            27
+        )
+        self.assertEqual(headers, {'foo': 17})
+        self.assertEqual(writer.tell(), 27)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        headers = {'foo': 17, 'bar': 'baz'}
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            37
+        )
+        self.assertEqual(headers, {'foo': 17, 'bar': 'baz'})
+        self.assertEqual(writer.tell(), 37)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, b'hello'),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytearray:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, bytearray(b'hello')),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bodies.Body:
+        headers = {}
+        rfile = io.BytesIO(b'hello')
+        body = bodies.Body(rfile, 5)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bodies.BodyIter:
+        headers = {}
+        body = bodies.BodyIter((b'hell', b'o'), 5)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = bodies.ChunkedBody(rfile)
+        headers = {}
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            61
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(writer.tell(), 61)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+        # body is base.ChunkedBodyIter:
+        headers = {}
+        body = bodies.ChunkedBodyIter(
+            ((None, b'hello'), (None, b''))
+        )
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            61
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(writer.tell(), 61)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+    def test_write_response(self):
+        bodies = self.getattr('Bodies')(
+            base.Body,
+            base.BodyIter,
+            base.ChunkedBody,
+            base.ChunkedBodyIter,
+        )
+
+        # Empty headers, no body:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, None),
+            19
+        )
+        self.assertEqual(headers, {})
+        self.assertEqual(writer.tell(), 19)
+        self.assertEqual(sock._fp.tell(), 19)
+        self.assertEqual(sock._fp.getvalue(), b'HTTP/1.1 200 OK\r\n\r\n')
+
+        # One header:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {'foo': 17}  # Make sure to test with int header value
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, None),
+            28
+        )
+        self.assertEqual(headers, {'foo': 17})
+        self.assertEqual(writer.tell(), 28)
+        self.assertEqual(sock._fp.tell(), 28)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {'foo': 17, 'bar': 'baz'}
+        self.assertEqual(writer.write_response(200, 'OK', headers, None), 38)
+        self.assertEqual(headers, {'foo': 17, 'bar': 'baz'})
+        self.assertEqual(writer.tell(), 38)
+        self.assertEqual(sock._fp.tell(), 38)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, b'hello'),
+            43
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 43)
+        self.assertEqual(sock._fp.tell(), 43)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytearray:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, bytearray(b'hello')),
+            43
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 43)
+        self.assertEqual(sock._fp.tell(), 43)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.BodyIter:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        body = base.BodyIter((b'hell', b'o'), 5)
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, body),
+            43
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 43)
+        self.assertEqual(sock._fp.tell(), 43)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBodyIter:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        body = base.ChunkedBodyIter(
+            ((None, b'hello'), (None, b''))
+        )
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, body),
+            62
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(writer.tell(), 62)
+        self.assertEqual(sock._fp.tell(), 62)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+        # body is base.Body:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        rfile = io.BytesIO(b'hello')
+        body = base.Body(rfile, 5)
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, body),
+            43
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(writer.tell(), 43)
+        self.assertEqual(sock._fp.tell(), 43)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = base.ChunkedBody(rfile)
+        self.assertEqual(
+            writer.write_response(200, 'OK', headers, body),
+            62
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(writer.tell(), 62)
+        self.assertEqual(sock._fp.tell(), 62)
+        self.assertEqual(sock._fp.getvalue(),
+            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
 
 
 class TestWriter_C(TestWriter_Py):
