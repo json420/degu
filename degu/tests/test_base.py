@@ -3145,28 +3145,57 @@ class TestWriter_Py(BackendTestCase):
         self.assertIsNone(writer.flush())
         self.assertEqual(sock._calls, [])
 
-    def test_write_body(self):
+    def test_write_output(self):
         bodies = base.bodies
 
+        # Empty preamble and empty body:
         sock = WSocket()
         writer = self.Writer(sock, bodies)
-        self.assertEqual(writer.write_body(None), 0)
+        self.assertEqual(writer.write_output(b'', None), 0)
         self.assertEqual(writer.tell(), 0)
         self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
 
         sock = WSocket()
         writer = self.Writer(sock, bodies)
-        self.assertEqual(writer.write_body(b''), 0)
+        self.assertEqual(writer.write_output(b'', b''), 0)
         self.assertEqual(writer.tell(), 0)
         self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
+
+        # Preamble plus empty body:
+        preamble = os.urandom(34)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(preamble, None), 34)
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
 
         sock = WSocket()
         writer = self.Writer(sock, bodies)
-        body = os.urandom(16)
-        self.assertEqual(writer.write_body(body), 16)
-        self.assertEqual(writer.tell(), 16)
+        self.assertEqual(writer.write_output(preamble, b''), 34)
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
+
+        # body plus empty preamble:
+        body = os.urandom(969)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(b'', body), 969)
+        self.assertEqual(writer.tell(), 969)
         self.assertEqual(sock._calls, [('send', body)])
         self.assertEqual(sock._fp.getvalue(), body)
+
+        # Body preamble and body are non-empty:
+        body = os.urandom(969)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_output(preamble, body), 1003)
+        self.assertEqual(writer.tell(), 1003)
+        self.assertEqual(sock._calls, [('send', preamble + body)])
+        self.assertEqual(sock._fp.getvalue(), preamble + body)
 
         # no body.write_to attribute:
         class Body1:
@@ -3176,13 +3205,13 @@ class TestWriter_Py(BackendTestCase):
         writer = self.Writer(sock, bodies)
         body = Body1()
         with self.assertRaises(AttributeError) as cm:
-            writer.write_body(body)
+            writer.write_output(preamble, body)
         self.assertEqual(str(cm.exception),
             "'Body1' object has no attribute 'write_to'"
         )
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
 
         # body.write_to isn't callable:
         class Body2:
@@ -3192,13 +3221,13 @@ class TestWriter_Py(BackendTestCase):
         writer = self.Writer(sock, bodies)
         body = Body2()
         with self.assertRaises(TypeError) as cm:
-            writer.write_body(body)
+            writer.write_output(preamble, body)
         self.assertEqual(str(cm.exception),
             "'str' object is not callable"
         )
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
+        self.assertEqual(writer.tell(), 34)
+        self.assertEqual(sock._calls, [('send', preamble)])
+        self.assertEqual(sock._fp.getvalue(), preamble)
 
         class Body:
             def __init__(self, *chunks, **ret):
@@ -3229,33 +3258,38 @@ class TestWriter_Py(BackendTestCase):
 
         # body.write_to() raises an exception:
         for chunks in chunks_permutations:
-            total = sum(len(d) for d in chunks)
+            total = sum(len(d) for d in chunks) + len(preamble)
             sock = WSocket()
             writer = self.Writer(sock, bodies)
             marker = random_id()
             bad = ValueError(marker)
             body = Body(*chunks, write_to=bad)
             with self.assertRaises(ValueError) as cm:
-                writer.write_body(body)
+                writer.write_output(preamble, body)
             self.assertIs(cm.exception, bad)
             self.assertEqual(str(cm.exception), marker)
             self.assertEqual(writer.tell(), total)
-            self.assertEqual(sock._calls, [('send', d) for d in chunks])
-            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+            self.assertEqual(sock._calls,
+                [('send', preamble)] + [('send', d) for d in chunks]
+            )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
         # body.write_to() doesn't return an int:
         for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks) + len(preamble)
             sock = WSocket()
             writer = self.Writer(sock, bodies)
             body = Body(*chunks, write_to=17.0)
             with self.assertRaises(TypeError) as cm:
-                writer.write_body(body)
+                writer.write_output(preamble, body)
             self.assertEqual(str(cm.exception),
                 "need a <class 'int'>; write_to() returned a <class 'float'>: 17.0"
             )
-            self.assertEqual(writer.tell(), sum(len(d) for d in chunks))
-            self.assertEqual(sock._calls, [('send', d) for d in chunks])
-            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls,
+                [('send', preamble)] + [('send', d) for d in chunks]
+            )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
         # body.write_to() doesn't return the amount written with writer.write():
         for chunks in chunks_permutations:
@@ -3266,35 +3300,40 @@ class TestWriter_Py(BackendTestCase):
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
                 with self.assertRaises(ValueError) as cm:
-                    writer.write_body(body)
+                    writer.write_output(preamble, body)
                 self.assertEqual(str(cm.exception),
                     '{!r} bytes were written, but write_to() returned {!r}'.format(
                         total, bad
                     )
                 )
-                self.assertEqual(writer.tell(), total)
-                self.assertEqual(sock._calls, [('send', d) for d in chunks])
-                self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
         # All good:
         for chunks in chunks_permutations:
-            total = sum(len(d) for d in chunks)
+            total = sum(len(d) for d in chunks) + len(preamble)
             sock = WSocket()
             writer = self.Writer(sock, bodies)
             body = Body(*chunks)
-            self.assertEqual(writer.write_body(body), total)
+            self.assertEqual(writer.write_output(preamble, body), total)
             self.assertEqual(writer.tell(), total)
-            self.assertEqual(sock._calls, [('send', d) for d in chunks])
-            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
-
-            more = os.urandom(19)
-            body = Body(more)
-            self.assertEqual(writer.write_body(body), 19)
-            self.assertEqual(writer.tell(), total + 19)
             self.assertEqual(sock._calls,
-                [('send', d) for d in chunks] + [('send', more)]
-            )
-            self.assertEqual(sock._fp.getvalue(), b''.join(chunks) + more)
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+            p = os.urandom(19)
+            b = os.urandom(23)
+            c = p + b
+            self.assertEqual(writer.write_output(p, b), 42)
+            self.assertEqual(writer.tell(), total + 42)
+            self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks] + [('send', c)]
+                )
+            self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks) + c)
 
     def test_set_default_headers(self):
         bodies = base.bodies

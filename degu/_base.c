@@ -2595,56 +2595,6 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
 
 
 static int64_t
-_Writer_write_body(Writer *self, PyObject *body)
-{
-    if (body == Py_None) {
-        return 0;
-    }
-    if (PyBytes_CheckExact(body)) {
-        return _Writer_write(self, _frombytes(body));
-    }
-    if (PyByteArray_CheckExact(body)) {
-        return _Writer_write(self, _frombytearray(body));
-    }
-
-    const uint64_t orig_tell = self->tell;
-    int64_t total = -2;
-    PyObject *wrote = NULL;
-
-    _SET(wrote, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
-    if (!PyLong_CheckExact(wrote)) {
-        PyErr_Format(PyExc_TypeError,
-            "need a <class 'int'>; write_to() returned a %R: %R",
-            Py_TYPE(wrote), wrote
-        );
-        goto error;
-    }
-    total = PyLong_AsLongLong(wrote);
-    if (PyErr_Occurred()) {
-        goto error;
-    }
-    if (self->tell < orig_tell) {
-        Py_FatalError("_Writer_write_body(): self->tell < orig_tell");
-    }
-    if (orig_tell + total != self->tell) {
-        PyErr_Format(PyExc_ValueError,
-            "%llu bytes were written, but write_to() returned %lld",
-            (self->tell - orig_tell), total
-        );
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    total = -1;
-
-cleanup:
-    Py_CLEAR(wrote);
-    return total;
-}
-
-
-static int64_t
 _Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
 {
     const size_t len = src1.len + src2.len;
@@ -2662,9 +2612,8 @@ _Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
 
 
 static int64_t
-_Writer_write_preamble_and_body(Writer *self, PyObject *preamble, PyObject *body)
+_Writer_write_output(Writer *self, DeguBuf preamble_src, PyObject *body)
 {
-    DeguBuf preamble_src = _frombytes(preamble);
     if (body == Py_None) {
         return _Writer_write(self, preamble_src);
     }
@@ -2696,7 +2645,7 @@ _Writer_write_preamble_and_body(Writer *self, PyObject *preamble, PyObject *body
         goto error;
     }
     if (self->tell < orig_tell) {
-        Py_FatalError("_Writer_write_body(): self->tell < orig_tell");
+        Py_FatalError("_Writer_write_output(): self->tell < orig_tell");
     }
     if (orig_tell + total != self->tell) {
         PyErr_Format(PyExc_ValueError,
@@ -2766,15 +2715,18 @@ Writer_flush(Writer *self)
 }
 
 static PyObject *
-Writer_write_body(Writer *self, PyObject *args)
+Writer_write_output(Writer *self, PyObject *args)
 {
+    const uint8_t *buf = NULL;
+    size_t len = 0;
     PyObject *body = NULL;
     int64_t total;
 
-    if (!PyArg_ParseTuple(args, "O:write_body", &body)) {
+    if (!PyArg_ParseTuple(args, "y#O", &buf, &len, &body)) {
         return NULL;
     }
-    total = _Writer_write_body(self, body);
+    DeguBuf preamble_src = {buf, len};
+    total = _Writer_write_output(self, preamble_src, body);
     if (total < 0) {
         return NULL;
     }
@@ -2814,7 +2766,7 @@ Writer_write_request(Writer *self, PyObject *args)
     }
     DeguBuf method_src = {buf, len};
     _SET(preamble, _format_request(method_src, uri, headers))
-    total = _Writer_write_preamble_and_body(self, preamble, body);
+    total = _Writer_write_output(self, _frombytes(preamble), body);
     goto cleanup;
 
 error:
@@ -2845,7 +2797,7 @@ Writer_write_response(Writer *self, PyObject *args)
     }
     total = 0;
     _SET(preamble, _format_response(status, reason, headers))
-    total = _Writer_write_preamble_and_body(self, preamble, body);
+    total = _Writer_write_output(self, _frombytes(preamble), body);
     goto cleanup;
 
 error:
@@ -2868,8 +2820,8 @@ static PyMethodDef Writer_methods[] = {
     {"flush", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, "write(buf)"},
 
-    {"write_body", (PyCFunction)Writer_write_body, METH_VARARGS,
-        "write_body(body)"},
+    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS,
+        "write_output(preamble, body)"},
     {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS,
         "set_default_headers(headers, body)"},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS,

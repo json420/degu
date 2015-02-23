@@ -722,29 +722,7 @@ class Writer:
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
 
-    def write_body(self, body):
-        if body is None:
-            return 0
-        if isinstance(body, (bytes, bytearray)):
-            return self.write(body)
-        orig_tell = self.tell()
-        total = body.write_to(self)
-        if type(total) is not int:
-            raise TypeError(
-                'need a {!r}; write_to() returned a {!r}: {!r}'.format(
-                    int, type(total), total
-                )
-            )
-        delta = self.tell() - orig_tell
-        if delta != total:
-            raise ValueError(
-                '{!r} bytes were written, but write_to() returned {!r}'.format(
-                    delta, total
-                )
-            )
-        return total
-
-    def write_preamble_and_body(self, preamble, body):
+    def write_output(self, preamble, body):
         if body is None:
             return self.write(preamble)
         if isinstance(body, (bytes, bytearray)):
@@ -771,10 +749,10 @@ class Writer:
         method = parse_method(method)
         self.set_default_headers(headers, body)
         preamble = format_request(method, uri, headers)
-        return self.write_preamble_and_body(preamble, body)
+        return self.write_output(preamble, body)
 
     def write_response(self, status, reason, headers, body):
         self.set_default_headers(headers, body)
         preamble = format_response(status, reason, headers)
-        return self.write_preamble_and_body(preamble, body)
+        return self.write_output(preamble, body)
 
