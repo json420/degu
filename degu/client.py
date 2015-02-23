@@ -30,7 +30,6 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_request,
     Response
 )
 
@@ -210,20 +209,6 @@ def _validate_request(bodies, method, uri, headers, body):
     # A body is only allowed when the request method is PUT or POST:
     if method not in {'PUT', 'POST'}:
         raise ValueError('cannot include body in a {} request'.format(method))
-
-
-def _write_request(wfile, method, uri, headers, body):
-    preamble = format_request(method, uri, headers)
-    if body is None:
-        total = wfile.write(preamble)
-        wfile.flush()
-    elif isinstance(body, (bytes, bytearray)):
-        total = wfile.write(preamble + body)
-        wfile.flush()
-    else:
-        total = wfile.write(preamble)
-        total += body.write_to(wfile)
-    return total
 
 
 class Connection:
