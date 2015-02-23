@@ -270,8 +270,9 @@ class Connection:
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
-            _validate_request(self.bodies, method, uri, headers, body)
-            _write_request(self._wfile, method, uri, headers, body)
+            tell = self._wfile.tell()
+            wrote = self._wfile.write_request(method, uri, headers, body)
+            assert self._wfile.tell() == tell + wrote
             response = self._rfile.read_response(method)
             self._response_body = response.body
             return response

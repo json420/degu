@@ -3229,6 +3229,157 @@ class TestWriter_Py(BackendTestCase):
                 {'content-length': 17, 'transfer-encoding': 'chunked'}
             )
 
+    def test_write_request(self):
+        bodies = self.getattr('Bodies')(
+            base.Body,
+            base.BodyIter,
+            base.ChunkedBody,
+            base.ChunkedBodyIter,
+        )
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        for method in BAD_METHODS:
+            with self.assertRaises(ValueError) as cm:
+                writer.write_request(method, '/', {}, None)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
+        # Empty headers, no body:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            18
+        )
+        self.assertEqual(headers, {})
+        self.assertEqual(writer.tell(), 18)
+        self.assertEqual(sock._fp.getvalue(), b'GET / HTTP/1.1\r\n\r\n')
+
+        # One header:
+        headers = {'foo': 17}  # Make sure to test with int header value
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            27
+        )
+        self.assertEqual(headers, {'foo': 17})
+        self.assertEqual(writer.tell(), 27)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        headers = {'foo': 17, 'bar': 'baz'}
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, None),
+            37
+        )
+        self.assertEqual(headers, {'foo': 17, 'bar': 'baz'})
+        self.assertEqual(writer.tell(), 37)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, b'hello'),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytearray:
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        headers = {}
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, bytearray(b'hello')),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bodies.Body:
+        headers = {}
+        rfile = io.BytesIO(b'hello')
+        body = bodies.Body(rfile, 5)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bodies.BodyIter:
+        headers = {}
+        body = bodies.BodyIter((b'hell', b'o'), 5)
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = bodies.ChunkedBody(rfile)
+        headers = {}
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            61
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(writer.tell(), 61)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+        # body is base.ChunkedBodyIter:
+        headers = {}
+        body = bodies.ChunkedBodyIter(
+            ((None, b'hello'), (None, b''))
+        )
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            61
+        )
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(writer.tell(), 61)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
 
 class TestWriter_C(TestWriter_Py):
     backend = _base
