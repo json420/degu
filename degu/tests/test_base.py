@@ -3145,6 +3145,157 @@ class TestWriter_Py(BackendTestCase):
         self.assertIsNone(writer.flush())
         self.assertEqual(sock._calls, [])
 
+    def test_write_body(self):
+        bodies = base.bodies
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_body(None), 0)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        self.assertEqual(writer.write_body(b''), 0)
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        body = os.urandom(16)
+        self.assertEqual(writer.write_body(body), 16)
+        self.assertEqual(writer.tell(), 16)
+        self.assertEqual(sock._calls, [('send', body)])
+        self.assertEqual(sock._fp.getvalue(), body)
+
+        # no body.write_to attribute:
+        class Body1:
+            pass
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        body = Body1()
+        with self.assertRaises(AttributeError) as cm:
+            writer.write_body(body)
+        self.assertEqual(str(cm.exception),
+            "'Body1' object has no attribute 'write_to'"
+        )
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
+
+        # body.write_to isn't callable:
+        class Body2:
+            write_to = 'nope'
+
+        sock = WSocket()
+        writer = self.Writer(sock, bodies)
+        body = Body2()
+        with self.assertRaises(TypeError) as cm:
+            writer.write_body(body)
+        self.assertEqual(str(cm.exception),
+            "'str' object is not callable"
+        )
+        self.assertEqual(writer.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._fp.getvalue(), b'')
+
+        class Body:
+            def __init__(self, *chunks, **ret):
+                self._chunks = chunks
+                self._ret = ret
+
+            def _return_or_raise(self, key, default):
+                value = self._ret.get(key, default)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            def write_to(self, wfile):
+                chunks = self._chunks
+                self._chunks = None
+                total = 0
+                write = wfile.write
+                total = sum(write(data) for data in chunks)
+                return self._return_or_raise('write_to', total)
+
+        data1 = os.urandom(17)
+        data2 = os.urandom(18)
+        chunks_permutations = (
+            tuple(),
+            (data1,),
+            (data1, data2),
+        )
+
+        # body.write_to() raises an exception:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            marker = random_id()
+            bad = ValueError(marker)
+            body = Body(*chunks, write_to=bad)
+            with self.assertRaises(ValueError) as cm:
+                writer.write_body(body)
+            self.assertIs(cm.exception, bad)
+            self.assertEqual(str(cm.exception), marker)
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls, [('send', d) for d in chunks])
+            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+
+        # body.write_to() doesn't return an int:
+        for chunks in chunks_permutations:
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            body = Body(*chunks, write_to=17.0)
+            with self.assertRaises(TypeError) as cm:
+                writer.write_body(body)
+            self.assertEqual(str(cm.exception),
+                "need a <class 'int'>; write_to() returned a <class 'float'>: 17.0"
+            )
+            self.assertEqual(writer.tell(), sum(len(d) for d in chunks))
+            self.assertEqual(sock._calls, [('send', d) for d in chunks])
+            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+
+        # body.write_to() doesn't return the amount written with writer.write():
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for offset in (-2, -1, 1, 2):
+                bad = total + offset
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(ValueError) as cm:
+                    writer.write_body(body)
+                self.assertEqual(str(cm.exception),
+                    '{!r} bytes were written, but write_to() returned {!r}'.format(
+                        total, bad
+                    )
+                )
+                self.assertEqual(writer.tell(), total)
+                self.assertEqual(sock._calls, [('send', d) for d in chunks])
+                self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+
+        # All good:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            sock = WSocket()
+            writer = self.Writer(sock, bodies)
+            body = Body(*chunks)
+            self.assertEqual(writer.write_body(body), total)
+            self.assertEqual(writer.tell(), total)
+            self.assertEqual(sock._calls, [('send', d) for d in chunks])
+            self.assertEqual(sock._fp.getvalue(), b''.join(chunks))
+
+            more = os.urandom(19)
+            body = Body(more)
+            self.assertEqual(writer.write_body(body), 19)
+            self.assertEqual(writer.tell(), total + 19)
+            self.assertEqual(sock._calls,
+                [('send', d) for d in chunks] + [('send', more)]
+            )
+            self.assertEqual(sock._fp.getvalue(), b''.join(chunks) + more)
+
     def test_set_default_headers(self):
         bodies = base.bodies
         writer = self.Writer(WSocket(), bodies)

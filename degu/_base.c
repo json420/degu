@@ -331,17 +331,6 @@ _tobytes(DeguBuf src)
 }
 
 static DeguBuf
-_frombytes(PyObject *bytes)
-{
-    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
-        Py_FatalError("_frombytes(): bad internal call");
-    }
-    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
-    const size_t len = PyBytes_GET_SIZE(bytes);
-    return (DeguBuf){buf, len};
-}
-
-static DeguBuf
 _frombytearray(PyObject *bytearray)
 {
     if (bytearray == NULL || !PyByteArray_CheckExact(bytearray)) {
@@ -2554,6 +2543,20 @@ _Writer_write(Writer *self, DeguBuf src)
     return total;
 }
 
+
+static ssize_t
+_Writer_write_bytes(Writer *self, PyObject *bytes)
+{
+    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
+        Py_FatalError("_Writer_write_bytes(): bad internal call");
+    }
+    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
+    const size_t len = PyBytes_GET_SIZE(bytes);
+    DeguBuf src = (DeguBuf){buf, len};
+    return _Writer_write(self, src);
+}
+
+
 static bool
 _set_default_content_length(PyObject *headers, PyObject *val)
 {
@@ -2601,12 +2604,13 @@ _Writer_write_body(Writer *self, PyObject *body)
         return 0;
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write(self, _frombytes(body));
+        return _Writer_write_bytes(self, body);
     }
     if (PyByteArray_CheckExact(body)) {
         return _Writer_write(self, _frombytearray(body));
     }
 
+    const uint64_t orig_tell = self->tell;
     int64_t total = -2;
     PyObject *wrote = NULL;
 
@@ -2620,6 +2624,16 @@ _Writer_write_body(Writer *self, PyObject *body)
     }
     total = PyLong_AsLongLong(wrote);
     if (PyErr_Occurred()) {
+        goto error;
+    }
+    if (self->tell < orig_tell) {
+        Py_FatalError("_Writer_write_body(): self->tell < orig_tell");
+    }
+    if (orig_tell + total != self->tell) {
+        PyErr_Format(PyExc_ValueError,
+            "%llu bytes were written, but write_to() returned %lld",
+            (self->tell - orig_tell), total
+        );
         goto error;
     }
     goto cleanup;
@@ -2680,6 +2694,22 @@ Writer_flush(Writer *self)
 }
 
 static PyObject *
+Writer_write_body(Writer *self, PyObject *args)
+{
+    PyObject *body = NULL;
+    int64_t total;
+
+    if (!PyArg_ParseTuple(args, "O:write_body", &body)) {
+        return NULL;
+    }
+    total = _Writer_write_body(self, body);
+    if (total < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(total);
+}
+
+static PyObject *
 Writer_set_default_headers(Writer *self, PyObject *args) {
     PyObject *headers = NULL;
     PyObject *body = NULL;
@@ -2691,6 +2721,7 @@ Writer_set_default_headers(Writer *self, PyObject *args) {
     }
     Py_RETURN_NONE;
 }
+
 
 static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
@@ -2712,8 +2743,7 @@ Writer_write_request(Writer *self, PyObject *args)
     total = 0;
     DeguBuf method_src = {buf, len};
     _SET(preamble, _format_request(method_src, uri, headers))
-    DeguBuf preamble_src = _frombytes(preamble);
-    wrote = _Writer_write(self, preamble_src);
+    wrote = _Writer_write_bytes(self, preamble);
     if (wrote < 0) {
         goto error;
     }
@@ -2754,8 +2784,7 @@ Writer_write_response(Writer *self, PyObject *args)
     }
     total = 0;
     _SET(preamble, _format_response(status, reason, headers))
-    DeguBuf preamble_src = _frombytes(preamble);
-    wrote = _Writer_write(self, preamble_src);
+    wrote = _Writer_write_bytes(self, preamble);
     if (wrote < 0) {
         goto error;
     }
@@ -2788,6 +2817,8 @@ static PyMethodDef Writer_methods[] = {
     {"flush", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, "write(buf)"},
 
+    {"write_body", (PyCFunction)Writer_write_body, METH_VARARGS,
+        "write_body(body)"},
     {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS,
         "set_default_headers(headers, body)"},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS,

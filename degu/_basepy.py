@@ -725,12 +725,23 @@ class Writer:
     def write_body(self, body):
         if body is None:
             return 0
-        tell = self.tell()
         if isinstance(body, (bytes, bytearray)):
-            total = self.write(body)
-        else:
-            total = body.write_to(self)
-        assert self.tell() == tell + total
+            return self.write(body)
+        orig_tell = self.tell()
+        total = body.write_to(self)
+        if type(total) is not int:
+            raise TypeError(
+                'need a {!r}; write_to() returned a {!r}: {!r}'.format(
+                    int, type(total), total
+                )
+            )
+        delta = self.tell() - orig_tell
+        if delta != total:
+            raise ValueError(
+                '{!r} bytes were written, but write_to() returned {!r}'.format(
+                    delta, total
+                )
+            )
         return total
 
     def write_request(self, method, uri, headers, body):
