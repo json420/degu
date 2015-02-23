@@ -744,16 +744,37 @@ class Writer:
             )
         return total
 
+    def write_preamble_and_body(self, preamble, body):
+        if body is None:
+            return self.write(preamble)
+        if isinstance(body, (bytes, bytearray)):
+            return self.write(preamble + body)
+        self.write(preamble)
+        orig_tell = self.tell()
+        total = body.write_to(self)
+        if type(total) is not int:
+            raise TypeError(
+                'need a {!r}; write_to() returned a {!r}: {!r}'.format(
+                    int, type(total), total
+                )
+            )
+        delta = self.tell() - orig_tell
+        if delta != total:
+            raise ValueError(
+                '{!r} bytes were written, but write_to() returned {!r}'.format(
+                    delta, total
+                )
+            )
+        return total + len(preamble)
+
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
         self.set_default_headers(headers, body)
         preamble = format_request(method, uri, headers)
-        total = self.write(preamble)
-        return total + self.write_body(body)
+        return self.write_preamble_and_body(preamble, body)
 
     def write_response(self, status, reason, headers, body):
         self.set_default_headers(headers, body)
         preamble = format_response(status, reason, headers)
-        total = self.write(preamble)
-        return total + self.write_body(body)
+        return self.write_preamble_and_body(preamble, body)
 

@@ -331,6 +331,17 @@ _tobytes(DeguBuf src)
 }
 
 static DeguBuf
+_frombytes(PyObject *bytes)
+{
+    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
+        Py_FatalError("_frombytes(): bad internal call");
+    }
+    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
+    const size_t len = PyBytes_GET_SIZE(bytes);
+    return (DeguBuf){buf, len};
+}
+
+static DeguBuf
 _frombytearray(PyObject *bytearray)
 {
     if (bytearray == NULL || !PyByteArray_CheckExact(bytearray)) {
@@ -2543,20 +2554,6 @@ _Writer_write(Writer *self, DeguBuf src)
     return total;
 }
 
-
-static ssize_t
-_Writer_write_bytes(Writer *self, PyObject *bytes)
-{
-    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
-        Py_FatalError("_Writer_write_bytes(): bad internal call");
-    }
-    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
-    const size_t len = PyBytes_GET_SIZE(bytes);
-    DeguBuf src = (DeguBuf){buf, len};
-    return _Writer_write(self, src);
-}
-
-
 static bool
 _set_default_content_length(PyObject *headers, PyObject *val)
 {
@@ -2604,7 +2601,7 @@ _Writer_write_body(Writer *self, PyObject *body)
         return 0;
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write_bytes(self, body);
+        return _Writer_write(self, _frombytes(body));
     }
     if (PyByteArray_CheckExact(body)) {
         return _Writer_write(self, _frombytearray(body));
@@ -2643,6 +2640,81 @@ error:
 
 cleanup:
     Py_CLEAR(wrote);
+    return total;
+}
+
+
+static int64_t
+_Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
+{
+    const size_t len = src1.len + src2.len;
+    uint8_t *buf = _calloc_buf(len);
+    if (buf == NULL) {
+        return -1;
+    }
+    memcpy(buf, src1.buf, src1.len);
+    memcpy(buf + src1.len, src2.buf, src2.len);
+    DeguBuf src = (DeguBuf){buf, len};
+    int64_t total = _Writer_write(self, src);
+    free(buf);
+    return total;
+}
+
+
+static int64_t
+_Writer_write_preamble_and_body(Writer *self, PyObject *preamble, PyObject *body)
+{
+    DeguBuf preamble_src = _frombytes(preamble);
+    if (body == Py_None) {
+        return _Writer_write(self, preamble_src);
+    }
+    if (PyBytes_CheckExact(body)) {
+        return _Writer_write_combined(self, preamble_src, _frombytes(body));
+    }
+    if (PyByteArray_CheckExact(body)) {
+        return _Writer_write_combined(self, preamble_src, _frombytearray(body));
+    }
+
+    if (_Writer_write(self, preamble_src) < 0) {
+        return -1;
+    }
+
+    const uint64_t orig_tell = self->tell;
+    int64_t total = -2;
+    PyObject *wrote = NULL;
+
+    _SET(wrote, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
+    if (!PyLong_CheckExact(wrote)) {
+        PyErr_Format(PyExc_TypeError,
+            "need a <class 'int'>; write_to() returned a %R: %R",
+            Py_TYPE(wrote), wrote
+        );
+        goto error;
+    }
+    total = PyLong_AsLongLong(wrote);
+    if (PyErr_Occurred()) {
+        goto error;
+    }
+    if (self->tell < orig_tell) {
+        Py_FatalError("_Writer_write_body(): self->tell < orig_tell");
+    }
+    if (orig_tell + total != self->tell) {
+        PyErr_Format(PyExc_ValueError,
+            "%llu bytes were written, but write_to() returned %lld",
+            (self->tell - orig_tell), total
+        );
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    total = -1;
+
+cleanup:
+    Py_CLEAR(wrote);
+    if (total >= 0) {
+        total += preamble_src.len;
+    }
     return total;
 }
 
@@ -2732,7 +2804,7 @@ Writer_write_request(Writer *self, PyObject *args)
     PyObject *headers = NULL;
     PyObject *body = NULL;
     PyObject *preamble = NULL;
-    int64_t total, wrote;
+    int64_t total = -1;
 
     if (!PyArg_ParseTuple(args, "s#UOO:", &buf, &len, &uri, &headers, &body)) {
         return NULL;
@@ -2740,23 +2812,12 @@ Writer_write_request(Writer *self, PyObject *args)
     if (!_Writer_set_default_headers(self, headers, body)) {
         return NULL;
     }
-    total = 0;
     DeguBuf method_src = {buf, len};
     _SET(preamble, _format_request(method_src, uri, headers))
-    wrote = _Writer_write_bytes(self, preamble);
-    if (wrote < 0) {
-        goto error;
-    }
-    total += wrote;
-    wrote = _Writer_write_body(self, body);
-    if (wrote < 0) {
-        goto error;
-    }
-    total += wrote;
+    total = _Writer_write_preamble_and_body(self, preamble, body);
     goto cleanup;
 
 error:
-    total = -1;
 
 cleanup:
     Py_CLEAR(preamble);
@@ -2774,7 +2835,7 @@ Writer_write_response(Writer *self, PyObject *args)
     PyObject *headers = NULL;
     PyObject *body = NULL;
     PyObject *preamble = NULL;
-    int64_t total, wrote;
+    int64_t total = -1;
 
     if (!PyArg_ParseTuple(args, "OUOO:", &status, &reason, &headers, &body)) {
         return NULL;
@@ -2784,20 +2845,10 @@ Writer_write_response(Writer *self, PyObject *args)
     }
     total = 0;
     _SET(preamble, _format_response(status, reason, headers))
-    wrote = _Writer_write_bytes(self, preamble);
-    if (wrote < 0) {
-        goto error;
-    }
-    total += wrote;
-    wrote = _Writer_write_body(self, body);
-    if (wrote < 0) {
-        goto error;
-    }
-    total += wrote;
+    total = _Writer_write_preamble_and_body(self, preamble, body);
     goto cleanup;
 
 error:
-    total = -1;
 
 cleanup:
     Py_CLEAR(preamble);
