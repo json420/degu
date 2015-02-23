@@ -1116,6 +1116,31 @@ cleanup:
 }
 
 
+static PyObject *
+_format_response(PyObject *status, PyObject *reason, PyObject *headers)
+{
+    PyObject *hstr = NULL;  /* str containing header lines */
+    PyObject *str = NULL;  /* str version of response preamble */
+    PyObject *ret = NULL;  /* bytes version of response preamble */
+
+    _SET(hstr, _format_headers(headers))
+    _SET(str,
+        PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S\r\n", status, reason, hstr)
+    )
+    _SET(ret, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(hstr);
+    Py_CLEAR(str);
+    return  ret;
+}
+
+
+
 /*******************************************************************************
  * Internal API: namedtuple:
  *     _Bodies()
@@ -1559,27 +1584,11 @@ format_response(PyObject *self, PyObject *args)
     PyObject *status = NULL;
     PyObject *reason = NULL;
     PyObject *headers = NULL;
-    PyObject *hstr = NULL;
-    PyObject *str = NULL;  /* str version of response preamble */
-    PyObject *ret = NULL;  /* bytes version of response preamble */
 
     if (!PyArg_ParseTuple(args, "OUO:format_response", &status, &reason, &headers)) {
         return NULL;
     }
-    _SET(hstr, _format_headers(headers))
-    _SET(str,
-        PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S\r\n", status, reason, hstr)
-    )
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(hstr);
-    Py_CLEAR(str);
-    return  ret;
+    return _format_response(status, reason, headers);
 }
 
 
@@ -2683,7 +2692,6 @@ Writer_set_default_headers(Writer *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-
 static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
 {
@@ -2728,6 +2736,47 @@ cleanup:
     return PyLong_FromLongLong(total);
 }
 
+static PyObject *
+Writer_write_response(Writer *self, PyObject *args)
+{
+    PyObject *status = NULL;
+    PyObject *reason = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    PyObject *preamble = NULL;
+    int64_t total, wrote;
+
+    if (!PyArg_ParseTuple(args, "OUOO:", &status, &reason, &headers, &body)) {
+        return NULL;
+    }
+    if (!_Writer_set_default_headers(self, headers, body)) {
+        return NULL;
+    }
+    total = 0;
+    _SET(preamble, _format_response(status, reason, headers))
+    DeguBuf preamble_src = _frombytes(preamble);
+    wrote = _Writer_write(self, preamble_src);
+    if (wrote < 0) {
+        goto error;
+    }
+    total += wrote;
+    wrote = _Writer_write_body(self, body);
+    if (wrote < 0) {
+        goto error;
+    }
+    total += wrote;
+    goto cleanup;
+
+error:
+    total = -1;
+
+cleanup:
+    Py_CLEAR(preamble);
+    if (total <= 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(total);
+}
 
 
 /*******************************************************************************
@@ -2743,6 +2792,8 @@ static PyMethodDef Writer_methods[] = {
         "set_default_headers(headers, body)"},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS,
         "write_request(method, uri, headers, body)"},
+    {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS,
+        "write_response(status, reason, headers, body)"},
     {NULL}
 };
 

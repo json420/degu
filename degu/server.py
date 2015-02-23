@@ -168,11 +168,8 @@ def _handle_requests(app, sock, max_requests, session, bodies):
     sock.close()
 
 
-def _handle_one(app, rfile, wfile, session, bodies):
-    # Read the next request:
-    request = rfile.read_request()
-
-    # Call the application:
+def _handle_one(app, reader, writer, session, bodies):
+    request = reader.read_request()
     (status, reason, headers, body) = app(session, request, bodies)
 
     # Make sure application fully consumed request body:
@@ -195,37 +192,10 @@ def _handle_one(app, rfile, wfile, session, bodies):
                 'response to HEAD request must include content-length or transfer-encoding'
             )
 
-    # Set default content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
-        length = len(body)
-        if headers.setdefault('content-length', length) != length:
-            raise ValueError(
-                "headers['content-length'] != len(body): {!r} != {!r}".format(
-                    headers['content-length'], length
-                )
-            )
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                "headers['transfer-encoding'] with length-encoded body"
-            )
-    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
-        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
-            raise ValueError(
-                "headers['transfer-encoding'] is invalid: {!r}".format(
-                    headers['transfer-encoding']
-                )
-            )
-        if 'content-length' in headers:
-            raise ValueError(
-                "headers['content-length'] with chunk-encoded body"
-            )
-    elif body is not None:
-        raise TypeError(
-            'body: not valid type: {!r}: {!r}'.format(type(body), body)
-        )
-
-    # Write response
-    _write_response(wfile, status, reason, headers, body)
+    # Write response:
+    tell = writer.tell()
+    wrote = writer.write_response(status, reason, headers, body)
+    assert writer.tell() == tell + wrote
 
     # Possibly close the connection:
     if status >= 400 and status not in {404, 409, 412}:

@@ -722,16 +722,27 @@ class Writer:
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
 
+    def write_body(self, body):
+        if body is None:
+            return 0
+        tell = self.tell()
+        if isinstance(body, (bytes, bytearray)):
+            total = self.write(body)
+        else:
+            total = body.write_to(self)
+        assert self.tell() == tell + total
+        return total
+
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
         self.set_default_headers(headers, body)
         preamble = format_request(method, uri, headers)
         total = self.write(preamble)
-        if body is None:
-            return total
-        if isinstance(body, (bytes, bytearray)):
-            total += self.write(body)
-        else:
-            total += body.write_to(self)
-        return total
+        return total + self.write_body(body)
+
+    def write_response(self, status, reason, headers, body):
+        self.set_default_headers(headers, body)
+        preamble = format_response(status, reason, headers)
+        total = self.write(preamble)
+        return total + self.write_body(body)
 
