@@ -32,7 +32,6 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    format_response,
 )
 
 
@@ -137,20 +136,6 @@ def _validate_server_sslctx(sslctx):
         raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
 
     return sslctx
-
-
-def _write_response(wfile, status, reason, headers, body):
-    preamble = format_response(status, reason, headers)
-    if body is None:
-        total = wfile.write(preamble)
-        wfile.flush()
-    elif isinstance(body, (bytes, bytearray)):
-        total = wfile.write(preamble + body)
-        wfile.flush()
-    else:
-        total = wfile.write(preamble)
-        total += body.write_to(wfile)          
-    return total
 
 
 def _handle_requests(app, sock, max_requests, session, bodies):
