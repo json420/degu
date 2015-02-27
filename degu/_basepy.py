@@ -662,7 +662,7 @@ class Writer:
     def __init__(self, sock, bodies):
         self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_send = _getcallable('sock', sock, 'send')
-        self._length_types = (bytes, bytearray, bodies.Body, bodies.BodyIter)
+        self._length_types = (bytes, bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
         self._closed = False
@@ -725,7 +725,7 @@ class Writer:
     def write_output(self, preamble, body):
         if body is None:
             return self.write(preamble)
-        if isinstance(body, (bytes, bytearray)):
+        if type(body) is bytes:
             return self.write(preamble + body)
         self.write(preamble)
         orig_tell = self.tell()

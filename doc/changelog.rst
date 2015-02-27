@@ -9,12 +9,45 @@ Changelog
 
 Performance improvements:
 
-    *   ``benchmark.py`` is now on average around 14% faster for ``AF_INET6``
-        and around 17% faster for ``AF_UNIX`` (as measured on an Intel
-        i7-4900MQ).
+    *   ``benchmark.py`` is now on average around 84% faster for ``AF_UNIX`` and
+        around 68% faster for ``AF_INET6`` (as measured on an Intel i7-4900MQ).
 
-        This performance improvement is due to a new ``Reader`` class used in
-        place of the ``io.BufferedReader`` plus ``socket.SocketIO`` combo.  This
+        This substantial performance improvement is due to the new ``Reader``
+        and ``Writer`` classes.
+
+Security improvements:
+
+    *   
+
+Other changes:
+
+    *   :class:`degu.base.Reader` replaces the previous ``io.BufferedReader``
+        plus ``socket.SocketIO`` combo.  In addition to providing a thinner,
+        faster wrapper around a Python ``socket.socket`` or ``ssl.SSLSocket``,
+        the ``Reader`` class provides two high-level preamble parsing methods:
+
+            * :meth:`degu.base.Reader.read_request()`
+
+            * :meth:`degu.base.Reader.read_response()`
+
+        By utilizing internal C API as much as possible, the C implementation of
+        these two methods dramatically reduced the number of Python function and
+        method calls that must be made in the course of reading and parsing a request or response
+        preamble.
+
+        The C implementation of.
+
+        The C implementation of these two methods use internal fast paths to
+        minimize the number of Python function calls that must be made, and to
+        also illiminate the use of itermediate Python objcets.``bytes``
+        objects
+        
+        
+
+        Likewise, :class:`degu.base.Writer` replaces the previous
+        ``io.BufferedWriter`` plus ``socket.SocketIO`` combo.
+        
+        This
         new class allows reading and parsing to be decoupled: the HTTP preamble
         is read, and then parsed, where as previous each line was read and then
         parsed.

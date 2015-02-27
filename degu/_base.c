@@ -341,17 +341,6 @@ _frombytes(PyObject *bytes)
     return (DeguBuf){buf, len};
 }
 
-static DeguBuf
-_frombytearray(PyObject *bytearray)
-{
-    if (bytearray == NULL || !PyByteArray_CheckExact(bytearray)) {
-        Py_FatalError("_frombytearray(): bad internal call");
-    }
-    const uint8_t *buf = (uint8_t *)PyByteArray_AS_STRING(bytearray);
-    const size_t len = PyByteArray_GET_SIZE(bytearray);
-    return (DeguBuf){buf, len};
-}
-
 static void
 _value_error(const char *format, DeguBuf src)
 {
@@ -2568,17 +2557,14 @@ _set_default_content_length(PyObject *headers, PyObject *val)
 static bool
 _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
 {
-    size_t len;
+    ssize_t len;
     PyObject *val;
 
     if (body == Py_None) {
         return true;
     }
-    if (PyBytes_CheckExact(body) || PyByteArray_CheckExact(body)) {
-        len = PyObject_Length(body);
-        if (len < 0) {
-            return false;
-        }
+    if (PyBytes_CheckExact(body)) {
+        len = PyBytes_GET_SIZE(body);
         val = PyLong_FromSsize_t(len);
         return _set_default_content_length(headers, val);
     }
@@ -2619,9 +2605,6 @@ _Writer_write_output(Writer *self, DeguBuf preamble_src, PyObject *body)
     }
     if (PyBytes_CheckExact(body)) {
         return _Writer_write_combined(self, preamble_src, _frombytes(body));
-    }
-    if (PyByteArray_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble_src, _frombytearray(body));
     }
 
     if (_Writer_write(self, preamble_src) < 0) {
