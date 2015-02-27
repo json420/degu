@@ -78,13 +78,12 @@ NAME = frozenset(
 
 _DIGIT = b'0123456789'
 _ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-_PATH  = b'-.:_~'
-_QUERY = b'%&+='
+_PATH  = b'+-.:_~'
+_QUERY = b'%&='
 _URI   = b'/?'
 _SPACE = b' '
 _VALUE = b'"\'()*,;[]'
 
-KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
 DIGIT  = frozenset(_DIGIT)
 PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
 QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
@@ -93,6 +92,8 @@ REASON = frozenset(_DIGIT + _ALPHA + _SPACE)
 VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
+
+KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
 
 
 def _getcallable(objname, obj, name):

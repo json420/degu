@@ -848,6 +848,14 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(parse_uri(b'/foo/bar?q'),
              ('/foo/bar?q', [], ['foo', 'bar'], 'q')
         )
+        self.assertEqual(parse_uri(b'/~novacut/+archive/ubuntu/daily'),
+            (
+                '/~novacut/+archive/ubuntu/daily',
+                [],
+                ['~novacut', '+archive', 'ubuntu', 'daily'],
+                None
+            )
+        )
 
     def test_parse_uri_py(self):
         self.check_parse_uri(_basepy)
