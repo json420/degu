@@ -848,6 +848,14 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(parse_uri(b'/foo/bar?q'),
              ('/foo/bar?q', [], ['foo', 'bar'], 'q')
         )
+        self.assertEqual(parse_uri(b'/~novacut/+archive/ubuntu/daily'),
+            (
+                '/~novacut/+archive/ubuntu/daily',
+                [],
+                ['~novacut', '+archive', 'ubuntu', 'daily'],
+                None
+            )
+        )
 
     def test_parse_uri_py(self):
         self.check_parse_uri(_basepy)
@@ -3353,7 +3361,6 @@ class TestWriter_Py(BackendTestCase):
         # bodies with a content-length:
         length_bodies = (
             os.urandom(17),
-            bytearray(os.urandom(17)),
             bodies.Body(io.BytesIO(), 17),
             bodies.BodyIter([], 17),
         )
@@ -3490,20 +3497,6 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
-        # body is bytearray:
-        sock = WSocket()
-        writer = self.Writer(sock, bodies)
-        headers = {}
-        self.assertEqual(
-            writer.write_request('GET', '/', headers, bytearray(b'hello')),
-            42
-        )
-        self.assertEqual(headers, {'content-length': 5})
-        self.assertEqual(writer.tell(), 42)
-        self.assertEqual(sock._fp.getvalue(),
-            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
-        )
-
         # body is bodies.Body:
         headers = {}
         rfile = io.BytesIO(b'hello')
@@ -3624,21 +3617,6 @@ class TestWriter_Py(BackendTestCase):
         headers = {}
         self.assertEqual(
             writer.write_response(200, 'OK', headers, b'hello'),
-            43
-        )
-        self.assertEqual(headers, {'content-length': 5})
-        self.assertEqual(writer.tell(), 43)
-        self.assertEqual(sock._fp.tell(), 43)
-        self.assertEqual(sock._fp.getvalue(),
-            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
-        )
-
-        # body is bytearray:
-        sock = WSocket()
-        writer = self.Writer(sock, bodies)
-        headers = {}
-        self.assertEqual(
-            writer.write_response(200, 'OK', headers, bytearray(b'hello')),
             43
         )
         self.assertEqual(headers, {'content-length': 5})

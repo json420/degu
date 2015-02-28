@@ -101,8 +101,8 @@ static const uint8_t _NAMES[256] = {
 /*
  * DIGIT  1 00000001  b'0123456789'
  * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
- * PATH   4 00000100  b'-.:_~'
- * QUERY  8 00001000  b'%&+='
+ * PATH   4 00000100  b'+-.:_~'
+ * QUERY  8 00001000  b'%&='
  * URI   16 00010000  b'/?'
  * SPACE 32 00100000  b' '
  * VALUE 64 01000000  b'"\'()*,;[]'
@@ -119,7 +119,7 @@ static const uint8_t _FLAGS[256] = {
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
      32,128, 64,128,128,  8,  8, 64, //  ' '       '"'            '%'  '&'  "'"
-     64, 64, 64,  8, 64,  4,  4, 16, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+     64, 64, 64,  4, 64,  4,  4, 16, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
       1,  1,  1,  1,  1,  1,  1,  1, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
       1,  1,  4, 64,128,  8,128, 16, //  '8'  '9'  ':'  ';'       '='       '?'
     128,  2,  2,  2,  2,  2,  2,  2, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
@@ -338,17 +338,6 @@ _frombytes(PyObject *bytes)
     }
     const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
     const size_t len = PyBytes_GET_SIZE(bytes);
-    return (DeguBuf){buf, len};
-}
-
-static DeguBuf
-_frombytearray(PyObject *bytearray)
-{
-    if (bytearray == NULL || !PyByteArray_CheckExact(bytearray)) {
-        Py_FatalError("_frombytearray(): bad internal call");
-    }
-    const uint8_t *buf = (uint8_t *)PyByteArray_AS_STRING(bytearray);
-    const size_t len = PyByteArray_GET_SIZE(bytearray);
     return (DeguBuf){buf, len};
 }
 
@@ -2568,17 +2557,14 @@ _set_default_content_length(PyObject *headers, PyObject *val)
 static bool
 _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
 {
-    size_t len;
+    ssize_t len;
     PyObject *val;
 
     if (body == Py_None) {
         return true;
     }
-    if (PyBytes_CheckExact(body) || PyByteArray_CheckExact(body)) {
-        len = PyObject_Length(body);
-        if (len < 0) {
-            return false;
-        }
+    if (PyBytes_CheckExact(body)) {
+        len = PyBytes_GET_SIZE(body);
         val = PyLong_FromSsize_t(len);
         return _set_default_content_length(headers, val);
     }
@@ -2619,9 +2605,6 @@ _Writer_write_output(Writer *self, DeguBuf preamble_src, PyObject *body)
     }
     if (PyBytes_CheckExact(body)) {
         return _Writer_write_combined(self, preamble_src, _frombytes(body));
-    }
-    if (PyByteArray_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble_src, _frombytearray(body));
     }
 
     if (_Writer_write(self, preamble_src) < 0) {

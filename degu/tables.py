@@ -68,8 +68,8 @@ NAMES_DEF = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 BIT_FLAGS_DEF = (
     ('DIGIT', b'0123456789'),
     ('ALPHA', b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'),
-    ('PATH',  b'-.:_~'),
-    ('QUERY', b'%&+='),
+    ('PATH',  b'+-.:_~'),
+    ('QUERY', b'%&='),
     ('URI',   b'/?'),
     ('SPACE', b' '),
     ('VALUE', b'"\'()*,;[]'),   
