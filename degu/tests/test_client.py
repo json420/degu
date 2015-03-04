@@ -25,11 +25,10 @@ Unit tests for the `degu.server` module`
 
 from unittest import TestCase
 import os
-import io
 import socket
 import ssl
 
-from .helpers import DummySocket, FuzzTestCase
+from .helpers import DummySocket
 from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -85,13 +84,6 @@ class TestUnconsumedResponseError(TestCase):
         self.assertEqual(str(exc),
             'previous response body not consumed: {!r}'.format(body)
         )
-
-
-class FuzzTestFunctions(FuzzTestCase):
-    def test__read_response(self):
-        self.skipTest('FIXME')
-        for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
-            self.fuzz(client._read_response, base.bodies, method)
 
 
 class TestFunctions(TestCase):
