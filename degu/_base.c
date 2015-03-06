@@ -45,7 +45,6 @@ static PyObject *str_BodyIter = NULL;         //  'BodyIter'
 static PyObject *str_ChunkedBody = NULL;      //  'ChunkedBody'
 static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 
-
 static PyObject *str_content_length = NULL;     //  'content_length'
 static PyObject *key_content_length = NULL;     //  'content-length'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
@@ -2533,9 +2532,9 @@ cleanup:
 static ssize_t
 _Writer_write(Writer *self, _Src src)
 {
-    ssize_t total, wrote;
+    size_t total = 0;
+    ssize_t wrote;
 
-    total = 0;
     while (total < src.len) {
         wrote = _Writer_write1(self, _slice(src, total, src.len));
         if (wrote < 0) {
@@ -2548,7 +2547,7 @@ _Writer_write(Writer *self, _Src src)
     }
     if (total != src.len) {
         PyErr_Format(PyExc_OSError,
-            "expected %zd; send() returned %zd", src.len, total
+            "expected %zu; send() returned %zu", src.len, total
         );
         return -1;
     }
