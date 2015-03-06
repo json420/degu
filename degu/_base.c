@@ -1030,18 +1030,18 @@ _validate_key(PyObject *key)
         );
         return false;
     }
+    if (PyUnicode_READY(key) != 0) {
+        return false;
+    }
+    if (PyUnicode_GET_LENGTH(key) < 1) {
+        PyErr_SetString(PyExc_ValueError, "key is empty");
+        return false;
+    }
     if (PyUnicode_MAX_CHAR_VALUE(key) != 127) {
         goto bad_key;
     }
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
-    const ssize_t key_len = PyUnicode_GET_LENGTH(key);
-    if (key_len < 1) {
-        if (key_len < 0) {
-            Py_FatalError("_validate_key(): key < 0");
-        }
-        PyErr_SetString(PyExc_ValueError, "key is empty");
-        return false;
-    }
+    const size_t key_len = PyUnicode_GET_LENGTH(key);
     for (i = 0; i < key_len; i++) {
         c = key_buf[i];
         if (! (islower(c) || isdigit(c) || c == '-')) {
