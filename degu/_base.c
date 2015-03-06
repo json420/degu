@@ -239,7 +239,7 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
  *     _value_error2()
  *     _decode()
  */
-typedef struct {
+typedef const struct {
     const uint8_t *buf;
     const size_t len;
 } DeguBuf;
@@ -398,6 +398,30 @@ error:
 
 done:
     return dst;
+}
+
+
+typedef const struct {
+    uint8_t *buf;
+    const size_t len;
+} _Dst;
+
+static inline bool
+_dstisempty(_Dst dst)
+{
+    if (dst.buf == NULL || dst.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static _Dst
+_dstslice(_Dst dst, const size_t start, const size_t stop)
+{
+    if (_dstisempty(dst) || start > stop || stop > dst.len) {
+        Py_FatalError("_dst_slice(): bad internal call");
+    }
+    return (_Dst){dst.buf + start, stop - start};
 }
 
 
@@ -1791,18 +1815,18 @@ _Reader_ChunkedBody(Reader *self) {
  *     -4  sock.recv_into() did not return 0 <= size <= len
  */
 static ssize_t
-_Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
+_Reader_sock_recv_into(Reader *self, _Dst dst)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
     ssize_t size;
     ssize_t ret = -1;
 
-    if (self == NULL || buf == NULL || len < 1) {
+    if (_dstisempty(dst)) {
         Py_FatalError("bad internal call to _Reader_recv_into()");
     }
     _SET(view,
-        PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
+        PyMemoryView_FromMemory((char *)dst.buf, (ssize_t)dst.len, PyBUF_WRITE)
     )
     _SET(int_size,
         PyObject_CallFunctionObjArgs(self->recv_into, view, NULL)
@@ -1825,10 +1849,10 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
         goto error;
     }
 
-    /* sock.recv_into() must return (0 <= size <= len) */
-    if (size < 0 || size > len) {
+    /* sock.recv_into() must return (0 <= size <= dst.len) */
+    if (size < 0 || size > dst.len) {
         PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zd; recv_into() returned %zd", len, size
+            "need 0 <= size <= %zd; recv_into() returned %zd", dst.len, size
         );
         ret = - 4;
         goto error;
@@ -1884,7 +1908,6 @@ _Reader_drain(Reader *self, const size_t size)
 static DeguBuf
 _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
 {
-    size_t avail;
     uint8_t *ptr;
     size_t offset;
     ssize_t added;
@@ -1931,12 +1954,11 @@ _Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
     }
 
     /* Now read till found */
+    _Dst dst = {self->buf, self->len};
     while (self->stop < size) {
-        if (self->stop > self->len) {
-            Py_FatalError("_Reader_fill_until: self->stop > self->len");
-        }
-        avail = self->len - self->stop;
-        added = _Reader_sock_recv_into(self, self->buf + self->stop, avail);
+        added = _Reader_sock_recv_into(self,
+            _dstslice(dst, self->stop, dst.len)
+        );
         if (added < 0) {
             return NULL_DeguBuf;
         }
@@ -2227,7 +2249,6 @@ static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
-    uint8_t *dst_buf;
     size_t start;
     ssize_t added;
     PyObject *ret = NULL;
@@ -2249,12 +2270,12 @@ Reader_read(Reader *self, PyObject *args)
     }
 
     _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-    dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
-    memcpy(dst_buf, src.buf, src.len);
+    _Dst dst = {(uint8_t *)PyBytes_AS_STRING(ret), size};
+    memcpy(dst.buf, src.buf, src.len);
 
     start = src.len;
     while (start < size) {
-        added = _Reader_sock_recv_into(self, dst_buf + start, size - start);
+        added = _Reader_sock_recv_into(self, _dstslice(dst, start, dst.len));
         if (added < 0) {
             goto error;
         }
@@ -2262,9 +2283,6 @@ Reader_read(Reader *self, PyObject *args)
             break;
         }
         start += added;
-        if (start > size) {
-            Py_FatalError("_Reader_read: start > size");
-        }
     }
     if (start < size) {
         if (_PyBytes_Resize(&ret, start) != 0) {
@@ -2284,30 +2302,26 @@ cleanup:
 static PyObject *
 Reader_readinto(Reader *self, PyObject *args)
 {
-    Py_buffer dst;
+    Py_buffer pybuf;
     size_t start;
     ssize_t added;
     PyObject *ret = NULL;
 
-    if (!PyArg_ParseTuple(args, "w*", &dst)) {
+    if (!PyArg_ParseTuple(args, "w*", &pybuf)) {
         return NULL;
     }
-    if (dst.len < 1) {
+    if (pybuf.len < 1) {
         PyErr_SetString(PyExc_ValueError, "dst cannot be empty");
         goto error;
     }
+    _Dst dst = {pybuf.buf, pybuf.len};
     DeguBuf src = _Reader_drain(self, dst.len);
-    if (src.len > dst.len) {
-        Py_FatalError("_Reader_readinto(): src.len > dst.len");
-    }
     if (src.len > 0) {
         memcpy(dst.buf, src.buf, src.len);
     }
     start = src.len;
     while (start < dst.len) {
-        added = _Reader_sock_recv_into(self,
-            (uint8_t *)dst.buf + start, dst.len - start
-        );
+        added = _Reader_sock_recv_into(self, _dstslice(dst, start, dst.len));
         if (added < 0) {
             goto error;
         }
@@ -2316,9 +2330,6 @@ Reader_readinto(Reader *self, PyObject *args)
         }
         start += added;
     }
-    if (start > dst.len) {
-        Py_FatalError("_Reader_readinto(): start > dst.len");
-    }
     _SET(ret, PyLong_FromSize_t(start))
     goto cleanup;
 
@@ -2326,7 +2337,7 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    PyBuffer_Release(&dst);
+    PyBuffer_Release(&pybuf);
     return ret;
 }
 
