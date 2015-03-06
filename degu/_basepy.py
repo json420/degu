@@ -41,6 +41,7 @@ _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 MIN_PREAMBLE     =  4096  #  4 KiB
 DEFAULT_PREAMBLE = 32768  # 32 KiB
 MAX_PREAMBLE     = 65536  # 64 KiB
+MAX_IO_SIZE = 16777216  # 16 MiB
 
 GET = 'GET'
 PUT = 'PUT'
@@ -595,9 +596,9 @@ class Reader:
 
     def read(self, size):
         assert isinstance(size, int)
-        if size < 0:
+        if not (0 <= size <= MAX_IO_SIZE):
             raise ValueError(
-                'need size >= 0; got {}'.format(size)
+                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
             )
         if size == 0:
             return b''
@@ -621,8 +622,10 @@ class Reader:
     def readinto(self, dst):
         dst = memoryview(dst)
         dst_len = len(dst)
-        if dst_len < 1:
-            raise ValueError('dst cannot be empty')
+        if not (1 <= dst_len <= MAX_IO_SIZE):
+            raise ValueError(
+                'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
+            )
         src = self.drain(dst_len)
         src_len = len(src)
         dst[0:src_len] = src

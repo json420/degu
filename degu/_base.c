@@ -31,6 +31,7 @@
 #define DEFAULT_PREAMBLE 32768
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
+#define MAX_IO_SIZE 16777216
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -227,6 +228,7 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
 }
 
 
+
 /*******************************************************************************
  * Internal API: _Src:
  *     _isempty()
@@ -407,7 +409,7 @@ typedef const struct {
 } _Dst;
 
 static inline bool
-_dstisempty(_Dst dst)
+_dst_isempty(_Dst dst)
 {
     if (dst.buf == NULL || dst.len == 0) {
         return true;
@@ -416,12 +418,21 @@ _dstisempty(_Dst dst)
 }
 
 static _Dst
-_dstslice(_Dst dst, const size_t start, const size_t stop)
+_dst_slice(_Dst dst, const size_t start, const size_t stop)
 {
-    if (_dstisempty(dst) || start > stop || stop > dst.len) {
+    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (_Dst){dst.buf + start, stop - start};
+}
+
+static void
+_copy(_Dst dst, _Src src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_copy(): bad internal call");
+    }
+    memcpy(dst.buf, src.buf, src.len);
 }
 
 
@@ -1808,22 +1819,17 @@ _Reader_ChunkedBody(Reader *self) {
     return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
 }
 
-/* _Reader_recv_into():
- *     -1  general error code for when _SET() goes to error
- *     -2  sock.recv_into() did not return an `int`
- *     -3  overflow when converting to size_t (`OverflowError` raised)
- *     -4  sock.recv_into() did not return 0 <= size <= len
- */
+
 static ssize_t
-_Reader_sock_recv_into(Reader *self, _Dst dst)
+_Reader_recv_into(Reader *self, _Dst dst)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    ssize_t size;
     ssize_t ret = -1;
+    ssize_t size;
 
-    if (_dstisempty(dst)) {
-        Py_FatalError("bad internal call to _Reader_recv_into()");
+    if (_dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
+        Py_FatalError("_Reader_recv_into(): bad internal call");
     }
     _SET(view,
         PyMemoryView_FromMemory((char *)dst.buf, (ssize_t)dst.len, PyBUF_WRITE)
@@ -1838,14 +1844,12 @@ _Reader_sock_recv_into(Reader *self, _Dst dst)
             "need a <class 'int'>; recv_into() returned a %R: %R",
             Py_TYPE(int_size), int_size
         );
-        ret = -2;
         goto error;
     }
 
     /* Convert to ssize_t, check for OverflowError */
     size = PyLong_AsSsize_t(int_size);
     if (PyErr_Occurred()) {
-        ret = -3;
         goto error;
     }
 
@@ -1854,7 +1858,6 @@ _Reader_sock_recv_into(Reader *self, _Dst dst)
         PyErr_Format(PyExc_OSError,
             "need 0 <= size <= %zd; recv_into() returned %zd", dst.len, size
         );
-        ret = - 4;
         goto error;
     }
 
@@ -1898,7 +1901,7 @@ _Reader_drain(Reader *self, const size_t size)
 {
     _Src cur = _Reader_peek(self, size);
     self->start += cur.len;
-    if (self->start >= self->stop) {
+    if (self->start == self->stop) {
         self->start = 0;
         self->stop = 0;
     }
@@ -1956,8 +1959,8 @@ _Reader_fill_until(Reader *self, const size_t size, _Src end, bool *found)
     /* Now read till found */
     _Dst dst = {self->buf, self->len};
     while (self->stop < size) {
-        added = _Reader_sock_recv_into(self,
-            _dstslice(dst, self->stop, dst.len)
+        added = _Reader_recv_into(self,
+            _dst_slice(dst, self->stop, dst.len)
         );
         if (added < 0) {
             return NULL_Src;
@@ -2003,6 +2006,36 @@ _Reader_search(Reader *self, const size_t size, _Src end,
         return ret;
     }
     return _slice(ret, 0, ret.len - end.len);
+}
+
+static ssize_t
+_Reader_readinto(Reader *self, _Dst dst)
+{
+    size_t start;
+    ssize_t added;
+
+    if (dst.buf == NULL || dst.len > MAX_IO_SIZE) {
+        Py_FatalError("_Reader_readinto(): bad internal call");
+    }
+    _Src src = _Reader_drain(self, dst.len);
+    if (src.len > 0) {
+        _copy(dst, src);
+    }
+    start = src.len;
+    while (start < dst.len) {
+        added = _Reader_recv_into(self, _dst_slice(dst, start, dst.len));
+        if (added < 0) {
+            return -1;
+        }
+        if (added == 0) {
+            break;
+        }
+        start += added;
+    }
+    if (start > dst.len) {
+        Py_FatalError("_Reader_readinto(): start > dst.len");
+    }
+    return start;  
 }
 
 
@@ -2244,48 +2277,29 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
-    size_t start;
-    ssize_t added;
     PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    if (size < 0) {
-        PyErr_Format(PyExc_ValueError, "need size >= 0; got %zd", size);
+    if (size < 0 || size > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, size
+        );
         return NULL;
     }
-    _Src src = _Reader_drain(self, size);
-    if (src.len == size) {
-        _SET(ret, _tobytes(src))
-        goto cleanup;
-    }
-    if (src.len >= size) {
-        Py_FatalError("_Reader_read: src.len >= size");
-    }
-
     _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-    _Dst dst = {(uint8_t *)PyBytes_AS_STRING(ret), size};
-    memcpy(dst.buf, src.buf, src.len);
-
-    start = src.len;
-    while (start < size) {
-        added = _Reader_sock_recv_into(self, _dstslice(dst, start, dst.len));
-        if (added < 0) {
-            goto error;
-        }
-        if (added == 0) {
-            break;
-        }
-        start += added;
+    _Dst dst = {(uint8_t *)PyBytes_AS_STRING(ret), (size_t)size};
+    const ssize_t total = _Reader_readinto(self, dst);
+    if (total < 0) {
+        goto error;
     }
-    if (start < size) {
-        if (_PyBytes_Resize(&ret, start) != 0) {
+    if (total < size) {
+        if (_PyBytes_Resize(&ret, total) != 0) {
             goto error;
         }
     }
@@ -2298,39 +2312,27 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 Reader_readinto(Reader *self, PyObject *args)
 {
     Py_buffer pybuf;
-    size_t start;
-    ssize_t added;
     PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "w*", &pybuf)) {
-        return NULL;
+        goto error;
     }
-    if (pybuf.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "dst cannot be empty");
+    if (pybuf.len < 1 || pybuf.len > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need 1 <= len(buf) <= %zu; got %zd", MAX_IO_SIZE, pybuf.len
+        );
         goto error;
     }
     _Dst dst = {pybuf.buf, pybuf.len};
-    _Src src = _Reader_drain(self, dst.len);
-    if (src.len > 0) {
-        memcpy(dst.buf, src.buf, src.len);
+    const ssize_t total = _Reader_readinto(self, dst);
+    if (total < 0) {
+        goto error;
     }
-    start = src.len;
-    while (start < dst.len) {
-        added = _Reader_sock_recv_into(self, _dstslice(dst, start, dst.len));
-        if (added < 0) {
-            goto error;
-        }
-        if (added == 0) {
-            break;
-        }
-        start += added;
-    }
-    _SET(ret, PyLong_FromSize_t(start))
+    _SET(ret, PyLong_FromSsize_t(total))
     goto cleanup;
 
 error:

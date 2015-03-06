@@ -2877,7 +2877,19 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data)
         with self.assertRaises(ValueError) as cm:
             reader.read(-1)
-        self.assertEqual(str(cm.exception), 'need size >= 0; got -1')
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 16777216; got -1'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.read(16777217)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 16777216; got 16777217'
+        )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
@@ -2951,6 +2963,40 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), marker)
 
     def test_readinto(self):
+        data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
+
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(bytearray(0))
+        self.assertEqual(str(cm.exception),
+            'need 1 <= len(buf) <= 16777216; got 0'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(16777217)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(buf)
+        self.assertEqual(str(cm.exception),
+            'need 1 <= len(buf) <= 16777216; got 16777217'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(buf, b'\x00' * 16777217)
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(1)
+        self.assertEqual(reader.readinto(buf), 1)
+        self.assertEqual(buf, b'G')
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(16777216)
+        self.assertEqual(reader.readinto(buf), len(data))
+        self.assertEqual(buf, data + (b'\x00' * (len(buf) - len(data))))
+
         dst = memoryview(bytearray(12345))
         badsocket = BadSocket(17.0)
         reader = self.Reader(badsocket, base.bodies)
