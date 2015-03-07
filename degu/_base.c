@@ -599,6 +599,7 @@ _parse_content_length(_Src src)
     uint64_t accum;
     uint8_t flags, c;
     size_t i;
+
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "content-length is empty");
         return NULL; 
@@ -609,7 +610,11 @@ _parse_content_length(_Src src)
         );
         return NULL; 
     }
-    for (accum = flags = i = 0; i < src.len; i++) {
+
+    c = src.buf[0];
+    flags = _FLAGS[c];
+    accum = (c - 48);
+    for (i = 1; i < src.len; i++) {
         accum *= 10;
         c = src.buf[i];
         flags |= _FLAGS[c];
