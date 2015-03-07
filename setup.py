@@ -129,6 +129,7 @@ setup(
                 '-Werror',  # Make all warnings into errors
                 '-pedantic-errors',
                 '-std=gnu11',  # Soon to be gcc default
+                '-Wsign-compare',
             ],
         ),
     ],

@@ -1909,7 +1909,7 @@ _Reader_recv_into(Reader *self, _Dst dst)
     }
 
     /* sock.recv_into() must return (0 <= size <= dst.len) */
-    if (size < 0 || size > dst.len) {
+    if (size < 0 || (size_t)size > dst.len) {
         PyErr_Format(PyExc_OSError,
             "need 0 <= size <= %zd; recv_into() returned %zd", dst.len, size
         );
@@ -2511,22 +2511,23 @@ static ssize_t
 _Writer_write1(Writer *self, _Src src)
 {
     PyObject *view = NULL;
-    PyObject *ret = NULL;
+    PyObject *int_size = NULL;
     ssize_t size = -2;
 
     _SET(view, PyMemoryView_FromMemory((char *)src.buf, src.len, PyBUF_READ))
-    _SET(ret, PyObject_CallFunctionObjArgs(self->send, view, NULL))
-    if (!PyLong_CheckExact(ret)) {
+    _SET(int_size, PyObject_CallFunctionObjArgs(self->send, view, NULL))
+    if (!PyLong_CheckExact(int_size)) {
         PyErr_Format(PyExc_TypeError,
-            "need a <class 'int'>; send() returned a %R: %R", Py_TYPE(ret), ret
+            "need a <class 'int'>; send() returned a %R: %R",
+            Py_TYPE(int_size), int_size
         );
         goto error;
     }
-    size = PyLong_AsSsize_t(ret);
+    size = PyLong_AsSsize_t(int_size);
     if (PyErr_Occurred()) {
         goto error;
     }
-    if (size < 0 || size > src.len) {
+    if (size < 0 || (size_t)size > src.len) {
         PyErr_Format(PyExc_OSError,
             "need 0 <= size <= %zd; send() returned %zd", src.len, size
         );
@@ -2539,7 +2540,7 @@ error:
 
 cleanup:
     Py_CLEAR(view);
-    Py_CLEAR(ret);
+    Py_CLEAR(int_size);
     return size;
 }
 
