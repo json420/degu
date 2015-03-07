@@ -47,6 +47,7 @@ static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 
 static PyObject *str_content_length = NULL;     //  'content_length'
 static PyObject *key_content_length = NULL;     //  'content-length'
+static PyObject *key_content_type   = NULL;     //  'content-type'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
@@ -293,6 +294,7 @@ _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
+_DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
 
 static inline bool
 _isempty(_Src src)
@@ -660,6 +662,10 @@ _parse_header_line(_Src src, uint8_t *scratch, DeguHeaders *dh)
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
         dh->flags |= 2;
+    }
+    else if (_equal(keysrc, CONTENT_TYPE)) {
+        _SET_AND_INC(key, key_content_type)
+        _SET(val, _parse_val(valsrc))
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -2939,6 +2945,8 @@ PyInit__base(void)
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
+
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
 
