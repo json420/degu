@@ -237,10 +237,37 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
  *     _value_error2()
  *     _decode()
  */
+
+/* _Src (source): a read-only buffer.
+ *
+ * None of these modifications should be possible:
+ *
+ *     src.buf++;         // Can't move the base pointer
+ *     src.len++;         // Can't change the length
+ *     src.buf[0] = 'D';  // Can't modify the buffer content
+ */
 typedef const struct {
     const uint8_t *buf;
     const size_t len;
 } _Src;
+
+/* _Dst (destination): a writable buffer.
+ *
+ * You can modify the buffer content:
+ *
+ *     dst.buf[0] = 'D';
+ *
+ * But you still can't modify the base pointer or length:
+ *
+ *     dst.buf++;         // Can't move the base pointer
+ *     dst.len++;         // Can't change the length
+
+ */
+typedef const struct {
+    uint8_t *buf;
+    const size_t len;
+} _Dst;
+
 
 static _Src NULL_Src = {NULL, 0}; 
 
@@ -285,41 +312,28 @@ _slice(_Src src, const size_t start, const size_t stop)
     return (_Src){src.buf + start, stop - start};
 }
 
-static bool
+static inline bool
 _equal(_Src a, _Src b) {
-    if (a.buf == NULL || _isempty(b)) {
-        Py_FatalError("_equal(): bad internal call");
-    }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
         return true;
     }
     return false;
 }
 
-
-static ssize_t
+static inline ssize_t
 _find(_Src haystack, _Src needle)
 {
-    const uint8_t *ptr;
-    if (_isempty(haystack) || _isempty(needle)) {
-        Py_FatalError("_find(): empty *haystack* or empty *needle*");
-    }
-    ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
     if (ptr == NULL) {
         return -1;
     }
     return ptr - haystack.buf;
 }
 
-
-static size_t
+static inline size_t
 _search(_Src haystack, _Src needle)
 {
-    const uint8_t *ptr;
-    if (_isempty(haystack) || _isempty(needle)) {
-        Py_FatalError("_search(): empty *haystack* or empty *needle*");
-    }
-    ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
     if (ptr == NULL) {
         return haystack.len;
     }
@@ -413,12 +427,6 @@ error:
 done:
     return dst;
 }
-
-
-typedef const struct {
-    uint8_t *buf;
-    const size_t len;
-} _Dst;
 
 static inline bool
 _dst_isempty(_Dst dst)
@@ -610,6 +618,7 @@ _parse_content_length(_Src src)
 static bool
 _parse_header_line(_Src src, uint8_t *scratch, DeguHeaders *dh)
 {
+    ssize_t index;
     size_t keystop, valstart;
     bool success = true;
     PyObject *key = NULL;
@@ -620,11 +629,12 @@ _parse_header_line(_Src src, uint8_t *scratch, DeguHeaders *dh)
         _value_error("header line too short: %R", src);
         goto error;
     }
-    keystop = _search(src, SEP);
-    if (keystop == src.len) {
+    index = _find(src, SEP);
+    if (index < 0) {
         _value_error("bad header line: %R", src);
         goto error;
     }
+    keystop = (size_t)index;
     valstart = keystop + SEP.len;
     _Src rawkey = _slice(src, 0, keystop);
     _Src valsrc = _slice(src, valstart, src.len);
@@ -791,12 +801,9 @@ _parse_path(_Src src)
 
 error:
     Py_CLEAR(path);
-    Py_CLEAR(component);
 
 cleanup:
-    if (component != NULL) {
-        Py_FatalError("_parse_path(): component != NULL");
-    }
+    Py_CLEAR(component);
     return path;
 }
 
@@ -839,6 +846,7 @@ error:
 static bool
 _parse_request_line(_Src line, DeguRequest *dr)
 {
+    ssize_t index;
     size_t method_stop, uri_start;
 
     /* Reject any request line shorter than 14 bytes:
@@ -870,11 +878,12 @@ _parse_request_line(_Src line, DeguRequest *dr)
      *     "GET /"
      *         ^^
      */
-    method_stop = _search(src, SPACE_SLASH);
-    if (method_stop >= src.len) {
+    index = _find(src, SPACE_SLASH);
+    if (index < 0) {
         _value_error("bad request line: %R", line);
         goto error;
     }
+    method_stop = (size_t)index;
     uri_start = method_stop + 1;
     _Src method_src = _slice(src, 0, method_stop);
     _Src uri_src = _slice(src, uri_start, src.len);
