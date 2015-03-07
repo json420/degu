@@ -199,9 +199,6 @@ _calloc_buf(const size_t len)
 static bool
 _check_headers(PyObject *headers)
 {
-    if (headers == NULL) {
-        Py_FatalError("_check_headers(): headers == NULL");
-    }
     if (!PyDict_CheckExact(headers)) {
         PyErr_Format(PyExc_TypeError,
             "headers: need a <class 'dict'>; got a %R: %R",
@@ -233,7 +230,7 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
  *     _isempty()
  *     _slice()
  *     _equal()
- *     _find()
+ *     _search()
  *     _tostr()
  *     _tobytes()
  *     _value_error()
@@ -299,12 +296,28 @@ _equal(_Src a, _Src b) {
     return false;
 }
 
-static size_t
+
+static ssize_t
 _find(_Src haystack, _Src needle)
 {
     const uint8_t *ptr;
     if (_isempty(haystack) || _isempty(needle)) {
         Py_FatalError("_find(): empty *haystack* or empty *needle*");
+    }
+    ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return -1;
+    }
+    return ptr - haystack.buf;
+}
+
+
+static size_t
+_search(_Src haystack, _Src needle)
+{
+    const uint8_t *ptr;
+    if (_isempty(haystack) || _isempty(needle)) {
+        Py_FatalError("_search(): empty *haystack* or empty *needle*");
     }
     ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
     if (ptr == NULL) {
@@ -423,6 +436,15 @@ _dst_slice(_Dst dst, const size_t start, const size_t stop)
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (_Dst){dst.buf + start, stop - start};
+}
+
+static void
+_move(_Dst dst, _Src src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_move(): bad internal call");
+    }
+    memmove(dst.buf, src.buf, src.len);
 }
 
 static void
@@ -598,7 +620,7 @@ _parse_header_line(_Src src, uint8_t *scratch, DeguHeaders *dh)
         _value_error("header line too short: %R", src);
         goto error;
     }
-    keystop = _find(src, SEP);
+    keystop = _search(src, SEP);
     if (keystop == src.len) {
         _value_error("bad header line: %R", src);
         goto error;
@@ -658,7 +680,7 @@ _parse_headers(_Src src, uint8_t *scratch, DeguHeaders *dh)
     _SET(dh->headers, PyDict_New())
     start = 0;
     while (start < src.len) {
-        stop = start + _find(_slice(src, start, src.len), CRLF);
+        stop = start + _search(_slice(src, start, src.len), CRLF);
         if (!_parse_header_line(_slice(src, start, stop), scratch, dh)) {
             goto error;
         }
@@ -746,7 +768,7 @@ _parse_path(_Src src)
     }
     start = 1;
     while (start < src.len) {
-        stop = start + _find(_slice(src, start, src.len), SLASH);
+        stop = start + _search(_slice(src, start, src.len), SLASH);
         if (start >= stop) {
             _value_error("b'//' in path: %R", src);
             goto error;
@@ -797,7 +819,7 @@ _parse_uri(_Src src, DeguRequest *dr)
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-    path_stop = _find(src, QMARK);
+    path_stop = _search(src, QMARK);
     _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
     _SET(dr->script, PyList_New(0))
     _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
@@ -848,7 +870,7 @@ _parse_request_line(_Src line, DeguRequest *dr)
      *     "GET /"
      *         ^^
      */
-    method_stop = _find(src, SPACE_SLASH);
+    method_stop = _search(src, SPACE_SLASH);
     if (method_stop >= src.len) {
         _value_error("bad request line: %R", line);
         goto error;
@@ -871,7 +893,7 @@ error:
 static bool
 _parse_request(_Src src, uint8_t *scratch, DeguRequest *dr)
 {
-    const size_t stop = _find(src, CRLF);
+    const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
     _Src line_src = _slice(src, 0, stop);
     _Src headers_src = _slice(src, start, src.len);
@@ -971,7 +993,7 @@ error:
 static bool
 _parse_response(_Src src, uint8_t *scratch, DeguResponse *dr)
 {
-    const size_t stop = _find(src, CRLF);
+    const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
     _Src line_src = _slice(src, 0, stop);
     _Src headers_src = _slice(src, start, src.len);
@@ -1017,7 +1039,7 @@ _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
     }
     return false;
 }
- 
+
 static bool
 _validate_key(PyObject *key)
 {
@@ -1908,103 +1930,90 @@ _Reader_drain(Reader *self, const size_t size)
 }
 
 static _Src
-_Reader_fill_until(Reader *self, const size_t size, _Src end, bool *found)
+_Reader_read_until(Reader *self, const size_t size, _Src end,
+                   const bool always_drain, const bool strip_end)
 {
-    uint8_t *ptr;
-    size_t offset;
+    ssize_t index = -1;
     ssize_t added;
 
-    if (end.buf == NULL) {
-        Py_FatalError("_Reader_fill_until: end.buf == NULL");
+    if (end.buf == NULL || (always_drain && strip_end)) {
+        Py_FatalError("_Reader_read_until(): bad internal call");
     }
     if (end.len == 0) {
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL_Src;
     }
-    if (size < end.len || size > self->len) {
+    _Dst dst = {self->buf, self->len};
+    if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
-            "need %zd <= size <= %zd; got %zd", end.len, self->len, size
+            "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
         );
         return NULL_Src;
     }
 
-    /* First, search current buffer */
+    /* First, see if end is in the current buffer content */
     _Src cur = _Reader_peek(self, size);
     if (cur.len >= end.len) {
-        ptr = memmem(cur.buf, cur.len, end.buf, end.len);
-        if (ptr != NULL) {
-            *found = true;
-            offset = ptr - cur.buf;
-            return _Reader_peek(self, offset + end.len); 
+        index = _find(cur, end);
+        if (index >= 0) {
+            goto found;
         }
         if (cur.len >= size) {
             if (cur.len != size) {
-                Py_FatalError("_Reader_fill_until: cur.len >= size");
+                Py_FatalError("_Reader_read_until(): cur.len >= size");
             }
-            return cur;
+            goto not_found;
         }
     }
 
-    /* Shift buffer if needed */
+    /* If needed, shift current buffer content */
     if (self->start > 0) {
-        if (cur.len < 1) {
-            Py_FatalError("_Reader_fill_until: cur.len < 1");
-        }
-        memmove(self->buf, cur.buf, cur.len);
+        _move(dst, cur);
         self->start = 0;
         self->stop = cur.len;
     }
 
     /* Now read till found */
-    _Dst dst = {self->buf, self->len};
     while (self->stop < size) {
-        added = _Reader_recv_into(self,
-            _dst_slice(dst, self->stop, dst.len)
-        );
+        added = _Reader_recv_into(self, _dst_slice(dst, self->stop, dst.len));
         if (added < 0) {
             return NULL_Src;
         }
         if (added == 0) {
-            return _Reader_peek(self, self->stop);
+            break;
         }
         self->stop += added;
-        ptr = memmem(self->buf, _min(self->stop, size), end.buf, end.len);
-        if (ptr != NULL) {
-            *found = true;
-            offset = ptr - self->buf;
-            return _Reader_peek(self, offset + end.len); 
+        index = _find(_Reader_peek(self, size), end);
+        if (index >= 0) {
+            goto found;
         }
     }
-    return _Reader_peek(self, size); 
-}
 
-static _Src
-_Reader_search(Reader *self, const size_t size, _Src end,
-               const int include_end, const int always_return)
-{
-    bool found = false;
+not_found:
+    if (index >= 0) {
+        Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
+    }
+    if (always_drain) {
+        return _Reader_drain(self, size);
+    }
+    _Src tmp = _Reader_peek(self, size);
+    if (tmp.len == 0) {
+        return tmp;
+    }
+    _value_error2(
+        "%R not found in %R...", end, _slice(tmp, 0, _min(tmp.len, 32))
+    );
+    return NULL_Src;
 
-    _Src src = _Reader_fill_until(self, size, end, &found);
-    if (src.buf == NULL) {
-        return NULL_Src;
+found:
+    if (index < 0) {
+        Py_FatalError("_Reader_read_until(): found, but index < 0");
     }
-    if (src.len == 0) {
-        return src;
+    _Src src = _Reader_drain(self, index + end.len);
+    if (strip_end) {
+        return _slice(src, 0, src.len - end.len);
     }
-    if (! found) {
-        if (always_return) {
-            return _Reader_drain(self, src.len);
-        }
-        _value_error2(
-            "%R not found in %R...", end, _slice(src, 0, _min(src.len, 32))
-        );
-        return NULL_Src;
-    }
-    _Src ret = _Reader_drain(self, src.len);
-    if (include_end) {
-        return ret;
-    }
-    return _slice(ret, 0, ret.len - end.len);
+    return src;
 }
 
 static ssize_t
@@ -2048,12 +2057,12 @@ _Reader_readinto(Reader *self, _Dst dst)
  *     Reader.expose()
  *     Reader.peek()
  *     Reader.drain()
- *     Reader.fill_until()
- *     Reader.search()
+ *     Reader.read_until()
  *     Reader.readline()
  *     Reader.read_request()
  *     Reader.read_response()
  *     Reader.read()
+ *     Reader.readinto()
  */
 static PyObject *
 Reader_close(Reader *self)
@@ -2118,54 +2127,28 @@ Reader_drain(Reader *self, PyObject *args) {
 }
 
 static PyObject *
-Reader_fill_until(Reader *self, PyObject *args)
+Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 {
+    static char *keys[] = {"size", "end", "always_drain", "strip_end", NULL};
     ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    bool found = false;
-    PyObject *pyfound = NULL;
-    PyObject *pydata = NULL;
-    PyObject *ret = NULL;
-    if (!PyArg_ParseTuple(args, "ny#", &size, &end_buf, &end_len)) {
-        return NULL;
-    }
-    _Src end = {end_buf, end_len};
-    _Src src = _Reader_fill_until(self, size, end, &found);
-    if (found) {
-        pyfound = Py_True;
-    }
-    else {
-        pyfound = Py_False;
-    }
-    Py_INCREF(pyfound);
-    _SET(pydata, _tobytes(src))
-    _SET(ret, PyTuple_Pack(2, pyfound, pydata))
-    goto cleanup;
-error:
-    Py_CLEAR(ret);
-cleanup:
-    Py_CLEAR(pyfound);
-    Py_CLEAR(pydata);
-    return ret;
-}
+    uint8_t *buf = NULL;
+    size_t len = 0;
+    int always_drain = false;
+    int strip_end = false;
 
-static PyObject *
-Reader_search(Reader *self, PyObject *args, PyObject *kw)
-{
-    static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
-    ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    int include_end = false;
-    int always_return = false;
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:search", keys,
-            &size, &end_buf, &end_len, &include_end, &always_return)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:read_until", keys,
+            &size, &buf, &len, &always_drain, &strip_end)) {
         return NULL;
     }
-    _Src end = {end_buf, end_len};
+    if (always_drain && strip_end) {
+        PyErr_SetString(PyExc_ValueError,
+            "`always_drain` and `strip_end` cannot both be True"
+        );
+        return NULL;
+    }
+    _Src end = {buf, len};
     return _tobytes(
-        _Reader_search(self, size, end, include_end, always_return)
+        _Reader_read_until(self, size, end, always_drain, strip_end)
     );
 }
 
@@ -2176,7 +2159,7 @@ Reader_readline(Reader *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    return _tobytes(_Reader_search(self, size, LF, true, true));
+    return _tobytes(_Reader_read_until(self, size, LF, true, false));
 }
 
 static PyObject *
@@ -2184,7 +2167,7 @@ Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    _Src src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    _Src src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2234,7 +2217,7 @@ Reader_read_response(Reader *self, PyObject *args)
     _SET(method, _parse_method((_Src){method_buf, method_len}))
 
     /* Reader.search() will drain up to the end of the preamble */
-    _Src src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    _Src src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2367,14 +2350,11 @@ static PyMethodDef Reader_methods[] = {
         "read_response(method)"
     },
 
-    {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,
-        "fill_until(size, end)"
-    },
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
     {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},
-    {"search", (PyCFunction)Reader_search, METH_VARARGS | METH_KEYWORDS,
-        "search(size, end, include_end=False, always_return=False)"
+    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS | METH_KEYWORDS,
+        "read_until(size, end, always_drain=False, stip_end=False)"
     },
     {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
     {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
