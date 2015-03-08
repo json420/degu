@@ -31,6 +31,7 @@ if sys.version_info < (3, 4):
 
 import os
 from os import path
+import platform
 import subprocess
 from distutils.core import setup, Extension
 from distutils.cmd import Command
@@ -119,11 +120,21 @@ ext_kw = {
         '-Wsign-conversion',
     ],
 }
-if os.environ.get('DEGU_INSTRUMENTATED_BUILD') == 'true':
-    ext_kw['extra_compile_args'].extend([
-        '-fsanitize=address',
-    ])
+if os.environ.get('DEGU_INSTRUMENT_BUILD') == 'true':
+    ext_kw['extra_compile_args'].append('-fsanitize=address')
     ext_kw['libraries'] = ['asan']
+    if platform.dist() == ('Ubuntu', '15.04', 'vivid'):
+        ext_kw['extra_compile_args'].extend([
+            '-fsanitize=undefined',
+            '-fsanitize=shift',
+            '-fsanitize=integer-divide-by-zero',
+            '-fsanitize=unreachable',
+            '-fsanitize=vla-bound',
+            '-fsanitize=null',
+            '-fsanitize=return',
+            '-fsanitize=signed-integer-overflow',
+        ])
+        ext_kw['libraries'].append('ubsan')
 
 
 setup(
