@@ -126,10 +126,11 @@ setup(
         Extension('degu._base',
             sources=['degu/_base.c'],
             extra_compile_args=[
+                '-std=gnu11',  # Default in gcc 5.0
                 '-Werror',  # Make all warnings into errors
                 '-pedantic-errors',
-                '-std=gnu11',  # Soon to be gcc default
                 '-Wsign-compare',
+                '-Wsign-conversion',
             ],
         ),
     ],

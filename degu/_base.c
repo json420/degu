@@ -340,7 +340,7 @@ _search(_Src haystack, _Src needle)
     if (ptr == NULL) {
         return haystack.len;
     }
-    return ptr - haystack.buf;
+    return (size_t)(ptr - haystack.buf);
 }
 
 static PyObject *
@@ -349,7 +349,9 @@ _tostr(_Src src)
     if (src.buf == NULL) {
         return NULL;
     }
-    return PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, src.buf, src.len);
+    return PyUnicode_FromKindAndData(
+        PyUnicode_1BYTE_KIND, src.buf, (ssize_t)src.len
+    );
 }
 
 static PyObject *
@@ -358,7 +360,7 @@ _tobytes(_Src src)
     if (src.buf == NULL) {
         return NULL;
     }
-    return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
+    return PyBytes_FromStringAndSize((const char *)src.buf, (ssize_t)src.len);
 }
 
 static _Src
@@ -367,9 +369,10 @@ _frombytes(PyObject *bytes)
     if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
         Py_FatalError("_frombytes(): bad internal call");
     }
-    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
-    const size_t len = PyBytes_GET_SIZE(bytes);
-    return (_Src){buf, len};
+    return (_Src){
+        (uint8_t *)PyBytes_AS_STRING(bytes),
+        (size_t)PyBytes_GET_SIZE(bytes)
+    };
 }
 
 static void
@@ -409,7 +412,7 @@ _decode(_Src src, const uint8_t mask, const char *format)
         _SET_AND_INC(dst, str_empty);
         goto done;
     }
-    _SET(dst, PyUnicode_New(src.len, 127))
+    _SET(dst, PyUnicode_New((ssize_t)src.len, 127))
     dst_buf = PyUnicode_1BYTE_DATA(dst);
     for (bits = i = 0; i < src.len; i++) {
         c = dst_buf[i] = src.buf[i];
@@ -613,12 +616,12 @@ _parse_content_length(_Src src)
 
     c = src.buf[0];
     flags = _FLAGS[c];
-    accum = (c - 48);
+    accum = (uint8_t)(c - 48);
     for (i = 1; i < src.len; i++) {
         accum *= 10;
         c = src.buf[i];
         flags |= _FLAGS[c];
-        accum += (c - 48);
+        accum += (uint8_t)(c - 48);
     }
     if (flags == 0) {
         Py_FatalError("_parse_content_length(): flags == 0");
@@ -949,6 +952,13 @@ error:
  *     _parse_response_line()
  *     _parse_response()
  */
+
+static inline uint8_t
+_sub48(const uint8_t d)
+{
+    return (uint8_t)(d - 48);
+}
+
 static inline PyObject *
 _parse_status(_Src src)
 {
@@ -959,9 +969,9 @@ _parse_status(_Src src)
         _value_error("bad status length: %R", src);
         return NULL;
     }
-    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  (d - 48) * 100;
-    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
-    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
+    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  _sub48(d) * 100u;
+    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += _sub48(d) *  10u;
+    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += _sub48(d);
     if (err || accum < 100 || accum > 599) {
         _value_error("bad status: %R", src);
         return NULL;
@@ -1095,7 +1105,7 @@ _validate_key(PyObject *key)
         goto bad_key;
     }
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
-    const size_t key_len = PyUnicode_GET_LENGTH(key);
+    const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
     for (i = 0; i < key_len; i++) {
         c = key_buf[i];
         if (! (islower(c) || isdigit(c) || c == '-')) {
@@ -1386,7 +1396,7 @@ parse_header_name(PyObject *self, PyObject *args)
         _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
         return NULL;
     }
-    _SET(ret, PyUnicode_New(src.len, 127))
+    _SET(ret, PyUnicode_New((ssize_t)src.len, 127))
     _Dst dst = {PyUnicode_1BYTE_DATA(ret), src.len};
     if (!_parse_key(src, dst)) {
         goto error;
@@ -1825,6 +1835,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     PyObject *bodies = NULL;
     ssize_t len = DEFAULT_PREAMBLE;
     static char *keys[] = {"sock", "bodies", "size", NULL};
+
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader",
             keys, &sock, &bodies, &len)) {
         return -1;
@@ -1843,13 +1854,14 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         _getcallable("bodies", bodies, str_ChunkedBody)
     )
     _SET(self->scratch, _calloc_buf(MAX_KEY))
-    self->len = len;
+    self->len = (size_t)len;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
     self->closed = false;
     return 0;
+
 error:
     Reader_dealloc(self);
     return -1;
@@ -1880,8 +1892,8 @@ _Reader_recv_into(Reader *self, _Dst dst)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
+    size_t size;
     ssize_t ret = -1;
-    ssize_t size;
 
     if (_dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
         Py_FatalError("_Reader_recv_into(): bad internal call");
@@ -1902,23 +1914,23 @@ _Reader_recv_into(Reader *self, _Dst dst)
         goto error;
     }
 
-    /* Convert to ssize_t, check for OverflowError */
-    size = PyLong_AsSsize_t(int_size);
+    /* Convert to size_t, check for OverflowError */
+    size = PyLong_AsSize_t(int_size);
     if (PyErr_Occurred()) {
         goto error;
     }
 
     /* sock.recv_into() must return (0 <= size <= dst.len) */
-    if (size < 0 || (size_t)size > dst.len) {
+    if (size > dst.len) {
         PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zd; recv_into() returned %zd", dst.len, size
+            "need 0 <= size <= %zu; recv_into() returned %zu", dst.len, size
         );
         goto error;
     }
 
     /* Add this number into our running raw read total */
     self->rawtell += size;
-    ret = size;
+    ret = (ssize_t)size;
     goto cleanup;
 
 error:
@@ -2016,7 +2028,7 @@ _Reader_read_until(Reader *self, const size_t size, _Src end,
         if (added == 0) {
             break;
         }
-        self->stop += added;
+        self->stop += (size_t)added;
         index = _find(_Reader_peek(self, size), end);
         if (index >= 0) {
             goto found;
@@ -2043,7 +2055,7 @@ found:
     if (index < 0) {
         Py_FatalError("_Reader_read_until(): found, but index < 0");
     }
-    _Src src = _Reader_drain(self, index + end.len);
+    _Src src = _Reader_drain(self, (size_t)index + end.len);
     if (strip_end) {
         return _slice(src, 0, src.len - end.len);
     }
@@ -2072,12 +2084,12 @@ _Reader_readinto(Reader *self, _Dst dst)
         if (added == 0) {
             break;
         }
-        start += added;
+        start += (size_t)added;
     }
     if (start > dst.len) {
         Py_FatalError("_Reader_readinto(): start > dst.len");
     }
-    return start;  
+    return (ssize_t)start;  
 }
 
 
@@ -2144,7 +2156,7 @@ Reader_expose(Reader *self) {
 
 static PyObject *
 Reader_peek(Reader *self, PyObject *args) {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
@@ -2153,7 +2165,7 @@ Reader_peek(Reader *self, PyObject *args) {
 
 static PyObject *
 Reader_drain(Reader *self, PyObject *args) {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
@@ -2164,7 +2176,7 @@ static PyObject *
 Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"size", "end", "always_drain", "strip_end", NULL};
-    ssize_t size = -1;
+    size_t size = 0;
     uint8_t *buf = NULL;
     size_t len = 0;
     int always_drain = false;
@@ -2189,7 +2201,7 @@ Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 static PyObject *
 Reader_readline(Reader *self, PyObject *args)
 {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
@@ -2343,7 +2355,7 @@ Reader_readinto(Reader *self, PyObject *args)
         );
         goto error;
     }
-    _Dst dst = {pybuf.buf, pybuf.len};
+    _Dst dst = {pybuf.buf, (size_t)pybuf.len};
     const ssize_t total = _Reader_readinto(self, dst);
     if (total < 0) {
         goto error;
@@ -2512,9 +2524,15 @@ _Writer_write1(Writer *self, _Src src)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    ssize_t size = -2;
+    size_t size;
+    ssize_t ret = -2;
 
-    _SET(view, PyMemoryView_FromMemory((char *)src.buf, src.len, PyBUF_READ))
+    if (src.buf == NULL || src.len == 0 || src.len > MAX_IO_SIZE) {
+        Py_FatalError("_Writer_write1(): bad internal call");
+    }
+    _SET(view,
+        PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
+    )
     _SET(int_size, PyObject_CallFunctionObjArgs(self->send, view, NULL))
     if (!PyLong_CheckExact(int_size)) {
         PyErr_Format(PyExc_TypeError,
@@ -2523,25 +2541,29 @@ _Writer_write1(Writer *self, _Src src)
         );
         goto error;
     }
-    size = PyLong_AsSsize_t(int_size);
+    size = PyLong_AsSize_t(int_size);
     if (PyErr_Occurred()) {
         goto error;
     }
-    if (size < 0 || (size_t)size > src.len) {
+    if (size > src.len) {
         PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zd; send() returned %zd", src.len, size
+            "need 0 <= size <= %zu; send() returned %zu", src.len, size
         );
         goto error;
     }
+    ret = (ssize_t)size;
     goto cleanup;
 
 error:
-    size = -1;
+    ret = -1;
 
 cleanup:
     Py_CLEAR(view);
     Py_CLEAR(int_size);
-    return size;
+    if (ret < 0 && ret != -1) {
+        Py_FatalError("_Writer_write1(): ret < 0 && ret != -1");
+    }
+    return ret;
 }
 
 static ssize_t
@@ -2558,7 +2580,7 @@ _Writer_write(Writer *self, _Src src)
         if (wrote == 0) {
             break;
         }
-        total += wrote;
+        total += (size_t)wrote;
     }
     if (total != src.len) {
         PyErr_Format(PyExc_OSError,
@@ -2567,7 +2589,7 @@ _Writer_write(Writer *self, _Src src)
         return -1;
     }
     self->tell += total;
-    return total;
+    return (ssize_t)total;
 }
 
 static bool
@@ -2625,56 +2647,55 @@ _Writer_write_combined(Writer *self, _Src src1, _Src src2)
 
 
 static int64_t
-_Writer_write_output(Writer *self, _Src preamble_src, PyObject *body)
+_Writer_write_output(Writer *self, _Src preamble, PyObject *body)
 {
     if (body == Py_None) {
-        return _Writer_write(self, preamble_src);
+        return _Writer_write(self, preamble);
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble_src, _frombytes(body));
+        return _Writer_write_combined(self, preamble, _frombytes(body));
     }
 
-    if (_Writer_write(self, preamble_src) < 0) {
+    if (_Writer_write(self, preamble) < 0) {
         return -1;
     }
 
     const uint64_t orig_tell = self->tell;
-    int64_t total = -2;
-    PyObject *wrote = NULL;
+    PyObject *int_total = NULL;
+    uint64_t total;
+    int64_t ret = -2;
 
-    _SET(wrote, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
-    if (!PyLong_CheckExact(wrote)) {
+    _SET(int_total, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
+    if (!PyLong_CheckExact(int_total)) {
         PyErr_Format(PyExc_TypeError,
             "need a <class 'int'>; write_to() returned a %R: %R",
-            Py_TYPE(wrote), wrote
+            Py_TYPE(int_total), int_total
         );
         goto error;
     }
-    total = PyLong_AsLongLong(wrote);
+    total = PyLong_AsUnsignedLongLong(int_total);
     if (PyErr_Occurred()) {
         goto error;
     }
-    if (self->tell < orig_tell) {
-        Py_FatalError("_Writer_write_output(): self->tell < orig_tell");
-    }
     if (orig_tell + total != self->tell) {
         PyErr_Format(PyExc_ValueError,
-            "%llu bytes were written, but write_to() returned %lld",
+            "%llu bytes were written, but write_to() returned %llu",
             (self->tell - orig_tell), total
         );
         goto error;
     }
+    ret = (int64_t)(total + preamble.len);
     goto cleanup;
 
 error:
-    total = -1;
+    ret = -1;
 
 cleanup:
-    Py_CLEAR(wrote);
-    if (total >= 0) {
-        total += preamble_src.len;
+    Py_CLEAR(int_total);
+    if (ret < 0 && ret != -1) {
+        Py_FatalError("_Writer_write_output(): ret < 0 && ret != -1");
     }
-    return total;
+    return ret;
 }
 
 

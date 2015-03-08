@@ -415,10 +415,12 @@ class Reader:
                     int, type(added), added
                 )
             )
-        if added > sys.maxsize:
-            raise OverflowError('Python int too large to convert to C ssize_t')
+        if added < 0:
+            raise OverflowError("can't convert negative value to size_t")
+        if added > sys.maxsize * 2 + 1:
+            raise OverflowError('Python int too large to convert to C size_t')
         if not (0 <= added <= len(buf)):
-            raise IOError(
+            raise OSError(
                 'need 0 <= size <= {}; recv_into() returned {}'.format(
                     len(buf), added
                 )
@@ -694,9 +696,11 @@ class Writer:
                     int, type(size), size
                 )
             )
-        if not (-1 - sys.maxsize <= size <= sys.maxsize):
-            raise OverflowError('Python int too large to convert to C ssize_t')
-        if not (0 <= size <= len(buf)):
+        if size < 0:
+            raise OverflowError("can't convert negative value to size_t")
+        if size > sys.maxsize * 2 + 1:
+            raise OverflowError('Python int too large to convert to C size_t')
+        if size > len(buf):
             raise OSError(
                 'need 0 <= size <= {!r}; send() returned {!r}'.format(len(buf), size)
             )
@@ -742,6 +746,10 @@ class Writer:
                     int, type(total), total
                 )
             )
+        if total < 0:
+            raise OverflowError("can't convert negative int to unsigned")
+        if total >= 2**64:
+            raise OverflowError('int too big to convert')
         delta = self.tell() - orig_tell
         if delta != total:
             raise ValueError(

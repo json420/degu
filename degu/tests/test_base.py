@@ -2945,25 +2945,26 @@ class TestReader_Py(BackendTestCase):
             "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
         )
 
-        badsocket = BadSocket(sys.maxsize + 1)
+        smax = sys.maxsize * 2 + 1
+        badsocket = BadSocket(smax + 1)
         reader = self.Reader(badsocket, base.bodies)
         with self.assertRaises(OverflowError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C ssize_t'
+            'Python int too large to convert to C size_t'
         )
 
         badsocket = BadSocket(-1)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OverflowError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned -1'
+            "can't convert negative value to size_t"
         )
 
         badsocket = BadSocket(12346)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OSError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
             'need 0 <= size <= 12345; recv_into() returned 12346'
@@ -3022,28 +3023,37 @@ class TestReader_Py(BackendTestCase):
             "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
         )
 
-        badsocket = BadSocket(sys.maxsize + 1)
+        smax = sys.maxsize * 2 + 1
+        badsocket = BadSocket(smax + 1)
         reader = self.Reader(badsocket, base.bodies)
         with self.assertRaises(OverflowError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C ssize_t'
+            'Python int too large to convert to C size_t'
         )
 
         badsocket = BadSocket(-1)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OverflowError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned -1'
+            "can't convert negative value to size_t"
         )
 
         badsocket = BadSocket(12346)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OSError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
             'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        badsocket = BadSocket(smax)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OSError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned {!r}'.format(smax)
         )
 
         marker = random_id()
@@ -3158,6 +3168,7 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(), data1)
         self.assertEqual(sock._calls, [('send', data1)])
 
+        # sock.send() doesn't return an int:
         for bad in (17.0, int_subclass(17)):
             self.assertEqual(bad, 17)
             sock = WSocket(send=bad)
@@ -3173,22 +3184,37 @@ class TestWriter_Py(BackendTestCase):
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        smax = sys.maxsize
-        smin = -smax - 1
-        for bad in (smin - 2, smin - 1, smax + 1, smax + 2): 
+        # sock.send() returns a negative int
+        smin = -sys.maxsize - 1
+        for bad in (smin - 1, smin, smin + 1, -2, -1):
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
             with self.assertRaises(OverflowError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'Python int too large to convert to C ssize_t'
+                "can't convert negative value to size_t"
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        for bad in (smin, smin + 1, -1, 18, smax - 1, smax):
-            self.assertNotEqual(bad, 17)
+        # sock.send() returns an int > sys.maxsize:
+        smax = sys.maxsize * 2 + 1
+        for bad in (smax + 1, smax + 2, smax + 3): 
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OverflowError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'Python int too large to convert to C size_t'
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        # soct.send() size > len(buf):
+        for bad in (18, 19, smax - 2, smax - 1, smax):
+            self.assertGreater(bad, 17)
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
             with self.assertRaises(OSError) as cm:
@@ -3361,6 +3387,43 @@ class TestWriter_Py(BackendTestCase):
             )
             self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
+        # body.write_to() returns total < 0:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for bad in (-2**64, -2**64 + 1, -2, -1):
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(OverflowError) as cm:
+                    writer.write_output(preamble, body)
+                self.assertEqual(str(cm.exception),
+                    "can't convert negative int to unsigned"
+                )
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+        # body.write_to() returns total >= 2**64:
+        tmax = 2**64 - 1
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for bad in (tmax + 1, tmax + 2, tmax + 3):
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(OverflowError) as cm:
+                    writer.write_output(preamble, body)
+                self.assertEqual(str(cm.exception),
+                    'int too big to convert'
+                )
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
         # body.write_to() doesn't return the amount written with writer.write():
         for chunks in chunks_permutations:
             total = sum(len(d) for d in chunks)
@@ -3369,13 +3432,20 @@ class TestWriter_Py(BackendTestCase):
                 sock = WSocket()
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
-                with self.assertRaises(ValueError) as cm:
-                    writer.write_output(preamble, body)
-                self.assertEqual(str(cm.exception),
-                    '{!r} bytes were written, but write_to() returned {!r}'.format(
-                        total, bad
+                if bad < 0:
+                    with self.assertRaises(OverflowError) as cm:
+                        writer.write_output(preamble, body)
+                    self.assertEqual(str(cm.exception),
+                        "can't convert negative int to unsigned"
                     )
-                )
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        writer.write_output(preamble, body)
+                    self.assertEqual(str(cm.exception),
+                        '{!r} bytes were written, but write_to() returned {!r}'.format(
+                            total, bad
+                        )
+                    )
                 self.assertEqual(writer.tell(), total + len(preamble))
                 self.assertEqual(sock._calls,
                     [('send', preamble)] + [('send', d) for d in chunks]
