@@ -109,6 +109,23 @@ class Test(Command):
             run_pyflakes3()
 
 
+ext_kw = {
+    'sources': ['degu/_base.c'],
+    'extra_compile_args': [
+        '-std=gnu11',  # Default in gcc 5.0
+        '-Werror',  # Make all warnings into errors
+        '-pedantic-errors',
+        '-Wsign-compare',
+        '-Wsign-conversion',
+    ],
+}
+if os.environ.get('DEGU_INSTRUMENTATED_BUILD') == 'true':
+    ext_kw['extra_compile_args'].extend([
+        '-fsanitize=address',
+    ])
+    ext_kw['libraries'] = ['asan']
+
+
 setup(
     name='degu',
     description='Embedded HTTP server and client library',
@@ -123,16 +140,7 @@ setup(
         'degu.tests',
     ],
     ext_modules=[
-        Extension('degu._base',
-            sources=['degu/_base.c'],
-            extra_compile_args=[
-                '-std=gnu11',  # Default in gcc 5.0
-                '-Werror',  # Make all warnings into errors
-                '-pedantic-errors',
-                '-Wsign-compare',
-                '-Wsign-conversion',
-            ],
-        ),
+        Extension('degu._base', **ext_kw),
     ],
     cmdclass={
         'test': Test,
