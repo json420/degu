@@ -31,6 +31,7 @@
 #define DEFAULT_PREAMBLE 32768
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
+#define MAX_IO_SIZE 16777216
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -44,9 +45,9 @@ static PyObject *str_BodyIter = NULL;         //  'BodyIter'
 static PyObject *str_ChunkedBody = NULL;      //  'ChunkedBody'
 static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 
-
 static PyObject *str_content_length = NULL;     //  'content_length'
 static PyObject *key_content_length = NULL;     //  'content-length'
+static PyObject *key_content_type   = NULL;     //  'content-type'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
@@ -199,9 +200,6 @@ _calloc_buf(const size_t len)
 static bool
 _check_headers(PyObject *headers)
 {
-    if (headers == NULL) {
-        Py_FatalError("_check_headers(): headers == NULL");
-    }
     if (!PyDict_CheckExact(headers)) {
         PyErr_Format(PyExc_TypeError,
             "headers: need a <class 'dict'>; got a %R: %R",
@@ -227,27 +225,56 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
 }
 
 
+
 /*******************************************************************************
- * Internal API: DeguBuf:
+ * Internal API: _Src:
  *     _isempty()
  *     _slice()
  *     _equal()
- *     _find()
+ *     _search()
  *     _tostr()
  *     _tobytes()
  *     _value_error()
  *     _value_error2()
  *     _decode()
  */
-typedef struct {
+
+/* _Src (source): a read-only buffer.
+ *
+ * None of these modifications should be possible:
+ *
+ *     src.buf++;         // Can't move the base pointer
+ *     src.len++;         // Can't change the length
+ *     src.buf[0] = 'D';  // Can't modify the buffer content
+ */
+typedef const struct {
     const uint8_t *buf;
     const size_t len;
-} DeguBuf;
+} _Src;
 
-static DeguBuf NULL_DeguBuf = {NULL, 0}; 
+/* _Dst (destination): a writable buffer.
+ *
+ * You can modify the buffer content:
+ *
+ *     dst.buf[0] = 'D';
+ *
+ * But you still can't modify the base pointer or length:
+ *
+ *     dst.buf++;         // Can't move the base pointer
+ *     dst.len++;         // Can't change the length
+
+ */
+typedef const struct {
+    uint8_t *buf;
+    const size_t len;
+} _Dst;
+
+
+static _Src NULL_Src = {NULL, 0}; 
+static _Dst NULL_Dst = {NULL, 0}; 
 
 #define _DEGU_BUF_CONSTANT(name, text) \
-    static DeguBuf name = {(uint8_t *)text, sizeof(text) - 1}; 
+    static _Src name = {(uint8_t *)text, sizeof(text) - 1}; 
 
 _DEGU_BUF_CONSTANT(LF, "\n")
 _DEGU_BUF_CONSTANT(CRLF, "\r\n")
@@ -268,9 +295,10 @@ _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
+_DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
 
 static inline bool
-_isempty(DeguBuf src)
+_isempty(_Src src)
 {
     if (src.buf == NULL || src.len == 0) {
         return true;
@@ -278,71 +306,77 @@ _isempty(DeguBuf src)
     return false;
 }
 
-static DeguBuf
-_slice(DeguBuf src, const size_t start, const size_t stop)
+static _Src
+_slice(_Src src, const size_t start, const size_t stop)
 {
     if (_isempty(src) || start > stop || stop > src.len) {
         Py_FatalError("_slice(): bad internal call");
     }
-    return (DeguBuf){src.buf + start, stop - start};
+    return (_Src){src.buf + start, stop - start};
 }
 
-static bool
-_equal(DeguBuf a, DeguBuf b) {
-    if (a.buf == NULL || _isempty(b)) {
-        Py_FatalError("_equal(): bad internal call");
-    }
+static inline bool
+_equal(_Src a, _Src b) {
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
         return true;
     }
     return false;
 }
 
-static size_t
-_find(DeguBuf haystack, DeguBuf needle)
+static inline ssize_t
+_find(_Src haystack, _Src needle)
 {
-    const uint8_t *ptr;
-    if (_isempty(haystack) || _isempty(needle)) {
-        Py_FatalError("_find(): empty *haystack* or empty *needle*");
-    }
-    ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
     if (ptr == NULL) {
-        return haystack.len;
+        return -1;
     }
     return ptr - haystack.buf;
 }
 
+static inline size_t
+_search(_Src haystack, _Src needle)
+{
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return haystack.len;
+    }
+    return (size_t)(ptr - haystack.buf);
+}
+
 static PyObject *
-_tostr(DeguBuf src)
+_tostr(_Src src)
 {
     if (src.buf == NULL) {
         return NULL;
     }
-    return PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, src.buf, src.len);
+    return PyUnicode_FromKindAndData(
+        PyUnicode_1BYTE_KIND, src.buf, (ssize_t)src.len
+    );
 }
 
 static PyObject *
-_tobytes(DeguBuf src)
+_tobytes(_Src src)
 {
     if (src.buf == NULL) {
         return NULL;
     }
-    return PyBytes_FromStringAndSize((const char *)src.buf, src.len);
+    return PyBytes_FromStringAndSize((const char *)src.buf, (ssize_t)src.len);
 }
 
-static DeguBuf
+static _Src
 _frombytes(PyObject *bytes)
 {
     if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
         Py_FatalError("_frombytes(): bad internal call");
     }
-    const uint8_t *buf = (uint8_t *)PyBytes_AS_STRING(bytes);
-    const size_t len = PyBytes_GET_SIZE(bytes);
-    return (DeguBuf){buf, len};
+    return (_Src){
+        (uint8_t *)PyBytes_AS_STRING(bytes),
+        (size_t)PyBytes_GET_SIZE(bytes)
+    };
 }
 
 static void
-_value_error(const char *format, DeguBuf src)
+_value_error(const char *format, _Src src)
 {
     PyObject *tmp = _tobytes(src);
     if (tmp != NULL) {
@@ -352,7 +386,7 @@ _value_error(const char *format, DeguBuf src)
 }
 
 static void
-_value_error2(const char *format, DeguBuf src1, DeguBuf src2)
+_value_error2(const char *format, _Src src1, _Src src2)
 {
     PyObject *tmp1 = _tobytes(src1);
     PyObject *tmp2 = _tobytes(src2);
@@ -364,7 +398,7 @@ _value_error2(const char *format, DeguBuf src1, DeguBuf src2)
 }
 
 static PyObject *
-_decode(DeguBuf src, const uint8_t mask, const char *format)
+_decode(_Src src, const uint8_t mask, const char *format)
 {
     PyObject *dst = NULL;
     uint8_t *dst_buf = NULL;
@@ -378,7 +412,7 @@ _decode(DeguBuf src, const uint8_t mask, const char *format)
         _SET_AND_INC(dst, str_empty);
         goto done;
     }
-    _SET(dst, PyUnicode_New(src.len, 127))
+    _SET(dst, PyUnicode_New((ssize_t)src.len, 127))
     dst_buf = PyUnicode_1BYTE_DATA(dst);
     for (bits = i = 0; i < src.len; i++) {
         c = dst_buf[i] = src.buf[i];
@@ -398,6 +432,53 @@ error:
 
 done:
     return dst;
+}
+
+static inline bool
+_dst_isempty(_Dst dst)
+{
+    if (dst.buf == NULL || dst.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static _Dst
+_dst_slice(_Dst dst, const size_t start, const size_t stop)
+{
+    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
+        Py_FatalError("_dst_slice(): bad internal call");
+    }
+    return (_Dst){dst.buf + start, stop - start};
+}
+
+static void
+_move(_Dst dst, _Src src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_move(): bad internal call");
+    }
+    memmove(dst.buf, src.buf, src.len);
+}
+
+static void
+_copy(_Dst dst, _Src src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_copy(): bad internal call");
+    }
+    memcpy(dst.buf, src.buf, src.len);
+}
+
+static _Dst
+_calloc_dst(const size_t len)
+{
+    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (buf == NULL) {
+        PyErr_NoMemory();
+        return NULL_Dst;
+    }
+    return (_Dst){buf, len};
 }
 
 
@@ -480,7 +561,7 @@ _clear_degu_response(DeguResponse *dr)
  *     _parse_headers()
  */
 static bool
-_parse_key(DeguBuf src, uint8_t *dst_buf)
+_parse_key(_Src src, _Dst dst)
 {
     uint8_t r;
     size_t i;
@@ -488,12 +569,12 @@ _parse_key(DeguBuf src, uint8_t *dst_buf)
         PyErr_SetString(PyExc_ValueError, "header name is empty");
         return false; 
     }
-    if (src.len > MAX_KEY) {
-        _value_error("header name too long: %R...", _slice(src, 0, MAX_KEY));
+    if (src.len > dst.len) {
+        _value_error("header name too long: %R...", _slice(src, 0, dst.len));
         return false;
     }
     for (r = i = 0; i < src.len; i++) {
-        r |= dst_buf[i] = _NAMES[src.buf[i]];
+        r |= dst.buf[i] = _NAMES[src.buf[i]];
     }
     if (r & 128) {
         if (r != 255) {
@@ -506,7 +587,7 @@ _parse_key(DeguBuf src, uint8_t *dst_buf)
 }
 
 static inline PyObject *
-_parse_val(DeguBuf src)
+_parse_val(_Src src)
 {
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "header value is empty");
@@ -516,11 +597,12 @@ _parse_val(DeguBuf src)
 }
 
 static PyObject *
-_parse_content_length(DeguBuf src)
+_parse_content_length(_Src src)
 {
     uint64_t accum;
     uint8_t flags, c;
     size_t i;
+
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "content-length is empty");
         return NULL; 
@@ -531,11 +613,15 @@ _parse_content_length(DeguBuf src)
         );
         return NULL; 
     }
-    for (accum = flags = i = 0; i < src.len; i++) {
+
+    c = src.buf[0];
+    flags = _FLAGS[c];
+    accum = (uint8_t)(c - 48);
+    for (i = 1; i < src.len; i++) {
         accum *= 10;
         c = src.buf[i];
         flags |= _FLAGS[c];
-        accum += (c - 48);
+        accum += (uint8_t)(c - 48);
     }
     if (flags == 0) {
         Py_FatalError("_parse_content_length(): flags == 0");
@@ -552,8 +638,9 @@ _parse_content_length(DeguBuf src)
 }
 
 static bool
-_parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
+_parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
 {
+    ssize_t index;
     size_t keystop, valstart;
     bool success = true;
     PyObject *key = NULL;
@@ -564,18 +651,19 @@ _parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
         _value_error("header line too short: %R", src);
         goto error;
     }
-    keystop = _find(src, SEP);
-    if (keystop == src.len) {
+    index = _find(src, SEP);
+    if (index < 0) {
         _value_error("bad header line: %R", src);
         goto error;
     }
+    keystop = (size_t)index;
     valstart = keystop + SEP.len;
-    DeguBuf rawkey = _slice(src, 0, keystop);
-    DeguBuf valsrc = _slice(src, valstart, src.len);
+    _Src rawkey = _slice(src, 0, keystop);
+    _Src valsrc = _slice(src, valstart, src.len);
     if (! _parse_key(rawkey, scratch)) {
         goto error;
     }
-    DeguBuf keysrc = {scratch, rawkey.len};
+    _Src keysrc = {scratch.buf, rawkey.len};
 
     /* Validate header value (with special handling and fast-paths) */
     if (_equal(keysrc, CONTENT_LENGTH)) {
@@ -594,6 +682,10 @@ _parse_header_line(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, str_chunked)
         dh->flags |= 2;
+    }
+    else if (_equal(keysrc, CONTENT_TYPE)) {
+        _SET_AND_INC(key, key_content_type)
+        _SET(val, _parse_val(valsrc))
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -617,14 +709,14 @@ cleanup:
 }
 
 static bool
-_parse_headers(DeguBuf src, uint8_t *scratch, DeguHeaders *dh)
+_parse_headers(_Src src, _Dst scratch, DeguHeaders *dh)
 {
     size_t start, stop;
 
     _SET(dh->headers, PyDict_New())
     start = 0;
     while (start < src.len) {
-        stop = start + _find(_slice(src, start, src.len), CRLF);
+        stop = start + _search(_slice(src, start, src.len), CRLF);
         if (!_parse_header_line(_slice(src, start, stop), scratch, dh)) {
             goto error;
         }
@@ -654,7 +746,7 @@ error:
  *     _parse_request()
  */
 static PyObject *
-_parse_method(DeguBuf src)
+_parse_method(_Src src)
 {
     PyObject *method = NULL;
     if (src.len == 3) {
@@ -686,13 +778,13 @@ _parse_method(DeguBuf src)
 }
 
 static inline PyObject *
-_parse_path_component(DeguBuf src)
+_parse_path_component(_Src src)
 {
     return _decode(src, PATH_MASK, "bad bytes in path component: %R");
 }
 
 static PyObject *
-_parse_path(DeguBuf src)
+_parse_path(_Src src)
 {
     PyObject *path = NULL;
     PyObject *component = NULL;
@@ -712,7 +804,7 @@ _parse_path(DeguBuf src)
     }
     start = 1;
     while (start < src.len) {
-        stop = start + _find(_slice(src, start, src.len), SLASH);
+        stop = start + _search(_slice(src, start, src.len), SLASH);
         if (start >= stop) {
             _value_error("b'//' in path: %R", src);
             goto error;
@@ -735,23 +827,20 @@ _parse_path(DeguBuf src)
 
 error:
     Py_CLEAR(path);
-    Py_CLEAR(component);
 
 cleanup:
-    if (component != NULL) {
-        Py_FatalError("_parse_path(): component != NULL");
-    }
+    Py_CLEAR(component);
     return path;
 }
 
 static inline PyObject *
-_parse_query(DeguBuf src)
+_parse_query(_Src src)
 {
     return _decode(src, QUERY_MASK, "bad bytes in query: %R");
 }
 
 static bool
-_parse_uri(DeguBuf src, DeguRequest *dr)
+_parse_uri(_Src src, DeguRequest *dr)
 {
     size_t path_stop, query_start;
 
@@ -763,7 +852,7 @@ _parse_uri(DeguBuf src, DeguRequest *dr)
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-    path_stop = _find(src, QMARK);
+    path_stop = _search(src, QMARK);
     _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
     _SET(dr->script, PyList_New(0))
     _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
@@ -781,8 +870,9 @@ error:
 }
 
 static bool
-_parse_request_line(DeguBuf line, DeguRequest *dr)
+_parse_request_line(_Src line, DeguRequest *dr)
 {
+    ssize_t index;
     size_t method_stop, uri_start;
 
     /* Reject any request line shorter than 14 bytes:
@@ -798,7 +888,7 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
      *     "GET / HTTP/1.1"[-9:]
      *           ^^^^^^^^^
      */
-    DeguBuf protocol = _slice(line, line.len - 9, line.len);
+    _Src protocol = _slice(line, line.len - 9, line.len);
     if (! _equal(protocol, REQUEST_PROTOCOL)) {
         _value_error("bad protocol in request line: %R", protocol);
         goto error;
@@ -808,20 +898,21 @@ _parse_request_line(DeguBuf line, DeguRequest *dr)
      *     "GET / HTTP/1.1"[0:-9]
      *      ^^^^^
      */
-    DeguBuf src = _slice(line, 0, line.len - protocol.len);
+    _Src src = _slice(line, 0, line.len - protocol.len);
 
     /* Search for method terminating space, plus start of uri:
      *     "GET /"
      *         ^^
      */
-    method_stop = _find(src, SPACE_SLASH);
-    if (method_stop >= src.len) {
+    index = _find(src, SPACE_SLASH);
+    if (index < 0) {
         _value_error("bad request line: %R", line);
         goto error;
     }
+    method_stop = (size_t)index;
     uri_start = method_stop + 1;
-    DeguBuf method_src = _slice(src, 0, method_stop);
-    DeguBuf uri_src = _slice(src, uri_start, src.len);
+    _Src method_src = _slice(src, 0, method_stop);
+    _Src uri_src = _slice(src, uri_start, src.len);
 
     /* _parse_method(), _parse_uri() handle the rest */
     _SET(dr->method, _parse_method(method_src))
@@ -835,12 +926,12 @@ error:
 }
 
 static bool
-_parse_request(DeguBuf src, uint8_t *scratch, DeguRequest *dr)
+_parse_request(_Src src, _Dst scratch, DeguRequest *dr)
 {
-    const size_t stop = _find(src, CRLF);
+    const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguBuf line_src = _slice(src, 0, stop);
-    DeguBuf headers_src = _slice(src, start, src.len);
+    _Src line_src = _slice(src, 0, stop);
+    _Src headers_src = _slice(src, start, src.len);
     if (!_parse_request_line(line_src, dr)) {
         goto error;
     }
@@ -861,8 +952,15 @@ error:
  *     _parse_response_line()
  *     _parse_response()
  */
+
+static inline uint8_t
+_sub48(const uint8_t d)
+{
+    return (uint8_t)(d - 48);
+}
+
 static inline PyObject *
-_parse_status(DeguBuf src)
+_parse_status(_Src src)
 {
     uint8_t d, err;
     unsigned long accum;
@@ -871,9 +969,9 @@ _parse_status(DeguBuf src)
         _value_error("bad status length: %R", src);
         return NULL;
     }
-    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  (d - 48) * 100;
-    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += (d - 48) *  10;
-    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += (d - 48);
+    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  _sub48(d) * 100u;
+    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += _sub48(d) *  10u;
+    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += _sub48(d);
     if (err || accum < 100 || accum > 599) {
         _value_error("bad status: %R", src);
         return NULL;
@@ -882,7 +980,7 @@ _parse_status(DeguBuf src)
 }
 
 static inline PyObject *
-_parse_reason(DeguBuf src)
+_parse_reason(_Src src)
 {
     if (_equal(src, OK)) {
         Py_XINCREF(str_OK);
@@ -892,7 +990,7 @@ _parse_reason(DeguBuf src)
 }
 
 static bool
-_parse_response_line(DeguBuf src, DeguResponse *dr)
+_parse_response_line(_Src src, DeguResponse *dr)
 {
     /* Reject any response line shorter than 15 bytes:
      *     "HTTP/1.1 200 OK"[0:15]
@@ -910,8 +1008,8 @@ _parse_response_line(DeguBuf src, DeguResponse *dr)
      *     "HTTP/1.1 200 OK"[12:13]
      *                  ^
      */
-    DeguBuf pcol = _slice(src, 0, 9);
-    DeguBuf sp = _slice(src, 12, 13);
+    _Src pcol = _slice(src, 0, 9);
+    _Src sp = _slice(src, 12, 13);
     if (! (_equal(pcol, RESPONSE_PROTOCOL) && _equal(sp, SPACE))) {
         _value_error("bad response line: %R", src);
         goto error;
@@ -935,12 +1033,12 @@ error:
 }
 
 static bool
-_parse_response(DeguBuf src, uint8_t *scratch, DeguResponse *dr)
+_parse_response(_Src src, _Dst scratch, DeguResponse *dr)
 {
-    const size_t stop = _find(src, CRLF);
+    const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguBuf line_src = _slice(src, 0, stop);
-    DeguBuf headers_src = _slice(src, start, src.len);
+    _Src line_src = _slice(src, 0, stop);
+    _Src headers_src = _slice(src, start, src.len);
     if (!_parse_response_line(line_src, dr)) {
         goto error;
     }
@@ -983,7 +1081,7 @@ _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
     }
     return false;
 }
- 
+
 static bool
 _validate_key(PyObject *key)
 {
@@ -996,18 +1094,18 @@ _validate_key(PyObject *key)
         );
         return false;
     }
+    if (PyUnicode_READY(key) != 0) {
+        return false;
+    }
+    if (PyUnicode_GET_LENGTH(key) < 1) {
+        PyErr_SetString(PyExc_ValueError, "key is empty");
+        return false;
+    }
     if (PyUnicode_MAX_CHAR_VALUE(key) != 127) {
         goto bad_key;
     }
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
-    const ssize_t key_len = PyUnicode_GET_LENGTH(key);
-    if (key_len < 1) {
-        if (key_len < 0) {
-            Py_FatalError("_validate_key(): key < 0");
-        }
-        PyErr_SetString(PyExc_ValueError, "key is empty");
-        return false;
-    }
+    const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
     for (i = 0; i < key_len; i++) {
         c = key_buf[i];
         if (! (islower(c) || isdigit(c) || c == '-')) {
@@ -1079,7 +1177,7 @@ cleanup:
 
 
 static PyObject *
-_format_request(DeguBuf method_src, PyObject *uri, PyObject *headers)
+_format_request(_Src method_src, PyObject *uri, PyObject *headers)
 {
     PyObject *method = NULL;
     PyObject *hstr = NULL;  /* str containing header lines */
@@ -1284,13 +1382,12 @@ parse_header_name(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    PyObject *dst = NULL;
-    uint8_t *dst_buf;
+    PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
+    _Src src = {buf, len};
     if (src.len < 1) {
         PyErr_SetString(PyExc_ValueError, "header name is empty");
         return NULL;
@@ -1299,19 +1396,18 @@ parse_header_name(PyObject *self, PyObject *args)
         _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
         return NULL;
     }
-
-    _SET(dst, PyUnicode_New(src.len, 127))
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    if (!_parse_key(src, dst_buf)) {
+    _SET(ret, PyUnicode_New((ssize_t)src.len, 127))
+    _Dst dst = {PyUnicode_1BYTE_DATA(ret), src.len};
+    if (!_parse_key(src, dst)) {
         goto error;
     }
     goto done;
 
 error:
-    Py_CLEAR(dst);
+    Py_CLEAR(ret);
 
 done:
-    return dst;
+    return ret;
 }
 
 static PyObject *
@@ -1323,7 +1419,7 @@ parse_content_length(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
         return NULL;
     }
-    return _parse_content_length((DeguBuf){buf, len});
+    return _parse_content_length((_Src){buf, len});
 }
 
 static PyObject *
@@ -1331,23 +1427,27 @@ parse_headers(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    uint8_t *scratch = NULL;
     DeguHeaders dh = NEW_DEGU_HEADERS;
+
     if (!PyArg_ParseTuple(args, "y#:parse_headers", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
-    _SET(scratch, _calloc_buf(MAX_KEY))
-    if (!_parse_headers(src, scratch, &dh)) {
+    _Src src = {buf, len};
+    _Dst dst = _calloc_dst(MAX_KEY);
+    if (dst.buf == NULL) {
+        return NULL;
+    }
+    if (!_parse_headers(src, dst, &dh)) {
         goto error;
     }
     goto cleanup;
+
 error:
     Py_CLEAR(dh.headers);
+
 cleanup:
-    if (scratch != NULL) {
-        free(scratch);
-        scratch = NULL;
+    if (dst.buf != NULL) {
+        free(dst.buf);
     }
     Py_CLEAR(dh.content_length);
     return dh.headers;
@@ -1369,7 +1469,7 @@ parse_method(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         return NULL;
     }
-    return _parse_method((DeguBuf){buf, len});
+    return _parse_method((_Src){buf, len});
 }
 
 static PyObject *
@@ -1382,7 +1482,7 @@ parse_uri(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
+    _Src src = {buf, len};
     if (!_parse_uri(src, &dr)) {
         goto error;
     }
@@ -1407,7 +1507,7 @@ parse_request_line(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_request_line", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
+    _Src src = {buf, len};
     if (!_parse_request_line(src, &dr)) {
         goto error;
     }
@@ -1427,14 +1527,17 @@ parse_request(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    uint8_t *scratch = NULL;
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
+
     if (!PyArg_ParseTuple(args, "y#:parse_request", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
-    _SET(scratch, _calloc_buf(MAX_KEY))
+    _Src src = {buf, len};
+    _Dst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
+        return NULL;
+    }
     if (!_parse_request(src, scratch, &dr)) {
         goto error;
     }
@@ -1442,14 +1545,12 @@ parse_request(PyObject *self, PyObject *args)
         PyTuple_Pack(6, dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers)
     )
     goto cleanup;
+
 error:
     Py_CLEAR(ret);
+
 cleanup:
-    if (scratch != NULL) {
-        free(scratch);
-        scratch = NULL;
-    }
-    _clear_degu_request(&dr);
+    free(scratch.buf);
     return ret;
 }
 
@@ -1470,7 +1571,7 @@ parse_response_line(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_response_line", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
+    _Src src = {buf, len};
     if (!_parse_response_line(src, &dr)) {
         goto error;
     }
@@ -1493,29 +1594,28 @@ parse_response(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    uint8_t *scratch = NULL;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
+
     if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
-    _SET(scratch, _calloc_buf(MAX_KEY))
+    _Src src = {buf, len};
+    _Dst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
+        return NULL;
+    }
     if (!_parse_response(src, scratch, &dr)) {
         goto error;
     }
-    _SET(ret, PyTuple_New(3))
-    PyTuple_SET_ITEM(ret, 0, dr.status);
-    PyTuple_SET_ITEM(ret, 1, dr.reason);
-    PyTuple_SET_ITEM(ret, 2, dr.headers);
+    _SET(ret, PyTuple_Pack(3, dr.status, dr.reason, dr.headers))
     goto cleanup;
+
 error:
-    _clear_degu_response (&dr);
+    _clear_degu_response(&dr);
+
 cleanup:
-    if (scratch != NULL) {
-        free(scratch);
-        scratch = NULL;
-    }
+    free(scratch.buf);
     return ret;
 }
 
@@ -1563,7 +1663,7 @@ format_request(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#UO:format_request", &buf, &len, &uri, &headers)) {
         return NULL;
     }
-    DeguBuf method_src = {buf, len};
+    _Src method_src = {buf, len};
     return _format_request(method_src, uri, headers);
 }
 
@@ -1735,6 +1835,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     PyObject *bodies = NULL;
     ssize_t len = DEFAULT_PREAMBLE;
     static char *keys[] = {"sock", "bodies", "size", NULL};
+
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader",
             keys, &sock, &bodies, &len)) {
         return -1;
@@ -1753,13 +1854,14 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         _getcallable("bodies", bodies, str_ChunkedBody)
     )
     _SET(self->scratch, _calloc_buf(MAX_KEY))
-    self->len = len;
+    self->len = (size_t)len;
     _SET(self->buf, _calloc_buf(self->len))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
     self->closed = false;
     return 0;
+
 error:
     Reader_dealloc(self);
     return -1;
@@ -1784,25 +1886,20 @@ _Reader_ChunkedBody(Reader *self) {
     return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
 }
 
-/* _Reader_recv_into():
- *     -1  general error code for when _SET() goes to error
- *     -2  sock.recv_into() did not return an `int`
- *     -3  overflow when converting to size_t (`OverflowError` raised)
- *     -4  sock.recv_into() did not return 0 <= size <= len
- */
+
 static ssize_t
-_Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
+_Reader_recv_into(Reader *self, _Dst dst)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    ssize_t size;
+    size_t size;
     ssize_t ret = -1;
 
-    if (self == NULL || buf == NULL || len < 1) {
-        Py_FatalError("bad internal call to _Reader_recv_into()");
+    if (_dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
+        Py_FatalError("_Reader_recv_into(): bad internal call");
     }
     _SET(view,
-        PyMemoryView_FromMemory((char *)buf, len, PyBUF_WRITE)
+        PyMemoryView_FromMemory((char *)dst.buf, (ssize_t)dst.len, PyBUF_WRITE)
     )
     _SET(int_size,
         PyObject_CallFunctionObjArgs(self->recv_into, view, NULL)
@@ -1814,29 +1911,26 @@ _Reader_sock_recv_into(Reader *self, uint8_t *buf, const size_t len)
             "need a <class 'int'>; recv_into() returned a %R: %R",
             Py_TYPE(int_size), int_size
         );
-        ret = -2;
         goto error;
     }
 
-    /* Convert to ssize_t, check for OverflowError */
-    size = PyLong_AsSsize_t(int_size);
+    /* Convert to size_t, check for OverflowError */
+    size = PyLong_AsSize_t(int_size);
     if (PyErr_Occurred()) {
-        ret = -3;
         goto error;
     }
 
-    /* sock.recv_into() must return (0 <= size <= len) */
-    if (size < 0 || size > len) {
+    /* sock.recv_into() must return (0 <= size <= dst.len) */
+    if (size > dst.len) {
         PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zd; recv_into() returned %zd", len, size
+            "need 0 <= size <= %zu; recv_into() returned %zu", dst.len, size
         );
-        ret = - 4;
         goto error;
     }
 
     /* Add this number into our running raw read total */
     self->rawtell += size;
-    ret = size;
+    ret = (ssize_t)size;
     goto cleanup;
 
 error:
@@ -1852,7 +1946,7 @@ cleanup:
     return ret;
 }
 
-static DeguBuf
+static _Src
 _Reader_peek(Reader *self, const size_t size)
 {
     if (self->buf == NULL) {
@@ -1866,121 +1960,136 @@ _Reader_peek(Reader *self, const size_t size)
     }
     const uint8_t *cur_buf = self->buf + self->start;
     const size_t cur_len = self->stop - self->start;
-    return (DeguBuf){cur_buf, _min(size, cur_len)};
+    return (_Src){cur_buf, _min(size, cur_len)};
 }
 
-static DeguBuf
+static _Src
 _Reader_drain(Reader *self, const size_t size)
 {
-    DeguBuf cur = _Reader_peek(self, size);
+    _Src cur = _Reader_peek(self, size);
     self->start += cur.len;
-    if (self->start >= self->stop) {
+    if (self->start == self->stop) {
         self->start = 0;
         self->stop = 0;
     }
     return  cur;
 }
 
-static DeguBuf
-_Reader_fill_until(Reader *self, const size_t size, DeguBuf end, bool *found)
+static _Src
+_Reader_read_until(Reader *self, const size_t size, _Src end,
+                   const bool always_drain, const bool strip_end)
 {
-    size_t avail;
-    uint8_t *ptr;
-    size_t offset;
+    ssize_t index = -1;
     ssize_t added;
 
-    if (end.buf == NULL) {
-        Py_FatalError("_Reader_fill_until: end.buf == NULL");
+    if (end.buf == NULL || (always_drain && strip_end)) {
+        Py_FatalError("_Reader_read_until(): bad internal call");
     }
     if (end.len == 0) {
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
-        return NULL_DeguBuf;
+        return NULL_Src;
     }
-    if (size < end.len || size > self->len) {
+    _Dst dst = {self->buf, self->len};
+    if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
-            "need %zd <= size <= %zd; got %zd", end.len, self->len, size
+            "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
         );
-        return NULL_DeguBuf;
+        return NULL_Src;
     }
 
-    /* First, search current buffer */
-    DeguBuf cur = _Reader_peek(self, size);
+    /* First, see if end is in the current buffer content */
+    _Src cur = _Reader_peek(self, size);
     if (cur.len >= end.len) {
-        ptr = memmem(cur.buf, cur.len, end.buf, end.len);
-        if (ptr != NULL) {
-            *found = true;
-            offset = ptr - cur.buf;
-            return _Reader_peek(self, offset + end.len); 
+        index = _find(cur, end);
+        if (index >= 0) {
+            goto found;
         }
         if (cur.len >= size) {
             if (cur.len != size) {
-                Py_FatalError("_Reader_fill_until: cur.len >= size");
+                Py_FatalError("_Reader_read_until(): cur.len >= size");
             }
-            return cur;
+            goto not_found;
         }
     }
 
-    /* Shift buffer if needed */
+    /* If needed, shift current buffer content */
     if (self->start > 0) {
-        if (cur.len < 1) {
-            Py_FatalError("_Reader_fill_until: cur.len < 1");
-        }
-        memmove(self->buf, cur.buf, cur.len);
+        _move(dst, cur);
         self->start = 0;
         self->stop = cur.len;
     }
 
     /* Now read till found */
     while (self->stop < size) {
-        if (self->stop > self->len) {
-            Py_FatalError("_Reader_fill_until: self->stop > self->len");
-        }
-        avail = self->len - self->stop;
-        added = _Reader_sock_recv_into(self, self->buf + self->stop, avail);
+        added = _Reader_recv_into(self, _dst_slice(dst, self->stop, dst.len));
         if (added < 0) {
-            return NULL_DeguBuf;
+            return NULL_Src;
         }
         if (added == 0) {
-            return _Reader_peek(self, self->stop);
+            break;
         }
-        self->stop += added;
-        ptr = memmem(self->buf, _min(self->stop, size), end.buf, end.len);
-        if (ptr != NULL) {
-            *found = true;
-            offset = ptr - self->buf;
-            return _Reader_peek(self, offset + end.len); 
+        self->stop += (size_t)added;
+        index = _find(_Reader_peek(self, size), end);
+        if (index >= 0) {
+            goto found;
         }
     }
-    return _Reader_peek(self, size); 
+
+not_found:
+    if (index >= 0) {
+        Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
+    }
+    if (always_drain) {
+        return _Reader_drain(self, size);
+    }
+    _Src tmp = _Reader_peek(self, size);
+    if (tmp.len == 0) {
+        return tmp;
+    }
+    _value_error2(
+        "%R not found in %R...", end, _slice(tmp, 0, _min(tmp.len, 32))
+    );
+    return NULL_Src;
+
+found:
+    if (index < 0) {
+        Py_FatalError("_Reader_read_until(): found, but index < 0");
+    }
+    _Src src = _Reader_drain(self, (size_t)index + end.len);
+    if (strip_end) {
+        return _slice(src, 0, src.len - end.len);
+    }
+    return src;
 }
 
-static DeguBuf
-_Reader_search(Reader *self, const size_t size, DeguBuf end,
-               const int include_end, const int always_return)
+static ssize_t
+_Reader_readinto(Reader *self, _Dst dst)
 {
-    bool found = false;
+    size_t start;
+    ssize_t added;
 
-    DeguBuf src = _Reader_fill_until(self, size, end, &found);
-    if (src.buf == NULL) {
-        return NULL_DeguBuf;
+    if (dst.buf == NULL || dst.len > MAX_IO_SIZE) {
+        Py_FatalError("_Reader_readinto(): bad internal call");
     }
-    if (src.len == 0) {
-        return src;
+    _Src src = _Reader_drain(self, dst.len);
+    if (src.len > 0) {
+        _copy(dst, src);
     }
-    if (! found) {
-        if (always_return) {
-            return _Reader_drain(self, src.len);
+    start = src.len;
+    while (start < dst.len) {
+        added = _Reader_recv_into(self, _dst_slice(dst, start, dst.len));
+        if (added < 0) {
+            return -1;
         }
-        _value_error2(
-            "%R not found in %R...", end, _slice(src, 0, _min(src.len, 32))
-        );
-        return NULL_DeguBuf;
+        if (added == 0) {
+            break;
+        }
+        start += (size_t)added;
     }
-    DeguBuf ret = _Reader_drain(self, src.len);
-    if (include_end) {
-        return ret;
+    if (start > dst.len) {
+        Py_FatalError("_Reader_readinto(): start > dst.len");
     }
-    return _slice(ret, 0, ret.len - end.len);
+    return (ssize_t)start;  
 }
 
 
@@ -1994,12 +2103,12 @@ _Reader_search(Reader *self, const size_t size, DeguBuf end,
  *     Reader.expose()
  *     Reader.peek()
  *     Reader.drain()
- *     Reader.fill_until()
- *     Reader.search()
+ *     Reader.read_until()
  *     Reader.readline()
  *     Reader.read_request()
  *     Reader.read_response()
  *     Reader.read()
+ *     Reader.readinto()
  */
 static PyObject *
 Reader_close(Reader *self)
@@ -2032,7 +2141,7 @@ Reader_rawtell(Reader *self) {
 
 static PyObject *
 Reader_tell(Reader *self) {
-    DeguBuf cur = _Reader_peek(self, self->len);
+    _Src cur = _Reader_peek(self, self->len);
     if (cur.len > self->rawtell) {
         Py_FatalError("Reader_tell(): cur.len > self->rawtell");
     }
@@ -2041,13 +2150,13 @@ Reader_tell(Reader *self) {
 
 static PyObject *
 Reader_expose(Reader *self) {
-    DeguBuf rawbuf = {self->buf, self->len};
+    _Src rawbuf = {self->buf, self->len};
     return _tobytes(rawbuf);
 }
 
 static PyObject *
 Reader_peek(Reader *self, PyObject *args) {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
@@ -2056,7 +2165,7 @@ Reader_peek(Reader *self, PyObject *args) {
 
 static PyObject *
 Reader_drain(Reader *self, PyObject *args) {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
@@ -2064,65 +2173,39 @@ Reader_drain(Reader *self, PyObject *args) {
 }
 
 static PyObject *
-Reader_fill_until(Reader *self, PyObject *args)
+Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 {
-    ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    bool found = false;
-    PyObject *pyfound = NULL;
-    PyObject *pydata = NULL;
-    PyObject *ret = NULL;
-    if (!PyArg_ParseTuple(args, "ny#", &size, &end_buf, &end_len)) {
-        return NULL;
-    }
-    DeguBuf end = {end_buf, end_len};
-    DeguBuf src = _Reader_fill_until(self, size, end, &found);
-    if (found) {
-        pyfound = Py_True;
-    }
-    else {
-        pyfound = Py_False;
-    }
-    Py_INCREF(pyfound);
-    _SET(pydata, _tobytes(src))
-    _SET(ret, PyTuple_Pack(2, pyfound, pydata))
-    goto cleanup;
-error:
-    Py_CLEAR(ret);
-cleanup:
-    Py_CLEAR(pyfound);
-    Py_CLEAR(pydata);
-    return ret;
-}
+    static char *keys[] = {"size", "end", "always_drain", "strip_end", NULL};
+    size_t size = 0;
+    uint8_t *buf = NULL;
+    size_t len = 0;
+    int always_drain = false;
+    int strip_end = false;
 
-static PyObject *
-Reader_search(Reader *self, PyObject *args, PyObject *kw)
-{
-    static char *keys[] = {"size", "end", "include_end", "always_return", NULL};
-    ssize_t size = -1;
-    uint8_t *end_buf = NULL;
-    size_t end_len = 0;
-    int include_end = false;
-    int always_return = false;
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:search", keys,
-            &size, &end_buf, &end_len, &include_end, &always_return)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:read_until", keys,
+            &size, &buf, &len, &always_drain, &strip_end)) {
         return NULL;
     }
-    DeguBuf end = {end_buf, end_len};
+    if (always_drain && strip_end) {
+        PyErr_SetString(PyExc_ValueError,
+            "`always_drain` and `strip_end` cannot both be True"
+        );
+        return NULL;
+    }
+    _Src end = {buf, len};
     return _tobytes(
-        _Reader_search(self, size, end, include_end, always_return)
+        _Reader_read_until(self, size, end, always_drain, strip_end)
     );
 }
 
 static PyObject *
 Reader_readline(Reader *self, PyObject *args)
 {
-    ssize_t size = -1;
+    size_t size = 0;
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    return _tobytes(_Reader_search(self, size, LF, true, true));
+    return _tobytes(_Reader_read_until(self, size, LF, true, false));
 }
 
 static PyObject *
@@ -2130,7 +2213,7 @@ Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    _Src src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2138,7 +2221,7 @@ Reader_read_request(Reader *self) {
         PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
         goto error;
     }
-    if (!_parse_request(src, self->scratch, &dr)) {
+    if (!_parse_request(src, (_Dst){self->scratch, MAX_KEY}, &dr)) {
         goto error;
     }
     const uint8_t bodyflags = (dr.flags & 3);
@@ -2177,10 +2260,10 @@ Reader_read_response(Reader *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#:read_response", &method_buf, &method_len)) {
         return NULL;
     }
-    _SET(method, _parse_method((DeguBuf){method_buf, method_len}))
+    _SET(method, _parse_method((_Src){method_buf, method_len}))
 
     /* Reader.search() will drain up to the end of the preamble */
-    DeguBuf src = _Reader_search(self, self->len, CRLFCRLF, false, false);
+    _Src src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2190,7 +2273,7 @@ Reader_read_response(Reader *self, PyObject *args)
     }
 
     /* Parse response line and header lines */
-    if (!_parse_response(src, self->scratch, &dr)) {
+    if (!_parse_response(src, (_Dst){self->scratch, MAX_KEY}, &dr)) {
         goto error;
     }
 
@@ -2222,52 +2305,29 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 Reader_read(Reader *self, PyObject *args)
 {
     ssize_t size = -1;
-    uint8_t *dst_buf;
-    size_t start;
-    ssize_t added;
     PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    if (size < 0) {
-        PyErr_Format(PyExc_ValueError, "need size >= 0; got %zd", size);
+    if (size < 0 || size > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, size
+        );
         return NULL;
     }
-    DeguBuf src = _Reader_drain(self, size);
-    if (src.len == size) {
-        _SET(ret, _tobytes(src))
-        goto cleanup;
-    }
-    if (src.len >= size) {
-        Py_FatalError("_Reader_read: src.len >= size");
-    }
-
     _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-    dst_buf = (uint8_t *)PyBytes_AS_STRING(ret);
-    memcpy(dst_buf, src.buf, src.len);
-
-    start = src.len;
-    while (start < size) {
-        added = _Reader_sock_recv_into(self, dst_buf + start, size - start);
-        if (added < 0) {
-            goto error;
-        }
-        if (added == 0) {
-            break;
-        }
-        start += added;
-        if (start > size) {
-            Py_FatalError("_Reader_read: start > size");
-        }
+    _Dst dst = {(uint8_t *)PyBytes_AS_STRING(ret), (size_t)size};
+    const ssize_t total = _Reader_readinto(self, dst);
+    if (total < 0) {
+        goto error;
     }
-    if (start < size) {
-        if (_PyBytes_Resize(&ret, start) != 0) {
+    if (total < size) {
+        if (_PyBytes_Resize(&ret, total) != 0) {
             goto error;
         }
     }
@@ -2280,53 +2340,34 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 Reader_readinto(Reader *self, PyObject *args)
 {
-    Py_buffer dst;
-    size_t start;
-    ssize_t added;
+    Py_buffer pybuf;
     PyObject *ret = NULL;
 
-    if (!PyArg_ParseTuple(args, "w*", &dst)) {
-        return NULL;
-    }
-    if (dst.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "dst cannot be empty");
+    if (!PyArg_ParseTuple(args, "w*", &pybuf)) {
         goto error;
     }
-    DeguBuf src = _Reader_drain(self, dst.len);
-    if (src.len > dst.len) {
-        Py_FatalError("_Reader_readinto(): src.len > dst.len");
-    }
-    if (src.len > 0) {
-        memcpy(dst.buf, src.buf, src.len);
-    }
-    start = src.len;
-    while (start < dst.len) {
-        added = _Reader_sock_recv_into(self,
-            (uint8_t *)dst.buf + start, dst.len - start
+    if (pybuf.len < 1 || pybuf.len > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need 1 <= len(buf) <= %zu; got %zd", MAX_IO_SIZE, pybuf.len
         );
-        if (added < 0) {
-            goto error;
-        }
-        if (added == 0) {
-            break;
-        }
-        start += added;
+        goto error;
     }
-    if (start > dst.len) {
-        Py_FatalError("_Reader_readinto(): start > dst.len");
+    _Dst dst = {pybuf.buf, (size_t)pybuf.len};
+    const ssize_t total = _Reader_readinto(self, dst);
+    if (total < 0) {
+        goto error;
     }
-    _SET(ret, PyLong_FromSize_t(start))
+    _SET(ret, PyLong_FromSsize_t(total))
     goto cleanup;
 
 error:
     Py_CLEAR(ret);
 
 cleanup:
-    PyBuffer_Release(&dst);
+    PyBuffer_Release(&pybuf);
     return ret;
 }
 
@@ -2355,14 +2396,11 @@ static PyMethodDef Reader_methods[] = {
         "read_response(method)"
     },
 
-    {"fill_until", (PyCFunction)Reader_fill_until, METH_VARARGS,
-        "fill_until(size, end)"
-    },
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
     {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},
-    {"search", (PyCFunction)Reader_search, METH_VARARGS | METH_KEYWORDS,
-        "search(size, end, include_end=False, always_return=False)"
+    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS | METH_KEYWORDS,
+        "read_until(size, end, always_drain=False, stip_end=False)"
     },
     {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
     {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
@@ -2482,47 +2520,58 @@ cleanup:
 
 
 static ssize_t
-_Writer_write1(Writer *self, DeguBuf src)
+_Writer_write1(Writer *self, _Src src)
 {
     PyObject *view = NULL;
-    PyObject *ret = NULL;
-    ssize_t size = -2;
+    PyObject *int_size = NULL;
+    size_t size;
+    ssize_t ret = -2;
 
-    _SET(view, PyMemoryView_FromMemory((char *)src.buf, src.len, PyBUF_READ))
-    _SET(ret, PyObject_CallFunctionObjArgs(self->send, view, NULL))
-    if (!PyLong_CheckExact(ret)) {
+    if (src.buf == NULL || src.len == 0 || src.len > MAX_IO_SIZE) {
+        Py_FatalError("_Writer_write1(): bad internal call");
+    }
+    _SET(view,
+        PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
+    )
+    _SET(int_size, PyObject_CallFunctionObjArgs(self->send, view, NULL))
+    if (!PyLong_CheckExact(int_size)) {
         PyErr_Format(PyExc_TypeError,
-            "need a <class 'int'>; send() returned a %R: %R", Py_TYPE(ret), ret
+            "need a <class 'int'>; send() returned a %R: %R",
+            Py_TYPE(int_size), int_size
         );
         goto error;
     }
-    size = PyLong_AsSsize_t(ret);
+    size = PyLong_AsSize_t(int_size);
     if (PyErr_Occurred()) {
         goto error;
     }
-    if (size < 0 || size > src.len) {
+    if (size > src.len) {
         PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zd; send() returned %zd", src.len, size
+            "need 0 <= size <= %zu; send() returned %zu", src.len, size
         );
         goto error;
     }
+    ret = (ssize_t)size;
     goto cleanup;
 
 error:
-    size = -1;
+    ret = -1;
 
 cleanup:
     Py_CLEAR(view);
-    Py_CLEAR(ret);
-    return size;
+    Py_CLEAR(int_size);
+    if (ret < 0 && ret != -1) {
+        Py_FatalError("_Writer_write1(): ret < 0 && ret != -1");
+    }
+    return ret;
 }
 
 static ssize_t
-_Writer_write(Writer *self, DeguBuf src)
+_Writer_write(Writer *self, _Src src)
 {
-    ssize_t total, wrote;
+    size_t total = 0;
+    ssize_t wrote;
 
-    total = 0;
     while (total < src.len) {
         wrote = _Writer_write1(self, _slice(src, total, src.len));
         if (wrote < 0) {
@@ -2531,16 +2580,16 @@ _Writer_write(Writer *self, DeguBuf src)
         if (wrote == 0) {
             break;
         }
-        total += wrote;
+        total += (size_t)wrote;
     }
     if (total != src.len) {
         PyErr_Format(PyExc_OSError,
-            "expected %zd; send() returned %zd", src.len, total
+            "expected %zu; send() returned %zu", src.len, total
         );
         return -1;
     }
     self->tell += total;
-    return total;
+    return (ssize_t)total;
 }
 
 static bool
@@ -2581,7 +2630,7 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
 
 
 static int64_t
-_Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
+_Writer_write_combined(Writer *self, _Src src1, _Src src2)
 {
     const size_t len = src1.len + src2.len;
     uint8_t *buf = _calloc_buf(len);
@@ -2590,7 +2639,7 @@ _Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
     }
     memcpy(buf, src1.buf, src1.len);
     memcpy(buf + src1.len, src2.buf, src2.len);
-    DeguBuf src = (DeguBuf){buf, len};
+    _Src src = (_Src){buf, len};
     int64_t total = _Writer_write(self, src);
     free(buf);
     return total;
@@ -2598,56 +2647,55 @@ _Writer_write_combined(Writer *self, DeguBuf src1, DeguBuf src2)
 
 
 static int64_t
-_Writer_write_output(Writer *self, DeguBuf preamble_src, PyObject *body)
+_Writer_write_output(Writer *self, _Src preamble, PyObject *body)
 {
     if (body == Py_None) {
-        return _Writer_write(self, preamble_src);
+        return _Writer_write(self, preamble);
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble_src, _frombytes(body));
+        return _Writer_write_combined(self, preamble, _frombytes(body));
     }
 
-    if (_Writer_write(self, preamble_src) < 0) {
+    if (_Writer_write(self, preamble) < 0) {
         return -1;
     }
 
     const uint64_t orig_tell = self->tell;
-    int64_t total = -2;
-    PyObject *wrote = NULL;
+    PyObject *int_total = NULL;
+    uint64_t total;
+    int64_t ret = -2;
 
-    _SET(wrote, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
-    if (!PyLong_CheckExact(wrote)) {
+    _SET(int_total, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
+    if (!PyLong_CheckExact(int_total)) {
         PyErr_Format(PyExc_TypeError,
             "need a <class 'int'>; write_to() returned a %R: %R",
-            Py_TYPE(wrote), wrote
+            Py_TYPE(int_total), int_total
         );
         goto error;
     }
-    total = PyLong_AsLongLong(wrote);
+    total = PyLong_AsUnsignedLongLong(int_total);
     if (PyErr_Occurred()) {
         goto error;
     }
-    if (self->tell < orig_tell) {
-        Py_FatalError("_Writer_write_output(): self->tell < orig_tell");
-    }
     if (orig_tell + total != self->tell) {
         PyErr_Format(PyExc_ValueError,
-            "%llu bytes were written, but write_to() returned %lld",
+            "%llu bytes were written, but write_to() returned %llu",
             (self->tell - orig_tell), total
         );
         goto error;
     }
+    ret = (int64_t)(total + preamble.len);
     goto cleanup;
 
 error:
-    total = -1;
+    ret = -1;
 
 cleanup:
-    Py_CLEAR(wrote);
-    if (total >= 0) {
-        total += preamble_src.len;
+    Py_CLEAR(int_total);
+    if (ret < 0 && ret != -1) {
+        Py_FatalError("_Writer_write_output(): ret < 0 && ret != -1");
     }
-    return total;
+    return ret;
 }
 
 
@@ -2683,7 +2731,7 @@ Writer_write(Writer *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:write", &buf, &len)) {
         return NULL;
     }
-    DeguBuf src = {buf, len};
+    _Src src = {buf, len};
     const ssize_t total = _Writer_write(self, src);
     if (total < 0) {
         return NULL;
@@ -2708,7 +2756,7 @@ Writer_write_output(Writer *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#O", &buf, &len, &body)) {
         return NULL;
     }
-    DeguBuf preamble_src = {buf, len};
+    _Src preamble_src = {buf, len};
     total = _Writer_write_output(self, preamble_src, body);
     if (total < 0) {
         return NULL;
@@ -2747,7 +2795,7 @@ Writer_write_request(Writer *self, PyObject *args)
     if (!_Writer_set_default_headers(self, headers, body)) {
         return NULL;
     }
-    DeguBuf method_src = {buf, len};
+    _Src method_src = {buf, len};
     _SET(preamble, _format_request(method_src, uri, headers))
     total = _Writer_write_output(self, _frombytes(preamble), body);
     goto cleanup;
@@ -2938,6 +2986,8 @@ PyInit__base(void)
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
+
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
 

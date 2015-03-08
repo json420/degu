@@ -25,11 +25,10 @@ Unit tests for the `degu.server` module`
 
 from unittest import TestCase
 import os
-import io
 import socket
 import ssl
 
-from .helpers import DummySocket, FuzzTestCase
+from .helpers import DummySocket
 from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -85,13 +84,6 @@ class TestUnconsumedResponseError(TestCase):
         self.assertEqual(str(exc),
             'previous response body not consumed: {!r}'.format(body)
         )
-
-
-class FuzzTestFunctions(FuzzTestCase):
-    def test__read_response(self):
-        self.skipTest('FIXME')
-        for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
-            self.fuzz(client._read_response, base.bodies, method)
 
 
 class TestFunctions(TestCase):
@@ -235,133 +227,6 @@ class TestFunctions(TestCase):
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
             self.assertIs(sslctx.check_hostname, True)
-
-    def test__validate_request(self):
-        # Pre-build all valid types of length-encoded bodies:
-        data = os.urandom(17)
-        length_bodies = (
-            data,
-            bytearray(data),
-            base.Body(io.BytesIO(data), 17),
-            base.BodyIter([data], 17),
-        )
-
-        # Pre-build all valid types of chunk-encoded bodies:
-        chunked_bodies = (
-            base.ChunkedBody(io.BytesIO()),
-            base.ChunkedBodyIter([])
-        )
-
-        # Non-casefolded header name:
-        headers = {'Content-Type': 'text/plain', 'X-Stuff': 'hello'}
-        with self.assertRaises(ValueError) as cm:
-            client._validate_request(base.bodies, 'GET', '/foo', headers, None)
-        self.assertEqual(str(cm.exception),
-            "non-casefolded header name: 'Content-Type'"
-        )
-
-        # Body is None but content-length header included:
-        headers = {'content-length': 17}
-        with self.assertRaises(ValueError) as cm:
-            client._validate_request(base.bodies, 'POST', '/foo', headers, None)
-        self.assertEqual(str(cm.exception),
-            "headers['content-length'] included when body is None"
-        )
-
-        # Body is None but transfer-encoding header included:
-        headers = {'transfer-encoding': 'chunked'}
-        with self.assertRaises(ValueError) as cm:
-            client._validate_request(base.bodies, 'POST', '/foo', headers, None)
-        self.assertEqual(str(cm.exception),
-            "headers['transfer-encoding'] included when body is None"
-        )
-
-        # Bad body type:
-        headers = {'content-type': 'text/plain'}
-        with self.assertRaises(TypeError) as cm:
-            client._validate_request(base.bodies, 'GET', '/foo', headers, 'hello')
-        self.assertEqual(str(cm.exception),
-            "bad request body type: <class 'str'>"
-        )
-
-        # 'transfer-encoding' header with a length-encoded body:
-        for body in length_bodies:
-            headers = {'transfer-encoding': 'chunked'}
-            with self.assertRaises(ValueError) as cm:
-                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
-            self.assertEqual(str(cm.exception),
-                "headers['transfer-encoding'] with length-encoded body"
-            )
-            self.assertEqual(headers,
-                {'content-length': 17, 'transfer-encoding': 'chunked'}
-            )
-
-        # headers['content-length'] != len(body):
-        for body in length_bodies:
-            headers = {'content-length': 16}
-            with self.assertRaises(ValueError) as cm:
-                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
-            self.assertEqual(str(cm.exception),
-                "headers['content-length'] != len(body): 16 != 17"
-            )
-            self.assertEqual(headers, {'content-length': 16})
-
-        # 'content-length' header with a chunk-encoded body:
-        for body in chunked_bodies:
-            headers = {'content-length': 5}
-            with self.assertRaises(ValueError) as cm:
-                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
-            self.assertEqual(str(cm.exception),
-                "headers['content-length'] with chunk-encoded body"
-            )
-            self.assertEqual(headers,
-                {'content-length': 5, 'transfer-encoding': 'chunked'}
-            )
-
-        # headers['transfer-encoding'] != 'chunked':
-        for body in chunked_bodies:
-            headers = {'transfer-encoding': 'clumped'}
-            with self.assertRaises(ValueError) as cm:
-                client._validate_request(base.bodies, 'POST', '/foo', headers, body)
-            self.assertEqual(str(cm.exception),
-                "headers['transfer-encoding'] is invalid: 'clumped'"
-            )
-            self.assertEqual(headers, {'transfer-encoding': 'clumped'})
-
-        # Cannot include body when method is GET, HEAD, or DELETE:
-        for body in (length_bodies + chunked_bodies):
-            for method in ('GET', 'HEAD', 'DELETE'):
-                with self.assertRaises(ValueError) as cm:
-                    client._validate_request(base.bodies, method, '/foo', {}, body)
-                self.assertEqual(str(cm.exception),
-                    'cannot include body in a {} request'.format(method)
-                )
-
-        # No in-place header modification should happen when body is None:
-        for method in ('GET', 'HEAD', 'DELETE', 'PUT', 'POST'):
-            headers = {}
-            self.assertIsNone(
-                client._validate_request(base.bodies, method, '/foo', headers, None)
-            )
-            self.assertEqual(headers, {})
-
-        # Test with all the length-encoded body types:
-        for method in ('PUT', 'POST'):
-            for body in length_bodies:
-                headers = {}
-                self.assertIsNone(
-                    client._validate_request(base.bodies, method, '/foo', headers, body)
-                )
-                self.assertEqual(headers, {'content-length': 17})
-
-        # Test with all the chunk-encoded body types:
-        for method in ('PUT', 'POST'):
-            for body in chunked_bodies:
-                headers = {}
-                self.assertIsNone(
-                    client._validate_request(base.bodies, method, '/foo', headers, body)
-                )
-                self.assertEqual(headers, {'transfer-encoding': 'chunked'})
 
 
 class TestConnection(TestCase):

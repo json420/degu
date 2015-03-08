@@ -139,56 +139,47 @@ def _validate_server_sslctx(sslctx):
 
 
 def _handle_requests(app, sock, max_requests, session, bodies):
-    (rfile, wfile) = _makefiles(sock, bodies)
+    (reader, writer) = _makefiles(sock, bodies)
     assert session['requests'] == 0
-    requests = 0
-    while _handle_one(app, rfile, wfile, session, bodies) is True:
-        requests += 1
-        session['requests'] = requests
-        if requests >= max_requests:
-            log.info("%r requests from %r, closing",
-                requests, session['client']
+    for count in range(1, max_requests + 1):
+        request = reader.read_request()
+        (status, reason, headers, body) = app(session, request, bodies)
+
+        # Make sure application fully consumed request body:
+        if request.body and not request.body.closed:
+            raise UnconsumedRequestError(request.body)
+
+        # Make sure HEAD requests are properly handled:
+        if request.method == 'HEAD':
+            if body is not None:
+                raise TypeError(
+                    'response body must be None when request method is HEAD'
+                )
+            if 'content-length' in headers:
+                if 'transfer-encoding' in headers:
+                    raise ValueError(
+                        'cannot have both content-length and transfer-encoding headers'
+                    )
+            elif headers.get('transfer-encoding') != 'chunked':
+                raise ValueError(
+                    'response to HEAD request must include content-length or transfer-encoding'
+                )
+
+        # Write response:
+        writer.write_response(status, reason, headers, body)
+
+        # Update session counter:
+        session['requests'] = count
+
+        # Possibly close the connection:
+        if status >= 400 and status not in {404, 409, 412}:
+            log.warning('closing connection to %r after %d %r',
+                session['client'], status, reason
             )
             break
+
+    # Make sure sndbuf gets flushed:
     sock.close()
-
-
-def _handle_one(app, reader, writer, session, bodies):
-    request = reader.read_request()
-    (status, reason, headers, body) = app(session, request, bodies)
-
-    # Make sure application fully consumed request body:
-    if request.body and not request.body.closed:
-        raise UnconsumedRequestError(request.body)
-
-    # Make sure HEAD requests are properly handled:
-    if request.method == 'HEAD':
-        if body is not None:
-            raise TypeError(
-                'response body must be None when request method is HEAD'
-            )
-        if 'content-length' in headers:
-            if 'transfer-encoding' in headers:
-                raise ValueError(
-                    'cannot have both content-length and transfer-encoding headers'
-                )
-        elif headers.get('transfer-encoding') != 'chunked':
-            raise ValueError(
-                'response to HEAD request must include content-length or transfer-encoding'
-            )
-
-    # Write response:
-    tell = writer.tell()
-    wrote = writer.write_response(status, reason, headers, body)
-    assert writer.tell() == tell + wrote
-
-    # Possibly close the connection:
-    if status >= 400 and status not in {404, 409, 412}:
-        log.warning('closing connection to %r after %d %r',
-            session['client'], status, reason
-        )
-        return False
-    return True
 
 
 class Server:

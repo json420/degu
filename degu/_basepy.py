@@ -41,6 +41,7 @@ _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 MIN_PREAMBLE     =  4096  #  4 KiB
 DEFAULT_PREAMBLE = 32768  # 32 KiB
 MAX_PREAMBLE     = 65536  # 64 KiB
+MAX_IO_SIZE = 16777216  # 16 MiB
 
 GET = 'GET'
 PUT = 'PUT'
@@ -414,10 +415,12 @@ class Reader:
                     int, type(added), added
                 )
             )
-        if added > sys.maxsize:
-            raise OverflowError('Python int too large to convert to C ssize_t')
+        if added < 0:
+            raise OverflowError("can't convert negative value to size_t")
+        if added > sys.maxsize * 2 + 1:
+            raise OverflowError('Python int too large to convert to C size_t')
         if not (0 <= added <= len(buf)):
-            raise IOError(
+            raise OSError(
                 'need 0 <= size <= {}; recv_into() returned {}'.format(
                     len(buf), added
                 )
@@ -494,9 +497,27 @@ class Reader:
             self._update(self._start + len(src), avail - len(src))
         return src
 
-    def fill_until(self, size, end):
-        assert isinstance(size, int)
-        assert isinstance(end, bytes)
+    def _found(self, index, end, strip_end):
+        src = self.drain(index + len(end))
+        if strip_end:
+            return src[0:-len(end)]
+        return src
+
+    def _not_found(self, cur, end, always_drain):
+        if always_drain:
+            return self.drain(len(cur))
+        if len(cur) == 0:
+            return cur
+        raise ValueError(
+            '{!r} not found in {!r}...'.format(end, cur[:32])
+        )
+
+    def read_until(self, size, end, always_drain=False, strip_end=False):
+        end = memoryview(end).tobytes()
+        assert type(size) is int
+        assert type(strip_end) is bool
+        assert type(always_drain) is bool
+
         if not end:
             raise ValueError('end cannot be empty')
         if not (len(end) <= size <= len(self._rawbuf)):
@@ -505,15 +526,18 @@ class Reader:
                     len(end), len(self._rawbuf), size
                 )
             )
+        if always_drain and strip_end:
+            raise ValueError(
+                '`always_drain` and `strip_end` cannot both be True'
+            )
 
         # First, search current buffer:
         cur = self.peek(size)
         index = cur.find(end)
         if index >= 0:
-            return (True, self.peek(index + len(end)))
-        if len(cur) >= size:
-            assert len(cur) == size
-            return (False, cur)
+            return self._found(index, end, strip_end)
+        if len(cur) == size:
+            return self._not_found(cur, end, always_drain)
 
         # Shift buffer if needed:
         if self._start > 0:
@@ -522,50 +546,29 @@ class Reader:
             self._update(0, len(cur))
 
         # Now search till found:
-        remaining = len(self._rawbuf) - len(cur)
-        while remaining > 0:
-            dst = self._rawbuf[-remaining:]
+        start = len(cur)
+        while start < size:
+            dst = self._rawbuf[start:]
             added = self._recv_into(dst)
-            if added <= 0:
-                assert added == 0
-                return (False, cur)
-            self._update(0, len(cur) + added)
-
+            if added == 0:
+                break
+            start += added
+            self._update(0, start)
             cur = self.peek(size)
             index = cur.find(end)
             if index >= 0:
-                assert index + len(end) <= size
-                return (True, self.peek(index + len(end)))
-            if len(cur) >= size:
-                assert len(cur) == size
-                return (False, self.peek(size))
-            remaining = len(self._rawbuf) - len(cur)
+                return self._found(index, end, strip_end)
 
-        return (False, cur)
-
-    def search(self, size, end, include_end=False, always_return=False):
-        assert isinstance(end, bytes)
-        if not end:
-            raise ValueError('end cannot be empty')
-        (found, src) = self.fill_until(size, end)
-        if len(src) == 0:
-            return src
-        if not found:
-            if always_return:
-                return self.drain(len(src))
-            raise ValueError(
-                '{!r} not found in {!r}...'.format(end, src[:32])
-            )
-        ret = self.drain(len(src))
-        if include_end:
-            return ret
-        return ret[0:-len(end)]
+        # Didn't find it:
+        return self._not_found(cur, end, always_drain)
 
     def readline(self, size):
-        return self.search(size, b'\n', True, True)
+        return self.read_until(size, b'\n', always_drain=True)
 
     def read_request(self):
-        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        preamble = self.read_until(
+            len(self._rawbuf), b'\r\n\r\n', strip_end=True
+        )
         if preamble == b'':
             raise EmptyPreambleError('request preamble is empty')
         (method, uri, script, path, query, headers) = parse_request(preamble)
@@ -579,7 +582,9 @@ class Reader:
 
     def read_response(self, method):
         method = parse_method(method)
-        preamble = self.search(len(self._rawbuf), b'\r\n\r\n')
+        preamble = self.read_until(
+            len(self._rawbuf), b'\r\n\r\n', strip_end=True
+        )
         if preamble == b'':
             raise EmptyPreambleError('response preamble is empty')
         (status, reason, headers) = parse_response(preamble)
@@ -595,9 +600,9 @@ class Reader:
 
     def read(self, size):
         assert isinstance(size, int)
-        if size < 0:
+        if not (0 <= size <= MAX_IO_SIZE):
             raise ValueError(
-                'need size >= 0; got {}'.format(size)
+                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
             )
         if size == 0:
             return b''
@@ -621,8 +626,10 @@ class Reader:
     def readinto(self, dst):
         dst = memoryview(dst)
         dst_len = len(dst)
-        if dst_len < 1:
-            raise ValueError('dst cannot be empty')
+        if not (1 <= dst_len <= MAX_IO_SIZE):
+            raise ValueError(
+                'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
+            )
         src = self.drain(dst_len)
         src_len = len(src)
         dst[0:src_len] = src
@@ -689,9 +696,11 @@ class Writer:
                     int, type(size), size
                 )
             )
-        if not (-1 - sys.maxsize <= size <= sys.maxsize):
-            raise OverflowError('Python int too large to convert to C ssize_t')
-        if not (0 <= size <= len(buf)):
+        if size < 0:
+            raise OverflowError("can't convert negative value to size_t")
+        if size > sys.maxsize * 2 + 1:
+            raise OverflowError('Python int too large to convert to C size_t')
+        if size > len(buf):
             raise OSError(
                 'need 0 <= size <= {!r}; send() returned {!r}'.format(len(buf), size)
             )
@@ -737,6 +746,10 @@ class Writer:
                     int, type(total), total
                 )
             )
+        if total < 0:
+            raise OverflowError("can't convert negative int to unsigned")
+        if total >= 2**64:
+            raise OverflowError('int too big to convert')
         delta = self.tell() - orig_tell
         if delta != total:
             raise ValueError(

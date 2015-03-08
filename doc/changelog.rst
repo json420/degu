@@ -9,7 +9,7 @@ Changelog
 
 Performance improvements:
 
-    *   ``benchmark.py`` is now on average around 84% faster for ``AF_UNIX`` and
+    *   ``benchmark.py`` is now on average around 83% faster for ``AF_UNIX`` and
         around 68% faster for ``AF_INET6`` (as measured on an Intel i7-4900MQ).
 
         This substantial performance improvement is due to the new ``Reader``

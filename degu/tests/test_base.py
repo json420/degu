@@ -2550,7 +2550,7 @@ class TestReader_Py(BackendTestCase):
         self.assertIsInstance(body, base.bodies.ChunkedBody)
         self.assertIs(body.rfile, reader)
 
-    def test_fill_until(self):
+    def test_read_until(self):
         default = self.DEFAULT_PREAMBLE
         end = b'\r\n'
 
@@ -2559,7 +2559,7 @@ class TestReader_Py(BackendTestCase):
 
         # len(end) == 0:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(4096, b'')
+            reader.read_until(4096, b'')
         self.assertEqual(str(cm.exception), 'end cannot be empty')
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
@@ -2568,7 +2568,7 @@ class TestReader_Py(BackendTestCase):
 
         # size < 0:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(-1, end)
+            reader.read_until(-1, end)
         self.assertEqual(str(cm.exception),
             'need 2 <= size <= {}; got -1'.format(default)
         )
@@ -2579,7 +2579,7 @@ class TestReader_Py(BackendTestCase):
 
         # size < 1:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(0, end)
+            reader.read_until(0, end)
         self.assertEqual(str(cm.exception),
             'need 2 <= size <= {}; got 0'.format(default)
         )
@@ -2590,7 +2590,7 @@ class TestReader_Py(BackendTestCase):
 
         # size < len(end):
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(1, end)
+            reader.read_until(1, end)
         self.assertEqual(str(cm.exception),
             'need 2 <= size <= {}; got 1'.format(default)
         )
@@ -2599,7 +2599,7 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(15, os.urandom(16))
+            reader.read_until(15, os.urandom(16))
         self.assertEqual(str(cm.exception),
             'need 16 <= size <= {}; got 15'.format(default)
         )
@@ -2610,7 +2610,7 @@ class TestReader_Py(BackendTestCase):
 
         # size > default:
         with self.assertRaises(ValueError) as cm:
-            reader.fill_until(default + 1, end)
+            reader.read_until(default + 1, end)
         self.assertEqual(str(cm.exception),
             'need 2 <= size <= {}; got {}'.format(default, default + 1)
         )
@@ -2619,21 +2619,74 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
+        # Both always_drain and strip_end are True:
+        with self.assertRaises(ValueError) as cm:
+            reader.read_until(17, end, always_drain=True, strip_end=True)
+        self.assertEqual(str(cm.exception),
+            '`always_drain` and `strip_end` cannot both be True'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(reader.expose(), b'\x00' * default)
+
+        # No data:
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.fill_until(4096, end), (False, b''))
+        self.assertEqual(reader.read_until(4096, end), b'')
         self.assertEqual(sock._recv_into_calls, 1)
 
-        data = (b'D' * 4094) + end
+        (sock, reader) = self.new()
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.read_until(4096, end, always_drain=True), b'')
+        self.assertEqual(sock._recv_into_calls, 1)
+
+        (sock, reader) = self.new()
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.read_until(4096, end, strip_end=True), b'')
+        self.assertEqual(sock._recv_into_calls, 1)
+
+        # Main event:
+        part1 = os.urandom(1234)
+        part2 = os.urandom(2345)
+        end = os.urandom(16)
+        data = part1 + end + part2 + end
+        size = len(data)
+
         (sock, reader) = self.new(data)
         self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.fill_until(4096, end), (True, data))
+        self.assertEqual(reader.read_until(size, end), part1 + end)
         self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), part2 + end)
+        self.assertEqual(reader.read_until(size, end), part2 + end)
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), b'')
 
-        (sock, reader) = self.new(data, 1)
-        self.assertEqual(sock._rcvbuf, 1)
-        self.assertEqual(reader.fill_until(4096, end), (True, data))
-        self.assertEqual(sock._recv_into_calls, 4096)
+        # always_drain=True:
+        (sock, reader) = self.new(data)
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(
+            reader.read_until(size, end, always_drain=True),
+            part1 + end
+        )
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), part2 + end)
+        self.assertEqual(
+            reader.read_until(size, end, always_drain=True),
+            part2 + end
+        )
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), b'')
+
+        # strip_end=True:
+        (sock, reader) = self.new(data)
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.read_until(size, end, strip_end=True), part1)
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), part2 + end)
+        self.assertEqual(reader.read_until(size, end, strip_end=True), part2)
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), b'')
 
         nope = os.urandom(16)
         marker = os.urandom(16)
@@ -2643,70 +2696,33 @@ class TestReader_Py(BackendTestCase):
             data = prefix + marker
             total_data = data + suffix
             (sock, reader) = self.new(total_data, 333)
-            self.assertEqual(reader.fill_until(333, marker), (True, data))
-            self.assertEqual(reader.peek(-1), total_data[:333])
+            self.assertEqual(reader.read_until(333, marker), data)
+            self.assertEqual(reader.peek(-1), total_data[i+16:333])
             self.assertEqual(reader.rawtell(), 333)
-            self.assertEqual(reader.tell(), 0)
+            self.assertEqual(reader.tell(), i + 16)
 
             (sock, reader) = self.new(total_data, 333)
-            self.assertEqual(reader.fill_until(333, nope),
-                (False, total_data[:333])
+            with self.assertRaises(ValueError) as cm:
+                reader.read_until(333, nope)
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(nope, total_data[:32])
             )
             self.assertEqual(reader.peek(-1), total_data[:333])
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), 0)
-            self.assertEqual(reader.fill_until(333, marker), (True, data))
-            self.assertEqual(reader.peek(-1), total_data[:333])
+            self.assertEqual(reader.read_until(333, marker), data)
+            self.assertEqual(reader.peek(-1), total_data[i+16:333])
             self.assertEqual(reader.rawtell(), 333)
-            self.assertEqual(reader.tell(), 0)
+            self.assertEqual(reader.tell(), i + 16)
 
-    def test_search(self):
-        (sock, reader) = self.new()
-        with self.assertRaises(ValueError) as cm:
-            reader.search(4096, b'')
-        self.assertEqual(str(cm.exception), 'end cannot be empty')
-        self.assertEqual(reader.search(4096, b'\n'), b'')
-        self.assertEqual(reader.search(4096, b'\r\n'), b'')
-        self.assertEqual(reader.search(4096, b'\r\n\r\n'), b'')
-
-        A = b'A' * 512
-        B = b'B' * 256
-        C = b'C' * 128
-        end = b'\r\n\r\n'
-
-        # End not in data:
-        data = A + B + C
-        (sock, reader) = self.new(data)
-        with self.assertRaises(ValueError) as cm:
-            reader.search(512, end)
-        self.assertEqual(str(cm.exception),
-            '{!r} not found in {!r}...'.format(end, A[:32])
-        )
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.search(512, end, always_return=True), A)
-        self.assertEqual(reader.search(512, end, always_return=True), B + C)
-        self.assertEqual(reader.search(512, end, always_return=True), b'')
-
-        # End in data, but not in size bytes:
-        data = end.join([A, B, C]) + end
-        (sock, reader) = self.new(data)
-        with self.assertRaises(ValueError) as cm:
-            reader.search(512, end)
-        self.assertEqual(str(cm.exception),
-            '{!r} not found in {!r}...'.format(end, A[:32])
-        )
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.search(512, end, always_return=True), A)
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.search(516, end), A)
-        self.assertEqual(reader.search(512, end), B)
-        self.assertEqual(reader.search(512, end), C)
-        self.assertEqual(reader.search(512, end), b'')
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.search(516, end, include_end=True), A + end)
-        self.assertEqual(reader.search(512, end, include_end=True), B + end)
-        self.assertEqual(reader.search(512, end, include_end=True), C + end)
-        self.assertEqual(reader.search(512, end, include_end=True), b'')
+            (sock, reader) = self.new(total_data, 333)
+            self.assertEqual(
+                reader.read_until(333, nope, always_drain=True),
+                total_data[:333]
+            )
+            self.assertEqual(reader.peek(-1), b'')
+            self.assertEqual(reader.rawtell(), 333)
+            self.assertEqual(reader.tell(), 333)
 
     def test_readline(self):
         size = self.DEFAULT_PREAMBLE
@@ -2877,7 +2893,19 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data)
         with self.assertRaises(ValueError) as cm:
             reader.read(-1)
-        self.assertEqual(str(cm.exception), 'need size >= 0; got -1')
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 16777216; got -1'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.read(16777217)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 16777216; got 16777217'
+        )
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
@@ -2917,25 +2945,26 @@ class TestReader_Py(BackendTestCase):
             "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
         )
 
-        badsocket = BadSocket(sys.maxsize + 1)
+        smax = sys.maxsize * 2 + 1
+        badsocket = BadSocket(smax + 1)
         reader = self.Reader(badsocket, base.bodies)
         with self.assertRaises(OverflowError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C ssize_t'
+            'Python int too large to convert to C size_t'
         )
 
         badsocket = BadSocket(-1)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OverflowError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned -1'
+            "can't convert negative value to size_t"
         )
 
         badsocket = BadSocket(12346)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OSError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
             'need 0 <= size <= 12345; recv_into() returned 12346'
@@ -2951,6 +2980,40 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), marker)
 
     def test_readinto(self):
+        data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
+
+        (sock, reader) = self.new(data)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(bytearray(0))
+        self.assertEqual(str(cm.exception),
+            'need 1 <= len(buf) <= 16777216; got 0'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(16777217)
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(buf)
+        self.assertEqual(str(cm.exception),
+            'need 1 <= len(buf) <= 16777216; got 16777217'
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(reader.rawtell(), 0)
+        self.assertEqual(reader.tell(), 0)
+        self.assertEqual(buf, b'\x00' * 16777217)
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(1)
+        self.assertEqual(reader.readinto(buf), 1)
+        self.assertEqual(buf, b'G')
+
+        (sock, reader) = self.new(data)
+        buf = bytearray(16777216)
+        self.assertEqual(reader.readinto(buf), len(data))
+        self.assertEqual(buf, data + (b'\x00' * (len(buf) - len(data))))
+
         dst = memoryview(bytearray(12345))
         badsocket = BadSocket(17.0)
         reader = self.Reader(badsocket, base.bodies)
@@ -2960,28 +3023,37 @@ class TestReader_Py(BackendTestCase):
             "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
         )
 
-        badsocket = BadSocket(sys.maxsize + 1)
+        smax = sys.maxsize * 2 + 1
+        badsocket = BadSocket(smax + 1)
         reader = self.Reader(badsocket, base.bodies)
         with self.assertRaises(OverflowError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C ssize_t'
+            'Python int too large to convert to C size_t'
         )
 
         badsocket = BadSocket(-1)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OverflowError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned -1'
+            "can't convert negative value to size_t"
         )
 
         badsocket = BadSocket(12346)
         reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(IOError) as cm:
+        with self.assertRaises(OSError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
             'need 0 <= size <= 12345; recv_into() returned 12346'
+        )
+
+        badsocket = BadSocket(smax)
+        reader = self.Reader(badsocket, base.bodies)
+        with self.assertRaises(OSError) as cm:
+            reader.readinto(dst)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= size <= 12345; recv_into() returned {!r}'.format(smax)
         )
 
         marker = random_id()
@@ -3096,6 +3168,7 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(), data1)
         self.assertEqual(sock._calls, [('send', data1)])
 
+        # sock.send() doesn't return an int:
         for bad in (17.0, int_subclass(17)):
             self.assertEqual(bad, 17)
             sock = WSocket(send=bad)
@@ -3111,22 +3184,37 @@ class TestWriter_Py(BackendTestCase):
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        smax = sys.maxsize
-        smin = -smax - 1
-        for bad in (smin - 2, smin - 1, smax + 1, smax + 2): 
+        # sock.send() returns a negative int
+        smin = -sys.maxsize - 1
+        for bad in (smin - 1, smin, smin + 1, -2, -1):
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
             with self.assertRaises(OverflowError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'Python int too large to convert to C ssize_t'
+                "can't convert negative value to size_t"
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        for bad in (smin, smin + 1, -1, 18, smax - 1, smax):
-            self.assertNotEqual(bad, 17)
+        # sock.send() returns an int > sys.maxsize:
+        smax = sys.maxsize * 2 + 1
+        for bad in (smax + 1, smax + 2, smax + 3): 
+            sock = WSocket(send=bad)
+            writer = self.Writer(sock, base.bodies)
+            with self.assertRaises(OverflowError) as cm:
+                writer.write(data1)
+            self.assertEqual(str(cm.exception),
+                'Python int too large to convert to C size_t'
+            )
+            self.assertEqual(writer.tell(), 0)
+            self.assertEqual(sock._fp.getvalue(), data1)
+            self.assertEqual(sock._calls, [('send', data1)])
+
+        # soct.send() size > len(buf):
+        for bad in (18, 19, smax - 2, smax - 1, smax):
+            self.assertGreater(bad, 17)
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
             with self.assertRaises(OSError) as cm:
@@ -3299,6 +3387,43 @@ class TestWriter_Py(BackendTestCase):
             )
             self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
+        # body.write_to() returns total < 0:
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for bad in (-2**64, -2**64 + 1, -2, -1):
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(OverflowError) as cm:
+                    writer.write_output(preamble, body)
+                self.assertEqual(str(cm.exception),
+                    "can't convert negative int to unsigned"
+                )
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
+        # body.write_to() returns total >= 2**64:
+        tmax = 2**64 - 1
+        for chunks in chunks_permutations:
+            total = sum(len(d) for d in chunks)
+            for bad in (tmax + 1, tmax + 2, tmax + 3):
+                sock = WSocket()
+                writer = self.Writer(sock, bodies)
+                body = Body(*chunks, write_to=bad)
+                with self.assertRaises(OverflowError) as cm:
+                    writer.write_output(preamble, body)
+                self.assertEqual(str(cm.exception),
+                    'int too big to convert'
+                )
+                self.assertEqual(writer.tell(), total + len(preamble))
+                self.assertEqual(sock._calls,
+                    [('send', preamble)] + [('send', d) for d in chunks]
+                )
+                self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
+
         # body.write_to() doesn't return the amount written with writer.write():
         for chunks in chunks_permutations:
             total = sum(len(d) for d in chunks)
@@ -3307,13 +3432,20 @@ class TestWriter_Py(BackendTestCase):
                 sock = WSocket()
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
-                with self.assertRaises(ValueError) as cm:
-                    writer.write_output(preamble, body)
-                self.assertEqual(str(cm.exception),
-                    '{!r} bytes were written, but write_to() returned {!r}'.format(
-                        total, bad
+                if bad < 0:
+                    with self.assertRaises(OverflowError) as cm:
+                        writer.write_output(preamble, body)
+                    self.assertEqual(str(cm.exception),
+                        "can't convert negative int to unsigned"
                     )
-                )
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        writer.write_output(preamble, body)
+                    self.assertEqual(str(cm.exception),
+                        '{!r} bytes were written, but write_to() returned {!r}'.format(
+                            total, bad
+                        )
+                    )
                 self.assertEqual(writer.tell(), total + len(preamble))
                 self.assertEqual(sock._calls,
                     [('send', preamble)] + [('send', d) for d in chunks]

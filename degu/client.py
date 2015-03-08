@@ -159,58 +159,6 @@ def _validate_client_sslctx(sslctx):
     return sslctx
 
 
-def _validate_request(bodies, method, uri, headers, body):
-    # Ensure all header keys are lowercase:
-    if not all([key.islower() for key in headers]):
-        for key in sorted(headers):  # Sorted for deterministic unit testing
-            if not key.islower():
-                raise ValueError('non-casefolded header name: {!r}'.format(key))
-        raise Exception('should not be reached')
-
-    # A body of None is the most common, so check this case first:
-    if body is None:
-        if 'content-length' in headers:
-            raise ValueError(
-                "headers['content-length'] included when body is None"
-            )
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                "headers['transfer-encoding'] included when body is None"
-            )
-        return
-
-    # Check body type, set content-length or transfer-encoding header as needed:
-    if isinstance(body, (bytes, bytearray, bodies.Body, bodies.BodyIter)):
-        length = len(body)
-        if headers.setdefault('content-length', length) != length:
-            raise ValueError(
-                "headers['content-length'] != len(body): {!r} != {!r}".format(
-                    headers['content-length'], length
-                )
-            )
-        if 'transfer-encoding' in headers:
-            raise ValueError(
-                "headers['transfer-encoding'] with length-encoded body"
-            )
-    elif isinstance(body, (bodies.ChunkedBody, bodies.ChunkedBodyIter)):
-        if headers.setdefault('transfer-encoding', 'chunked') != 'chunked':
-            raise ValueError(
-                "headers['transfer-encoding'] is invalid: {!r}".format(
-                    headers['transfer-encoding']
-                )
-            )
-        if 'content-length' in headers:
-            raise ValueError(
-                "headers['content-length'] with chunk-encoded body"
-            )
-    else:
-        raise TypeError('bad request body type: {!r}'.format(type(body)))
-
-    # A body is only allowed when the request method is PUT or POST:
-    if method not in {'PUT', 'POST'}:
-        raise ValueError('cannot include body in a {} request'.format(method))
-
-
 class Connection:
     """
     Provides an HTTP client request API atop an arbitrary socket connection.
