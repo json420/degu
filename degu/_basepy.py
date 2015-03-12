@@ -670,7 +670,7 @@ class Writer:
     def __init__(self, sock, bodies):
         self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_send = _getcallable('sock', sock, 'send')
-        self._length_types = (bytes, bodies.Body, bodies.BodyIter)
+        self._length_types = (bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
         self._closed = False
@@ -723,8 +723,10 @@ class Writer:
 
     def set_default_headers(self, headers, body):
         assert isinstance(headers, dict)
-        if isinstance(body, self._length_types):
+        if type(body) is bytes:
             set_default_header(headers, 'content-length', len(body))
+        elif isinstance(body, self._length_types):
+            set_default_header(headers, 'content-length', body.content_length)
         elif isinstance(body, self._chunked_types):
             set_default_header(headers, 'transfer-encoding', 'chunked')
         elif body is not None:

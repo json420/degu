@@ -212,9 +212,6 @@ class Body:
             self.__class__.__name__, self.content_length
         )
 
-    def __len__(self):
-        return self.content_length
-
     def __iter__(self):
         if self.closed:
             raise ValueError('Body.closed, already consumed')
@@ -354,9 +351,6 @@ class BodyIter:
         self.content_length = content_length
         self.closed = False
         self._started = False
-
-    def __len__(self):
-        return self.content_length
 
     def write_to(self, wfile):
         if self.closed:
