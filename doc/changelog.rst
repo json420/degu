@@ -46,11 +46,11 @@ Breaking API changes:
         replaced any of the request attributes when, say, checking the URI
         invariant condition.
 
-    *   A ``bytearray`` can no longer be used as an HTTP output body.  This
-        applies to both request bodies on the client-side and to response
-        bodies on the server-side.  If you previously used a ``bytearray`` to
-        build-up your output body, you'll now need to convert it to ``bytes``
-        after the build-up, for example::
+    *   A ``bytearray`` can no longer be used as an output body.  This applies
+        both to request bodies on the client-side and to response bodies on the
+        server-side.  If you previously used a ``bytearray`` to build-up your
+        output body, you'll now need to convert it to ``bytes`` after the
+        build-up, for example::
 
             body = bytearray()
             body.extend(b'foo')
@@ -66,6 +66,19 @@ Breaking API changes:
         probably justify adding support for arbitrary Python objects that
         support the buffer protocol (eg., also support ``memoryview``, etc.).
 
+    *   Although not previously documented, the ``__len__()`` method has been
+        dropped from :class:`degu.base.Body` and :class:`degu.base.BodyIter`.
+
+        The idea behind the ``__len__()`` method was to provide a unified way of
+        getting the content-length from any length-encoded output body type.
+        However, this doesn't play nice with the Python C API object protocol
+        where the value is constrained to *Py_ssize_t*::
+
+            ssize_t length = PyObject_Length(body);
+
+        This means that on 32-bit systems, the maximum output body size would
+        be limited to 2 GiB, which is clearly insufficient for `Dmedia`_
+        considering it already supports files up to 9 PB in size.
 
 
 Performance improvements:
@@ -1075,7 +1088,6 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
-
 .. _`Download Degu 0.13`: https://launchpad.net/degu/+milestone/0.13
 .. _`Download Degu 0.12`: https://launchpad.net/degu/+milestone/0.12
 .. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
@@ -1091,3 +1103,4 @@ Two things motivated these breaking API changes:
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 .. _`your feedback`: https://bugs.launchpad.net/degu
+.. _`Dmedia`: https://launchpad.net/dmedia
