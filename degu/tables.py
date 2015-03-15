@@ -63,6 +63,9 @@ COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz
 # For case-folding and validating header names:
 NAMES_DEF = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
+# For parsing decimal and hexadecimal values:
+NUM_DEF = b'0123456789ABCDEFabcdef'
+
 
 # Generic bit-flag based validation table with 7 sets, plus 1 error set:
 BIT_FLAGS_DEF = (
@@ -145,6 +148,22 @@ def build_names_table(allowed):
             pair = (i, 255)
         items.append(pair)
     return Table('_NAMES', 255, tuple(items))
+
+
+def build_num_table(allowed):
+    check_allowed(allowed)
+    items = []
+    for i in range(256):
+        if i in allowed:
+            r = allowed.index(bytes([i]).upper())
+            assert 0 <= r < 16
+            if r >= 10:
+                r |= 16
+            pair = (i, r)
+        else:
+            pair = (i, 255)
+        items.append(pair)
+    return Table('_NUM', 255, tuple(items))
 
 
 def build_flags(flags_def):
@@ -342,16 +361,20 @@ def update(pkgdir, name, markers, newlines):
 
 
 class Generated:
-    def __init__(self, names_def, flags_def, masks_def):
+    def __init__(self, names_def, flags_def, masks_def, num_def):
         self.names_def = names_def
         self.names_table = build_names_table(names_def)
         self.info = build_info(flags_def, masks_def)
         self.markers_c = build_marker_comments('/', '*')
         self.markers_py = build_marker_comments('#', '#')
+        self.num_def = num_def
+        self.num_table = build_num_table(num_def)
 
     def iter_lines_c(self):
         yield self.markers_c.begin
         yield from iter_c_table(self.names_table)
+        yield ''
+        yield from iter_c_table(self.num_table)
         yield ''
         yield from iter_c_info(self.info)
         yield self.markers_c.end
@@ -380,7 +403,7 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    gen = Generated(NAMES_DEF, BIT_FLAGS_DEF, BIT_MASKS_DEF)
+    gen = Generated(NAMES_DEF, BIT_FLAGS_DEF, BIT_MASKS_DEF, NUM_DEF)
     if args.update:
         pkgdir = path.dirname(path.abspath(__file__))
         gen.update(pkgdir)

@@ -4,39 +4,15 @@ Road to Degu 1.0 (or something like that)
 Definite
 --------
 
-    *   RGI is currently ambiguous when it comes to "no query" (ie, URI does not
-        contain a '?') vs "an empty query" (ie, the final character in the URI
-        is a '?'); currently both of these scenarios result in the same empty ''
-        query string, which means we can't do a lossless round-trip between the
-        URI and the (script, path, query) components; when reconstructing the
-        URI, the "empty query" case will lose its final '?' on the way out;
-        similar to how RGI handles the request and response bodies, "no query"
-        should be expressed with {'query': None}, and an "empty query" should be
-        {'query': ''}.
+    *   The Degu client and server and should provide high-level support for
+        HTTP range requests.
 
+        HTTP range requests are extremely import, in no small part because
+        the driving Degu consumer at this point is Dmedia, a distributed object
+        store.
 
-    *   Flip the order of items in a single chunk (in a body using chunked
-        transfer-encoding) from:
-
-            (data, extension)
-
-        To:
-
-            (extension, data)
-
-        This is the one place where Degu/RGI currently isn't faithful to the
-        order in the HTTP wire format.  This is for historic reasons in how Degu
-        initially exposed the optional per-chunk extension; however, it's
-        inconsistent with the rest of the Degu/RGI API, and should be fixed.
-
-
-    *   Now that request['uri'] has been added, `degu.rgi.Validator` should
-        check that the server correctly parsed the URI into the
-        (script, path, query) components, and should likewise check that any
-        path shifting done by middleware or applications was done correctly...
-        ie, you should always be able to reconstruct the original URI from
-        (script, path, query), even if items have been shifted from path to
-        script.
+        However, range requests are also a bit tricky to get right as arguably
+        the "Range" request header is rather poorly designed.
 
 
     *   `ChunkedBody.read()` should take a size argument and should have the

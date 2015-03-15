@@ -30,8 +30,6 @@ try:
         Request, RequestType,
         Response, ResponseType,
         EmptyPreambleError,
-        format_request,
-        format_response,
         Reader,
         Writer,
     )
@@ -42,8 +40,6 @@ except ImportError:
         Request, RequestType,
         Response, ResponseType,
         EmptyPreambleError,
-        format_request,
-        format_response,
         Reader,
         Writer,
     )
@@ -57,8 +53,6 @@ __all__ = (
     'EmptyPreambleError',
     'Reader',
     'Writer',
-    'format_request',
-    'format_response',
 )
 
 
@@ -75,12 +69,7 @@ def _makefiles(sock, bodies):
     """
     Create (rfile, wfile) from a socket connection.
     """
-    return (
-        Reader(sock, bodies),
-        #sock.makefile('wb', buffering=STREAM_BUFFER_SIZE)
-        #sock.makefile('wb', buffering=0)
-        Writer(sock, bodies)
-    )
+    return (Reader(sock, bodies), Writer(sock, bodies))
 
 
 # FIXME: Add optional max_size=None keyword argument
@@ -223,9 +212,6 @@ class Body:
             self.__class__.__name__, self.content_length
         )
 
-    def __len__(self):
-        return self.content_length
-
     def __iter__(self):
         if self.closed:
             raise ValueError('Body.closed, already consumed')
@@ -365,9 +351,6 @@ class BodyIter:
         self.content_length = content_length
         self.closed = False
         self._started = False
-
-    def __len__(self):
-        return self.content_length
 
     def write_to(self, wfile):
         if self.closed:

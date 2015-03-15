@@ -355,13 +355,10 @@ class Client:
 
     def create_socket(self):
         if self._family is None:
-            sock = socket.create_connection(self.address, timeout=self.timeout)
-        else:
-            sock = socket.socket(self._family, socket.SOCK_STREAM)
-            sock.settimeout(self.timeout)
-            sock.connect(self.address)
-        if self._family is not socket.AF_UNIX:
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            return socket.create_connection(self.address, timeout=self.timeout)
+        sock = socket.socket(self._family, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.address)
         return sock
 
     def connect(self, bodies=None):

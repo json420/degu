@@ -1705,11 +1705,6 @@ class TestBody(TestCase):
             body = base.Body(rfile, 17, io_size=size)
             self.assertIs(body.io_size, size)
 
-    def test_len(self):
-        for content_length in (0, 17, 27, 37):
-            body = base.Body(io.BytesIO(), content_length)
-        self.assertEqual(len(body), content_length)
-
     def test_read(self):
         data = os.urandom(1776)
         rfile = io.BytesIO(data)
@@ -2184,11 +2179,6 @@ class TestBodyIter(TestCase):
         self.assertEqual(body.content_length, 17)
         self.assertIs(body.closed, False)
         self.assertIs(body._started, False)
-
-    def test_len(self):
-        for content_length in (0, 17, 27, 37):
-            body = base.BodyIter([], content_length)
-        self.assertEqual(len(body), content_length)
 
     def test_write_to(self):
         source = (b'hello', b'naughty', b'nurse')

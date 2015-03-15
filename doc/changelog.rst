@@ -7,6 +7,80 @@ Changelog
 
 `Download Degu 0.13`_
 
+Breaking API changes:
+
+    *   The RGI *request* argument is now a ``namedtuple`` instead of a 
+        ``dict``.  For example, this Degu 0.12 server application::
+
+            def my_app(session, request, bodies):
+                if request['path'] != []:
+                    return (404, 'Not Found', {}, None)
+                if request['method'] == 'GET':
+                    return (200, 'OK', {}, b'hello, world')
+                if request['method'] == 'HEAD':
+                    return (200, 'OK', {'content-length': 12}, None)
+                return (405, 'Method Not Allowed', {}, None)
+
+        Is implemented like this is Degu 0.13::
+
+            def my_app(session, request, bodies):
+                if request.path != []:
+                    return (404, 'Not Found', {}, None)
+                if request.method == 'GET':
+                    return (200, 'OK', {}, b'hello, world')
+                if request.method == 'HEAD':
+                    return (200, 'OK', {'content-length': 12}, None)
+                return (405, 'Method Not Allowed', {}, None)
+
+        This change was made for brevity and improved readability in RGI server
+        application code.  The 3rd option here is a lot more appealing when
+        you're typing it over and over::
+
+            environ['PATH_INFO']  # WSGI
+            request['path']       # RGI (Degu 0.12)
+            request.path          # RGI (Degu 0.13)
+
+        It also feels cleaner for the request object to be immutable.  For
+        example, now something like the :class:`degu.rgi.Validator` class
+        doesn't need to worry about whether the downstream RGI application has
+        replaced any of the request attributes when, say, checking the URI
+        invariant condition.
+
+    *   A ``bytearray`` can no longer be used as an output body.  This applies
+        both to request bodies on the client-side and to response bodies on the
+        server-side.  If you previously used a ``bytearray`` to build-up your
+        output body, you'll now need to convert it to ``bytes`` after the
+        build-up, for example::
+
+            body = bytearray()
+            body.extend(b'foo')
+            body.extend(b'bar')
+            body = bytes(body)
+
+        There wasn't a clear enough use-case to justify ``bytearray`` as an
+        output body type, so in order to minimize the stable API commitments,
+        it makes sense to drop this option for now.
+
+        However, it may be added back in the future if a good rationale is put
+        forward.  And if support for a ``bytearray`` can be justified, we can
+        probably justify adding support for arbitrary Python objects that
+        support the buffer protocol (eg., also support ``memoryview``, etc.).
+
+    *   Although not previously documented, the ``__len__()`` method has been
+        dropped from :class:`degu.base.Body` and :class:`degu.base.BodyIter`.
+
+        The idea behind the ``__len__()`` method was to provide a unified way of
+        getting the content-length from any length-encoded output body type.
+        However, this doesn't play nice with the Python C API object protocol
+        where the value is constrained to *Py_ssize_t*::
+
+            ssize_t length = PyObject_Length(body);
+
+        This means that on 32-bit systems, the maximum output body size would
+        be limited to 2 GiB, which is clearly insufficient for `Dmedia`_
+        considering it already supports files up to 9 PB in size.
+
+
 Performance improvements:
 
     *   ``benchmark.py`` is now on average around 83% faster for ``AF_UNIX`` and
@@ -1014,7 +1088,6 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
-
 .. _`Download Degu 0.13`: https://launchpad.net/degu/+milestone/0.13
 .. _`Download Degu 0.12`: https://launchpad.net/degu/+milestone/0.12
 .. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
@@ -1030,3 +1103,4 @@ Two things motivated these breaking API changes:
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 .. _`your feedback`: https://bugs.launchpad.net/degu
+.. _`Dmedia`: https://launchpad.net/dmedia

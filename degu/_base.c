@@ -99,6 +99,41 @@ static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
 };
 
+static const uint8_t _NUM[256] = {
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+      0,  1,  2,  3,  4,  5,  6,  7, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+      8,  9,255,255,255,255,255,255, //  '8'  '9'
+    255, 26, 27, 28, 29, 30, 31,255, //       'A'  'B'  'C'  'D'  'E'  'F'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255, 26, 27, 28, 29, 30, 31,255, //       'a'  'b'  'c'  'd'  'e'  'f'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+};
+
 /*
  * DIGIT  1 00000001  b'0123456789'
  * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
@@ -596,45 +631,65 @@ _parse_val(_Src src)
     return _decode(src, VALUE_MASK, "bad bytes in header value: %R");
 }
 
+static int64_t
+_parse_decimal(_Src src)
+{
+    int64_t accum;
+    uint8_t n, err;
+    size_t i;
+
+    if (src.len < 1 || src.len > MAX_CL_LEN) {
+        return -1;
+    }
+    accum = err = _NUM[src.buf[0]];
+    for (i = 1; i < src.len; i++) {
+        n = _NUM[src.buf[i]];
+        err |= n;
+        accum *= 10;
+        accum += n;
+    }
+    if ((err & 240) != 0) {
+        return -2;
+    }
+    if (src.buf[0] == 48 && src.len != 1) {
+        return -3;
+    }
+    return accum;
+}
+
+static void
+_set_content_length_error(_Src src, const int64_t value)
+{
+    if (value == -1) {
+        if (src.len < 1) {
+            PyErr_SetString(PyExc_ValueError, "content-length is empty");
+        }
+        else {
+            _value_error("content-length too long: %R...",
+                _slice(src, 0, MAX_CL_LEN)
+            );
+        }
+    }
+    else if (value == -2) {
+        _value_error("bad bytes in content-length: %R", src);
+    }
+    else if (value == -3) {
+        _value_error("content-length has leading zero: %R", src);
+    }
+    else {
+        Py_FatalError("_set_content_length_error(): bad internal call");
+    }
+}
+
 static PyObject *
 _parse_content_length(_Src src)
 {
-    uint64_t accum;
-    uint8_t flags, c;
-    size_t i;
-
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "content-length is empty");
-        return NULL; 
-    }
-    if (src.len > MAX_CL_LEN) {
-        _value_error("content-length too long: %R...",
-            _slice(src, 0, MAX_CL_LEN)
-        );
-        return NULL; 
-    }
-
-    c = src.buf[0];
-    flags = _FLAGS[c];
-    accum = (uint8_t)(c - 48);
-    for (i = 1; i < src.len; i++) {
-        accum *= 10;
-        c = src.buf[i];
-        flags |= _FLAGS[c];
-        accum += (uint8_t)(c - 48);
-    }
-    if (flags == 0) {
-        Py_FatalError("_parse_content_length(): flags == 0");
-    }
-    if ((flags & DIGIT_MASK) != 0) {
-        _value_error("bad bytes in content-length: %R", src);
+    const int64_t value = _parse_decimal(src);
+    if (value < 0) {
+        _set_content_length_error(src, value);
         return NULL;
     }
-    if (src.buf[0] == 48 && src.len != 1) {
-        _value_error("content-length has leading zero: %R", src);
-        return NULL;
-    }
-    return PyLong_FromUnsignedLongLong(accum);
+    return PyLong_FromLongLong(value);
 }
 
 static bool
