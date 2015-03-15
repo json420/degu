@@ -261,8 +261,6 @@ class Server:
             # that's why we use `timeout=2` rather than `blocking=False`:
             if semaphore.acquire(timeout=2) is True:
                 sock.settimeout(timeout)
-                if isinstance(address, tuple):
-                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
                 thread = threading.Thread(
                     target=worker,
                     args=(semaphore, max_requests, bodies, sock, address),
