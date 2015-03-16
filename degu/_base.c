@@ -47,7 +47,7 @@ static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 
 static PyObject *str_content_length = NULL;     //  'content_length'
 static PyObject *key_content_length = NULL;     //  'content-length'
-static PyObject *key_content_type   = NULL;     //  'content-type'
+static PyObject *key_range   = NULL;            //  'range'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
@@ -330,7 +330,6 @@ _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
-_DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_BUF_CONSTANT(RANGE, "range")
 _DEGU_BUF_CONSTANT(BYTES_EQ, "bytes=")
 _DEGU_BUF_CONSTANT(MINUS, "-")
@@ -529,6 +528,7 @@ _calloc_dst(const size_t len)
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
     PyObject *content_length; \
+    PyObject *range; \
     uint8_t flags;
 
 typedef struct {
@@ -553,19 +553,20 @@ typedef struct {
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \
-     ((DeguHeaders){NULL, NULL, 0})
+     ((DeguHeaders){NULL, NULL, NULL, 0})
 
 #define NEW_DEGU_REQUEST \
-     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
+     ((DeguRequest){NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
+    ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL, NULL})
 
 static void
 _clear_degu_headers(DeguHeaders *dh)
 {
     Py_CLEAR(dh->headers);
     Py_CLEAR(dh->content_length);
+    Py_CLEAR(dh->range);
 }
 
 static void
@@ -780,9 +781,10 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
         _SET_AND_INC(val, str_chunked)
         dh->flags |= 2;
     }
-    else if (_equal(keysrc, CONTENT_TYPE)) {
-        _SET_AND_INC(key, key_content_type)
+    else if (_equal(keysrc, RANGE)) {
+        _SET_AND_INC(key, key_range)
         _SET(val, _parse_val(valsrc))
+        _SET(dh->range, _parse_range(valsrc))
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -824,6 +826,9 @@ _parse_headers(_Src src, _Dst scratch, DeguHeaders *dh)
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
+    }
+    if (dh->range == NULL) {
+        _SET_AND_INC(dh->range, Py_None)
     }
     return true;
 
@@ -1397,6 +1402,13 @@ _Request(PyObject *method,
     if (request == NULL) {
         return NULL;
     }
+    Py_INCREF(method);
+    Py_INCREF(uri);
+    Py_INCREF(script);
+    Py_INCREF(path);
+    Py_INCREF(query);
+    Py_INCREF(headers);
+    Py_INCREF(body);
     PyStructSequence_SET_ITEM(request, 0, method);
     PyStructSequence_SET_ITEM(request, 1, uri);
     PyStructSequence_SET_ITEM(request, 2, script);
@@ -1429,6 +1441,10 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
     if (response == NULL) {
         return NULL;
     }
+    Py_INCREF(status);
+    Py_INCREF(reason);
+    Py_INCREF(headers);
+    Py_INCREF(body);
     PyStructSequence_SET_ITEM(response, 0, status);
     PyStructSequence_SET_ITEM(response, 1, reason);
     PyStructSequence_SET_ITEM(response, 2, headers);
@@ -1599,8 +1615,10 @@ parse_uri(PyObject *self, PyObject *args)
         PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
     )
     goto cleanup;
+
 error:
     Py_CLEAR(ret);
+
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1624,8 +1642,10 @@ parse_request_line(PyObject *self, PyObject *args)
         PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
     )
     goto cleanup;
+
 error:
     Py_CLEAR(ret);
+
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1688,13 +1708,14 @@ parse_response_line(PyObject *self, PyObject *args)
         Py_FatalError("parse_response_line");
         goto error;
     }
-    _SET(ret, PyTuple_New(2))
-    PyTuple_SET_ITEM(ret, 0, dr.status);
-    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    _SET(ret, PyTuple_Pack(2, dr.status, dr.reason))
     goto done;
+
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
+
 done:
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -1721,9 +1742,10 @@ parse_response(PyObject *self, PyObject *args)
     goto cleanup;
 
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
+    _clear_degu_response(&dr);
     free(scratch.buf);
     return ret;
 }
@@ -1826,13 +1848,6 @@ Request(PyObject *self, PyObject *args)
             &method, &uri, &script, &path, &query, &headers, &body)) {
         return NULL;
     }
-    Py_INCREF(method);
-    Py_INCREF(uri);
-    Py_INCREF(script);
-    Py_INCREF(path);
-    Py_INCREF(query);
-    Py_INCREF(headers);
-    Py_INCREF(body);
     return _Request(method, uri, script, path, query, headers, body);
 }
 
@@ -1847,10 +1862,6 @@ Response(PyObject *self, PyObject *args)
             &status, &reason, &headers, &body)) {
         return NULL;
     }
-    Py_INCREF(status);
-    Py_INCREF(reason);
-    Py_INCREF(headers);
-    Py_INCREF(body);
     return _Response(status, reason, headers, body);
 }
 
@@ -2350,9 +2361,10 @@ Reader_read_request(Reader *self) {
     goto cleanup;
 
 error:
-    _clear_degu_request(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
+    _clear_degu_request(&dr);
     return ret;
 }
 
@@ -2407,11 +2419,11 @@ Reader_read_response(Reader *self, PyObject *args)
     goto cleanup;
 
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
     Py_CLEAR(method);
-    Py_CLEAR(dr.content_length);
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -3096,7 +3108,7 @@ PyInit__base(void)
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
-    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
+    _SET(key_range, PyUnicode_InternFromString("range"))
 
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
