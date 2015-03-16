@@ -152,6 +152,34 @@ def parse_content_length(src):
         )
     return int(src)
 
+def _parse_decimal(src):
+    if len(src) < 1 or len(src) > 16:
+        return -1
+    if not DIGIT.issuperset(src):
+        return -1
+    if src[0:1] == b'0' and src != b'0':
+        return -1
+    return int(src)
+
+
+def _raise_bad_range(src):
+    raise ValueError('bad range: {!r}'.format(src))
+
+
+def parse_range(src):
+    assert isinstance(src, bytes)
+    if len(src) < 9 or len(src) > 39 or src[0:6] != b'bytes=':
+        _raise_bad_range(src)
+    inner = src[6:]
+    parts = inner.split(b'-', 1)
+    if len(parts) != 2:
+        _raise_bad_range(src)
+    start = _parse_decimal(parts[0])
+    end = _parse_decimal(parts[1])
+    if start < 0 or end < start:
+        _raise_bad_range(src)
+    return (start, end + 1)
+
 
 def _parse_header_lines(header_lines):
     headers = {}

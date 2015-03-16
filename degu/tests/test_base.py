@@ -282,6 +282,52 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 
 
 class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_range(self):
+        parse_range = self.getattr('parse_range')
+
+        prefix = b'bytes='
+        ranges = (
+            (0, 1),
+            (0, 2),
+            (9, 10),
+            (9, 11),
+            (0, 9999999999999999),
+            (9999999999999998, 9999999999999999),
+        )
+        for (start, stop) in ranges:
+            suffix = '-'.join([str(start), str(stop - 1)]).encode()
+            src = prefix + suffix
+            self.assertEqual(parse_range(src), (start, stop))
+
+            for i in range(len(prefix)):
+                g = prefix[i]
+                bad = bytearray(prefix)
+                for b in range(256):
+                    bad[i] = b
+                    src = bytes(bad) + suffix
+                    if g == b:
+                        self.assertEqual(parse_range(src), (start, stop))
+                    else:
+                        with self.assertRaises(ValueError) as cm:
+                            parse_range(src)
+                        self.assertEqual(str(cm.exception),
+                            'bad range: {!r}'.format(src)
+                        )
+
+            int_start = str(start).encode()
+            int_end = str(stop - 1).encode()
+            for b in range(256):
+                sep = bytes([b])
+                src = prefix + int_start + sep + int_end
+                if sep == b'-':
+                    self.assertEqual(parse_range(src), (start, stop))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad range: {!r}'.format(src)
+                    )
+
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
 

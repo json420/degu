@@ -331,6 +331,9 @@ _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 _DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
+_DEGU_BUF_CONSTANT(RANGE, "range")
+_DEGU_BUF_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_BUF_CONSTANT(MINUS, "-")
 
 static inline bool
 _isempty(_Src src)
@@ -690,6 +693,45 @@ _parse_content_length(_Src src)
         return NULL;
     }
     return PyLong_FromLongLong(value);
+}
+
+static PyObject *
+_parse_range(_Src src)
+{
+    ssize_t index;
+    int64_t start, end;
+    PyObject *int_start = NULL;
+    PyObject *int_stop = NULL;
+    PyObject *ret = NULL;
+
+    if (src.len < 9 || src.len > 39 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
+        goto bad_range;
+    }
+    _Src inner = _slice(src, 6, src.len);
+    index = _find(inner, MINUS);
+    if (index < 1) {
+        goto bad_range;
+    }
+    start = _parse_decimal(_slice(inner, 0, (size_t)index));
+    end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
+    if (start < 0 || end < start) {
+        goto bad_range;
+    }
+    _SET(int_start, PyLong_FromLongLong(start))
+    _SET(int_stop, PyLong_FromLongLong(end + 1))
+    _SET(ret, PyTuple_Pack(2, int_start, int_stop))
+    goto done;
+
+bad_range:
+    _value_error("bad range: %R", src);
+
+error:
+    Py_CLEAR(ret);
+
+done:
+    Py_CLEAR(int_start);
+    Py_CLEAR(int_stop);
+    return ret;
 }
 
 static bool
@@ -1478,6 +1520,18 @@ parse_content_length(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+parse_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_range((_Src){buf, len});
+}
+
+static PyObject *
 parse_headers(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
@@ -1810,6 +1864,7 @@ static struct PyMethodDef degu_functions[] = {
         "parse_header_name(name)"},
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"},
+    {"parse_range", parse_range, METH_VARARGS, "parse_range(src)"},
     {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
 
     /* Request Parsing */
