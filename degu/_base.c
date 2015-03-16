@@ -784,7 +784,9 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_val(valsrc))
-        _SET(dh->range, _parse_range(valsrc))
+        if (dh->range == NULL) {
+            _SET(dh->range, _parse_range(valsrc))
+        }
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -1380,6 +1382,7 @@ static PyStructSequence_Field RequestFields[] = {
     {"path", NULL},
     {"query", NULL},
     {"headers", NULL},
+    {"range", NULL},
     {"body", NULL},
     {NULL},
 };
@@ -1387,7 +1390,7 @@ static PyStructSequence_Desc RequestDesc = {
     "Request",
     NULL,
     RequestFields,  
-    7
+    8
 };
 static PyObject *
 _Request(PyObject *method,
@@ -1396,6 +1399,7 @@ _Request(PyObject *method,
          PyObject *path,
          PyObject *query,
          PyObject *headers,
+         PyObject *range,
          PyObject *body)
 {
     PyObject *request = PyStructSequence_New(&RequestType);
@@ -1408,6 +1412,7 @@ _Request(PyObject *method,
     Py_INCREF(path);
     Py_INCREF(query);
     Py_INCREF(headers);
+    Py_INCREF(range);
     Py_INCREF(body);
     PyStructSequence_SET_ITEM(request, 0, method);
     PyStructSequence_SET_ITEM(request, 1, uri);
@@ -1415,7 +1420,8 @@ _Request(PyObject *method,
     PyStructSequence_SET_ITEM(request, 3, path);
     PyStructSequence_SET_ITEM(request, 4, query);
     PyStructSequence_SET_ITEM(request, 5, headers);
-    PyStructSequence_SET_ITEM(request, 6, body);
+    PyStructSequence_SET_ITEM(request, 6, range);
+    PyStructSequence_SET_ITEM(request, 7, body);
     return request;
 }
 
@@ -1843,12 +1849,13 @@ Request(PyObject *self, PyObject *args)
     PyObject *path = NULL;
     PyObject *query = NULL;
     PyObject *headers = NULL;
+    PyObject *range = NULL;
     PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
-            &method, &uri, &script, &path, &query, &headers, &body)) {
+    if (!PyArg_ParseTuple(args, "UUOOOOOO:Request",
+            &method, &uri, &script, &path, &query, &headers, &range, &body)) {
         return NULL;
     }
-    return _Request(method, uri, script, path, query, headers, body);
+    return _Request(method, uri, script, path, query, headers, range, body);
 }
 
 static PyObject *
@@ -2356,7 +2363,7 @@ Reader_read_request(Reader *self) {
         _SET(dr.body, _Reader_ChunkedBody(self))
     }
     _SET(ret,
-        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
+        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.range, dr.body)
     )
     goto cleanup;
 

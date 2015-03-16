@@ -314,11 +314,11 @@ class TestParsingFunctions_Py(BackendTestCase):
                             'bad range: {!r}'.format(src)
                         )
 
-            int_start = str(start).encode()
-            int_end = str(stop - 1).encode()
+            b_start = str(start).encode()
+            b_end = str(stop - 1).encode()
             for b in range(256):
                 sep = bytes([b])
-                src = prefix + int_start + sep + int_end
+                src = prefix + b_start + sep + b_end
                 if sep == b'-':
                     self.assertEqual(parse_range(src), (start, stop))
                 else:
@@ -599,14 +599,15 @@ class TestNamedTuples_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(a), 3)
 
     def test_Request(self):
-        (tup, args) = self.new('Request', 7)
+        (tup, args) = self.new('Request', 8)
         self.assertIs(tup.method,  args[0])
         self.assertIs(tup.uri,     args[1])
         self.assertIs(tup.script,  args[2])
         self.assertIs(tup.path,    args[3])
         self.assertIs(tup.query,   args[4])
         self.assertIs(tup.headers, args[5])
-        self.assertIs(tup.body,    args[6])
+        self.assertIs(tup.range,   args[6])
+        self.assertIs(tup.body,    args[7])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
@@ -2783,7 +2784,7 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
+        self.assertEqual(request, ('GET', '/', [], [], None, {}, None, None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -2809,6 +2810,15 @@ class TestReader_Py(BackendTestCase):
             self.assertEqual(str(cm.exception),
                 'request line too short: {!r}'.format(bad)
             )
+
+        # With Range header:
+        data = b'GET / HTTP/1.1\r\nRange: bytes=0-0\r\n\r\n'
+        (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+        request = reader.read_request()
+        self.assertIsInstance(request, self.getattr('RequestType'))
+        self.assertEqual(request,
+            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, (0, 1), None)
+        )
 
     def test_read_request(self):
         for rcvbuf in (None, 1, 2, 3):
