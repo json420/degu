@@ -51,6 +51,7 @@ static PyObject *key_range   = NULL;            //  'range'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
+static PyObject *key_content_type = NULL;       //  'content-type'
 static PyObject *str_GET    = NULL;  // 'GET'
 static PyObject *str_PUT    = NULL;  // 'PUT'
 static PyObject *str_POST   = NULL;  // 'POST'
@@ -331,6 +332,7 @@ _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
 _DEGU_BUF_CONSTANT(RANGE, "range")
+_DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_BUF_CONSTANT(BYTES_EQ, "bytes=")
 _DEGU_BUF_CONSTANT(MINUS, "-")
 
@@ -787,6 +789,10 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
         if (dh->range == NULL) {
             _SET(dh->range, _parse_range(valsrc))
         }
+    }
+    else if (_equal(keysrc, CONTENT_TYPE)) {
+        _SET_AND_INC(key, key_content_type)
+        _SET(val, _parse_val(valsrc))
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -1581,6 +1587,7 @@ cleanup:
         free(dst.buf);
     }
     Py_CLEAR(dh.content_length);
+    Py_CLEAR(dh.range);
     return dh.headers;
 }
 
@@ -3113,6 +3120,7 @@ PyInit__base(void)
 
     _SET(str_content_length, PyUnicode_InternFromString("content_length"))
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
+    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
     _SET(key_range, PyUnicode_InternFromString("range"))
