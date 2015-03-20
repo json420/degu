@@ -792,6 +792,7 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
         if (dh->range == NULL) {
             _SET(dh->range, _parse_range(valsrc))
         }
+        dh->flags |= 4;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
@@ -840,6 +841,12 @@ _parse_headers(_Src src, _Dst scratch, DeguHeaders *dh)
     if ((dh->flags & 3) == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error; 
+    }
+    if ((dh->flags & 4) && (dh->flags & 3)) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot include range header and content-length/transfer-encoding"
         );
         goto error; 
     }

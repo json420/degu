@@ -202,6 +202,9 @@ def _parse_header_lines(header_lines):
                     'bad transfer-encoding: {!r}'.format(val)
                 )
             val = 'chunked'
+        elif key == 'range':
+            flags |= 4
+            val = _parse_val(val)
         else:
             val = _parse_val(val)
         if headers.setdefault(key, val) is not val:
@@ -211,6 +214,10 @@ def _parse_header_lines(header_lines):
     if (flags & 3) == 3:
         raise ValueError(
             'cannot have both content-length and transfer-encoding headers'
+        )
+    if (flags & 4) and (flags & 3):
+        raise ValueError(
+            'cannot include range header and content-length/transfer-encoding'
         )
     return headers
 

@@ -348,6 +348,7 @@ class TestParsingFunctions_Py(BackendTestCase):
 
         length =  b'Content-Length: 17'
         encoding = b'Transfer-Encoding: chunked'
+        _range = b'Range: bytes=16-16'
         _type = b'Content-Type: text/plain'
         self.assertEqual(parse_headers(length),
             {'content-length': 17}
@@ -369,6 +370,18 @@ class TestParsingFunctions_Py(BackendTestCase):
             parse_headers(badsrc)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
+        )
+        badsrc = b'\r\n'.join([length, _range])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot include range header and content-length/transfer-encoding'
+        )
+        badsrc = b'\r\n'.join([encoding, _range])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot include range header and content-length/transfer-encoding'
         )
 
         key = b'Content-Length'
