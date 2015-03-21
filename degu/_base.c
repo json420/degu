@@ -1881,6 +1881,7 @@ Reader_dealloc(Reader *self)
         free(self->buf);
         self->buf = NULL;
     }
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
 }
 
 static int
@@ -1918,7 +1919,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
     return 0;
 
 error:
-    Reader_dealloc(self);
     return -1;
 }
 
@@ -2526,6 +2526,7 @@ Writer_dealloc(Writer *self)
     Py_CLEAR(self->send);
     Py_CLEAR(self->length_types);
     Py_CLEAR(self->chunked_types);
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
 }
 
 static int
@@ -2555,9 +2556,10 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
     _SET(self->length_types, PyTuple_Pack(2, Body, BodyIter))
     _SET(self->chunked_types, PyTuple_Pack(2, ChunkedBody, ChunkedBodyIter))
     goto cleanup;
+
 error:
     ret = -1;
-    Writer_dealloc(self);
+
 cleanup:
     Py_CLEAR(Body);
     Py_CLEAR(BodyIter);
