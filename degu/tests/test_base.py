@@ -396,6 +396,83 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(repr(r), 'Range(9999999999999998, 9999999999999999)')
         self.assertEqual(str(r),  'bytes=9999999999999998-9999999999999998')
 
+    def test_cmp(self):
+        def iter_types(pairs):
+            for (start, stop) in pairs:
+                yield (start, stop)
+                yield self.Range(start, stop)
+
+        r = self.Range(16, 21)
+        equals   = tuple(iter_types([(16, 21)]))
+        lessers  = tuple(iter_types([(15, 21), (16, 20)]))
+        greaters = tuple(iter_types([(17, 21), (16, 22)]))
+
+        # __lt__():
+        for o in lessers:
+            self.assertIs(r < o, False)
+            self.assertIs(o < r, True)
+        for o in equals:
+            self.assertIs(r < o, False)
+            self.assertIs(o < r, False)
+        for o in greaters:
+            self.assertIs(r < o, True)
+            self.assertIs(o < r, False)
+
+        # __le__():
+        for o in lessers:
+            self.assertIs(r <= o, False)
+            self.assertIs(o <= r, True)
+        for o in equals:
+            self.assertIs(r <= o, True)
+            self.assertIs(o <= r, True)
+        for o in greaters:
+            self.assertIs(r <= o, True)
+            self.assertIs(o <= r, False)
+
+        # __eq__():
+        for o in lessers:
+            self.assertIs(r == o, False)
+            self.assertIs(o == r, False)
+        for o in equals:
+            self.assertIs(r == o, True)
+            self.assertIs(o == r, True)
+        for o in greaters:
+            self.assertIs(r == o, False)
+            self.assertIs(o == r, False)
+
+        # __ne__():
+        for o in lessers:
+            self.assertIs(r != o, True)
+            self.assertIs(o != r, True)
+        for o in equals:
+            self.assertIs(r != o, False)
+            self.assertIs(o != r, False)
+        for o in greaters:
+            self.assertIs(r != o, True)
+            self.assertIs(o != r, True)
+
+        # __gt__():
+        for o in lessers:
+            self.assertIs(r > o, True)
+            self.assertIs(o > r, False)
+        for o in equals:
+            self.assertIs(r > o, False)
+            self.assertIs(o > r, False)
+        for o in greaters:
+            self.assertIs(r > o, False)
+            self.assertIs(o > r, True)
+
+        # __ge__():
+        for o in lessers:
+            self.assertIs(r >= o, True)
+            self.assertIs(o >= r, False)
+        for o in equals:
+            self.assertIs(r >= o, True)
+            self.assertIs(o >= r, True)
+        for o in greaters:
+            self.assertIs(r >= o, False)
+            self.assertIs(o >= r, True)
+
 
 class TestRange_C(TestRange_Py):
     backend = _base

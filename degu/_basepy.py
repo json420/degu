@@ -141,6 +141,24 @@ class Range:
     def __str__(self):
         return 'bytes={}-{}'.format(self.start, self.stop - 1)
 
+    def __lt__(self, other):
+        return (self.start, self.stop) < other
+
+    def __le__(self, other):
+        return (self.start, self.stop) <= other
+
+    def __eq__(self, other):
+        return (self.start, self.stop) == other
+
+    def __ne__(self, other):
+        return (self.start, self.stop) != other
+
+    def __gt__(self, other):
+        return (self.start, self.stop) > other
+
+    def __ge__(self, other):
+        return (self.start, self.stop) >= other
+
 
 def _parse_key(src):
     if len(src) < 1:

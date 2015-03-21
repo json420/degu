@@ -686,6 +686,25 @@ Range_str(Range *self)
     );
 }
 
+static PyObject *
+Range_richcompare(Range *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
+    PyObject *ret = NULL;
+
+    _SET(this, PyTuple_Pack(2, self->start, self->stop))
+    _SET(ret, PyObject_RichCompare(this, other, op))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(this);
+    return ret;  
+}
+
+
 static PyMemberDef Range_members[] = {
     {"start", T_OBJECT_EX, offsetof(Range, start), 0, "start"},
     {"stop",  T_OBJECT_EX, offsetof(Range, stop),  0, "stop"},
@@ -694,41 +713,41 @@ static PyMemberDef Range_members[] = {
 
 static PyTypeObject RangeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Range",           /* tp_name */
-    sizeof(Range),                /* tp_basicsize */
-    0,                            /* tp_itemsize */
-    (destructor)Range_dealloc,    /* tp_dealloc */
-    0,                            /* tp_print */
-    0,                            /* tp_getattr */
-    0,                            /* tp_setattr */
-    0,                            /* tp_reserved */
-    (reprfunc)Range_repr,         /* tp_repr */
-    0,                            /* tp_as_number */
-    0,                            /* tp_as_sequence */
-    0,                            /* tp_as_mapping */
-    0,                            /* tp_hash  */
-    0,                            /* tp_call */
-    (reprfunc)Range_str,          /* tp_str */
-    0,                            /* tp_getattro */
-    0,                            /* tp_setattro */
-    0,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,           /* tp_flags */
-    "Range(start, stop)",         /* tp_doc */
-    0,                            /* tp_traverse */
-    0,                            /* tp_clear */
-    0,                            /* tp_richcompare */
-    0,                            /* tp_weaklistoffset */
-    0,                            /* tp_iter */
-    0,                            /* tp_iternext */
-    0,                            /* tp_methods */
-    Range_members,                /* tp_members */
-    0,                            /* tp_getset */
-    0,                            /* tp_base */
-    0,                            /* tp_dict */
-    0,                            /* tp_descr_get */
-    0,                            /* tp_descr_set */
-    0,                            /* tp_dictoffset */
-    (initproc)Range_init,         /* tp_init */
+    "degu._base.Range",                 /* tp_name */
+    sizeof(Range),                      /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Range_dealloc,          /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)Range_repr,               /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    (reprfunc)Range_str,                /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Range(start, stop)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    (richcmpfunc)Range_richcompare,     /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    Range_members,                      /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Range_init,               /* tp_init */
 };
 
 
