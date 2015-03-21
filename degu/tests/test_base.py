@@ -260,6 +260,26 @@ class BackendTestCase(TestCase):
         return getattr(backend, name)
 
 
+class TestRange_Py(BackendTestCase):
+    @property
+    def Range(self):
+        return self.getattr('Range')
+
+    def test_init(self):
+        r = self.Range(16, 21)
+        self.assertIs(type(r.start), int)
+        self.assertIs(type(r.stop), int)
+        self.assertEqual(r.start, 16)
+        self.assertEqual(r.stop, 21)
+        self.assertEqual(repr(r), 'Range(16, 21)')
+        self.assertEqual(str(r), 'bytes=16-20')
+
+
+
+class TestRange_C(TestRange_Py):
+    backend = _base
+
+
 def _iter_sep_permutations(good=b': '):
     (g0, g1) = good
     yield bytes([g0])

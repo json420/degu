@@ -22,6 +22,7 @@
  */
 
 #include <Python.h>
+#include "structmember.h"
 #include <stdbool.h>
 #include <sys/socket.h>
 
@@ -32,6 +33,7 @@
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
 #define MAX_IO_SIZE 16777216
+#define MAX_LENGTH 9999999999999999ULL
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -595,6 +597,136 @@ _clear_degu_response(DeguResponse *dr)
     Py_CLEAR(dr->body);
 }
 
+
+/*******************************************************************************
+ * Range object
+ */
+
+typedef struct {
+    PyObject_HEAD
+    PyObject *start;
+    PyObject *stop;
+    uint64_t _start;
+    uint64_t _stop;
+} Range;
+
+static void
+Range_dealloc(Range *self)
+{
+    Py_CLEAR(self->start);
+    Py_CLEAR(self->stop);
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
+}
+
+static int64_t
+_validate_length(const char *name, PyObject *obj)
+{
+    if (!PyLong_CheckExact(obj)) {
+        PyErr_Format(PyExc_TypeError,
+            "%s: need a <class 'int'>; got a %R: %R", name, Py_TYPE(obj), obj
+        );
+        return -1; 
+    }
+    const uint64_t length = PyLong_AsUnsignedLongLong(obj);
+    if (PyErr_Occurred()) {
+        return -1;
+    }
+    if (length > MAX_LENGTH) {
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= %s <= %llu; got %llu", name, MAX_LENGTH, length
+        );
+        return -1;
+    }
+    return (int64_t)length;
+}
+
+static int
+Range_init(Range *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"start", "stop", NULL};
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    int64_t _start, _stop;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys, &start, &stop)) {
+        return -1;
+    }
+    _start = _validate_length("start", start);
+    if (_start < 0) {
+        return -1;
+    }
+    _stop = _validate_length("stop", stop);
+    if (_stop < 0) {
+        return -1;
+    }
+    self->_start = (uint64_t)_start;
+    self->_stop = (uint64_t)_stop;
+    _SET_AND_INC(self->start, start)
+    _SET_AND_INC(self->stop,  stop)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+Range_repr(Range *self)
+{
+    return PyUnicode_FromFormat("Range(%R, %R)", self->start, self->stop);
+}
+
+static PyObject *
+Range_str(Range *self)
+{
+    return PyUnicode_FromFormat("bytes=%llu-%llu",
+        self->_start, self->_stop - 1
+    );
+}
+
+static PyMemberDef Range_members[] = {
+    {"start", T_OBJECT_EX, offsetof(Range, start), 0, "start"},
+    {"stop",  T_OBJECT_EX, offsetof(Range, stop),  0, "stop"},
+    {NULL}
+};
+
+static PyTypeObject RangeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Range",           /* tp_name */
+    sizeof(Range),                /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Range_dealloc,    /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    (reprfunc)Range_repr,         /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    (reprfunc)Range_str,          /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Range(start, stop)",         /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    0,                            /* tp_methods */
+    Range_members,                /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Range_init,         /* tp_init */
+};
 
 /*******************************************************************************
  * Internal API: Parsing: Headers:
@@ -3085,6 +3217,13 @@ PyInit__base(void)
     }
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
+
+    RangeType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RangeType) < 0) {
+        return NULL;
+    }
+    Py_INCREF(&RangeType);
+    PyModule_AddObject(module, "Range", (PyObject *)&RangeType);
 
     WriterType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriterType) < 0) {

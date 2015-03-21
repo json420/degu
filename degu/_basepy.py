@@ -107,6 +107,20 @@ def _getcallable(objname, obj, name):
 ################################################################################
 # Header parsing:
 
+class Range:
+    __slots__ = ('start', 'stop')
+
+    def __init__(self, start, stop):
+        self.start = start
+        self.stop = stop
+
+    def __str__(self):
+        return 'bytes={}-{}'.format(self.start, self.stop - 1)
+
+    def __repr__(self):
+        return 'Range({}, {})'.format(self.start, self.stop)
+
+
 def _parse_key(src):
     if len(src) < 1:
         raise ValueError('header name is empty')
