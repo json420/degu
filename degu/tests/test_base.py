@@ -502,6 +502,7 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 class TestParsingFunctions_Py(BackendTestCase):
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
+        Range = self.getattr('Range')
 
         prefix = b'bytes='
         ranges = (
@@ -515,7 +516,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         for (start, stop) in ranges:
             suffix = '-'.join([str(start), str(stop - 1)]).encode()
             src = prefix + suffix
-            self.assertEqual(parse_range(src), (start, stop))
+            r = parse_range(src)
+            self.assertIs(type(r), Range)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
+            self.assertEqual(r, (start, stop))
 
             for i in range(len(prefix)):
                 g = prefix[i]
@@ -524,7 +529,11 @@ class TestParsingFunctions_Py(BackendTestCase):
                     bad[i] = b
                     src = bytes(bad) + suffix
                     if g == b:
-                        self.assertEqual(parse_range(src), (start, stop))
+                        r = parse_range(src)
+                        self.assertIs(type(r), Range)
+                        self.assertEqual(r.start, start)
+                        self.assertEqual(r.stop, stop)
+                        self.assertEqual(r, (start, stop))
                     else:
                         with self.assertRaises(ValueError) as cm:
                             parse_range(src)
@@ -538,7 +547,11 @@ class TestParsingFunctions_Py(BackendTestCase):
                 sep = bytes([b])
                 src = prefix + b_start + sep + b_end
                 if sep == b'-':
-                    self.assertEqual(parse_range(src), (start, stop))
+                    r = parse_range(src)
+                    self.assertIs(type(r), Range)
+                    self.assertEqual(r.start, start)
+                    self.assertEqual(r.stop, stop)
+                    self.assertEqual(r, (start, stop))
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_range(src)

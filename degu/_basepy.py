@@ -231,7 +231,7 @@ def parse_range(src):
     end = _parse_decimal(parts[1])
     if start < 0 or end < start:
         _raise_bad_range(src)
-    return (start, end + 1)
+    return Range(start, end + 1)
 
 
 def _parse_header_lines(header_lines):

@@ -880,7 +880,11 @@ _parse_range(_Src src)
     }
     _SET(int_start, PyLong_FromLongLong(start))
     _SET(int_stop, PyLong_FromLongLong(end + 1))
-    _SET(ret, PyTuple_Pack(2, int_start, int_stop))
+    _SET(ret,
+        PyObject_CallFunctionObjArgs(
+            (PyObject *)&RangeType, int_start, int_stop, NULL
+        )
+    )
     goto done;
 
 bad_range:
