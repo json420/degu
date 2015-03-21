@@ -311,8 +311,7 @@ class TestRange_Py(BackendTestCase):
 
         # start > max_length, stop > max_length:
         max_length = int('9' * 16)
-        for offset in [1, 2, 3]:
-            bad = max_length + offset
+        for bad in [max_length + 1, max_length + 2, max64]:
             with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
             self.assertEqual(str(cm.exception),
@@ -348,6 +347,41 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(r.stop, 21)
         self.assertEqual(repr(r), 'Range(16, 21)')
         self.assertEqual(str(r), 'bytes=16-20')
+
+        r = self.Range(0, max_length)
+        self.assertIs(type(r.start), int)
+        self.assertIs(type(r.stop), int)
+        self.assertEqual(r.start, 0)
+        self.assertEqual(r.stop, max_length)
+        self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=0-9999999999999998')
+
+        # Check reference counting:
+        for i in range(1000):
+            stop = random.randrange(1, max_length + 1)
+            stop_cnt = sys.getrefcount(stop)
+            start = random.randrange(0, stop)
+            start_cnt = sys.getrefcount(start)
+            r = self.Range(start, stop)
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertIs(r.start, start)
+            self.assertIs(r.stop, stop)
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertEqual(repr(r), 'Range({}, {})'.format(start, stop))
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertEqual(str(r), 'bytes={}-{}'.format(start, stop - 1))
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
 
     def test_repr_and_str(self):
         r = self.Range(0, 1)
