@@ -42,6 +42,7 @@ MIN_PREAMBLE     =  4096  #  4 KiB
 DEFAULT_PREAMBLE = 32768  # 32 KiB
 MAX_PREAMBLE     = 65536  # 64 KiB
 MAX_IO_SIZE = 16777216  # 16 MiB
+MAX_LENGTH = 9999999999999999
 
 GET = 'GET'
 PUT = 'PUT'
@@ -107,18 +108,38 @@ def _getcallable(objname, obj, name):
 ################################################################################
 # Header parsing:
 
+def _validate_length(name, length):
+    if type(length) is not int:
+        raise TypeError(
+            TYPE_ERROR.format(name, int, type(length), length)
+        )
+    if (length < 0):
+        raise OverflowError("can't convert negative int to unsigned")
+    if (length >= 2**64):
+        raise OverflowError('int too big to convert')
+    if (length > MAX_LENGTH):
+        raise ValueError(
+            'need 0 <= {} <= {}; got {}'.format(name, MAX_LENGTH, length)
+        )
+    return length
+
+
 class Range:
     __slots__ = ('start', 'stop')
 
     def __init__(self, start, stop):
-        self.start = start
-        self.stop = stop
-
-    def __str__(self):
-        return 'bytes={}-{}'.format(self.start, self.stop - 1)
+        self.start = _validate_length('start', start)
+        self.stop = _validate_length('stop', stop)
+        if self.start >= self.stop:
+            raise ValueError(
+                'need start < stop; got {} >= {}'.format(self.start, self.stop)
+            )
 
     def __repr__(self):
         return 'Range({}, {})'.format(self.start, self.stop)
+
+    def __str__(self):
+        return 'bytes={}-{}'.format(self.start, self.stop - 1)
 
 
 def _parse_key(src):

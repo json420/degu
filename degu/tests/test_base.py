@@ -48,6 +48,9 @@ except ImportError:
 
 random = SystemRandom()
 
+class UserInt(int):
+    pass
+
 
 CRLF = b'\r\n'
 TERM = CRLF * 2
@@ -266,6 +269,78 @@ class TestRange_Py(BackendTestCase):
         return self.getattr('Range')
 
     def test_init(self):
+        # start isn't an int:
+        for bad in ['16', 16.0, UserInt(16), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('start', int, type(bad), bad)
+            )
+
+        # stop isn't an int:
+        for bad in ['21', 21.0, UserInt(21), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('stop', int, type(bad), bad)
+            )
+
+        # start < 0, stop < 0:
+        for bad in [-1, -2, -9999999999999999]:
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                "can't convert negative int to unsigned"
+            )
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                "can't convert negative int to unsigned"
+            )
+
+        # start > max64, stop > max64:
+        max64 = 2**64 - 1
+        for offset in [1, 2, 3]:
+            bad = max64 + offset
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception), 'int too big to convert')
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception), 'int too big to convert')
+
+        # start > max_length, stop > max_length:
+        max_length = int('9' * 16)
+        for offset in [1, 2, 3]:
+            bad = max_length + offset
+            with self.assertRaises(ValueError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {}'.format(bad)
+            )
+
+        # start >= stop:
+        bad_pairs = (
+            (0, 0),
+            (1, 0),
+            (17, 17),
+            (18, 17),
+            (9999999999999998, 9999999999999998),
+            (9999999999999999, 9999999999999998),
+        )
+        for (start, stop) in bad_pairs:
+            with self.assertRaises(ValueError) as cm:
+                self.Range(start, stop)
+            self.assertEqual(str(cm.exception),
+                'need start < stop; got {} >= {}'.format(start, stop)
+            )
+
+        # All good:
         r = self.Range(16, 21)
         self.assertIs(type(r.start), int)
         self.assertIs(type(r.stop), int)
@@ -274,6 +349,18 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(repr(r), 'Range(16, 21)')
         self.assertEqual(str(r), 'bytes=16-20')
 
+    def test_repr_and_str(self):
+        r = self.Range(0, 1)
+        self.assertEqual(repr(r), 'Range(0, 1)')
+        self.assertEqual(str(r),  'bytes=0-0')
+
+        r = self.Range(0, 9999999999999999)
+        self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=0-9999999999999998')
+
+        r = self.Range(9999999999999998, 9999999999999999)
+        self.assertEqual(repr(r), 'Range(9999999999999998, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=9999999999999998-9999999999999998')
 
 
 class TestRange_C(TestRange_Py):

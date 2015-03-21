@@ -33,7 +33,7 @@
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
 #define MAX_IO_SIZE 16777216
-#define MAX_LENGTH 9999999999999999ULL
+#define MAX_LENGTH 9999999999999999ull
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -657,6 +657,12 @@ Range_init(Range *self, PyObject *args, PyObject *kw)
     }
     _stop = _validate_length("stop", stop);
     if (_stop < 0) {
+        return -1;
+    }
+    if (_start >= _stop) {
+        PyErr_Format(PyExc_ValueError,
+            "need start < stop; got %lld >= %lld", _start, _stop
+        );
         return -1;
     }
     self->_start = (uint64_t)_start;
