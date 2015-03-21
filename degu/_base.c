@@ -686,24 +686,7 @@ Range_str(Range *self)
     );
 }
 
-static PyObject *
-Range_richcompare(Range *self, PyObject *other, int op)
-{
-    PyObject *this = NULL;
-    PyObject *ret = NULL;
-
-    _SET(this, PyTuple_Pack(2, self->start, self->stop))
-    _SET(ret, PyObject_RichCompare(this, other, op))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(this);
-    return ret;  
-}
-
+static PyObject * Range_richcompare(Range *self, PyObject *other, int op);
 
 static PyMemberDef Range_members[] = {
     {"start", T_OBJECT_EX, offsetof(Range, start), 0, "start"},
@@ -749,6 +732,32 @@ static PyTypeObject RangeType = {
     0,                                  /* tp_dictoffset */
     (initproc)Range_init,               /* tp_init */
 };
+
+static PyObject *
+Range_richcompare(Range *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
+    PyObject *ret = NULL;
+
+    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &RangeType) {
+        _SET(this, PyTuple_Pack(2, self->start, self->stop))
+    }
+    else if (PyUnicode_CheckExact(other)) {
+        _SET(this, Range_str(self))
+    }
+    else {
+        return Py_NotImplemented;
+    }
+    _SET(ret, PyObject_RichCompare(this, other, op))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(this);
+    return ret;  
+}
 
 
 /*******************************************************************************
@@ -947,7 +956,7 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
     }
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
-        _SET(val, _parse_val(valsrc))
+        _SET(val, _parse_range(valsrc))
         dh->flags |= 4;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {

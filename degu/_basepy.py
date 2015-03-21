@@ -141,23 +141,47 @@ class Range:
     def __str__(self):
         return 'bytes={}-{}'.format(self.start, self.stop - 1)
 
+    def __get_this(self, other):
+        if type(other) is tuple or type(other) is type(self):
+            return (self.start, self.stop)
+        if type(other) is str:
+            return str(self)
+
     def __lt__(self, other):
-        return (self.start, self.stop) < other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this < other
 
     def __le__(self, other):
-        return (self.start, self.stop) <= other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this <= other
 
     def __eq__(self, other):
-        return (self.start, self.stop) == other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this == other
 
     def __ne__(self, other):
-        return (self.start, self.stop) != other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this != other
 
     def __gt__(self, other):
-        return (self.start, self.stop) > other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this > other
 
     def __ge__(self, other):
-        return (self.start, self.stop) >= other
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this >= other
 
 
 def _parse_key(src):
@@ -257,7 +281,7 @@ def _parse_header_lines(header_lines):
             val = 'chunked'
         elif key == 'range':
             flags |= 4
-            val = _parse_val(val)
+            val = parse_range(val)
         else:
             val = _parse_val(val)
         if headers.setdefault(key, val) is not val:

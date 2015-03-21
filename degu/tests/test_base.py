@@ -2733,7 +2733,11 @@ class BadSocket:
 class TestReader_Py(BackendTestCase):
     @property
     def Reader(self):
-        return self.backend.Reader
+        return self.getattr('Reader')
+
+    @property
+    def Range(self):
+        return self.getattr('Range')
 
     @property
     def MIN_PREAMBLE(self):
@@ -3062,9 +3066,14 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(request,
             ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, None)
         )
-
-        # FIXME
-        #self.assertEqual(str(request.headers['range']), 'bytes=0-0')
+        _range = request.headers['range']
+        self.assertIs(type(_range), self.Range)
+        self.assertIs(type(_range.start), int)
+        self.assertIs(type(_range.stop), int)
+        self.assertEqual(_range.start, 0)
+        self.assertEqual(_range.stop, 1)
+        self.assertEqual(repr(_range), 'Range(0, 1)')
+        self.assertEqual(str(_range), 'bytes=0-0')
 
     def test_read_request(self):
         for rcvbuf in (None, 1, 2, 3):
