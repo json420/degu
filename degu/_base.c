@@ -535,7 +535,6 @@ _calloc_dst(const size_t len)
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
     PyObject *content_length; \
-    PyObject *range; \
     uint8_t flags;
 
 typedef struct {
@@ -560,20 +559,19 @@ typedef struct {
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \
-     ((DeguHeaders){NULL, NULL, NULL, 0})
+     ((DeguHeaders){NULL, NULL, 0})
 
 #define NEW_DEGU_REQUEST \
-     ((DeguRequest){NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
+     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL, NULL})
+    ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
 
 static void
 _clear_degu_headers(DeguHeaders *dh)
 {
     Py_CLEAR(dh->headers);
     Py_CLEAR(dh->content_length);
-    Py_CLEAR(dh->range);
 }
 
 static void
@@ -601,7 +599,6 @@ _clear_degu_response(DeguResponse *dr)
 /*******************************************************************************
  * Range object
  */
-
 typedef struct {
     PyObject_HEAD
     PyObject *start;
@@ -733,6 +730,7 @@ static PyTypeObject RangeType = {
     0,                            /* tp_dictoffset */
     (initproc)Range_init,         /* tp_init */
 };
+
 
 /*******************************************************************************
  * Internal API: Parsing: Headers:
@@ -927,9 +925,6 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_val(valsrc))
-        if (dh->range == NULL) {
-            _SET(dh->range, _parse_range(valsrc))
-        }
         dh->flags |= 4;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
@@ -987,9 +982,6 @@ _parse_headers(_Src src, _Dst scratch, DeguHeaders *dh)
             "cannot include range header and content-length/transfer-encoding"
         );
         goto error; 
-    }
-    if (dh->range == NULL) {
-        _SET_AND_INC(dh->range, Py_None)
     }
     return true;
 
@@ -1541,7 +1533,6 @@ static PyStructSequence_Field RequestFields[] = {
     {"path", NULL},
     {"query", NULL},
     {"headers", NULL},
-    {"range", NULL},
     {"body", NULL},
     {NULL},
 };
@@ -1549,7 +1540,7 @@ static PyStructSequence_Desc RequestDesc = {
     "Request",
     NULL,
     RequestFields,  
-    8
+    7
 };
 static PyObject *
 _Request(PyObject *method,
@@ -1558,7 +1549,6 @@ _Request(PyObject *method,
          PyObject *path,
          PyObject *query,
          PyObject *headers,
-         PyObject *range,
          PyObject *body)
 {
     PyObject *request = PyStructSequence_New(&RequestType);
@@ -1571,7 +1561,6 @@ _Request(PyObject *method,
     Py_INCREF(path);
     Py_INCREF(query);
     Py_INCREF(headers);
-    Py_INCREF(range);
     Py_INCREF(body);
     PyStructSequence_SET_ITEM(request, 0, method);
     PyStructSequence_SET_ITEM(request, 1, uri);
@@ -1579,8 +1568,7 @@ _Request(PyObject *method,
     PyStructSequence_SET_ITEM(request, 3, path);
     PyStructSequence_SET_ITEM(request, 4, query);
     PyStructSequence_SET_ITEM(request, 5, headers);
-    PyStructSequence_SET_ITEM(request, 6, range);
-    PyStructSequence_SET_ITEM(request, 7, body);
+    PyStructSequence_SET_ITEM(request, 6, body);
     return request;
 }
 
@@ -1740,7 +1728,6 @@ cleanup:
         free(dst.buf);
     }
     Py_CLEAR(dh.content_length);
-    Py_CLEAR(dh.range);
     return dh.headers;
 }
 
@@ -2009,13 +1996,12 @@ Request(PyObject *self, PyObject *args)
     PyObject *path = NULL;
     PyObject *query = NULL;
     PyObject *headers = NULL;
-    PyObject *range = NULL;
     PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "UUOOOOOO:Request",
-            &method, &uri, &script, &path, &query, &headers, &range, &body)) {
+    if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
+            &method, &uri, &script, &path, &query, &headers, &body)) {
         return NULL;
     }
-    return _Request(method, uri, script, path, query, headers, range, body);
+    return _Request(method, uri, script, path, query, headers, body);
 }
 
 static PyObject *
@@ -2523,7 +2509,7 @@ Reader_read_request(Reader *self) {
         _SET(dr.body, _Reader_ChunkedBody(self))
     }
     _SET(ret,
-        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.range, dr.body)
+        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
     )
     goto cleanup;
 

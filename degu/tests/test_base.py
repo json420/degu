@@ -753,15 +753,14 @@ class TestNamedTuples_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(a), 3)
 
     def test_Request(self):
-        (tup, args) = self.new('Request', 8)
+        (tup, args) = self.new('Request', 7)
         self.assertIs(tup.method,  args[0])
         self.assertIs(tup.uri,     args[1])
         self.assertIs(tup.script,  args[2])
         self.assertIs(tup.path,    args[3])
         self.assertIs(tup.query,   args[4])
         self.assertIs(tup.headers, args[5])
-        self.assertIs(tup.range,   args[6])
-        self.assertIs(tup.body,    args[7])
+        self.assertIs(tup.body,    args[6])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
@@ -2938,7 +2937,7 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request, ('GET', '/', [], [], None, {}, None, None))
+        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -2971,8 +2970,11 @@ class TestReader_Py(BackendTestCase):
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
         self.assertEqual(request,
-            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, (0, 1), None)
+            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, None)
         )
+
+        # FIXME
+        #self.assertEqual(str(request.headers['range']), 'bytes=0-0')
 
     def test_read_request(self):
         for rcvbuf in (None, 1, 2, 3):
