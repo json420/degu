@@ -883,8 +883,11 @@ _parse_range(_Src src)
         goto bad_range;
     }
     start = _parse_decimal(_slice(inner, 0, (size_t)index));
+    if (start < 0) {
+        goto bad_range;
+    }
     end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
-    if (start < 0 || end < start) {
+    if (end < 0) {
         goto bad_range;
     }
     _SET(int_start, PyLong_FromLongLong(start))

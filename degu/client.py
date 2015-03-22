@@ -30,7 +30,8 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
-    Response
+    Response,
+    Range,
 )
 
 __all__ = (
@@ -229,14 +230,8 @@ class Connection:
         return self.request('DELETE', uri, headers, None)
 
     def get_range(self, uri, headers, start, stop):
-        assert isinstance(start, int)
-        assert isinstance(stop, int)
-        assert 0 <= start < stop
-        headers['range'] = 'bytes={}-{}'.format(start, stop - 1)
-        response = self.request('GET', uri, headers, None)
-        assert isinstance(response.body, self.bodies.Body)
-        assert response.body.content_length == stop - start
-        return response
+        headers['range'] = Range(start, stop)
+        return self.request('GET', uri, headers, None)
 
 
 def _build_host(default_port, host, port, *extra):
