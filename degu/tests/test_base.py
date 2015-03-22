@@ -401,6 +401,7 @@ class TestRange_Py(BackendTestCase):
             for (start, stop) in pairs:
                 yield (start, stop)
                 yield self.Range(start, stop)
+                yield 'bytes={}-{}'.format(start, stop - 1)
 
         r = self.Range(16, 21)
         equals   = tuple(iter_types([(16, 21)]))
