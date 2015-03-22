@@ -30,6 +30,7 @@ try:
         Request, RequestType,
         Response, ResponseType,
         EmptyPreambleError,
+        Range,
         Reader,
         Writer,
     )
@@ -40,6 +41,7 @@ except ImportError:
         Request, RequestType,
         Response, ResponseType,
         EmptyPreambleError,
+        Range,
         Reader,
         Writer,
     )
@@ -51,6 +53,7 @@ __all__ = (
     'Request', 'RequestType',
     'Response', 'ResponseType',
     'EmptyPreambleError',
+    'Range',
     'Reader',
     'Writer',
 )

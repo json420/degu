@@ -42,6 +42,7 @@ MIN_PREAMBLE     =  4096  #  4 KiB
 DEFAULT_PREAMBLE = 32768  # 32 KiB
 MAX_PREAMBLE     = 65536  # 64 KiB
 MAX_IO_SIZE = 16777216  # 16 MiB
+MAX_LENGTH = 9999999999999999
 
 GET = 'GET'
 PUT = 'PUT'
@@ -107,6 +108,82 @@ def _getcallable(objname, obj, name):
 ################################################################################
 # Header parsing:
 
+def _validate_length(name, length):
+    if type(length) is not int:
+        raise TypeError(
+            TYPE_ERROR.format(name, int, type(length), length)
+        )
+    if (length < 0):
+        raise OverflowError("can't convert negative int to unsigned")
+    if (length >= 2**64):
+        raise OverflowError('int too big to convert')
+    if (length > MAX_LENGTH):
+        raise ValueError(
+            'need 0 <= {} <= {}; got {}'.format(name, MAX_LENGTH, length)
+        )
+    return length
+
+
+class Range:
+    __slots__ = ('start', 'stop')
+
+    def __init__(self, start, stop):
+        self.start = _validate_length('start', start)
+        self.stop = _validate_length('stop', stop)
+        if self.start >= self.stop:
+            raise ValueError(
+                'need start < stop; got {} >= {}'.format(self.start, self.stop)
+            )
+
+    def __repr__(self):
+        return 'Range({}, {})'.format(self.start, self.stop)
+
+    def __str__(self):
+        return 'bytes={}-{}'.format(self.start, self.stop - 1)
+
+    def __get_this(self, other):
+        if type(other) is tuple or type(other) is type(self):
+            return (self.start, self.stop)
+        if type(other) is str:
+            return str(self)
+
+    def __lt__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this < other
+
+    def __le__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this <= other
+
+    def __eq__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this == other
+
+    def __ne__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this != other
+
+    def __gt__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this > other
+
+    def __ge__(self, other):
+        this = self.__get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this >= other
+
+
 def _parse_key(src):
     if len(src) < 1:
         raise ValueError('header name is empty')
@@ -152,6 +229,34 @@ def parse_content_length(src):
         )
     return int(src)
 
+def _parse_decimal(src):
+    if len(src) < 1 or len(src) > 16:
+        return -1
+    if not DIGIT.issuperset(src):
+        return -1
+    if src[0:1] == b'0' and src != b'0':
+        return -1
+    return int(src)
+
+
+def _raise_bad_range(src):
+    raise ValueError('bad range: {!r}'.format(src))
+
+
+def parse_range(src):
+    assert isinstance(src, bytes)
+    if len(src) < 9 or len(src) > 39 or src[0:6] != b'bytes=':
+        _raise_bad_range(src)
+    inner = src[6:]
+    parts = inner.split(b'-', 1)
+    if len(parts) != 2:
+        _raise_bad_range(src)
+    start = _parse_decimal(parts[0])
+    end = _parse_decimal(parts[1])
+    if start < 0 or end < start:
+        _raise_bad_range(src)
+    return Range(start, end + 1)
+
 
 def _parse_header_lines(header_lines):
     headers = {}
@@ -174,6 +279,9 @@ def _parse_header_lines(header_lines):
                     'bad transfer-encoding: {!r}'.format(val)
                 )
             val = 'chunked'
+        elif key == 'range':
+            flags |= 4
+            val = parse_range(val)
         else:
             val = _parse_val(val)
         if headers.setdefault(key, val) is not val:
@@ -183,6 +291,10 @@ def _parse_header_lines(header_lines):
     if (flags & 3) == 3:
         raise ValueError(
             'cannot have both content-length and transfer-encoding headers'
+        )
+    if (flags & 4) and (flags & 3):
+        raise ValueError(
+            'cannot include range header and content-length/transfer-encoding'
         )
     return headers
 

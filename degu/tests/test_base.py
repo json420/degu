@@ -48,6 +48,9 @@ except ImportError:
 
 random = SystemRandom()
 
+class UserInt(int):
+    pass
+
 
 CRLF = b'\r\n'
 TERM = CRLF * 2
@@ -260,6 +263,222 @@ class BackendTestCase(TestCase):
         return getattr(backend, name)
 
 
+class TestRange_Py(BackendTestCase):
+    @property
+    def Range(self):
+        return self.getattr('Range')
+
+    def test_init(self):
+        # start isn't an int:
+        for bad in ['16', 16.0, UserInt(16), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('start', int, type(bad), bad)
+            )
+
+        # stop isn't an int:
+        for bad in ['21', 21.0, UserInt(21), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('stop', int, type(bad), bad)
+            )
+
+        # start < 0, stop < 0:
+        for bad in [-1, -2, -9999999999999999]:
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                "can't convert negative int to unsigned"
+            )
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                "can't convert negative int to unsigned"
+            )
+
+        # start > max64, stop > max64:
+        max64 = 2**64 - 1
+        for offset in [1, 2, 3]:
+            bad = max64 + offset
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception), 'int too big to convert')
+            with self.assertRaises(OverflowError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception), 'int too big to convert')
+
+        # start > max_length, stop > max_length:
+        max_length = int('9' * 16)
+        for bad in [max_length + 1, max_length + 2, max64]:
+            with self.assertRaises(ValueError) as cm:
+                self.Range(bad, 21)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.Range(16, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {}'.format(bad)
+            )
+
+        # start >= stop:
+        bad_pairs = (
+            (0, 0),
+            (1, 0),
+            (17, 17),
+            (18, 17),
+            (9999999999999998, 9999999999999998),
+            (9999999999999999, 9999999999999998),
+        )
+        for (start, stop) in bad_pairs:
+            with self.assertRaises(ValueError) as cm:
+                self.Range(start, stop)
+            self.assertEqual(str(cm.exception),
+                'need start < stop; got {} >= {}'.format(start, stop)
+            )
+
+        # All good:
+        r = self.Range(16, 21)
+        self.assertIs(type(r.start), int)
+        self.assertIs(type(r.stop), int)
+        self.assertEqual(r.start, 16)
+        self.assertEqual(r.stop, 21)
+        self.assertEqual(repr(r), 'Range(16, 21)')
+        self.assertEqual(str(r), 'bytes=16-20')
+
+        r = self.Range(0, max_length)
+        self.assertIs(type(r.start), int)
+        self.assertIs(type(r.stop), int)
+        self.assertEqual(r.start, 0)
+        self.assertEqual(r.stop, max_length)
+        self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=0-9999999999999998')
+
+        # Check reference counting:
+        for i in range(1000):
+            stop = random.randrange(1, max_length + 1)
+            stop_cnt = sys.getrefcount(stop)
+            start = random.randrange(0, stop)
+            start_cnt = sys.getrefcount(start)
+            r = self.Range(start, stop)
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertIs(r.start, start)
+            self.assertIs(r.stop, stop)
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertEqual(repr(r), 'Range({}, {})'.format(start, stop))
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            self.assertEqual(str(r), 'bytes={}-{}'.format(start, stop - 1))
+            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+
+    def test_repr_and_str(self):
+        r = self.Range(0, 1)
+        self.assertEqual(repr(r), 'Range(0, 1)')
+        self.assertEqual(str(r),  'bytes=0-0')
+
+        r = self.Range(0, 9999999999999999)
+        self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=0-9999999999999998')
+
+        r = self.Range(9999999999999998, 9999999999999999)
+        self.assertEqual(repr(r), 'Range(9999999999999998, 9999999999999999)')
+        self.assertEqual(str(r),  'bytes=9999999999999998-9999999999999998')
+
+    def test_cmp(self):
+        def iter_types(pairs):
+            for (start, stop) in pairs:
+                yield (start, stop)
+                yield self.Range(start, stop)
+                yield 'bytes={}-{}'.format(start, stop - 1)
+
+        r = self.Range(16, 21)
+        equals   = tuple(iter_types([(16, 21)]))
+        lessers  = tuple(iter_types([(15, 21), (16, 20)]))
+        greaters = tuple(iter_types([(17, 21), (16, 22)]))
+
+        # __lt__():
+        for o in lessers:
+            self.assertIs(r < o, False)
+            self.assertIs(o < r, True)
+        for o in equals:
+            self.assertIs(r < o, False)
+            self.assertIs(o < r, False)
+        for o in greaters:
+            self.assertIs(r < o, True)
+            self.assertIs(o < r, False)
+
+        # __le__():
+        for o in lessers:
+            self.assertIs(r <= o, False)
+            self.assertIs(o <= r, True)
+        for o in equals:
+            self.assertIs(r <= o, True)
+            self.assertIs(o <= r, True)
+        for o in greaters:
+            self.assertIs(r <= o, True)
+            self.assertIs(o <= r, False)
+
+        # __eq__():
+        for o in lessers:
+            self.assertIs(r == o, False)
+            self.assertIs(o == r, False)
+        for o in equals:
+            self.assertIs(r == o, True)
+            self.assertIs(o == r, True)
+        for o in greaters:
+            self.assertIs(r == o, False)
+            self.assertIs(o == r, False)
+
+        # __ne__():
+        for o in lessers:
+            self.assertIs(r != o, True)
+            self.assertIs(o != r, True)
+        for o in equals:
+            self.assertIs(r != o, False)
+            self.assertIs(o != r, False)
+        for o in greaters:
+            self.assertIs(r != o, True)
+            self.assertIs(o != r, True)
+
+        # __gt__():
+        for o in lessers:
+            self.assertIs(r > o, True)
+            self.assertIs(o > r, False)
+        for o in equals:
+            self.assertIs(r > o, False)
+            self.assertIs(o > r, False)
+        for o in greaters:
+            self.assertIs(r > o, False)
+            self.assertIs(o > r, True)
+
+        # __ge__():
+        for o in lessers:
+            self.assertIs(r >= o, True)
+            self.assertIs(o >= r, False)
+        for o in equals:
+            self.assertIs(r >= o, True)
+            self.assertIs(o >= r, True)
+        for o in greaters:
+            self.assertIs(r >= o, False)
+            self.assertIs(o >= r, True)
+
+
+class TestRange_C(TestRange_Py):
+    backend = _base
+
+
 def _iter_sep_permutations(good=b': '):
     (g0, g1) = good
     yield bytes([g0])
@@ -282,6 +501,65 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 
 
 class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_range(self):
+        parse_range = self.getattr('parse_range')
+        Range = self.getattr('Range')
+
+        prefix = b'bytes='
+        ranges = (
+            (0, 1),
+            (0, 2),
+            (9, 10),
+            (9, 11),
+            (0, 9999999999999999),
+            (9999999999999998, 9999999999999999),
+        )
+        for (start, stop) in ranges:
+            suffix = '-'.join([str(start), str(stop - 1)]).encode()
+            src = prefix + suffix
+            r = parse_range(src)
+            self.assertIs(type(r), Range)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
+            self.assertEqual(r, (start, stop))
+
+            for i in range(len(prefix)):
+                g = prefix[i]
+                bad = bytearray(prefix)
+                for b in range(256):
+                    bad[i] = b
+                    src = bytes(bad) + suffix
+                    if g == b:
+                        r = parse_range(src)
+                        self.assertIs(type(r), Range)
+                        self.assertEqual(r.start, start)
+                        self.assertEqual(r.stop, stop)
+                        self.assertEqual(r, (start, stop))
+                    else:
+                        with self.assertRaises(ValueError) as cm:
+                            parse_range(src)
+                        self.assertEqual(str(cm.exception),
+                            'bad range: {!r}'.format(src)
+                        )
+
+            b_start = str(start).encode()
+            b_end = str(stop - 1).encode()
+            for b in range(256):
+                sep = bytes([b])
+                src = prefix + b_start + sep + b_end
+                if sep == b'-':
+                    r = parse_range(src)
+                    self.assertIs(type(r), Range)
+                    self.assertEqual(r.start, start)
+                    self.assertEqual(r.stop, stop)
+                    self.assertEqual(r, (start, stop))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad range: {!r}'.format(src)
+                    )
+
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
 
@@ -302,6 +580,7 @@ class TestParsingFunctions_Py(BackendTestCase):
 
         length =  b'Content-Length: 17'
         encoding = b'Transfer-Encoding: chunked'
+        _range = b'Range: bytes=16-16'
         _type = b'Content-Type: text/plain'
         self.assertEqual(parse_headers(length),
             {'content-length': 17}
@@ -323,6 +602,18 @@ class TestParsingFunctions_Py(BackendTestCase):
             parse_headers(badsrc)
         self.assertEqual(str(cm.exception),
             'cannot have both content-length and transfer-encoding headers'
+        )
+        badsrc = b'\r\n'.join([length, _range])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot include range header and content-length/transfer-encoding'
+        )
+        badsrc = b'\r\n'.join([encoding, _range])
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(badsrc)
+        self.assertEqual(str(cm.exception),
+            'cannot include range header and content-length/transfer-encoding'
         )
 
         key = b'Content-Length'
@@ -2443,7 +2734,11 @@ class BadSocket:
 class TestReader_Py(BackendTestCase):
     @property
     def Reader(self):
-        return self.backend.Reader
+        return self.getattr('Reader')
+
+    @property
+    def Range(self):
+        return self.getattr('Range')
 
     @property
     def MIN_PREAMBLE(self):
@@ -2763,6 +3058,23 @@ class TestReader_Py(BackendTestCase):
             self.assertEqual(str(cm.exception),
                 'request line too short: {!r}'.format(bad)
             )
+
+        # With Range header:
+        data = b'GET / HTTP/1.1\r\nRange: bytes=0-0\r\n\r\n'
+        (sock, reader) = self.new(data, rcvbuf=rcvbuf)
+        request = reader.read_request()
+        self.assertIsInstance(request, self.getattr('RequestType'))
+        self.assertEqual(request,
+            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, None)
+        )
+        _range = request.headers['range']
+        self.assertIs(type(_range), self.Range)
+        self.assertIs(type(_range.start), int)
+        self.assertIs(type(_range.stop), int)
+        self.assertEqual(_range.start, 0)
+        self.assertEqual(_range.stop, 1)
+        self.assertEqual(repr(_range), 'Range(0, 1)')
+        self.assertEqual(str(_range), 'bytes=0-0')
 
     def test_read_request(self):
         for rcvbuf in (None, 1, 2, 3):

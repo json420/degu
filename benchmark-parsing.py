@@ -10,6 +10,7 @@ from io import BytesIO
 from degu._base import (
     parse_headers,
     parse_content_length,
+    parse_range,
 
     parse_request,
     parse_request_line,
@@ -62,9 +63,12 @@ print('\nHeader parsing:')
 run('parse_headers(headers_src)')
 run("parse_headers(b'Content-Length: 123456')")
 run("parse_headers(b'Transfer-Encoding: chunked')")
-run("parse_headers(b'Content-Length: 123456\\r\\nContent-Type: text/plain')")
-run("parse_headers(b'Transfer-Encoding: chunked\\r\\nContent-Type: text/plain')")
-run("parse_content_length(b'123456')")
+run("parse_headers(b'Content-Length: 123456\\r\\nContent-Type: application/json')")
+run("parse_headers(b'Transfer-Encoding: chunked\\r\\nContent-Type: application/json')")
+run("parse_content_length(b'0')")
+run("parse_content_length(b'9999999999999999')")
+run("parse_range(b'bytes=0-0')")
+run("parse_range(b'bytes=9999999999999998-9999999999999998')")
 
 print('\nRequest parsing:')
 run('parse_request(request)')

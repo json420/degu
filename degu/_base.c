@@ -22,6 +22,7 @@
  */
 
 #include <Python.h>
+#include "structmember.h"
 #include <stdbool.h>
 #include <sys/socket.h>
 
@@ -32,6 +33,7 @@
 #define MAX_KEY 32
 #define MAX_CL_LEN 16
 #define MAX_IO_SIZE 16777216
+#define MAX_LENGTH 9999999999999999ull
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -48,6 +50,8 @@ static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
 static PyObject *str_content_length = NULL;     //  'content_length'
 static PyObject *key_content_length = NULL;     //  'content-length'
 static PyObject *key_content_type   = NULL;     //  'content-type'
+static PyObject *val_application_json = NULL; // 'application/json'
+static PyObject *key_range   = NULL;            //  'range'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *str_chunked = NULL;            //  'chunked'
 static PyObject *str_crlf = NULL;               //  '\r\n'
@@ -330,7 +334,12 @@ _DEGU_BUF_CONSTANT(OK, "OK")
 _DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_BUF_CONSTANT(CHUNKED, "chunked")
+_DEGU_BUF_CONSTANT(RANGE, "range")
 _DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
+
+_DEGU_BUF_CONSTANT(APPLICATION_JSON, "application/json")
+_DEGU_BUF_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_BUF_CONSTANT(MINUS, "-")
 
 static inline bool
 _isempty(_Src src)
@@ -553,7 +562,7 @@ typedef struct {
      ((DeguHeaders){NULL, NULL, 0})
 
 #define NEW_DEGU_REQUEST \
-     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL})
+     ((DeguRequest){NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, 0, NULL, NULL, NULL})
@@ -584,6 +593,170 @@ _clear_degu_response(DeguResponse *dr)
     Py_CLEAR(dr->status);
     Py_CLEAR(dr->reason);
     Py_CLEAR(dr->body);
+}
+
+
+/*******************************************************************************
+ * Range object
+ */
+typedef struct {
+    PyObject_HEAD
+    PyObject *start;
+    PyObject *stop;
+    uint64_t _start;
+    uint64_t _stop;
+} Range;
+
+static void
+Range_dealloc(Range *self)
+{
+    Py_CLEAR(self->start);
+    Py_CLEAR(self->stop);
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
+}
+
+static int64_t
+_validate_length(const char *name, PyObject *obj)
+{
+    if (!PyLong_CheckExact(obj)) {
+        PyErr_Format(PyExc_TypeError,
+            "%s: need a <class 'int'>; got a %R: %R", name, Py_TYPE(obj), obj
+        );
+        return -1; 
+    }
+    const uint64_t length = PyLong_AsUnsignedLongLong(obj);
+    if (PyErr_Occurred()) {
+        return -1;
+    }
+    if (length > MAX_LENGTH) {
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= %s <= %llu; got %llu", name, MAX_LENGTH, length
+        );
+        return -1;
+    }
+    return (int64_t)length;
+}
+
+static int
+Range_init(Range *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"start", "stop", NULL};
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    int64_t _start, _stop;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys, &start, &stop)) {
+        return -1;
+    }
+    _start = _validate_length("start", start);
+    if (_start < 0) {
+        return -1;
+    }
+    _stop = _validate_length("stop", stop);
+    if (_stop < 0) {
+        return -1;
+    }
+    if (_start >= _stop) {
+        PyErr_Format(PyExc_ValueError,
+            "need start < stop; got %lld >= %lld", _start, _stop
+        );
+        return -1;
+    }
+    self->_start = (uint64_t)_start;
+    self->_stop = (uint64_t)_stop;
+    _SET_AND_INC(self->start, start)
+    _SET_AND_INC(self->stop,  stop)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+Range_repr(Range *self)
+{
+    return PyUnicode_FromFormat("Range(%R, %R)", self->start, self->stop);
+}
+
+static PyObject *
+Range_str(Range *self)
+{
+    return PyUnicode_FromFormat("bytes=%llu-%llu",
+        self->_start, self->_stop - 1
+    );
+}
+
+static PyObject * Range_richcompare(Range *self, PyObject *other, int op);
+
+static PyMemberDef Range_members[] = {
+    {"start", T_OBJECT_EX, offsetof(Range, start), 0, "start"},
+    {"stop",  T_OBJECT_EX, offsetof(Range, stop),  0, "stop"},
+    {NULL}
+};
+
+static PyTypeObject RangeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Range",                 /* tp_name */
+    sizeof(Range),                      /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Range_dealloc,          /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)Range_repr,               /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    (reprfunc)Range_str,                /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Range(start, stop)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    (richcmpfunc)Range_richcompare,     /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    Range_members,                      /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Range_init,               /* tp_init */
+};
+
+static PyObject *
+Range_richcompare(Range *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
+    PyObject *ret = NULL;
+
+    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &RangeType) {
+        _SET(this, PyTuple_Pack(2, self->start, self->stop))
+    }
+    else if (PyUnicode_CheckExact(other)) {
+        _SET(this, Range_str(self))
+    }
+    else {
+        return Py_NotImplemented;
+    }
+    _SET(ret, PyObject_RichCompare(this, other, op))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(this);
+    return ret;  
 }
 
 
@@ -692,6 +865,52 @@ _parse_content_length(_Src src)
     return PyLong_FromLongLong(value);
 }
 
+static PyObject *
+_parse_range(_Src src)
+{
+    ssize_t index;
+    int64_t start, end;
+    PyObject *int_start = NULL;
+    PyObject *int_stop = NULL;
+    PyObject *ret = NULL;
+
+    if (src.len < 9 || src.len > 39 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
+        goto bad_range;
+    }
+    _Src inner = _slice(src, 6, src.len);
+    index = _find(inner, MINUS);
+    if (index < 1) {
+        goto bad_range;
+    }
+    start = _parse_decimal(_slice(inner, 0, (size_t)index));
+    if (start < 0) {
+        goto bad_range;
+    }
+    end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
+    if (end < 0) {
+        goto bad_range;
+    }
+    _SET(int_start, PyLong_FromLongLong(start))
+    _SET(int_stop, PyLong_FromLongLong(end + 1))
+    _SET(ret,
+        PyObject_CallFunctionObjArgs(
+            (PyObject *)&RangeType, int_start, int_stop, NULL
+        )
+    )
+    goto done;
+
+bad_range:
+    _value_error("bad range: %R", src);
+
+error:
+    Py_CLEAR(ret);
+
+done:
+    Py_CLEAR(int_start);
+    Py_CLEAR(int_stop);
+    return ret;
+}
+
 static bool
 _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
 {
@@ -738,9 +957,19 @@ _parse_header_line(_Src src, _Dst scratch, DeguHeaders *dh)
         _SET_AND_INC(val, str_chunked)
         dh->flags |= 2;
     }
+    else if (_equal(keysrc, RANGE)) {
+        _SET_AND_INC(key, key_range)
+        _SET(val, _parse_range(valsrc))
+        dh->flags |= 4;
+    }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
-        _SET(val, _parse_val(valsrc))
+        if (_equal(valsrc, APPLICATION_JSON)) {
+            _SET_AND_INC(val, val_application_json)
+        }
+        else {
+            _SET(val, _parse_val(valsrc))
+        }
     }
     else {
         _SET(key, _tostr(keysrc))
@@ -780,6 +1009,12 @@ _parse_headers(_Src src, _Dst scratch, DeguHeaders *dh)
     if ((dh->flags & 3) == 3) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
+        );
+        goto error; 
+    }
+    if ((dh->flags & 4) && (dh->flags & 3)) {
+        PyErr_SetString(PyExc_ValueError, 
+            "cannot include range header and content-length/transfer-encoding"
         );
         goto error; 
     }
@@ -1355,6 +1590,13 @@ _Request(PyObject *method,
     if (request == NULL) {
         return NULL;
     }
+    Py_INCREF(method);
+    Py_INCREF(uri);
+    Py_INCREF(script);
+    Py_INCREF(path);
+    Py_INCREF(query);
+    Py_INCREF(headers);
+    Py_INCREF(body);
     PyStructSequence_SET_ITEM(request, 0, method);
     PyStructSequence_SET_ITEM(request, 1, uri);
     PyStructSequence_SET_ITEM(request, 2, script);
@@ -1387,6 +1629,10 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
     if (response == NULL) {
         return NULL;
     }
+    Py_INCREF(status);
+    Py_INCREF(reason);
+    Py_INCREF(headers);
+    Py_INCREF(body);
     PyStructSequence_SET_ITEM(response, 0, status);
     PyStructSequence_SET_ITEM(response, 1, reason);
     PyStructSequence_SET_ITEM(response, 2, headers);
@@ -1478,6 +1724,18 @@ parse_content_length(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+parse_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_range((_Src){buf, len});
+}
+
+static PyObject *
 parse_headers(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
@@ -1545,8 +1803,10 @@ parse_uri(PyObject *self, PyObject *args)
         PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
     )
     goto cleanup;
+
 error:
     Py_CLEAR(ret);
+
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1570,8 +1830,10 @@ parse_request_line(PyObject *self, PyObject *args)
         PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
     )
     goto cleanup;
+
 error:
     Py_CLEAR(ret);
+
 cleanup:
     _clear_degu_request(&dr);
     return ret;
@@ -1634,13 +1896,14 @@ parse_response_line(PyObject *self, PyObject *args)
         Py_FatalError("parse_response_line");
         goto error;
     }
-    _SET(ret, PyTuple_New(2))
-    PyTuple_SET_ITEM(ret, 0, dr.status);
-    PyTuple_SET_ITEM(ret, 1, dr.reason);
+    _SET(ret, PyTuple_Pack(2, dr.status, dr.reason))
     goto done;
+
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
+
 done:
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -1667,9 +1930,10 @@ parse_response(PyObject *self, PyObject *args)
     goto cleanup;
 
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
+    _clear_degu_response(&dr);
     free(scratch.buf);
     return ret;
 }
@@ -1772,13 +2036,6 @@ Request(PyObject *self, PyObject *args)
             &method, &uri, &script, &path, &query, &headers, &body)) {
         return NULL;
     }
-    Py_INCREF(method);
-    Py_INCREF(uri);
-    Py_INCREF(script);
-    Py_INCREF(path);
-    Py_INCREF(query);
-    Py_INCREF(headers);
-    Py_INCREF(body);
     return _Request(method, uri, script, path, query, headers, body);
 }
 
@@ -1793,10 +2050,6 @@ Response(PyObject *self, PyObject *args)
             &status, &reason, &headers, &body)) {
         return NULL;
     }
-    Py_INCREF(status);
-    Py_INCREF(reason);
-    Py_INCREF(headers);
-    Py_INCREF(body);
     return _Response(status, reason, headers, body);
 }
 
@@ -1810,6 +2063,7 @@ static struct PyMethodDef degu_functions[] = {
         "parse_header_name(name)"},
     {"parse_content_length", parse_content_length, METH_VARARGS,
         "parse_content_length(value)"},
+    {"parse_range", parse_range, METH_VARARGS, "parse_range(src)"},
     {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
 
     /* Request Parsing */
@@ -2295,9 +2549,10 @@ Reader_read_request(Reader *self) {
     goto cleanup;
 
 error:
-    _clear_degu_request(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
+    _clear_degu_request(&dr);
     return ret;
 }
 
@@ -2352,11 +2607,11 @@ Reader_read_response(Reader *self, PyObject *args)
     goto cleanup;
 
 error:
-    _clear_degu_response(&dr);
+    Py_CLEAR(ret);
 
 cleanup:
     Py_CLEAR(method);
-    Py_CLEAR(dr.content_length);
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -2992,6 +3247,13 @@ PyInit__base(void)
     Py_INCREF(&ReaderType);
     PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
 
+    RangeType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RangeType) < 0) {
+        return NULL;
+    }
+    Py_INCREF(&RangeType);
+    PyModule_AddObject(module, "Range", (PyObject *)&RangeType);
+
     WriterType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriterType) < 0) {
         return NULL;
@@ -3041,9 +3303,11 @@ PyInit__base(void)
 
     _SET(str_content_length, PyUnicode_InternFromString("content_length"))
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
+    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
     _SET(str_chunked, PyUnicode_InternFromString("chunked"))
-    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
+    _SET(key_range, PyUnicode_InternFromString("range"))
+    _SET(val_application_json, PyUnicode_InternFromString("application/json"))
 
     _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
     _SET(str_empty, PyUnicode_InternFromString(""))
