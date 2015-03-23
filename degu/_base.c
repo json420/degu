@@ -545,10 +545,10 @@ typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *method;
     PyObject *uri;
+    PyObject *body;
     PyObject *script;
     PyObject *path;
     PyObject *query;
-    PyObject *body;
 } DeguRequest;
 
 typedef struct {
@@ -1517,7 +1517,6 @@ cleanup:
 }
 
 
-
 /*******************************************************************************
  * Internal API: namedtuple:
  *     _Bodies()
@@ -1564,11 +1563,11 @@ static PyTypeObject RequestType;
 static PyStructSequence_Field RequestFields[] = {
     {"method", NULL},
     {"uri", NULL},
+    {"headers", NULL},
+    {"body", NULL},
     {"script", NULL},
     {"path", NULL},
     {"query", NULL},
-    {"headers", NULL},
-    {"body", NULL},
     {NULL},
 };
 static PyStructSequence_Desc RequestDesc = {
@@ -1580,11 +1579,11 @@ static PyStructSequence_Desc RequestDesc = {
 static PyObject *
 _Request(PyObject *method,
          PyObject *uri,
+         PyObject *headers,
+         PyObject *body,
          PyObject *script,
          PyObject *path,
-         PyObject *query,
-         PyObject *headers,
-         PyObject *body)
+         PyObject *query)
 {
     PyObject *request = PyStructSequence_New(&RequestType);
     if (request == NULL) {
@@ -1592,18 +1591,18 @@ _Request(PyObject *method,
     }
     Py_INCREF(method);
     Py_INCREF(uri);
+    Py_INCREF(headers);
+    Py_INCREF(body);
     Py_INCREF(script);
     Py_INCREF(path);
     Py_INCREF(query);
-    Py_INCREF(headers);
-    Py_INCREF(body);
     PyStructSequence_SET_ITEM(request, 0, method);
     PyStructSequence_SET_ITEM(request, 1, uri);
-    PyStructSequence_SET_ITEM(request, 2, script);
-    PyStructSequence_SET_ITEM(request, 3, path);
-    PyStructSequence_SET_ITEM(request, 4, query);
-    PyStructSequence_SET_ITEM(request, 5, headers);
-    PyStructSequence_SET_ITEM(request, 6, body);
+    PyStructSequence_SET_ITEM(request, 2, headers);
+    PyStructSequence_SET_ITEM(request, 3, body);
+    PyStructSequence_SET_ITEM(request, 4, script);
+    PyStructSequence_SET_ITEM(request, 5, path);
+    PyStructSequence_SET_ITEM(request, 6, query);
     return request;
 }
 
@@ -2027,16 +2026,16 @@ Request(PyObject *self, PyObject *args)
 {
     PyObject *method = NULL;
     PyObject *uri = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
     PyObject *script = NULL;
     PyObject *path = NULL;
     PyObject *query = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
     if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
-            &method, &uri, &script, &path, &query, &headers, &body)) {
+            &method, &uri, &headers, &body,  &script, &path, &query)) {
         return NULL;
     }
-    return _Request(method, uri, script, path, query, headers, body);
+    return _Request(method, uri, headers, body, script, path, query);
 }
 
 static PyObject *
@@ -2092,7 +2091,7 @@ static struct PyMethodDef degu_functions[] = {
         "Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)"
     },
     {"Request", Request, METH_VARARGS,
-        "Request(method, uri, script, path, query, headers, body)"
+        "Request(method, uri, headers, body, script, path, query)"
     },
     {"Response", Response, METH_VARARGS,
         "Response(status, reason, headers, body)"
@@ -2544,7 +2543,7 @@ Reader_read_request(Reader *self) {
         _SET(dr.body, _Reader_ChunkedBody(self))
     }
     _SET(ret,
-        _Request(dr.method, dr.uri, dr.script, dr.path, dr.query, dr.headers, dr.body)
+        _Request(dr.method, dr.uri, dr.headers, dr.body, dr.script, dr.path, dr.query)
     )
     goto cleanup;
 

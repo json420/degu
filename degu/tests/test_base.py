@@ -856,11 +856,11 @@ class TestNamedTuples_Py(BackendTestCase):
         (tup, args) = self.new('Request', 7)
         self.assertIs(tup.method,  args[0])
         self.assertIs(tup.uri,     args[1])
-        self.assertIs(tup.script,  args[2])
-        self.assertIs(tup.path,    args[3])
-        self.assertIs(tup.query,   args[4])
-        self.assertIs(tup.headers, args[5])
-        self.assertIs(tup.body,    args[6])
+        self.assertIs(tup.headers, args[2])
+        self.assertIs(tup.body,    args[3])
+        self.assertIs(tup.script,  args[4])
+        self.assertIs(tup.path,    args[5])
+        self.assertIs(tup.query,   args[6])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
@@ -878,6 +878,7 @@ class TestNamedTuples_Py(BackendTestCase):
         del tup
         for a in args:
             self.assertEqual(sys.getrefcount(a), 3)
+
 
 class TestNamedTuples_C(TestNamedTuples_Py):
     backend = _base
@@ -3041,7 +3042,7 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
+        self.assertEqual(request, ('GET', '/', {}, None, [], [], None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -3074,7 +3075,7 @@ class TestReader_Py(BackendTestCase):
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
         self.assertEqual(request,
-            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, None)
+            ('GET', '/', {'range': 'bytes=0-0'}, None, [], [], None)
         )
         _range = request.headers['range']
         self.assertIs(type(_range), self.Range)

@@ -64,7 +64,7 @@ BodiesType = Bodies = namedtuple('Bodies',
     'Body BodyIter ChunkedBody ChunkedBodyIter'
 )
 RequestType = Request = namedtuple('Request',
-    'method uri script path query headers body'
+    'method uri headers body script path query'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
@@ -690,7 +690,7 @@ class Reader:
             body = self.ChunkedBody()
         else:
             body = None
-        return Request(method, uri, script, path, query, headers, body)
+        return Request(method, uri, headers, body, script, path, query)
 
     def read_response(self, method):
         method = parse_method(method)
