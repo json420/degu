@@ -155,15 +155,16 @@ def _handle_requests(app, sock, max_requests, session, bodies):
                 raise TypeError(
                     'response body must be None when request method is HEAD'
                 )
-            if 'content-length' in headers:
-                if 'transfer-encoding' in headers:
+            if 200 <= status < 300:
+                if 'content-length' in headers:
+                    if 'transfer-encoding' in headers:
+                        raise ValueError(
+                            'cannot have both content-length and transfer-encoding headers'
+                        )
+                elif headers.get('transfer-encoding') != 'chunked':
                     raise ValueError(
-                        'cannot have both content-length and transfer-encoding headers'
+                        'response to HEAD request must include content-length or transfer-encoding'
                     )
-            elif headers.get('transfer-encoding') != 'chunked':
-                raise ValueError(
-                    'response to HEAD request must include content-length or transfer-encoding'
-                )
 
         # Write response:
         writer.write_response(status, reason, headers, body)
