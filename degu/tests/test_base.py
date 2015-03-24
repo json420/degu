@@ -670,6 +670,17 @@ class TestParsingFunctions_Py(BackendTestCase):
                 )
         self.assertEqual(good_count, 2)
 
+    def test_parse_request(self):
+        bodies = base.bodies
+        parse_request = self.getattr('parse_request')
+        EmptyPreambleError = self.getattr('EmptyPreambleError')
+        rfile = io.BytesIO()
+
+        with self.assertRaises(EmptyPreambleError) as cm:
+            parse_request(b'', rfile, bodies)
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+            
+
 
 class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
