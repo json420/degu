@@ -7,6 +7,8 @@ gc.enable()
 
 from io import BytesIO
 
+from degu.base import bodies
+
 from degu._base import (
     parse_headers,
     parse_content_length,
@@ -73,10 +75,10 @@ run("parse_range(b'bytes=0-0')")
 run("parse_range(b'bytes=9999999999999998-9999999999999998')")
 
 print('\nRequest parsing:')
-run('parse_request(request)')
-run("parse_request(b'GET / HTTP/1.1')")
-run("parse_request(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
-run("parse_request(b'GET / HTTP/1.1\\r\\ncontent-length: 17')")
+run('parse_request(request, BytesIO(), bodies)')
+run("parse_request(b'GET / HTTP/1.1', BytesIO(), bodies)")
+run("parse_request(b'DELETE /foo/bar?stuff=junk HTTP/1.1', BytesIO(), bodies)")
+run("parse_request(b'GET / HTTP/1.1\\r\\ncontent-length: 17', BytesIO(), bodies)")
 run("parse_request_line(b'GET / HTTP/1.1')")
 run("parse_request_line(b'DELETE /foo/bar?stuff=junk HTTP/1.1')")
 run("parse_method(b'GET')")
