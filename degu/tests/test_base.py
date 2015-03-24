@@ -670,6 +670,114 @@ class TestParsingFunctions_Py(BackendTestCase):
                 )
         self.assertEqual(good_count, 2)
 
+    def test_parse_request(self):
+        bodies = base.bodies
+        parse_request = self.getattr('parse_request')
+        EmptyPreambleError = self.getattr('EmptyPreambleError')
+        RequestType = self.getattr('RequestType')
+        Range = self.getattr('Range')
+        rfile = io.BytesIO()
+
+        with self.assertRaises(EmptyPreambleError) as cm:
+            parse_request(b'', rfile, bodies)
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+
+        r = parse_request(b'GET / HTTP/1.1', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, [])
+        self.assertIsNone(r.query)
+        self.assertEqual(r, ('GET', '/', {}, None, [], [], None))
+
+        r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/')
+        self.assertEqual(r.headers, {'range': 'bytes=17-20'})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, [])
+        self.assertIsNone(r.query)
+        self.assertEqual(r,
+            ('GET', '/', {'range': 'bytes=17-20'}, None, [], [], None)
+        )
+        _range = r.headers['range']
+        self.assertIs(type(_range), Range)
+        self.assertEqual(_range.start, 17)
+        self.assertEqual(_range.stop, 21)
+        self.assertEqual(_range, (17, 21))
+        self.assertEqual(_range, 'bytes=17-20')
+        self.assertEqual(repr(_range), 'Range(17, 21)')
+        self.assertEqual(str(_range), 'bytes=17-20')
+
+        r = parse_request(b'GET /foo? HTTP/1.1', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/foo?')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, ['foo'])
+        self.assertEqual(r.query, '')
+        self.assertEqual(r, ('GET', '/foo?', {}, None, [], ['foo'], ''))
+
+        r = parse_request(b'GET /foo/bar/?stuff=junk HTTP/1.1', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/foo/bar/?stuff=junk')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, ['foo', 'bar', ''])
+        self.assertEqual(r.query, 'stuff=junk')
+        self.assertEqual(r,
+            ('GET', '/foo/bar/?stuff=junk', {}, None, [], ['foo', 'bar', ''], 'stuff=junk')
+        )
+
+        r = parse_request(b'PUT /foo HTTP/1.1', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'PUT')
+        self.assertEqual(r.uri, '/foo')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, ['foo'])
+        self.assertIsNone(r.query)
+        self.assertEqual(r, ('PUT', '/foo', {}, None, [], ['foo'], None))
+
+        r = parse_request(b'PUT /foo HTTP/1.1\r\nContent-Length: 17', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'PUT')
+        self.assertEqual(r.uri, '/foo')
+        self.assertEqual(r.headers, {'content-length': 17})
+        self.assertIs(type(r.body), bodies.Body)
+        self.assertIs(r.body.rfile, rfile)
+        self.assertEqual(r.body.content_length, 17)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, ['foo'])
+        self.assertIsNone(r.query)
+        self.assertEqual(r,
+            ('PUT', '/foo', {'content-length': 17}, r.body, [], ['foo'], None)
+        )
+
+        r = parse_request(b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile, bodies)
+        self.assertIs(type(r), RequestType)
+        self.assertEqual(r.method, 'PUT')
+        self.assertEqual(r.uri, '/foo')
+        self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+        self.assertIs(type(r.body), bodies.ChunkedBody)
+        self.assertIs(r.body.rfile, rfile)
+        self.assertEqual(r.script, [])
+        self.assertEqual(r.path, ['foo'])
+        self.assertIsNone(r.query)
+        self.assertEqual(r,
+            ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
+        )
+
 
 class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
@@ -856,11 +964,11 @@ class TestNamedTuples_Py(BackendTestCase):
         (tup, args) = self.new('Request', 7)
         self.assertIs(tup.method,  args[0])
         self.assertIs(tup.uri,     args[1])
-        self.assertIs(tup.script,  args[2])
-        self.assertIs(tup.path,    args[3])
-        self.assertIs(tup.query,   args[4])
-        self.assertIs(tup.headers, args[5])
-        self.assertIs(tup.body,    args[6])
+        self.assertIs(tup.headers, args[2])
+        self.assertIs(tup.body,    args[3])
+        self.assertIs(tup.script,  args[4])
+        self.assertIs(tup.path,    args[5])
+        self.assertIs(tup.query,   args[6])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
@@ -878,6 +986,7 @@ class TestNamedTuples_Py(BackendTestCase):
         del tup
         for a in args:
             self.assertEqual(sys.getrefcount(a), 3)
+
 
 class TestNamedTuples_C(TestNamedTuples_Py):
     backend = _base
@@ -3041,7 +3150,7 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request, ('GET', '/', [], [], None, {}, None))
+        self.assertEqual(request, ('GET', '/', {}, None, [], [], None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -3074,7 +3183,7 @@ class TestReader_Py(BackendTestCase):
         request = reader.read_request()
         self.assertIsInstance(request, self.getattr('RequestType'))
         self.assertEqual(request,
-            ('GET', '/', [], [], None, {'range': 'bytes=0-0'}, None)
+            ('GET', '/', {'range': 'bytes=0-0'}, None, [], [], None)
         )
         _range = request.headers['range']
         self.assertIs(type(_range), self.Range)

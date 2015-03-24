@@ -64,7 +64,7 @@ BodiesType = Bodies = namedtuple('Bodies',
     'Body BodyIter ChunkedBody ChunkedBodyIter'
 )
 RequestType = Request = namedtuple('Request',
-    'method uri script path query headers body'
+    'method uri headers body script path query'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
@@ -377,11 +377,23 @@ def parse_request_line(line):
     return (method, uri, script, path, query)
 
 
-def parse_request(preamble):
-    (line, *header_lines) = preamble.split(b'\r\n')
-    (method, uri, script, path, query) = parse_request_line(line)
+def _parse_request(preamble, rfile, _Body, _ChunkedBody):
+    if preamble == b'':
+        raise EmptyPreambleError('request preamble is empty')
+    (first_line, *header_lines) = preamble.split(b'\r\n')
+    (method, uri, script, path, query) = parse_request_line(first_line)
     headers = _parse_header_lines(header_lines)
-    return (method, uri, script, path, query, headers)
+    if 'content-length' in headers:
+        body = _Body(rfile, headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = _ChunkedBody(rfile)
+    else:
+        body = None
+    return Request(method, uri, headers, body, script, path, query)
+
+
+def parse_request(preamble, rfile, bodies):
+    return _parse_request(preamble, rfile, bodies.Body, bodies.ChunkedBody)
 
 
 
@@ -473,8 +485,8 @@ class Reader:
     __slots__ = (
         '_sock_shutdown',
         '_sock_recv_into',
-        '_bodies_Body',
-        '_bodies_ChunkedBody',
+        '_Body',
+        '_ChunkedBody',
         '_rawtell',
         '_rawbuf',
         '_start',
@@ -492,8 +504,8 @@ class Reader:
             )
         self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
-        self._bodies_Body = _getcallable('bodies', bodies, 'Body')
-        self._bodies_ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')
+        self._Body = _getcallable('bodies', bodies, 'Body')
+        self._ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')
         self._rawtell = 0
         self._rawbuf = memoryview(bytearray(size))
         self._start = 0
@@ -508,10 +520,10 @@ class Reader:
         return self._sock_shutdown(socket.SHUT_RDWR)    
 
     def Body(self, content_length):
-        return self._bodies_Body(self, content_length)
+        return self._Body(self, content_length)
 
     def ChunkedBody(self):
-        return self._bodies_ChunkedBody(self)
+        return self._ChunkedBody(self)
 
     def rawtell(self):
         return self._rawtell
@@ -681,16 +693,7 @@ class Reader:
         preamble = self.read_until(
             len(self._rawbuf), b'\r\n\r\n', strip_end=True
         )
-        if preamble == b'':
-            raise EmptyPreambleError('request preamble is empty')
-        (method, uri, script, path, query, headers) = parse_request(preamble)
-        if 'content-length' in headers:
-            body = self.Body(headers['content-length'])
-        elif 'transfer-encoding' in headers:
-            body = self.ChunkedBody()
-        else:
-            body = None
-        return Request(method, uri, script, path, query, headers, body)
+        return _parse_request(preamble, self, self._Body, self._ChunkedBody)
 
     def read_response(self, method):
         method = parse_method(method)
