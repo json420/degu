@@ -778,6 +778,62 @@ class TestParsingFunctions_Py(BackendTestCase):
             ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
         )
 
+    def test_parse_response(self):
+        bodies = base.bodies
+        parse_response = self.getattr('parse_response')
+        EmptyPreambleError = self.getattr('EmptyPreambleError')
+        ResponseType = self.getattr('ResponseType')
+        rfile = io.BytesIO()
+
+        with self.assertRaises(EmptyPreambleError) as cm:
+            parse_response('GET', b'', rfile, bodies)
+        self.assertEqual(str(cm.exception), 'response preamble is empty')
+
+        r = parse_response('GET', b'HTTP/1.1 200 OK', rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+
+        body_methods = ('GET', 'PUT', 'POST', 'DELETE')
+        length = b'HTTP/1.1 200 OK\r\nContent-Length: 17'
+
+        r = parse_response('HEAD', length, rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {'content-length': 17})
+        self.assertIsNone(r.body)
+
+        for method in body_methods:
+            r = parse_response(method, length, rfile, bodies)
+            self.assertIs(type(r), ResponseType)
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.reason, 'OK')
+            self.assertEqual(r.headers, {'content-length': 17})
+            self.assertIs(type(r.body), bodies.Body)
+            self.assertIs(r.body.rfile, rfile)
+            self.assertEqual(r.body.content_length, 17)
+
+        chunked = b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked'
+
+        r = parse_response('HEAD', chunked, rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsNone(r.body)
+
+        for method in body_methods:
+            r = parse_response(method, chunked, rfile, bodies)
+            self.assertIs(type(r), ResponseType)
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.reason, 'OK')
+            self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+            self.assertIs(type(r.body), bodies.ChunkedBody)
+            self.assertIs(r.body.rfile, rfile)
+
 
 class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
