@@ -2908,8 +2908,11 @@ _Writer_write1(Writer *self, DeguSrc src)
     size_t size;
     ssize_t ret = -2;
 
-    if (src.buf == NULL || src.len == 0 || src.len > MAX_IO_SIZE) {
+    if (src.buf == NULL || src.len == 0) {
         Py_FatalError("_Writer_write1(): bad internal call");
+    }
+    if (src.len > MAX_IO_SIZE) {
+        Py_FatalError("_Writer_write1(): src.len > MAX_IO_SIZE");
     }
     _SET(view,
         PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
