@@ -1,6 +1,6 @@
 /*
  * degu: an embedded HTTP server and client library
- * Copyright (C) 2014 Novacut Inc
+ * Copyright (C) 2014-2015 Novacut Inc
  *
  * This file is part of `degu`.
  *
@@ -21,19 +21,7 @@
  *     Jason Gerard DeRose <jderose@novacut.com>
  */
 
-#include <Python.h>
-#include <structmember.h>
-#include <stdbool.h>
-#include <sys/socket.h>
-
-#define _MAX_LINE_SIZE 4096
-#define MIN_PREAMBLE 4096
-#define MAX_PREAMBLE 65536
-#define DEFAULT_PREAMBLE 32768
-#define MAX_KEY 32
-#define MAX_CL_LEN 16
-#define MAX_IO_SIZE 16777216
-#define MAX_LENGTH 9999999999999999ull
+#include "_base.h"
 
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
@@ -188,26 +176,6 @@ static const uint8_t _FLAGS[256] = {
     128,128,128,128,128,128,128,128,
 };
 /***************    END GENERATED TABLES      *********************************/
-
-
-
-/*******************************************************************************
- * Internal API: Macros:
- *     _SET()
- *     _SET_AND_INC()
- */
-#define _SET(pyobj, source) \
-    if (pyobj != NULL) { \
-        Py_FatalError("_SET(): pyobj != NULL prior to assignment"); \
-    } \
-    pyobj = (source); \
-    if (pyobj == NULL) { \
-        goto error; \
-    }
-
-#define _SET_AND_INC(pyobj, source) \
-    _SET(pyobj, source) \
-    Py_INCREF(pyobj);
 
 
 /*******************************************************************************
@@ -429,68 +397,31 @@ _init_all_namedtuples(PyObject *module)
  *     _decode()
  */
 
-/* DeguSrc (source): a read-only buffer.
- *
- * None of these modifications should be possible:
- *
- *     src.buf++;         // Can't move the base pointer
- *     src.len++;         // Can't change the length
- *     src.buf[0] = 'D';  // Can't modify the buffer content
- */
-typedef const struct {
-    const uint8_t *buf;
-    const size_t len;
-} DeguSrc;
+_DEGU_SRC_CONSTANT(LF, "\n")
+_DEGU_SRC_CONSTANT(CRLF, "\r\n")
+_DEGU_SRC_CONSTANT(CRLFCRLF, "\r\n\r\n")
+_DEGU_SRC_CONSTANT(SPACE, " ")
+_DEGU_SRC_CONSTANT(SLASH, "/")
+_DEGU_SRC_CONSTANT(SPACE_SLASH, " /")
+_DEGU_SRC_CONSTANT(QMARK, "?")
+_DEGU_SRC_CONSTANT(SEP, ": ")
+_DEGU_SRC_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
+_DEGU_SRC_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
+_DEGU_SRC_CONSTANT(GET, "GET")
+_DEGU_SRC_CONSTANT(PUT, "PUT")
+_DEGU_SRC_CONSTANT(POST, "POST")
+_DEGU_SRC_CONSTANT(HEAD, "HEAD")
+_DEGU_SRC_CONSTANT(DELETE, "DELETE")
+_DEGU_SRC_CONSTANT(OK, "OK")
+_DEGU_SRC_CONSTANT(CONTENT_LENGTH, "content-length")
+_DEGU_SRC_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
+_DEGU_SRC_CONSTANT(CHUNKED, "chunked")
+_DEGU_SRC_CONSTANT(RANGE, "range")
+_DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
 
-/* DeguDst (destination): a writable buffer.
- *
- * You can modify the buffer content:
- *
- *     dst.buf[0] = 'D';
- *
- * But you still can't modify the base pointer or length:
- *
- *     dst.buf++;         // Can't move the base pointer
- *     dst.len++;         // Can't change the length
-
- */
-typedef const struct {
-    uint8_t *buf;
-    const size_t len;
-} DeguDst;
-
-
-static DeguSrc NULLDeguSrc = {NULL, 0}; 
-static DeguDst NULLDeguDst = {NULL, 0}; 
-
-#define _DEGU_BUF_CONSTANT(name, text) \
-    static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1}; 
-
-_DEGU_BUF_CONSTANT(LF, "\n")
-_DEGU_BUF_CONSTANT(CRLF, "\r\n")
-_DEGU_BUF_CONSTANT(CRLFCRLF, "\r\n\r\n")
-_DEGU_BUF_CONSTANT(SPACE, " ")
-_DEGU_BUF_CONSTANT(SLASH, "/")
-_DEGU_BUF_CONSTANT(SPACE_SLASH, " /")
-_DEGU_BUF_CONSTANT(QMARK, "?")
-_DEGU_BUF_CONSTANT(SEP, ": ")
-_DEGU_BUF_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
-_DEGU_BUF_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
-_DEGU_BUF_CONSTANT(GET, "GET")
-_DEGU_BUF_CONSTANT(PUT, "PUT")
-_DEGU_BUF_CONSTANT(POST, "POST")
-_DEGU_BUF_CONSTANT(HEAD, "HEAD")
-_DEGU_BUF_CONSTANT(DELETE, "DELETE")
-_DEGU_BUF_CONSTANT(OK, "OK")
-_DEGU_BUF_CONSTANT(CONTENT_LENGTH, "content-length")
-_DEGU_BUF_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
-_DEGU_BUF_CONSTANT(CHUNKED, "chunked")
-_DEGU_BUF_CONSTANT(RANGE, "range")
-_DEGU_BUF_CONSTANT(CONTENT_TYPE, "content-type")
-
-_DEGU_BUF_CONSTANT(APPLICATION_JSON, "application/json")
-_DEGU_BUF_CONSTANT(BYTES_EQ, "bytes=")
-_DEGU_BUF_CONSTANT(MINUS, "-")
+_DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
+_DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_SRC_CONSTANT(MINUS, "-")
 
 static inline bool
 _isempty(DeguSrc src)
@@ -671,7 +602,7 @@ _calloc_dst(const size_t len)
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
-        return NULLDeguDst;
+        return NULL_DeguDst;
     }
     return (DeguDst){buf, len};
 }
@@ -683,39 +614,6 @@ _calloc_dst(const size_t len)
  *     _clear_degu_request()
  *     _clear_degu_response()   
  */
-#define DEGU_HEADERS_HEAD \
-    PyObject *headers; \
-    PyObject *content_length; \
-    PyObject *body; \
-    uint8_t flags;
-
-typedef struct {
-    DEGU_HEADERS_HEAD
-} DeguHeaders;
-
-typedef struct {
-    DEGU_HEADERS_HEAD
-    PyObject *method;
-    PyObject *uri;
-    PyObject *script;
-    PyObject *path;
-    PyObject *query;
-} DeguRequest;
-
-typedef struct {
-    DEGU_HEADERS_HEAD
-    PyObject *status;
-    PyObject *reason;
-} DeguResponse;
-
-#define NEW_DEGU_HEADERS \
-     ((DeguHeaders){NULL, NULL, NULL, 0})
-
-#define NEW_DEGU_REQUEST \
-     ((DeguRequest){NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
-
-#define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL})
 
 static void
 _clear_degu_headers(DeguHeaders *dh)
@@ -2416,14 +2314,14 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
     }
     if (end.len == 0) {
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
-        return NULLDeguSrc;
+        return NULL_DeguSrc;
     }
     DeguDst dst = {self->buf, self->len};
     if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
             "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
         );
-        return NULLDeguSrc;
+        return NULL_DeguSrc;
     }
 
     /* First, see if end is in the current buffer content */
@@ -2452,7 +2350,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
     while (self->stop < size) {
         added = _Reader_recv_into(self, _dst_slice(dst, self->stop, dst.len));
         if (added < 0) {
-            return NULLDeguSrc;
+            return NULL_DeguSrc;
         }
         if (added == 0) {
             break;
@@ -2478,7 +2376,7 @@ not_found:
     _value_error2(
         "%R not found in %R...", end, _slice(tmp, 0, _min(tmp.len, 32))
     );
-    return NULLDeguSrc;
+    return NULL_DeguSrc;
 
 found:
     if (index < 0) {
