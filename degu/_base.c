@@ -199,7 +199,6 @@ static const uint8_t _FLAGS[256] = {
 #define _SET(pyobj, source) \
     if (pyobj != NULL) { \
         Py_FatalError("_SET(): pyobj != NULL prior to assignment"); \
-        goto error; \
     } \
     pyobj = (source); \
     if (pyobj == NULL) { \
