@@ -25,43 +25,105 @@
 
 
 /******************************************************************************
- * PyObject static globals.
+ * PyObject globals (largely for performance and memory efficiency).
  ******************************************************************************/
 
-/* `degu.base.EmptyPreambleError` */
-static PyObject *degu_EmptyPreambleError = NULL;
+/* EmptyPreambleError exception */
+static PyObject *EmptyPreambleError = NULL;
 
 /* Interned `str` for fast attribute lookup */
-static PyObject *attr_shutdown = NULL;         //  'shutdown'
-static PyObject *attr_recv_into = NULL;        //  'recv_into'
-static PyObject *attr_send = NULL;             //  'send'
-static PyObject *attr_write_to = NULL;         //  'write_to'
-static PyObject *attr_Body = NULL;             //  'Body'
-static PyObject *attr_BodyIter = NULL;         //  'BodyIter'
-static PyObject *attr_ChunkedBody = NULL;      //  'ChunkedBody'
-static PyObject *attr_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
-static PyObject *attr_content_length = NULL;   //  'content_length'
+static PyObject *attr_shutdown         = NULL;  //  'shutdown'
+static PyObject *attr_recv_into        = NULL;  //  'recv_into'
+static PyObject *attr_send             = NULL;  //  'send'
+static PyObject *attr_write_to         = NULL;  //  'write_to'
+static PyObject *attr_Body             = NULL;  //  'Body'
+static PyObject *attr_BodyIter         = NULL;  //  'BodyIter'
+static PyObject *attr_ChunkedBody      = NULL;  //  'ChunkedBody'
+static PyObject *attr_ChunkedBodyIter  = NULL;  //  'ChunkedBodyIter'
+static PyObject *attr_content_length   = NULL;  //  'content_length'
 
-/* Non-interned `str` used for keys and values in headers `dict` */
-static PyObject *key_content_length = NULL;     //  'content-length'
+/* Non-interned `str` used for header keys */
+static PyObject *key_content_length    = NULL;  //  'content-length'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
-static PyObject *key_content_type   = NULL;     //  'content-type'
-static PyObject *key_range   = NULL;            //  'range'
-static PyObject *val_chunked = NULL;            //  'chunked'
-static PyObject *val_application_json = NULL;   //  'application/json'
+static PyObject *key_content_type      = NULL;  //  'content-type'
+static PyObject *key_range             = NULL;  //  'range'
+
+/* Non-interned `str` used for header values */
+static PyObject *val_chunked           = NULL;  //  'chunked'
+static PyObject *val_application_json  = NULL;  //  'application/json'
 
 /* Other non-interned `str` used for parsed values, etc */
-static PyObject *str_GET    = NULL;  // 'GET'
-static PyObject *str_PUT    = NULL;  // 'PUT'
-static PyObject *str_POST   = NULL;  // 'POST'
-static PyObject *str_HEAD   = NULL;  // 'HEAD'
-static PyObject *str_DELETE = NULL;  // 'DELETE'
-static PyObject *str_OK     = NULL;  // 'OK'
-static PyObject *str_crlf = NULL;    //  '\r\n'
-static PyObject *str_empty = NULL;   //  ''
+static PyObject *str_GET               = NULL;  //  'GET'
+static PyObject *str_PUT               = NULL;  //  'PUT'
+static PyObject *str_POST              = NULL;  //  'POST'
+static PyObject *str_HEAD              = NULL;  //  'HEAD'
+static PyObject *str_DELETE            = NULL;  //  'DELETE'
+static PyObject *str_OK                = NULL;  //  'OK'
+static PyObject *str_crlf              = NULL;  //  '\r\n'
+static PyObject *str_empty             = NULL;  //  ''
 
 /* Misc `int` objects */
-static PyObject *int_SHUT_RDWR = NULL;  // socket.SHUT_RDWR (2)
+static PyObject *int_SHUT_RDWR = NULL;  //  2  (socket.SHUT_RDWR)
+
+/* _init_all_globals(): called by PyInit__base() */
+static bool
+_init_all_globals(PyObject *module)
+{
+    /* Init EmptyPreambleError exception */
+    _SET(EmptyPreambleError,
+        PyErr_NewException("degu._base.EmptyPreambleError", PyExc_ConnectionError, NULL)
+    )
+    _ADD_MODULE_ATTR(module, "EmptyPreambleError", EmptyPreambleError)
+
+    /* Init interned attribute names */
+    _SET(attr_shutdown,        PyUnicode_InternFromString("shutdown"))
+    _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
+    _SET(attr_send,            PyUnicode_InternFromString("send"))
+    _SET(attr_write_to,        PyUnicode_InternFromString("write_to"))
+    _SET(attr_Body,            PyUnicode_InternFromString("Body"))
+    _SET(attr_BodyIter,        PyUnicode_InternFromString("BodyIter"))
+    _SET(attr_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
+    _SET(attr_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
+    _SET(attr_content_length,  PyUnicode_InternFromString("content_length"))
+
+    /* Init header keys */
+    _SET(key_content_length,    PyUnicode_FromString("content-length"))
+    _SET(key_transfer_encoding, PyUnicode_FromString("transfer-encoding"))
+    _SET(key_content_type,      PyUnicode_FromString("content-type"))
+    _SET(key_range,             PyUnicode_FromString("range"))
+
+    /* Init header values */
+    _SET(val_chunked,          PyUnicode_FromString("chunked"))
+    _SET(val_application_json, PyUnicode_FromString("application/json"))
+
+    /* Init other non-interned strings */
+    _SET(str_crlf, PyUnicode_FromString("\r\n"))
+    _SET(str_empty, PyUnicode_FromString(""))
+
+    /* Init int objects */
+    _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
+
+#define _ADD_MODULE_STRING(pyobj, name) \
+    _SET(pyobj, PyUnicode_InternFromString(name)) \
+    Py_INCREF(pyobj); \
+    if (PyModule_AddObject(module, name, pyobj) != 0) { \
+        goto error; \
+    }
+
+    /* Init string constants */
+    _ADD_MODULE_STRING(str_GET,    "GET")
+    _ADD_MODULE_STRING(str_PUT,    "PUT")
+    _ADD_MODULE_STRING(str_POST,   "POST")
+    _ADD_MODULE_STRING(str_HEAD,   "HEAD")
+    _ADD_MODULE_STRING(str_DELETE, "DELETE")
+    _ADD_MODULE_STRING(str_OK,     "OK")
+
+    return true;
+
+error:
+    return false;
+}
+
 
 
 
@@ -1366,7 +1428,7 @@ _parse_request(DeguSrc src, DeguParse dp)
 
     /* Check for empty premable */
     if (src.len == 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "request preamble is empty");
+        PyErr_SetString(EmptyPreambleError, "request preamble is empty");
         goto error;
     }
 
@@ -1499,7 +1561,7 @@ _parse_response(DeguSrc method, DeguSrc src, DeguParse dp)
 
     _SET(m, _parse_method(method))
     if (src.len == 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
+        PyErr_SetString(EmptyPreambleError, "response preamble is empty");
         goto error;
     }
 
@@ -3157,6 +3219,34 @@ static struct PyModuleDef degu = {
 };
 
 
+static bool
+_init_all_types(PyObject *module)
+{
+    RangeType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RangeType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Range", (PyObject *)&RangeType)
+
+    ReaderType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ReaderType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Reader", (PyObject *)&ReaderType)
+
+    WriterType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&WriterType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Writer", (PyObject *)&WriterType)
+
+    return true;
+
+error:
+    return false;
+}
+
+
 PyMODINIT_FUNC
 PyInit__base(void)
 {
@@ -3164,87 +3254,20 @@ PyInit__base(void)
     if (module == NULL) {
         return NULL;
     }
-    if (!_init_all_namedtuples(module)) {
+
+    if (! _init_all_globals(module)) {
         return NULL;
     }
-
-    ReaderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&ReaderType) < 0) {
+    if (! _init_all_namedtuples(module)) {
         return NULL;
     }
-    Py_INCREF(&ReaderType);
-    PyModule_AddObject(module, "Reader", (PyObject *)&ReaderType);
-
-    RangeType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&RangeType) < 0) {
+    if (! _init_all_types(module)) {
         return NULL;
     }
-    Py_INCREF(&RangeType);
-    PyModule_AddObject(module, "Range", (PyObject *)&RangeType);
-
-    WriterType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&WriterType) < 0) {
-        return NULL;
-    }
-    Py_INCREF(&WriterType);
-    PyModule_AddObject(module, "Writer", (PyObject *)&WriterType);
-
-    /* Init integer constants */
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
     PyModule_AddIntMacro(module, MIN_PREAMBLE);
     PyModule_AddIntMacro(module, DEFAULT_PREAMBLE);
     PyModule_AddIntMacro(module, MAX_PREAMBLE);
-
-#define _ADD_MODULE_STRING(pyobj, name) \
-    _SET(pyobj, PyUnicode_InternFromString(name)) \
-    Py_INCREF(pyobj); \
-    if (PyModule_AddObject(module, name, pyobj) != 0) { \
-        goto error; \
-    }
-
-    /* Init string constants */
-    _ADD_MODULE_STRING(str_GET,    "GET")
-    _ADD_MODULE_STRING(str_PUT,    "PUT")
-    _ADD_MODULE_STRING(str_POST,   "POST")
-    _ADD_MODULE_STRING(str_HEAD,   "HEAD")
-    _ADD_MODULE_STRING(str_DELETE, "DELETE")
-    _ADD_MODULE_STRING(str_OK,     "OK")
-
-    /* Init EmptyPreambleError exception */
-    _SET(degu_EmptyPreambleError,
-        PyErr_NewException("degu._base.EmptyPreambleError", PyExc_ConnectionError, NULL)
-    )
-    Py_INCREF(degu_EmptyPreambleError);
-    PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
-
-    /* socket methods */
-    _SET(attr_shutdown,  PyUnicode_InternFromString("shutdown"))
-    _SET(attr_recv_into, PyUnicode_InternFromString("recv_into"))
-    _SET(attr_send,      PyUnicode_InternFromString("send"))
-    _SET(attr_write_to,  PyUnicode_InternFromString("write_to"))
-
-    /* bodies attributes */
-    _SET(attr_Body,            PyUnicode_InternFromString("Body"))
-    _SET(attr_BodyIter,        PyUnicode_InternFromString("BodyIter"))
-    _SET(attr_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
-    _SET(attr_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
-
-    _SET(attr_content_length, PyUnicode_InternFromString("content_length"))
-    _SET(key_content_length, PyUnicode_InternFromString("content-length"))
-    _SET(key_content_type, PyUnicode_InternFromString("content-type"))
-    _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _SET(val_chunked, PyUnicode_InternFromString("chunked"))
-    _SET(key_range, PyUnicode_InternFromString("range"))
-    _SET(val_application_json, PyUnicode_InternFromString("application/json"))
-
-    _SET(str_crlf, PyUnicode_InternFromString("\r\n"))
-    _SET(str_empty, PyUnicode_InternFromString(""))
-
-    _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
-
     return module;
-
-error:
-    return NULL;
 }
 

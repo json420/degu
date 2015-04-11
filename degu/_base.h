@@ -41,18 +41,26 @@
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
 
-#define _SET(pyobj, source) \
-    if (pyobj != NULL) { \
-        Py_FatalError("_SET(): pyobj != NULL prior to assignment"); \
+#define _SET(dst, src) \
+    if (dst != NULL) { \
+        Py_FatalError("_SET(): dst != NULL prior to assignment"); \
     } \
-    pyobj = (source); \
-    if (pyobj == NULL) { \
+    dst = (src); \
+    if (dst == NULL) { \
         goto error; \
     }
 
-#define _SET_AND_INC(pyobj, source) \
-    _SET(pyobj, source) \
-    Py_INCREF(pyobj);
+
+#define _SET_AND_INC(dst, src) \
+    _SET(dst, src) \
+    Py_INCREF(dst);
+
+
+#define _ADD_MODULE_ATTR(module, name, obj) \
+    Py_INCREF(obj); \
+    if (PyModule_AddObject(module, name, obj) != 0) { \
+        goto error; \
+    }
 
 
 
@@ -99,7 +107,7 @@ typedef const struct {
 #define NULL_DeguDst ((DeguDst){NULL, 0})
 
 
-/* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc global constants */
+/* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc globals */
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
