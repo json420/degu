@@ -2184,16 +2184,6 @@ _Reader_get_parse_helpers(Reader *self)
         self->bodies_ChunkedBody,
     };
 }
- 
-static PyObject *
-_Reader_Body(Reader *self, PyObject *content_length) {
-    if (content_length == NULL) {
-        Py_FatalError("_Reader_Body(): bad internal call");
-    }
-    return PyObject_CallFunctionObjArgs(
-        self->bodies_Body, self, content_length, NULL
-    );
-}
 
 static PyObject *
 _Reader_ChunkedBody(Reader *self) {
@@ -2435,15 +2425,6 @@ Reader_close(Reader *self)
 }
 
 static PyObject *
-Reader_Body(Reader *self, PyObject *args) {
-    PyObject *content_length = NULL;
-    if (!PyArg_ParseTuple(args, "O:Body", &content_length)) {
-        return NULL;
-    }
-    return _Reader_Body(self, content_length);
-}
-
-static PyObject *
 Reader_ChunkedBody(Reader *self) {
     return _Reader_ChunkedBody(self);
 }
@@ -2640,9 +2621,6 @@ cleanup:
  */
 static PyMethodDef Reader_methods[] = {
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"Body", (PyCFunction)Reader_Body, METH_VARARGS,
-        "Body(content_length)"
-    },
     {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
         "ChunkedBody()"
     },

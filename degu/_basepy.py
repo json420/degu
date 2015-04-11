@@ -533,10 +533,7 @@ class Reader:
             return None
         assert self._closed is False
         self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)    
-
-    def Body(self, content_length):
-        return self._Body(self, content_length)
+        return self._sock_shutdown(socket.SHUT_RDWR)
 
     def ChunkedBody(self):
         return self._ChunkedBody(self)
