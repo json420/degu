@@ -778,6 +778,62 @@ class TestParsingFunctions_Py(BackendTestCase):
             ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
         )
 
+    def test_parse_response(self):
+        bodies = base.bodies
+        parse_response = self.getattr('parse_response')
+        EmptyPreambleError = self.getattr('EmptyPreambleError')
+        ResponseType = self.getattr('ResponseType')
+        rfile = io.BytesIO()
+
+        with self.assertRaises(EmptyPreambleError) as cm:
+            parse_response('GET', b'', rfile, bodies)
+        self.assertEqual(str(cm.exception), 'response preamble is empty')
+
+        r = parse_response('GET', b'HTTP/1.1 200 OK', rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+
+        body_methods = ('GET', 'PUT', 'POST', 'DELETE')
+        length = b'HTTP/1.1 200 OK\r\nContent-Length: 17'
+
+        r = parse_response('HEAD', length, rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {'content-length': 17})
+        self.assertIsNone(r.body)
+
+        for method in body_methods:
+            r = parse_response(method, length, rfile, bodies)
+            self.assertIs(type(r), ResponseType)
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.reason, 'OK')
+            self.assertEqual(r.headers, {'content-length': 17})
+            self.assertIs(type(r.body), bodies.Body)
+            self.assertIs(r.body.rfile, rfile)
+            self.assertEqual(r.body.content_length, 17)
+
+        chunked = b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked'
+
+        r = parse_response('HEAD', chunked, rfile, bodies)
+        self.assertIs(type(r), ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsNone(r.body)
+
+        for method in body_methods:
+            r = parse_response(method, chunked, rfile, bodies)
+            self.assertIs(type(r), ResponseType)
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.reason, 'OK')
+            self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+            self.assertIs(type(r.body), bodies.ChunkedBody)
+            self.assertIs(r.body.rfile, rfile)
+
 
 class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
@@ -1114,17 +1170,17 @@ class TestFunctions(AlternatesTestCase):
         parse_method = backend.parse_method
 
         for method in GOOD_METHODS:
-            expected = getattr(backend, method)
-
             # Input is str:
             result = parse_method(method)
+            self.assertIs(type(result),  str)
             self.assertEqual(result, method)
-            self.assertIs(result, expected)
+            self.assertIs(parse_method(method), result)
 
             # Input is bytes:
             result = parse_method(method.encode())
+            self.assertIs(type(result),  str)
             self.assertEqual(result, method)
-            self.assertIs(result, expected)
+            self.assertIs(parse_method(method), result)
 
             # Lowercase str:
             with self.assertRaises(ValueError) as cm:
@@ -1409,7 +1465,7 @@ class TestFunctions(AlternatesTestCase):
             line = 'HTTP/1.1 {} OK'.format(status).encode()
             tup = parse_response_line(line)
             self.assertEqual(tup, (status, 'OK'))
-            self.assertIs(tup[1], backend.OK)
+            self.assertIs(parse_response_line(line)[1], tup[1])
 
         # Permutations:
         good = b'HTTP/1.1 200 OK'
@@ -2933,25 +2989,6 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
         self.assertIsNone(reader.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-
-    def test_Body(self):
-        (sock, reader) = self.new()
-
-        body = reader.Body(0)
-        self.assertIsInstance(body, base.bodies.Body)
-        self.assertIs(body.rfile, reader)
-        self.assertEqual(body.content_length, 0)
-
-        body = reader.Body(17)
-        self.assertIsInstance(body, base.bodies.Body)
-        self.assertIs(body.rfile, reader)
-        self.assertEqual(body.content_length, 17)
-
-    def test_ChunkedBody(self):
-        (sock, reader) = self.new()
-        body = reader.ChunkedBody()
-        self.assertIsInstance(body, base.bodies.ChunkedBody)
-        self.assertIs(body.rfile, reader)
 
     def test_read_until(self):
         default = self.DEFAULT_PREAMBLE

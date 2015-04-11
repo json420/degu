@@ -44,20 +44,15 @@ MAX_PREAMBLE     = 65536  # 64 KiB
 MAX_IO_SIZE = 16777216  # 16 MiB
 MAX_LENGTH = 9999999999999999
 
-GET = 'GET'
-PUT = 'PUT'
-POST = 'POST'
-HEAD = 'HEAD'
-DELETE = 'DELETE'
 _METHODS = {
-    b'GET': GET,
-    b'PUT': PUT,
-    b'POST': POST,
-    b'HEAD': HEAD,
-    b'DELETE': DELETE,
+    b'GET': 'GET',
+    b'PUT': 'PUT',
+    b'POST': 'POST',
+    b'HEAD': 'HEAD',
+    b'DELETE': 'DELETE',
 }
 
-OK = 'OK'
+_OK = 'OK'
 
 
 BodiesType = Bodies = namedtuple('Bodies',
@@ -411,7 +406,7 @@ def _parse_status(src):
 def _parse_reason(src):
     if REASON.issuperset(src):
         if src == b'OK':
-            return OK
+            return _OK
         return src.decode('ascii')
     raise ValueError('bad reason: {!r}'.format(src))
 
@@ -427,12 +422,28 @@ def parse_response_line(src):
     return (status, reason)
 
 
-def parse_response(src):
-    assert isinstance(src, bytes)
-    (first_line, *header_lines) = src.split(b'\r\n')
+def _parse_response(method, preamble, rfile, _Body, _ChunkedBody):
+    if preamble == b'':
+        raise EmptyPreambleError('response preamble is empty')
+    (first_line, *header_lines) = preamble.split(b'\r\n')
     (status, reason) = parse_response_line(first_line)
     headers = _parse_header_lines(header_lines)
-    return (status, reason, headers)
+    if method == 'HEAD':
+        body = None
+    elif 'content-length' in headers:
+        body = _Body(rfile, headers['content-length'])
+    elif 'transfer-encoding' in headers:
+        body = _ChunkedBody(rfile)
+    else:
+        body = None
+    return Response(status, reason, headers, body)
+
+
+def parse_response(method, preamble, rfile, bodies):
+    method = parse_method(method)
+    return _parse_response(
+        method, preamble, rfile, bodies.Body, bodies.ChunkedBody
+    )
 
 
 ################################################################################
@@ -517,13 +528,7 @@ class Reader:
             return None
         assert self._closed is False
         self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)    
-
-    def Body(self, content_length):
-        return self._Body(self, content_length)
-
-    def ChunkedBody(self):
-        return self._ChunkedBody(self)
+        return self._sock_shutdown(socket.SHUT_RDWR)
 
     def rawtell(self):
         return self._rawtell
@@ -700,19 +705,10 @@ class Reader:
         preamble = self.read_until(
             len(self._rawbuf), b'\r\n\r\n', strip_end=True
         )
-        if preamble == b'':
-            raise EmptyPreambleError('response preamble is empty')
-        (status, reason, headers) = parse_response(preamble)
-        if method == 'HEAD':
-            body = None
-        elif 'content-length' in headers:
-            body = self.Body(headers['content-length'])
-        elif 'transfer-encoding' in headers:
-            body = self.ChunkedBody()
-        else:
-            body = None
-        return Response(status, reason, headers, body)
-
+        return _parse_response(
+            method, preamble, self, self._Body, self._ChunkedBody
+        )
+        
     def read(self, size):
         assert isinstance(size, int)
         if not (0 <= size <= MAX_IO_SIZE):
