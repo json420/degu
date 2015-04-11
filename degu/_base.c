@@ -690,13 +690,6 @@ _clear_degu_response(DeguResponse *dr)
     Py_CLEAR(dr->reason);
 }
 
-typedef const struct {
-    DeguDst scratch;
-    PyObject *rfile;
-    PyObject *Body;
-    PyObject *ChunkedBody;
-} DeguParse;
-
 
 /*******************************************************************************
  * Range object

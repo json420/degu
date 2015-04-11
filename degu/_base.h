@@ -135,11 +135,18 @@ typedef struct {
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \
-     ((DeguHeaders){NULL, NULL, NULL, 0})
+    ((DeguHeaders) {NULL, NULL, NULL, 0})
 
 #define NEW_DEGU_REQUEST \
-     ((DeguRequest){NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
+    ((DeguRequest) {NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL})
 
+
+typedef const struct {
+    DeguDst scratch;
+    PyObject *rfile;
+    PyObject *Body;
+    PyObject *ChunkedBody;
+} DeguParse;
