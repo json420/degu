@@ -1544,23 +1544,49 @@ error:
     return false;
 }
 
-static bool
-_parse_response(_Src src, _Dst scratch, DeguResponse *dr)
+static PyObject *
+_parse_response(_Src method, _Src src, DeguParse dp)
 {
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+    PyObject *m = NULL; 
+    PyObject *ret = NULL;
+
+    _SET(m, _parse_method(method))
+    if (src.len == 0) {
+        PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
+        goto error;
+    }
+
     const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
     _Src line_src = _slice(src, 0, stop);
     _Src headers_src = _slice(src, start, src.len);
-    if (!_parse_response_line(line_src, dr)) {
+    if (!_parse_response_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)dr)) {
+    if (!_parse_headers(headers_src, dp.scratch, (DeguHeaders *)&dr)) {
         goto error;
     }
-    return true;
+    /* Create request body */
+    if (m == str_HEAD) {
+        _SET_AND_INC(dr.body, Py_None);
+    }
+    else if (!_create_body(dp, (DeguHeaders *)&dr)) {
+        goto error;
+    }
+
+    /* Create namedtuple */
+    _SET(ret, _Response(dr.status, dr.reason, dr.headers, dr.body))
+    goto cleanup;
 
 error:
-    return false;
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(m);
+    _clear_degu_response(&dr);
+    return ret;
+    
 }
 
 
@@ -1983,31 +2009,41 @@ done:
 static PyObject *
 parse_response(PyObject *self, PyObject *args)
 {
+    const uint8_t *method_buf = NULL;
+    size_t method_len = 0;
     const uint8_t *buf = NULL;
     size_t len = 0;
+    PyObject *rfile = NULL;
+    PyObject *bodies = NULL;
+    PyObject *Body = NULL;
+    PyObject *ChunkedBody = NULL;
     PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
 
-    if (!PyArg_ParseTuple(args, "y#:parse_response", &buf, &len)) {
+    if (!PyArg_ParseTuple(args, "s#y#OO:parse_response",
+        &method_buf, &method_len, &buf, &len, &rfile, &bodies)) {
         return NULL;
     }
+    _Src method = {method_buf, method_len};
     _Src src = {buf, len};
     _Dst scratch = _calloc_dst(MAX_KEY);
     if (scratch.buf == NULL) {
         return NULL;
     }
-    if (!_parse_response(src, scratch, &dr)) {
-        goto error;
-    }
-    _SET(ret, PyTuple_Pack(3, dr.status, dr.reason, dr.headers))
+    _SET(Body, _getcallable("bodies", bodies, str_Body))
+    _SET(ChunkedBody, _getcallable("bodies", bodies, str_ChunkedBody))
+    DeguParse dp = {scratch, rfile, Body, ChunkedBody};
+    _SET(ret, _parse_response(method, src, dp))
     goto cleanup;
 
 error:
     Py_CLEAR(ret);
 
 cleanup:
-    _clear_degu_response(&dr);
-    free(scratch.buf);
+    if (scratch.buf != NULL) {
+        free(scratch.buf);
+    }
+    Py_CLEAR(Body);
+    Py_CLEAR(ChunkedBody);
     return ret;
 }
 
@@ -2627,56 +2663,24 @@ Reader_read_response(Reader *self, PyObject *args)
 {
     const uint8_t *method_buf = NULL;
     size_t method_len = 0;
-    PyObject *method = NULL;
     PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
 
-    /* Parse args, validate the request method */
     if (!PyArg_ParseTuple(args, "s#:read_response", &method_buf, &method_len)) {
         return NULL;
     }
-    _SET(method, _parse_method((_Src){method_buf, method_len}))
-
-    /* Reader.search() will drain up to the end of the preamble */
+    _Src method = {method_buf, method_len};
     _Src src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
     if (src.buf == NULL) {
         goto error;
     }
-    if (src.len == 0) {
-        PyErr_SetString(degu_EmptyPreambleError, "response preamble is empty");
-        goto error;
-    }
-
-    /* Parse response line and header lines */
-    if (!_parse_response(src, (_Dst){self->scratch, MAX_KEY}, &dr)) {
-        goto error;
-    }
-
-    /* Construct the body:
-     *
-     * The 2 low bits in dr.flags are for content-length and transfer_encoding,
-     * so we test (dr.flags & 3).  This allows additional flags to be added in
-     * the future without breaking this logic.
-     */
-    const uint8_t bodyflags = (dr.flags & 3);
-    if (method == str_HEAD || bodyflags == 0) {
-        _SET_AND_INC(dr.body, Py_None)
-    }
-    else if (bodyflags == 1) {
-        _SET(dr.body, _Reader_Body(self, dr.content_length))
-    }
-    else if (bodyflags == 2) {
-        _SET(dr.body, _Reader_ChunkedBody(self))
-    }
-    _SET(ret, _Response(dr.status, dr.reason, dr.headers, dr.body))
+    DeguParse dp = _Reader_get_parse_helpers(self);
+    _SET(ret, _parse_response(method, src, dp))
     goto cleanup;
 
 error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(method);
-    _clear_degu_response(&dr);
     return ret;
 }
 
