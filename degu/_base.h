@@ -123,9 +123,11 @@ typedef const struct {
     PyObject *body; \
     uint8_t flags;
 
+
 typedef struct {
     DEGU_HEADERS_HEAD
 } DeguHeaders;
+
 
 typedef struct {
     DEGU_HEADERS_HEAD
@@ -136,17 +138,21 @@ typedef struct {
     PyObject *query;
 } DeguRequest;
 
+
 typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
 } DeguResponse;
 
+
 #define NEW_DEGU_HEADERS \
     ((DeguHeaders) {NULL, NULL, NULL, 0})
 
+
 #define NEW_DEGU_REQUEST \
     ((DeguRequest) {NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
+
 
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL})

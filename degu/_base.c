@@ -65,6 +65,7 @@ static PyObject *str_empty             = NULL;  //  ''
 /* Misc `int` objects */
 static PyObject *int_SHUT_RDWR = NULL;  //  2  (socket.SHUT_RDWR)
 
+
 /* _init_all_globals(): called by PyInit__base() */
 static bool
 _init_all_globals(PyObject *module)
@@ -86,37 +87,28 @@ _init_all_globals(PyObject *module)
     _SET(attr_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
     _SET(attr_content_length,  PyUnicode_InternFromString("content_length"))
 
-    /* Init header keys */
+    /* Init non-interned header keys */
     _SET(key_content_length,    PyUnicode_FromString("content-length"))
     _SET(key_transfer_encoding, PyUnicode_FromString("transfer-encoding"))
     _SET(key_content_type,      PyUnicode_FromString("content-type"))
     _SET(key_range,             PyUnicode_FromString("range"))
 
-    /* Init header values */
+    /* Init non-interned header values */
     _SET(val_chunked,          PyUnicode_FromString("chunked"))
     _SET(val_application_json, PyUnicode_FromString("application/json"))
 
     /* Init other non-interned strings */
-    _SET(str_crlf, PyUnicode_FromString("\r\n"))
-    _SET(str_empty, PyUnicode_FromString(""))
+    _SET(str_GET,    PyUnicode_FromString("GET"))
+    _SET(str_PUT,    PyUnicode_FromString("PUT"))
+    _SET(str_POST,   PyUnicode_FromString("POST"))
+    _SET(str_HEAD,   PyUnicode_FromString("HEAD"))
+    _SET(str_DELETE, PyUnicode_FromString("DELETE"))
+    _SET(str_OK,     PyUnicode_FromString("OK"))
+    _SET(str_crlf,   PyUnicode_FromString("\r\n"))
+    _SET(str_empty,  PyUnicode_FromString(""))
 
     /* Init int objects */
     _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
-
-#define _ADD_MODULE_STRING(pyobj, name) \
-    _SET(pyobj, PyUnicode_InternFromString(name)) \
-    Py_INCREF(pyobj); \
-    if (PyModule_AddObject(module, name, pyobj) != 0) { \
-        goto error; \
-    }
-
-    /* Init string constants */
-    _ADD_MODULE_STRING(str_GET,    "GET")
-    _ADD_MODULE_STRING(str_PUT,    "PUT")
-    _ADD_MODULE_STRING(str_POST,   "POST")
-    _ADD_MODULE_STRING(str_HEAD,   "HEAD")
-    _ADD_MODULE_STRING(str_DELETE, "DELETE")
-    _ADD_MODULE_STRING(str_OK,     "OK")
 
     return true;
 

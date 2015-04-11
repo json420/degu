@@ -1170,17 +1170,17 @@ class TestFunctions(AlternatesTestCase):
         parse_method = backend.parse_method
 
         for method in GOOD_METHODS:
-            expected = getattr(backend, method)
-
             # Input is str:
             result = parse_method(method)
+            self.assertIs(type(result),  str)
             self.assertEqual(result, method)
-            self.assertIs(result, expected)
+            self.assertIs(parse_method(method), result)
 
             # Input is bytes:
             result = parse_method(method.encode())
+            self.assertIs(type(result),  str)
             self.assertEqual(result, method)
-            self.assertIs(result, expected)
+            self.assertIs(parse_method(method), result)
 
             # Lowercase str:
             with self.assertRaises(ValueError) as cm:
@@ -1465,7 +1465,7 @@ class TestFunctions(AlternatesTestCase):
             line = 'HTTP/1.1 {} OK'.format(status).encode()
             tup = parse_response_line(line)
             self.assertEqual(tup, (status, 'OK'))
-            self.assertIs(tup[1], backend.OK)
+            self.assertIs(parse_response_line(line)[1], tup[1])
 
         # Permutations:
         good = b'HTTP/1.1 200 OK'

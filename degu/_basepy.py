@@ -44,20 +44,15 @@ MAX_PREAMBLE     = 65536  # 64 KiB
 MAX_IO_SIZE = 16777216  # 16 MiB
 MAX_LENGTH = 9999999999999999
 
-GET = 'GET'
-PUT = 'PUT'
-POST = 'POST'
-HEAD = 'HEAD'
-DELETE = 'DELETE'
 _METHODS = {
-    b'GET': GET,
-    b'PUT': PUT,
-    b'POST': POST,
-    b'HEAD': HEAD,
-    b'DELETE': DELETE,
+    b'GET': 'GET',
+    b'PUT': 'PUT',
+    b'POST': 'POST',
+    b'HEAD': 'HEAD',
+    b'DELETE': 'DELETE',
 }
 
-OK = 'OK'
+_OK = 'OK'
 
 
 BodiesType = Bodies = namedtuple('Bodies',
@@ -411,7 +406,7 @@ def _parse_status(src):
 def _parse_reason(src):
     if REASON.issuperset(src):
         if src == b'OK':
-            return OK
+            return _OK
         return src.decode('ascii')
     raise ValueError('bad reason: {!r}'.format(src))
 
