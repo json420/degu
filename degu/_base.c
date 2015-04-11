@@ -22,7 +22,7 @@
  */
 
 #include <Python.h>
-#include "structmember.h"
+#include <structmember.h>
 #include <stdbool.h>
 #include <sys/socket.h>
 
