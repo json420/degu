@@ -2990,12 +2990,6 @@ class TestReader_Py(BackendTestCase):
         self.assertIsNone(reader.close())
         self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
-    def test_ChunkedBody(self):
-        (sock, reader) = self.new()
-        body = reader.ChunkedBody()
-        self.assertIsInstance(body, base.bodies.ChunkedBody)
-        self.assertIs(body.rfile, reader)
-
     def test_read_until(self):
         default = self.DEFAULT_PREAMBLE
         end = b'\r\n'

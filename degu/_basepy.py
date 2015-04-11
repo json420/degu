@@ -535,9 +535,6 @@ class Reader:
         self._closed = True
         return self._sock_shutdown(socket.SHUT_RDWR)
 
-    def ChunkedBody(self):
-        return self._ChunkedBody(self)
-
     def rawtell(self):
         return self._rawtell
 

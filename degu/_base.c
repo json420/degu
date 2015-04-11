@@ -2185,12 +2185,6 @@ _Reader_get_parse_helpers(Reader *self)
     };
 }
 
-static PyObject *
-_Reader_ChunkedBody(Reader *self) {
-    return PyObject_CallFunctionObjArgs(self->bodies_ChunkedBody, self, NULL);
-}
-
-
 static ssize_t
 _Reader_recv_into(Reader *self, DeguDst dst)
 {
@@ -2425,11 +2419,6 @@ Reader_close(Reader *self)
 }
 
 static PyObject *
-Reader_ChunkedBody(Reader *self) {
-    return _Reader_ChunkedBody(self);
-}
-
-static PyObject *
 Reader_rawtell(Reader *self) {
     return PyLong_FromUnsignedLongLong(self->rawtell);
 }
@@ -2621,9 +2610,6 @@ cleanup:
  */
 static PyMethodDef Reader_methods[] = {
     {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"ChunkedBody", (PyCFunction)Reader_ChunkedBody, METH_NOARGS,
-        "ChunkedBody()"
-    },
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
         "return number of bytes thus far read from the underlying socket"
     },
