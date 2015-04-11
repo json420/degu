@@ -92,7 +92,7 @@ run("parse_uri(b'/foo/bar')")
 run("parse_uri(b'/foo/bar?stuff=junk')")
 
 print('\nResponse parsing:')
-run('parse_response(response)')
+run("parse_response('GET', response, BytesIO(), bodies)")
 run("parse_response_line(b'HTTP/1.1 200 OK')")
 run("parse_response_line(b'HTTP/1.1 404 Not Found')")
 
