@@ -37,7 +37,7 @@
 
 
 /*******************************************************************************
- * Error handling helper macros (they require an "error" label in function):
+ * Error handling helper macros (they require an "error" label in the function):
  */
 
 #define _SET(pyobj, source) \

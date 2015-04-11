@@ -178,6 +178,7 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
+
 /*******************************************************************************
  * Internal API: Misc:
  *     _min()
@@ -232,15 +233,10 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
 
 
 /*******************************************************************************
- * Internal API: namedtuple:
- *     _Bodies()
- *     _Request()
- *     _Response()
- *     _init_namedtuple()
- *     _init_all_namedtuples()
+ * Named-tuples:
  */
 
-/* Bodies */
+/* Bodies namedtuple */
 static PyTypeObject BodiesType;
 static PyStructSequence_Field BodiesFields[] = {
     {"Body", NULL},
@@ -255,16 +251,27 @@ static PyStructSequence_Desc BodiesDesc = {
     BodiesFields,  
     4
 };
+
 static PyObject *
-_Bodies(PyObject *Body,
-        PyObject *BodyIter,
-        PyObject *ChunkedBody,
-        PyObject *ChunkedBodyIter)
+Bodies(PyObject *self, PyObject *args)
 {
+    PyObject *Body = NULL;
+    PyObject *BodyIter = NULL;
+    PyObject *ChunkedBody = NULL;
+    PyObject *ChunkedBodyIter = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOO:Bodies",
+            &Body, &BodyIter, &ChunkedBody, &ChunkedBodyIter)) {
+        return NULL;
+    }
     PyObject *bodies = PyStructSequence_New(&BodiesType);
     if (bodies == NULL) {
         return NULL;
     }
+    Py_INCREF(Body);
+    Py_INCREF(BodyIter);
+    Py_INCREF(ChunkedBody);
+    Py_INCREF(ChunkedBodyIter);
     PyStructSequence_SET_ITEM(bodies, 0, Body);
     PyStructSequence_SET_ITEM(bodies, 1, BodyIter);
     PyStructSequence_SET_ITEM(bodies, 2, ChunkedBody);
@@ -272,7 +279,8 @@ _Bodies(PyObject *Body,
     return bodies;
 }
 
-/* Request */
+
+/* Request namedtuple */
 static PyTypeObject RequestType;
 static PyStructSequence_Field RequestFields[] = {
     {"method", NULL},
@@ -290,6 +298,7 @@ static PyStructSequence_Desc RequestDesc = {
     RequestFields,  
     7
 };
+
 static PyObject *
 _Request(PyObject *method,
          PyObject *uri,
@@ -320,7 +329,26 @@ _Request(PyObject *method,
     return request;
 }
 
-/* Response */
+static PyObject *
+Request(PyObject *self, PyObject *args)
+{
+    PyObject *method = NULL;
+    PyObject *uri = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    PyObject *script = NULL;
+    PyObject *path = NULL;
+    PyObject *query = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOOOOO:Request",
+            &method, &uri, &headers, &body,  &script, &path, &query)) {
+        return NULL;
+    }
+    return _Request(method, uri, headers, body, script, path, query);
+}
+
+
+/* Response namedtuple */
 static PyTypeObject ResponseType;
 static PyStructSequence_Field ResponseFields[] = {
     {"status", NULL},
@@ -335,6 +363,7 @@ static PyStructSequence_Desc ResponseDesc = {
     ResponseFields,  
     4
 };
+
 static PyObject *
 _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
 {
@@ -353,7 +382,23 @@ _Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
     return response;
 }
 
-/* _init_namedtuple(), _init_all_namedtuples() */
+static PyObject *
+Response(PyObject *self, PyObject *args)
+{
+    PyObject *status = NULL;
+    PyObject *reason = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+
+    if (!PyArg_ParseTuple(args, "OUOO:Response",
+            &status, &reason, &headers, &body)) {
+        return NULL;
+    }
+    return _Response(status, reason, headers, body);
+}
+
+
+/* _init_namedtuple(): initialize one module namedtuple  */
 static bool
 _init_namedtuple(PyObject *module, const char *name,
                  PyTypeObject *type, PyStructSequence_Desc *desc)
@@ -368,6 +413,8 @@ _init_namedtuple(PyObject *module, const char *name,
     return true;
 }
 
+
+/* _init_all_namedtuples(): initialize all module named-tuples */
 static bool
 _init_all_namedtuples(PyObject *module)
 {
@@ -382,6 +429,7 @@ _init_all_namedtuples(PyObject *module)
     }
     return true;
 }
+
 
 
 /*******************************************************************************
@@ -2003,60 +2051,6 @@ format_response(PyObject *self, PyObject *args)
         return NULL;
     }
     return _format_response(status, reason, headers);
-}
-
-
-/*******************************************************************************
- * Public API: namedtuples:
- *     Response()
- */
-static PyObject *
-Bodies(PyObject *self, PyObject *args)
-{
-    PyObject *Body = NULL;
-    PyObject *BodyIter = NULL;
-    PyObject *ChunkedBody = NULL;
-    PyObject *ChunkedBodyIter = NULL;
-    if (!PyArg_ParseTuple(args, "OOOO:Bodies",
-            &Body, &BodyIter, &ChunkedBody, &ChunkedBodyIter)) {
-        return NULL;
-    }
-    Py_INCREF(Body);
-    Py_INCREF(BodyIter);
-    Py_INCREF(ChunkedBody);
-    Py_INCREF(ChunkedBodyIter);
-    return _Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter);
-}
-
-static PyObject *
-Request(PyObject *self, PyObject *args)
-{
-    PyObject *method = NULL;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    PyObject *script = NULL;
-    PyObject *path = NULL;
-    PyObject *query = NULL;
-    if (!PyArg_ParseTuple(args, "UUOOOOO:Request",
-            &method, &uri, &headers, &body,  &script, &path, &query)) {
-        return NULL;
-    }
-    return _Request(method, uri, headers, body, script, path, query);
-}
-
-static PyObject *
-Response(PyObject *self, PyObject *args)
-{
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "OUOO:Response",
-            &status, &reason, &headers, &body)) {
-        return NULL;
-    }
-    return _Response(status, reason, headers, body);
 }
 
 
