@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 
+
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
 #define MAX_PREAMBLE 65536
@@ -36,9 +37,9 @@
 #define MAX_LENGTH 9999999999999999ull
 
 
-/*******************************************************************************
- * Error handling helper macros (they require an "error" label in the function):
- */
+/******************************************************************************
+ * Error handling macros (they require an "error" label in the function).
+ ******************************************************************************/
 
 #define _SET(pyobj, source) \
     if (pyobj != NULL) { \
@@ -55,9 +56,9 @@
 
 
 
-/*******************************************************************************
- * Structures for read-only and writable memory buffers (aka "slices"):
- */
+/******************************************************************************
+ * Structures for read-only and writable memory buffers (aka "slices").
+ ******************************************************************************/
 
 /* DeguSrc (source): a read-only buffer.
  *
@@ -98,16 +99,15 @@ typedef const struct {
 #define NULL_DeguDst ((DeguDst){NULL, 0})
 
 
-/* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc global constants.
- */
+/* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc global constants */
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
 
 
-/*******************************************************************************
- * Structures for internal C parsing API:
- */
+/******************************************************************************
+ * Structures for internal C parsing API.
+ ******************************************************************************/
 
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
@@ -150,3 +150,4 @@ typedef const struct {
     PyObject *Body;
     PyObject *ChunkedBody;
 } DeguParse;
+

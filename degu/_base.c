@@ -23,35 +23,76 @@
 
 #include "_base.h"
 
+
+/******************************************************************************
+ * PyObject static globals.
+ ******************************************************************************/
+
 /* `degu.base.EmptyPreambleError` */
 static PyObject *degu_EmptyPreambleError = NULL;
 
-static PyObject *str_shutdown = NULL;         //  'shutdown'
-static PyObject *str_recv_into = NULL;        //  'recv_into'
-static PyObject *str_send = NULL;             //  'send'
-static PyObject *str_write_to = NULL;         //  'write_to'
-static PyObject *str_Body = NULL;             //  'Body'
-static PyObject *str_BodyIter = NULL;         //  'BodyIter'
-static PyObject *str_ChunkedBody = NULL;      //  'ChunkedBody'
-static PyObject *str_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
+/* Interned `str` for fast attribute lookup */
+static PyObject *attr_shutdown = NULL;         //  'shutdown'
+static PyObject *attr_recv_into = NULL;        //  'recv_into'
+static PyObject *attr_send = NULL;             //  'send'
+static PyObject *attr_write_to = NULL;         //  'write_to'
+static PyObject *attr_Body = NULL;             //  'Body'
+static PyObject *attr_BodyIter = NULL;         //  'BodyIter'
+static PyObject *attr_ChunkedBody = NULL;      //  'ChunkedBody'
+static PyObject *attr_ChunkedBodyIter = NULL;  //  'ChunkedBodyIter'
+static PyObject *attr_content_length = NULL;   //  'content_length'
 
-static PyObject *str_content_length = NULL;     //  'content_length'
+/* Non-interned `str` used for keys and values in headers `dict` */
 static PyObject *key_content_length = NULL;     //  'content-length'
-static PyObject *key_content_type   = NULL;     //  'content-type'
-static PyObject *val_application_json = NULL; // 'application/json'
-static PyObject *key_range   = NULL;            //  'range'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
-static PyObject *str_chunked = NULL;            //  'chunked'
-static PyObject *str_crlf = NULL;               //  '\r\n'
+static PyObject *key_content_type   = NULL;     //  'content-type'
+static PyObject *key_range   = NULL;            //  'range'
+static PyObject *val_chunked = NULL;            //  'chunked'
+static PyObject *val_application_json = NULL;   //  'application/json'
+
+/* Other non-interned `str` used for parsed values, etc */
 static PyObject *str_GET    = NULL;  // 'GET'
 static PyObject *str_PUT    = NULL;  // 'PUT'
 static PyObject *str_POST   = NULL;  // 'POST'
 static PyObject *str_HEAD   = NULL;  // 'HEAD'
 static PyObject *str_DELETE = NULL;  // 'DELETE'
 static PyObject *str_OK     = NULL;  // 'OK'
-static PyObject *str_empty = NULL;    //  ''
+static PyObject *str_crlf = NULL;    //  '\r\n'
+static PyObject *str_empty = NULL;   //  ''
 
+/* Misc `int` objects */
 static PyObject *int_SHUT_RDWR = NULL;  // socket.SHUT_RDWR (2)
+
+
+
+/******************************************************************************
+ * DeguSrc static globals.
+ ******************************************************************************/
+
+_DEGU_SRC_CONSTANT(LF, "\n")
+_DEGU_SRC_CONSTANT(CRLF, "\r\n")
+_DEGU_SRC_CONSTANT(CRLFCRLF, "\r\n\r\n")
+_DEGU_SRC_CONSTANT(SPACE, " ")
+_DEGU_SRC_CONSTANT(SLASH, "/")
+_DEGU_SRC_CONSTANT(SPACE_SLASH, " /")
+_DEGU_SRC_CONSTANT(QMARK, "?")
+_DEGU_SRC_CONSTANT(SEP, ": ")
+_DEGU_SRC_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
+_DEGU_SRC_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
+_DEGU_SRC_CONSTANT(GET, "GET")
+_DEGU_SRC_CONSTANT(PUT, "PUT")
+_DEGU_SRC_CONSTANT(POST, "POST")
+_DEGU_SRC_CONSTANT(HEAD, "HEAD")
+_DEGU_SRC_CONSTANT(DELETE, "DELETE")
+_DEGU_SRC_CONSTANT(OK, "OK")
+_DEGU_SRC_CONSTANT(CONTENT_LENGTH, "content-length")
+_DEGU_SRC_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
+_DEGU_SRC_CONSTANT(CHUNKED, "chunked")
+_DEGU_SRC_CONSTANT(RANGE, "range")
+_DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
+_DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
+_DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_SRC_CONSTANT(MINUS, "-")
 
 
 
@@ -179,6 +220,196 @@ static const uint8_t _FLAGS[256] = {
 
 
 
+/******************************************************************************
+ * Internal functions for working with DeguSrc and DeguDst memory buffers.
+ ******************************************************************************/
+
+static inline bool
+_isempty(DeguSrc src)
+{
+    if (src.buf == NULL || src.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static DeguSrc
+_slice(DeguSrc src, const size_t start, const size_t stop)
+{
+    if (_isempty(src) || start > stop || stop > src.len) {
+        Py_FatalError("_slice(): bad internal call");
+    }
+    return (DeguSrc){src.buf + start, stop - start};
+}
+
+static inline bool
+_equal(DeguSrc a, DeguSrc b) {
+    if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static inline ssize_t
+_find(DeguSrc haystack, DeguSrc needle)
+{
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return -1;
+    }
+    return ptr - haystack.buf;
+}
+
+static inline size_t
+_search(DeguSrc haystack, DeguSrc needle)
+{
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return haystack.len;
+    }
+    return (size_t)(ptr - haystack.buf);
+}
+
+static PyObject *
+_tostr(DeguSrc src)
+{
+    if (src.buf == NULL) {
+        return NULL;
+    }
+    return PyUnicode_FromKindAndData(
+        PyUnicode_1BYTE_KIND, src.buf, (ssize_t)src.len
+    );
+}
+
+static PyObject *
+_tobytes(DeguSrc src)
+{
+    if (src.buf == NULL) {
+        return NULL;
+    }
+    return PyBytes_FromStringAndSize((const char *)src.buf, (ssize_t)src.len);
+}
+
+static DeguSrc
+_frombytes(PyObject *bytes)
+{
+    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
+        Py_FatalError("_frombytes(): bad internal call");
+    }
+    return (DeguSrc){
+        (uint8_t *)PyBytes_AS_STRING(bytes),
+        (size_t)PyBytes_GET_SIZE(bytes)
+    };
+}
+
+static void
+_value_error(const char *format, DeguSrc src)
+{
+    PyObject *tmp = _tobytes(src);
+    if (tmp != NULL) {
+        PyErr_Format(PyExc_ValueError, format, tmp);
+    }
+    Py_CLEAR(tmp);
+}
+
+static void
+_value_error2(const char *format, DeguSrc src1, DeguSrc src2)
+{
+    PyObject *tmp1 = _tobytes(src1);
+    PyObject *tmp2 = _tobytes(src2);
+    if (tmp1 != NULL && tmp2 != NULL) {
+        PyErr_Format(PyExc_ValueError, format, tmp1, tmp2);
+    }
+    Py_CLEAR(tmp1);
+    Py_CLEAR(tmp2);
+}
+
+static PyObject *
+_decode(DeguSrc src, const uint8_t mask, const char *format)
+{
+    PyObject *dst = NULL;
+    uint8_t *dst_buf = NULL;
+    uint8_t c, bits;
+    size_t i;
+
+    if (mask == 0 || (mask & 1) != 0) {
+        Py_FatalError("_decode: bad mask");
+    }
+    if (src.len < 1) {
+        _SET_AND_INC(dst, str_empty);
+        goto done;
+    }
+    _SET(dst, PyUnicode_New((ssize_t)src.len, 127))
+    dst_buf = PyUnicode_1BYTE_DATA(dst);
+    for (bits = i = 0; i < src.len; i++) {
+        c = dst_buf[i] = src.buf[i];
+        bits |= _FLAGS[c];
+    }
+    if (bits == 0) {
+        Py_FatalError("internal error in `_decode()`");
+    }
+    if ((bits & mask) != 0) {
+        _value_error(format, src);
+        goto error;
+    }
+    goto done;
+
+error:
+    Py_CLEAR(dst);
+
+done:
+    return dst;
+}
+
+static inline bool
+_dst_isempty(DeguDst dst)
+{
+    if (dst.buf == NULL || dst.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static DeguDst
+_dst_slice(DeguDst dst, const size_t start, const size_t stop)
+{
+    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
+        Py_FatalError("_dst_slice(): bad internal call");
+    }
+    return (DeguDst){dst.buf + start, stop - start};
+}
+
+static void
+_move(DeguDst dst, DeguSrc src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_move(): bad internal call");
+    }
+    memmove(dst.buf, src.buf, src.len);
+}
+
+static void
+_copy(DeguDst dst, DeguSrc src)
+{
+    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+        Py_FatalError("_copy(): bad internal call");
+    }
+    memcpy(dst.buf, src.buf, src.len);
+}
+
+static DeguDst
+_calloc_dst(const size_t len)
+{
+    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
+    if (buf == NULL) {
+        PyErr_NoMemory();
+        return NULL_DeguDst;
+    }
+    return (DeguDst){buf, len};
+}
+
+
+
 /*******************************************************************************
  * Internal API: Misc:
  *     _min()
@@ -232,9 +463,10 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
 }
 
 
-/*******************************************************************************
- * Named-tuples:
- */
+
+/******************************************************************************
+ * C equivalent of Python namedtuple (PyStructSequence).
+ ******************************************************************************/
 
 /* Bodies namedtuple */
 static PyTypeObject BodiesType;
@@ -430,230 +662,6 @@ _init_all_namedtuples(PyObject *module)
     return true;
 }
 
-
-
-/*******************************************************************************
- * Internal API: DeguSrc:
- *     _isempty()
- *     _slice()
- *     _equal()
- *     _search()
- *     _tostr()
- *     _tobytes()
- *     _value_error()
- *     _value_error2()
- *     _decode()
- */
-
-_DEGU_SRC_CONSTANT(LF, "\n")
-_DEGU_SRC_CONSTANT(CRLF, "\r\n")
-_DEGU_SRC_CONSTANT(CRLFCRLF, "\r\n\r\n")
-_DEGU_SRC_CONSTANT(SPACE, " ")
-_DEGU_SRC_CONSTANT(SLASH, "/")
-_DEGU_SRC_CONSTANT(SPACE_SLASH, " /")
-_DEGU_SRC_CONSTANT(QMARK, "?")
-_DEGU_SRC_CONSTANT(SEP, ": ")
-_DEGU_SRC_CONSTANT(REQUEST_PROTOCOL, " HTTP/1.1")
-_DEGU_SRC_CONSTANT(RESPONSE_PROTOCOL, "HTTP/1.1 ")
-_DEGU_SRC_CONSTANT(GET, "GET")
-_DEGU_SRC_CONSTANT(PUT, "PUT")
-_DEGU_SRC_CONSTANT(POST, "POST")
-_DEGU_SRC_CONSTANT(HEAD, "HEAD")
-_DEGU_SRC_CONSTANT(DELETE, "DELETE")
-_DEGU_SRC_CONSTANT(OK, "OK")
-_DEGU_SRC_CONSTANT(CONTENT_LENGTH, "content-length")
-_DEGU_SRC_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
-_DEGU_SRC_CONSTANT(CHUNKED, "chunked")
-_DEGU_SRC_CONSTANT(RANGE, "range")
-_DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
-
-_DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
-_DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
-_DEGU_SRC_CONSTANT(MINUS, "-")
-
-static inline bool
-_isempty(DeguSrc src)
-{
-    if (src.buf == NULL || src.len == 0) {
-        return true;
-    }
-    return false;
-}
-
-static DeguSrc
-_slice(DeguSrc src, const size_t start, const size_t stop)
-{
-    if (_isempty(src) || start > stop || stop > src.len) {
-        Py_FatalError("_slice(): bad internal call");
-    }
-    return (DeguSrc){src.buf + start, stop - start};
-}
-
-static inline bool
-_equal(DeguSrc a, DeguSrc b) {
-    if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
-        return true;
-    }
-    return false;
-}
-
-static inline ssize_t
-_find(DeguSrc haystack, DeguSrc needle)
-{
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
-    if (ptr == NULL) {
-        return -1;
-    }
-    return ptr - haystack.buf;
-}
-
-static inline size_t
-_search(DeguSrc haystack, DeguSrc needle)
-{
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
-    if (ptr == NULL) {
-        return haystack.len;
-    }
-    return (size_t)(ptr - haystack.buf);
-}
-
-static PyObject *
-_tostr(DeguSrc src)
-{
-    if (src.buf == NULL) {
-        return NULL;
-    }
-    return PyUnicode_FromKindAndData(
-        PyUnicode_1BYTE_KIND, src.buf, (ssize_t)src.len
-    );
-}
-
-static PyObject *
-_tobytes(DeguSrc src)
-{
-    if (src.buf == NULL) {
-        return NULL;
-    }
-    return PyBytes_FromStringAndSize((const char *)src.buf, (ssize_t)src.len);
-}
-
-static DeguSrc
-_frombytes(PyObject *bytes)
-{
-    if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
-        Py_FatalError("_frombytes(): bad internal call");
-    }
-    return (DeguSrc){
-        (uint8_t *)PyBytes_AS_STRING(bytes),
-        (size_t)PyBytes_GET_SIZE(bytes)
-    };
-}
-
-static void
-_value_error(const char *format, DeguSrc src)
-{
-    PyObject *tmp = _tobytes(src);
-    if (tmp != NULL) {
-        PyErr_Format(PyExc_ValueError, format, tmp);
-    }
-    Py_CLEAR(tmp);
-}
-
-static void
-_value_error2(const char *format, DeguSrc src1, DeguSrc src2)
-{
-    PyObject *tmp1 = _tobytes(src1);
-    PyObject *tmp2 = _tobytes(src2);
-    if (tmp1 != NULL && tmp2 != NULL) {
-        PyErr_Format(PyExc_ValueError, format, tmp1, tmp2);
-    }
-    Py_CLEAR(tmp1);
-    Py_CLEAR(tmp2);
-}
-
-static PyObject *
-_decode(DeguSrc src, const uint8_t mask, const char *format)
-{
-    PyObject *dst = NULL;
-    uint8_t *dst_buf = NULL;
-    uint8_t c, bits;
-    size_t i;
-
-    if (mask == 0 || (mask & 1) != 0) {
-        Py_FatalError("_decode: bad mask");
-    }
-    if (src.len < 1) {
-        _SET_AND_INC(dst, str_empty);
-        goto done;
-    }
-    _SET(dst, PyUnicode_New((ssize_t)src.len, 127))
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (bits = i = 0; i < src.len; i++) {
-        c = dst_buf[i] = src.buf[i];
-        bits |= _FLAGS[c];
-    }
-    if (bits == 0) {
-        Py_FatalError("internal error in `_decode()`");
-    }
-    if ((bits & mask) != 0) {
-        _value_error(format, src);
-        goto error;
-    }
-    goto done;
-
-error:
-    Py_CLEAR(dst);
-
-done:
-    return dst;
-}
-
-static inline bool
-_dst_isempty(DeguDst dst)
-{
-    if (dst.buf == NULL || dst.len == 0) {
-        return true;
-    }
-    return false;
-}
-
-static DeguDst
-_dst_slice(DeguDst dst, const size_t start, const size_t stop)
-{
-    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
-    }
-    return (DeguDst){dst.buf + start, stop - start};
-}
-
-static void
-_move(DeguDst dst, DeguSrc src)
-{
-    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
-        Py_FatalError("_move(): bad internal call");
-    }
-    memmove(dst.buf, src.buf, src.len);
-}
-
-static void
-_copy(DeguDst dst, DeguSrc src)
-{
-    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
-        Py_FatalError("_copy(): bad internal call");
-    }
-    memcpy(dst.buf, src.buf, src.len);
-}
-
-static DeguDst
-_calloc_dst(const size_t len)
-{
-    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (buf == NULL) {
-        PyErr_NoMemory();
-        return NULL_DeguDst;
-    }
-    return (DeguDst){buf, len};
-}
 
 
 /*******************************************************************************
@@ -1049,7 +1057,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
             goto error;
         }
         _SET_AND_INC(key, key_transfer_encoding)
-        _SET_AND_INC(val, str_chunked)
+        _SET_AND_INC(val, val_chunked)
         dh->flags |= 2;
     }
     else if (_equal(keysrc, RANGE)) {
@@ -1890,8 +1898,8 @@ parse_request(PyObject *self, PyObject *args)
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(Body, _getcallable("bodies", bodies, str_Body))
-    _SET(ChunkedBody, _getcallable("bodies", bodies, str_ChunkedBody))
+    _SET(Body, _getcallable("bodies", bodies, attr_Body))
+    _SET(ChunkedBody, _getcallable("bodies", bodies, attr_ChunkedBody))
     DeguParse dp = {scratch, rfile, Body, ChunkedBody};
     _SET(ret, _parse_request(src, dp))
     goto cleanup;
@@ -1967,8 +1975,8 @@ parse_response(PyObject *self, PyObject *args)
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(Body, _getcallable("bodies", bodies, str_Body))
-    _SET(ChunkedBody, _getcallable("bodies", bodies, str_ChunkedBody))
+    _SET(Body, _getcallable("bodies", bodies, attr_Body))
+    _SET(ChunkedBody, _getcallable("bodies", bodies, attr_ChunkedBody))
     DeguParse dp = {scratch, rfile, Body, ChunkedBody};
     _SET(ret, _parse_response(method, src, dp))
     goto cleanup;
@@ -2150,11 +2158,11 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         );
         return -1;
     }
-    _SET(self->shutdown,  _getcallable("sock", sock, str_shutdown))
-    _SET(self->recv_into, _getcallable("sock", sock, str_recv_into))
-    _SET(self->bodies_Body, _getcallable("bodies", bodies, str_Body))
+    _SET(self->shutdown,  _getcallable("sock", sock, attr_shutdown))
+    _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
+    _SET(self->bodies_Body, _getcallable("bodies", bodies, attr_Body))
     _SET(self->bodies_ChunkedBody,
-        _getcallable("bodies", bodies, str_ChunkedBody)
+        _getcallable("bodies", bodies, attr_ChunkedBody)
     )
     _SET(self->scratch, _calloc_buf(MAX_KEY))
     self->len = (size_t)len;
@@ -2719,12 +2727,12 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
 
     self->closed = false;
     self->tell = 0;
-    _SET(self->shutdown,  _getcallable("sock", sock, str_shutdown))
-    _SET(self->send,      _getcallable("sock", sock, str_send))
-    _SET(Body,            PyObject_GetAttr(bodies, str_Body))
-    _SET(BodyIter,        PyObject_GetAttr(bodies, str_BodyIter))
-    _SET(ChunkedBody,     PyObject_GetAttr(bodies, str_ChunkedBody))
-    _SET(ChunkedBodyIter, PyObject_GetAttr(bodies, str_ChunkedBodyIter))
+    _SET(self->shutdown,  _getcallable("sock", sock, attr_shutdown))
+    _SET(self->send,      _getcallable("sock", sock, attr_send))
+    _SET(Body,            PyObject_GetAttr(bodies, attr_Body))
+    _SET(BodyIter,        PyObject_GetAttr(bodies, attr_BodyIter))
+    _SET(ChunkedBody,     PyObject_GetAttr(bodies, attr_ChunkedBody))
+    _SET(ChunkedBodyIter, PyObject_GetAttr(bodies, attr_ChunkedBodyIter))
     _SET(self->length_types, PyTuple_Pack(2, Body, BodyIter))
     _SET(self->chunked_types, PyTuple_Pack(2, ChunkedBody, ChunkedBodyIter))
     goto cleanup;
@@ -2850,11 +2858,11 @@ _Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
         return _set_default_content_length(headers, val);
     }
     if (PyObject_IsInstance(body, self->length_types)) {
-        val = PyObject_GetAttr(body, str_content_length);
+        val = PyObject_GetAttr(body, attr_content_length);
         return _set_default_content_length(headers, val);
     }
     if (PyObject_IsInstance(body, self->chunked_types)) {
-        return _set_default_header(headers, key_transfer_encoding, str_chunked);
+        return _set_default_header(headers, key_transfer_encoding, val_chunked);
     }
     PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
     return false;
@@ -2897,7 +2905,7 @@ _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
     uint64_t total;
     int64_t ret = -2;
 
-    _SET(int_total, PyObject_CallMethodObjArgs(body, str_write_to, self, NULL))
+    _SET(int_total, PyObject_CallMethodObjArgs(body, attr_write_to, self, NULL))
     if (!PyLong_CheckExact(int_total)) {
         PyErr_Format(PyExc_TypeError,
             "need a <class 'int'>; write_to() returned a %R: %R",
@@ -3210,22 +3218,22 @@ PyInit__base(void)
     PyModule_AddObject(module, "EmptyPreambleError", degu_EmptyPreambleError);
 
     /* socket methods */
-    _SET(str_shutdown,  PyUnicode_InternFromString("shutdown"))
-    _SET(str_recv_into, PyUnicode_InternFromString("recv_into"))
-    _SET(str_send,      PyUnicode_InternFromString("send"))
-    _SET(str_write_to,  PyUnicode_InternFromString("write_to"))
+    _SET(attr_shutdown,  PyUnicode_InternFromString("shutdown"))
+    _SET(attr_recv_into, PyUnicode_InternFromString("recv_into"))
+    _SET(attr_send,      PyUnicode_InternFromString("send"))
+    _SET(attr_write_to,  PyUnicode_InternFromString("write_to"))
 
     /* bodies attributes */
-    _SET(str_Body,            PyUnicode_InternFromString("Body"))
-    _SET(str_BodyIter,        PyUnicode_InternFromString("BodyIter"))
-    _SET(str_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
-    _SET(str_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
+    _SET(attr_Body,            PyUnicode_InternFromString("Body"))
+    _SET(attr_BodyIter,        PyUnicode_InternFromString("BodyIter"))
+    _SET(attr_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
+    _SET(attr_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
 
-    _SET(str_content_length, PyUnicode_InternFromString("content_length"))
+    _SET(attr_content_length, PyUnicode_InternFromString("content_length"))
     _SET(key_content_length, PyUnicode_InternFromString("content-length"))
     _SET(key_content_type, PyUnicode_InternFromString("content-type"))
     _SET(key_transfer_encoding, PyUnicode_InternFromString("transfer-encoding"))
-    _SET(str_chunked, PyUnicode_InternFromString("chunked"))
+    _SET(val_chunked, PyUnicode_InternFromString("chunked"))
     _SET(key_range, PyUnicode_InternFromString("range"))
     _SET(val_application_json, PyUnicode_InternFromString("application/json"))
 
