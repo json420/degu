@@ -3222,15 +3222,15 @@ typedef struct {
     uint64_t content_length;
     size_t io_size;
     uint64_t remaining;
-    char closed;
-    char chunked;
+    bool closed;
+    bool chunked;
 } Body;
 
 static void
 Body_dealloc(Body *self)
 {
-    Py_CLEAR(self->rfile_read);
     Py_CLEAR(self->rfile);
+    Py_CLEAR(self->rfile_read);
     Py_TYPE(self)->tp_free((PyObject*)self);  // Make sure to do this!
 }
 
@@ -3251,13 +3251,15 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
     if (_content_length < 0) {
         goto error;
     }
-    _SET_AND_INC(self->rfile, rfile)
-    _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
     self->content_length = (uint64_t)_content_length;
     self->remaining = self->content_length;
     self->io_size = (size_t)io_size;
     self->closed = false;
     self->chunked = false;
+    _SET_AND_INC(self->rfile, rfile)
+    if (Py_TYPE(self->rfile) != &ReaderType) {
+        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
+    }
     return 0;
 
 error:
@@ -3290,8 +3292,8 @@ _Body_read(Body *self, const size_t max_size)
     if (self->remaining == 0) {
         self->closed = true;
     }
-    if (Py_TYPE(self->rfile) == &ReaderType) {
-        /* Fast-path when rfile is a Reader instance */
+    if (self->rfile_read == NULL) {
+        /* Fast-path for when rfile is a Reader instance */
         _SET(ret, _Reader_read((Reader *)self->rfile, (ssize_t)size))
     }
     else {
@@ -3323,26 +3325,51 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
     return _Body_read(self, size);
 }
 
-
+/* _Body_fast_write_to(): fast-path for when wfile is a Writer instance  */
 static PyObject *
-Body_write_to(Body *self, PyObject *args)
+_Body_fast_write_to(Body *self, Writer *wfile)
 {
-    PyObject *wfile = NULL;
-    PyObject *wfile_write = NULL;
+    uint64_t total = 0;
+    ssize_t wrote;
     PyObject *data = NULL;
-    PyObject *wret = NULL;
     PyObject *ret = NULL;
 
-    if (!PyArg_ParseTuple(args, "O", &wfile)) {
-        return NULL;
+    while (self->remaining > 0) {
+        _SET(data, _Body_read(self, self->io_size))
+        wrote = _Writer_write(wfile, _frombytes(data));
+        if (wrote < 0) {
+            goto error;
+        }
+        total += (uint64_t)wrote;
+        Py_CLEAR(data);
     }
+    _SET(ret, PyLong_FromUnsignedLong(total))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(data);
+    return ret;    
+}
+
+
+static PyObject *
+_Body_write_to(Body *self, PyObject *wfile)
+{
+    PyObject *wfile_write = NULL;
+    PyObject *data = NULL;
+    PyObject *size = NULL;
+    PyObject *ret = NULL;
     const uint64_t total = self->remaining;
+
     _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
     while (self->remaining > 0) {
         _SET(data, _Body_read(self, self->io_size))
-        _SET(wret, PyObject_CallFunctionObjArgs(wfile_write, data, NULL))
+        _SET(size, PyObject_CallFunctionObjArgs(wfile_write, data, NULL))
         Py_CLEAR(data);
-        Py_CLEAR(wret);
+        Py_CLEAR(size);
     }
     _SET(ret, PyLong_FromUnsignedLong(total))
     goto cleanup;
@@ -3353,8 +3380,21 @@ error:
 cleanup:
     Py_CLEAR(wfile_write);
     Py_CLEAR(data);
-    Py_CLEAR(wret);
+    Py_CLEAR(size);
     return ret;    
+}
+
+static PyObject *
+Body_write_to(Body *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    if (!PyArg_ParseTuple(args, "O", &wfile)) {
+        return NULL;
+    }
+    if (Py_TYPE(wfile) == &WriterType) {
+        return _Body_fast_write_to(self, (Writer *)wfile);
+    }
+    return _Body_write_to(self, wfile);
 }
 
 static PyObject *
