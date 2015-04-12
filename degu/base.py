@@ -33,7 +33,6 @@ try:
         Range,
         Reader,
         Writer,
-        Body,
     )
 except ImportError:
     from ._basepy import (
@@ -45,7 +44,6 @@ except ImportError:
         Range,
         Reader,
         Writer,
-        Body,
     )
 
 
@@ -176,7 +174,115 @@ def write_chunk(wfile, chunk, max_size=None):
     return total
 
 
+class Body:
+    chunked = False
+    __slots__ = ('rfile', 'content_length', 'io_size', 'closed', '_remaining')
 
+    def __init__(self, rfile, content_length, io_size=None):
+        if not isinstance(content_length, int):
+            raise TypeError(_TYPE_ERROR.format(
+                'content_length', int, type(content_length), content_length)
+            )
+        if content_length < 0:
+            raise ValueError(
+                'content_length must be >= 0, got: {!r}'.format(content_length)
+            )
+        if io_size is None:
+            io_size = IO_SIZE
+        else:
+            if not isinstance(io_size, int):
+                raise TypeError(
+                    _TYPE_ERROR.format('io_size', int, type(io_size), io_size)
+                )
+            if not (4096 <= io_size <= MAX_READ_SIZE):
+                raise ValueError(
+                    'need 4096 <= io_size <= {}; got {}'.format(
+                        MAX_READ_SIZE, io_size
+                    )
+                )
+            if io_size & (io_size - 1):
+                raise ValueError(
+                    'io_size must be a power of 2; got {}'.format(io_size)
+                )
+        self.rfile = rfile
+        self.content_length = content_length
+        self.io_size = io_size
+        self.closed = False
+        self._remaining = content_length
+
+    def __repr__(self):
+        return '{}(<rfile>, {!r})'.format(
+            self.__class__.__name__, self.content_length
+        )
+
+    def __iter__(self):
+        if self.closed:
+            raise ValueError('Body.closed, already consumed')
+        remaining = self._remaining
+        if remaining != self.content_length:
+            raise Exception('cannot mix Body.read() with Body.__iter__()')
+        self._remaining = 0
+        io_size = self.io_size
+        read = self.rfile.read
+        while remaining > 0:
+            readsize = min(remaining, io_size)
+            remaining -= readsize
+            assert remaining >= 0
+            data = read(readsize)
+            if len(data) != readsize:
+                self.rfile.close()
+                raise ValueError(
+                    'underflow: {} < {}'.format(len(data), readsize)
+                )
+            yield data
+        self.closed = True
+
+    # FIXME: Add 2nd, max_size=None optional keyword argument
+    def read(self, size=None):
+        if self.closed:
+            raise ValueError('Body.closed, already consumed')
+        if self._remaining <= 0:
+            self.closed = True
+            return b''
+        if size is None:
+            read = self._remaining
+        else:
+            if not isinstance(size, int):
+                raise TypeError(
+                    _TYPE_ERROR.format('size', int, type(size), size) 
+                )
+            if size < 0:
+                raise ValueError('size must be >= 0; got {!r}'.format(size))
+            read = min(self._remaining, size)
+        if read > MAX_READ_SIZE:
+            raise ValueError(
+                'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
+            )
+        data = self.rfile.read(read)
+        if len(data) != read:
+            # Security note: if application-level code is being overly general
+            # with their exception handling, they might continue to use a
+            # connection even after an ValueError which could create a
+            # request/response stream state inconsistency.  So in this
+            # circumstance, we close the rfile, but we do *not* set Body.closed
+            # to True (which means "fully consumed") because the body was not in
+            # fact fully read. 
+            self.rfile.close()
+            raise ValueError(
+                'underflow: {} < {}'.format(len(data), read)
+            )
+        self._remaining -= read
+        assert self._remaining >= 0
+        if size is None:
+            # Entire body was read at once, so close:
+            self.closed = True
+        return data
+
+    def write_to(self, wfile):
+        total = sum(wfile.write(data) for data in self)
+        assert total == self.content_length
+        wfile.flush()
+        return total
 
 
 class ChunkedBody:
