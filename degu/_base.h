@@ -35,6 +35,7 @@
 #define MAX_CL_LEN 16
 #define MAX_IO_SIZE 16777216
 #define MAX_LENGTH 9999999999999999ull
+#define IO_SIZE 1048576
 
 
 /******************************************************************************
@@ -57,6 +58,9 @@
 
 
 #define _ADD_MODULE_ATTR(module, name, obj) \
+    if (module == NULL || name == NULL || obj == NULL) { \
+        Py_FatalError("_ADD_MODULE_ATTR(): bad internal calls"); \
+    } \
     Py_INCREF(obj); \
     if (PyModule_AddObject(module, name, obj) != 0) { \
         goto error; \
