@@ -3439,6 +3439,7 @@ _Body_fast_write_to(Body *self, Writer *wfile)
         Py_CLEAR(data);
     }
     _SET(ret, PyLong_FromUnsignedLong(total))
+    self->closed = true;
     goto cleanup;
 
 error:
@@ -3466,6 +3467,7 @@ _Body_write_to(Body *self, PyObject *wfile)
         Py_CLEAR(size);
     }
     _SET(ret, PyLong_FromUnsignedLong(total))
+    self->closed = true;
     goto cleanup;
 
 error:
