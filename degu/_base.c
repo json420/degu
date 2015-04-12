@@ -781,14 +781,23 @@ Range_dealloc(Range *self)
     Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
 }
 
-static int64_t
-_validate_length(const char *name, PyObject *obj)
+static bool
+_validate_int(const char *name, PyObject *obj)
 {
     if (!PyLong_CheckExact(obj)) {
         PyErr_Format(PyExc_TypeError,
             "%s: need a <class 'int'>; got a %R: %R", name, Py_TYPE(obj), obj
         );
-        return -1; 
+        return false;
+    }
+    return true;
+}
+
+static int64_t
+_validate_length(const char *name, PyObject *obj)
+{
+    if (! _validate_int(name, obj)) {
+        return -1;
     }
     const uint64_t length = PyLong_AsUnsignedLongLong(obj);
     if (PyErr_Occurred()) {
@@ -801,6 +810,33 @@ _validate_length(const char *name, PyObject *obj)
         return -1;
     }
     return (int64_t)length;
+}
+
+static ssize_t
+_validate_size(const char *name, PyObject *obj, const size_t remaining)
+{
+    if (obj == Py_None) {
+        if (remaining > MAX_IO_SIZE) {
+            PyErr_Format(PyExc_ValueError,
+                "max read size exceeded: %zu > %zu", remaining, MAX_IO_SIZE
+            );
+            return -1;
+        }
+        return (ssize_t)remaining;
+    }
+
+    if (! _validate_int(name, obj)) {
+        return -1;
+    }
+    const size_t size = PyLong_AsSize_t(obj);
+    if (PyErr_Occurred() || size > MAX_IO_SIZE) {
+        PyErr_Clear();
+        PyErr_Format(PyExc_ValueError,
+            "need 0 <= %s <= %zu; got %R", name, MAX_IO_SIZE, obj
+        );
+        return -1;
+    }
+    return (ssize_t)size;
 }
 
 static int
@@ -3333,16 +3369,16 @@ _Body_read(Body *self, const size_t max_size)
     else {
         _SET(pysize, PyLong_FromSize_t(size))
         _SET(ret, PyObject_CallFunctionObjArgs(self->rfile_read, pysize, NULL))
+        if (! PyBytes_CheckExact(ret)) {
+            PyErr_Format(PyExc_TypeError,
+                "need a <class 'bytes'>; rfile.read() returned a %R: %R",
+                Py_TYPE(ret), ret
+            );
+            goto error;
+        }
     }
 
     /* Check return value */
-    if (! PyBytes_CheckExact(ret)) {
-        PyErr_Format(PyExc_TypeError,
-            "need a <class 'bytes'>; rfile.read() returned a %R: %R",
-            Py_TYPE(ret), ret
-        );
-        goto error;
-    }
     if ((size_t)PyBytes_GET_SIZE(ret) != size) {
         PyErr_Format(PyExc_ValueError, "underflow: %zu < %zu",
             (size_t)PyBytes_GET_SIZE(ret), size
@@ -3352,9 +3388,6 @@ _Body_read(Body *self, const size_t max_size)
 
     /* Update state */
     self->remaining -= size;
-    if (self->remaining == 0) {
-        self->closed = true;
-    }
     goto cleanup;    
 
 error:
@@ -3371,15 +3404,20 @@ static PyObject *
 Body_read(Body *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"size", NULL};
-    size_t size = 0;
+    PyObject *pysize = Py_None;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "|n", keys, &size)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "|O", keys, &pysize)) {
         return NULL;
     }
-    if (size == 0) {
-        size = self->remaining;
+    const ssize_t size = _validate_size("size", pysize, self->remaining);
+    if (size < 0) {
+        return NULL;
     }
-    return _Body_read(self, size);
+    PyObject *ret = _Body_read(self, (size_t)size);
+    if (pysize == Py_None && ret != NULL) {
+        self->closed = true;
+    }
+    return ret;
 }
 
 /* _Body_fast_write_to(): fast-path for when wfile is a Writer instance  */
@@ -3410,7 +3448,6 @@ cleanup:
     Py_CLEAR(data);
     return ret;    
 }
-
 
 static PyObject *
 _Body_write_to(Body *self, PyObject *wfile)

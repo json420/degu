@@ -956,18 +956,20 @@ class Body:
             return b''
         if size is None:
             read = self._remaining
+            if read > MAX_READ_SIZE:
+                raise ValueError(
+                    'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
+                )
         else:
-            if not isinstance(size, int):
+            if type(size) is not int:
                 raise TypeError(
                     TYPE_ERROR.format('size', int, type(size), size) 
                 )
-            if size < 0:
-                raise ValueError('size must be >= 0; got {!r}'.format(size))
+            if not (0 <= size <= MAX_READ_SIZE):
+                raise ValueError(
+                    'need 0 <= size <= {}; got {}'.format(MAX_READ_SIZE, size)
+                )
             read = min(self._remaining, size)
-        if read > MAX_READ_SIZE:
-            raise ValueError(
-                'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
-            )
         data = self.rfile.read(read)
         if len(data) != read:
             # Security note: if application-level code is being overly general

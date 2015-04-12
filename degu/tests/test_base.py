@@ -2203,25 +2203,53 @@ class TestBody(TestCase):
         self.assertEqual(body.content_length, 1776)
         self.assertEqual(body._remaining, 1776)
 
-        # Bad size value:
+        # size < 0 or size > MAX_READ_SIZE
+        toobig = base.MAX_READ_SIZE + 1
+        for bad in (-18, -1, toobig):
+            body = base.Body(rfile, 1776)
+            with self.assertRaises(ValueError) as cm:
+                body.read(bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
+            )
+            self.assertIs(body.chunked, False)
+            self.assertIs(body.closed, False)
+            self.assertEqual(rfile.tell(), 0)
+            self.assertEqual(body.content_length, 1776)
+            self.assertEqual(body._remaining, 1776)
+
+            body = base.Body(rfile, toobig)
+            with self.assertRaises(ValueError) as cm:
+                body.read(bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
+            )
+            self.assertIs(body.chunked, False)
+            self.assertIs(body.closed, False)
+            self.assertEqual(rfile.tell(), 0)
+            self.assertEqual(body.content_length, toobig)
+            self.assertEqual(body._remaining, toobig)
+
+        # Test when read size > MAX_READ_SIZE:
+        rfile = io.BytesIO()
+        body = base.Body(rfile, toobig)
+        self.assertEqual(body.content_length, toobig)
         with self.assertRaises(ValueError) as cm:
-            body.read(-1)
-        self.assertEqual(str(cm.exception), 'size must be >= 0; got -1')
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
-        self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1776)
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'max read size exceeded: 16777217 > 16777216'
+        )
+        body = base.Body(rfile, toobig)
+        self.assertEqual(body.content_length, toobig)
         with self.assertRaises(ValueError) as cm:
-            body.read(-18)
-        self.assertEqual(str(cm.exception), 'size must be >= 0; got -18')
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
-        self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1776)
+            body.read(None)
+        self.assertEqual(str(cm.exception),
+            'max read size exceeded: 16777217 > 16777216'
+        )
 
         # Now read it all at once:
+        rfile = io.BytesIO(data)
+        body = base.Body(rfile, len(data))
         self.assertEqual(body.read(), data)
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
@@ -2324,19 +2352,6 @@ class TestBody(TestCase):
                 body.read(17)
             self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
             self.assertEqual(rfile.read(), trailer)
-
-        # Test when read size > MAX_READ_SIZE:
-        rfile = io.BytesIO()
-        content_length = base.MAX_READ_SIZE + 1
-        body = base.Body(rfile, content_length)
-        self.assertIs(body.content_length, content_length)
-        with self.assertRaises(ValueError) as cm:
-            body.read()
-        self.assertEqual(str(cm.exception),
-            'max read size exceeded: {} > {}'.format(
-                content_length, base.MAX_READ_SIZE
-            )
-        )
 
     def test_iter(self):
         data = os.urandom(1776)
