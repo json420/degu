@@ -2090,16 +2090,12 @@ class TestBody(TestCase):
         )
 
         # Bad content_length value:
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, -1)
-        self.assertEqual(str(cm.exception),
-            'content_length must be >= 0, got: -1'
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, -17)
-        self.assertEqual(str(cm.exception),
-            'content_length must be >= 0, got: -17'
-        )
+        for bad in (-1, -17):
+            with self.assertRaises(OverflowError) as cm:
+                base.Body(rfile, bad)
+            self.assertEqual(str(cm.exception),
+                "can't convert negative int to unsigned"
+            )
 
         # Bad io_size type:
         with self.assertRaises(TypeError) as cm:
@@ -2145,7 +2141,6 @@ class TestBody(TestCase):
         self.assertEqual(str(cm.exception),
             'io_size must be a power of 2; got 40960'
         )
-        # io_size not a power of 2:
         with self.assertRaises(ValueError) as cm:
             base.Body(rfile, 17, 4097)
         self.assertEqual(str(cm.exception),
@@ -2155,7 +2150,6 @@ class TestBody(TestCase):
         # All good:
         body = base.Body(rfile, 17)
         self.assertIs(body.chunked, False)
-        self.assertIs(body.__class__.chunked, False)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 17)
         self.assertEqual(body.io_size, base.IO_SIZE)

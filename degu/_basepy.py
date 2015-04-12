@@ -891,18 +891,16 @@ class Body:
     __slots__ = ('rfile', 'content_length', 'io_size', 'closed', '_remaining')
 
     def __init__(self, rfile, content_length, io_size=None):
-        if not isinstance(content_length, int):
+        if type(content_length) is not int:
             raise TypeError(TYPE_ERROR.format(
                 'content_length', int, type(content_length), content_length)
             )
         if content_length < 0:
-            raise ValueError(
-                'content_length must be >= 0, got: {!r}'.format(content_length)
-            )
+            raise OverflowError("can't convert negative int to unsigned")
         if io_size is None:
             io_size = IO_SIZE
         else:
-            if not isinstance(io_size, int):
+            if type(io_size) is not int:
                 raise TypeError(
                     TYPE_ERROR.format('io_size', int, type(io_size), io_size)
                 )
@@ -995,3 +993,4 @@ class Body:
         assert total == self.content_length
         wfile.flush()
         return total
+
