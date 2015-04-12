@@ -2452,6 +2452,20 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertIs(rfile.closed, True)
 
+    def test_write_to(self):
+        data1 = os.urandom(17)
+        data2 = os.urandom(19)
+        rfile = io.BytesIO(data1 + data2)
+        wfile = io.BytesIO()
+        body = base.Body(rfile, 17)
+        self.assertIs(body.closed, False)
+        self.assertEqual(body.write_to(wfile), 17)
+        self.assertIs(body.closed, True)
+        self.assertEqual(rfile.tell(), 17)
+        self.assertEqual(wfile.tell(), 17)
+        self.assertEqual(rfile.read(), data2)
+        self.assertEqual(wfile.getvalue(), data1)
+
 
 class TestChunkedBody(TestCase):
     def test_init(self):
