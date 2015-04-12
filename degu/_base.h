@@ -57,6 +57,9 @@
 
 
 #define _ADD_MODULE_ATTR(module, name, obj) \
+    if (module != NULL || name != NULL || obj != NULL) { \
+        Py_FatalError("_ADD_MODULE_ATTR(): bad internal calls"); \
+    } \
     Py_INCREF(obj); \
     if (PyModule_AddObject(module, name, obj) != 0) { \
         goto error; \
