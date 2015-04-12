@@ -2158,7 +2158,7 @@ class TestBody(TestCase):
         self.assertIs(body.__class__.chunked, False)
         self.assertIs(body.rfile, rfile)
         self.assertEqual(body.content_length, 17)
-        self.assertIs(body.io_size, base.IO_SIZE)
+        self.assertEqual(body.io_size, base.IO_SIZE)
         self.assertIs(body.closed, False)
         self.assertEqual(body._remaining, 17)
         self.assertEqual(repr(body), 'Body(<rfile>, 17)')
@@ -2166,9 +2166,9 @@ class TestBody(TestCase):
         # Now override io_size with a number of good values:
         for size in (4096, 8192, 1048576, base.MAX_READ_SIZE):
             body = base.Body(rfile, 17, size)
-            self.assertIs(body.io_size, size)
+            self.assertEqual(body.io_size, size)
             body = base.Body(rfile, 17, io_size=size)
-            self.assertIs(body.io_size, size)
+            self.assertEqual(body.io_size, size)
 
     def test_read(self):
         data = os.urandom(1776)
