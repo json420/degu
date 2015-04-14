@@ -123,8 +123,8 @@ typedef const struct {
 
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
-    PyObject *content_length; \
     PyObject *body; \
+    uint64_t content_length; \
     uint8_t flags;
 
 
@@ -151,15 +151,15 @@ typedef struct {
 
 
 #define NEW_DEGU_HEADERS \
-    ((DeguHeaders) {NULL, NULL, NULL, 0})
+    ((DeguHeaders) {NULL, NULL, 0, 0})
 
 
 #define NEW_DEGU_REQUEST \
-    ((DeguRequest) {NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
+    ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
 
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL})
+    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
 
 
 typedef const struct {
@@ -183,6 +183,8 @@ typedef struct {
     bool closed;
     bool chunked;
 } Body;
+
+static PyObject * Body_New(PyObject *, uint64_t);
 
 static PyObject * Body_read(Body *, PyObject *, PyObject *);
 

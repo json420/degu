@@ -783,7 +783,6 @@ static void
 _clear_degu_headers(DeguHeaders *dh)
 {
     Py_CLEAR(dh->headers);
-    Py_CLEAR(dh->content_length);
     Py_CLEAR(dh->body);
 }
 
@@ -1053,15 +1052,14 @@ _set_content_length_error(DeguSrc src, const int64_t value)
     }
 }
 
-static PyObject *
+static int64_t
 _parse_content_length(DeguSrc src)
 {
     const int64_t value = _parse_decimal(src);
     if (value < 0) {
         _set_content_length_error(src, value);
-        return NULL;
     }
-    return PyLong_FromLongLong(value);
+    return value;
 }
 
 static PyObject *
@@ -1126,12 +1124,14 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
 
     /* Validate header value (with special handling and fast-paths) */
     if (_equal(keysrc, CONTENT_LENGTH)) {
-        _SET_AND_INC(key, key_content_length)
-        _SET(val, _parse_content_length(valsrc))
-        if (dh->content_length == NULL) {
-            _SET_AND_INC(dh->content_length, val)
+        int64_t length = _parse_content_length(valsrc);
+        if (length < 0) {
+            goto error;
         }
+        dh->content_length = (uint64_t)length;
         dh->flags |= 1;
+        _SET_AND_INC(key, key_content_length)
+        _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
     }
     else if (_equal(keysrc, TRANSFER_ENCODING)) {
         if (! _equal(valsrc, CHUNKED)) {
@@ -1403,36 +1403,17 @@ error:
 
 static bool
 _create_body(DeguParse dp, DeguHeaders *dh) {
-    if (dh->body != NULL) {
-        Py_FatalError("_create_body(): dh->body != NULL");
-    }
-
     const uint8_t bodyflags = (dh->flags & 3);
-    if (bodyflags == 1) {
-        if (dh->content_length == NULL) {
-            Py_FatalError("_create_body(): dh->content_length == NULL");
-        }
+    if (bodyflags == 0) {
+        _SET_AND_INC(dh->body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dh->body, Body_New(dp.rfile, dh->content_length))
+    }
+    else if (bodyflags == 2) {
         _SET(dh->body,
-            PyObject_CallFunctionObjArgs(
-                dp.Body, dp.rfile, dh->content_length, NULL
-            )
+            PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
         )
-    }
-    else {
-        if (dh->content_length != NULL) {
-           Py_FatalError("_create_body(): dh->content_length != NULL");
-        }
-        if (bodyflags == 0) {
-            _SET_AND_INC(dh->body, Py_None)
-        }
-        else if (bodyflags == 2) {
-            _SET(dh->body,
-                PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
-            )
-        }
-    }
-    if (dh->body == NULL) {
-        Py_FatalError("_create_body(): internal error");
     }
     return true;
 
@@ -1842,7 +1823,11 @@ parse_content_length(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
         return NULL;
     }
-    return _parse_content_length((DeguSrc){buf, len});
+    const int64_t value = _parse_content_length((DeguSrc){buf, len});
+    if (value < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(value);
 }
 
 static PyObject *
@@ -1884,7 +1869,6 @@ cleanup:
     if (dst.buf != NULL) {
         free(dst.buf);
     }
-    Py_CLEAR(dh.content_length);
     return dh.headers;
 }
 
@@ -3241,6 +3225,34 @@ Body_dealloc(Body *self)
     Py_CLEAR(self->rfile);
     Py_CLEAR(self->rfile_read);
     Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject *
+Body_New(PyObject *rfile, const uint64_t content_length)
+{
+    Body *self;
+
+    self = PyObject_New(Body, &BodyType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->rfile = NULL;
+    self->rfile_read = NULL;
+    self->remaining = self->content_length = content_length;
+    self->io_size = IO_SIZE;
+    self->closed = false;
+    self->chunked = false;
+    if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
+        return NULL;
+    }
+    _SET_AND_INC(self->rfile, rfile)
+    if (Py_TYPE(rfile) != &ReaderType) {
+        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
+    }
+    return (PyObject *)self;
+
+error:
+    return NULL;
 }
 
 static int
