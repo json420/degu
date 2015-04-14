@@ -549,28 +549,22 @@ static PyStructSequence_Desc BodiesDesc = {
 static PyObject *
 Bodies(PyObject *self, PyObject *args)
 {
-    PyObject *Body = NULL;
-    PyObject *BodyIter = NULL;
-    PyObject *ChunkedBody = NULL;
-    PyObject *ChunkedBodyIter = NULL;
+    PyObject *arg0 = NULL;  // Body
+    PyObject *arg1 = NULL;  // BodyIter
+    PyObject *arg2 = NULL;  // ChunkedBody
+    PyObject *arg3 = NULL;  // ChunkedBodyIter
 
-    if (!PyArg_ParseTuple(args, "OOOO:Bodies",
-            &Body, &BodyIter, &ChunkedBody, &ChunkedBodyIter)) {
+    if (!PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
         return NULL;
     }
-    PyObject *bodies = PyStructSequence_New(&BodiesType);
-    if (bodies == NULL) {
-        return NULL;
+    PyObject *ret = PyStructSequence_New(&BodiesType);
+    if (ret != NULL) {
+        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
+        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
+        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
+        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
     }
-    Py_INCREF(Body);
-    Py_INCREF(BodyIter);
-    Py_INCREF(ChunkedBody);
-    Py_INCREF(ChunkedBodyIter);
-    PyStructSequence_SET_ITEM(bodies, 0, Body);
-    PyStructSequence_SET_ITEM(bodies, 1, BodyIter);
-    PyStructSequence_SET_ITEM(bodies, 2, ChunkedBody);
-    PyStructSequence_SET_ITEM(bodies, 3, ChunkedBodyIter);
-    return bodies;
+    return ret;
 }
 
 
@@ -594,51 +588,47 @@ static PyStructSequence_Desc RequestDesc = {
 };
 
 static PyObject *
-_Request(PyObject *method,
-         PyObject *uri,
-         PyObject *headers,
-         PyObject *body,
-         PyObject *script,
-         PyObject *path,
-         PyObject *query)
+_Request(PyObject *arg0,  // method
+         PyObject *arg1,  // uri
+         PyObject *arg2,  // headers
+         PyObject *arg3,  // body
+         PyObject *arg4,  // script
+         PyObject *arg5,  // path
+         PyObject *arg6)  // query
 {
     PyObject *request = PyStructSequence_New(&RequestType);
     if (request == NULL) {
         return NULL;
     }
-    Py_INCREF(method);
-    Py_INCREF(uri);
-    Py_INCREF(headers);
-    Py_INCREF(body);
-    Py_INCREF(script);
-    Py_INCREF(path);
-    Py_INCREF(query);
-    PyStructSequence_SET_ITEM(request, 0, method);
-    PyStructSequence_SET_ITEM(request, 1, uri);
-    PyStructSequence_SET_ITEM(request, 2, headers);
-    PyStructSequence_SET_ITEM(request, 3, body);
-    PyStructSequence_SET_ITEM(request, 4, script);
-    PyStructSequence_SET_ITEM(request, 5, path);
-    PyStructSequence_SET_ITEM(request, 6, query);
-    return request;
+    PyObject *ret = PyStructSequence_New(&RequestType);
+    if (ret != NULL) {
+        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
+        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
+        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
+        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
+        Py_INCREF(arg4);  PyStructSequence_SET_ITEM(ret, 4, arg4);
+        Py_INCREF(arg5);  PyStructSequence_SET_ITEM(ret, 5, arg5);
+        Py_INCREF(arg6);  PyStructSequence_SET_ITEM(ret, 6, arg6);
+    }
+    return ret;
 }
 
 static PyObject *
 Request(PyObject *self, PyObject *args)
 {
-    PyObject *method = NULL;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    PyObject *script = NULL;
-    PyObject *path = NULL;
-    PyObject *query = NULL;
+    PyObject *arg0 = NULL;  // method
+    PyObject *arg1 = NULL;  // uri
+    PyObject *arg2 = NULL;  // headers
+    PyObject *arg3 = NULL;  // body
+    PyObject *arg4 = NULL;  // script
+    PyObject *arg5 = NULL;  // path
+    PyObject *arg6 = NULL;  // query
 
     if (!PyArg_ParseTuple(args, "OOOOOOO:Request",
-            &method, &uri, &headers, &body,  &script, &path, &query)) {
+            &arg0, &arg1, &arg2, &arg3,  &arg4, &arg5, &arg6)) {
         return NULL;
     }
-    return _Request(method, uri, headers, body, script, path, query);
+    return _Request(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 
@@ -659,36 +649,30 @@ static PyStructSequence_Desc ResponseDesc = {
 };
 
 static PyObject *
-_Response(PyObject *status, PyObject *reason, PyObject *headers, PyObject *body)
+_Response(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
 {
-    PyObject *response = PyStructSequence_New(&ResponseType);
-    if (response == NULL) {
-        return NULL;
+    PyObject *ret = PyStructSequence_New(&ResponseType);
+    if (ret != NULL) {
+        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
+        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
+        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
+        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
     }
-    Py_INCREF(status);
-    Py_INCREF(reason);
-    Py_INCREF(headers);
-    Py_INCREF(body);
-    PyStructSequence_SET_ITEM(response, 0, status);
-    PyStructSequence_SET_ITEM(response, 1, reason);
-    PyStructSequence_SET_ITEM(response, 2, headers);
-    PyStructSequence_SET_ITEM(response, 3, body);
-    return response;
+    return ret;
 }
 
 static PyObject *
 Response(PyObject *self, PyObject *args)
 {
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
+    PyObject *arg0 = NULL;  // status
+    PyObject *arg1 = NULL;  // reason
+    PyObject *arg2 = NULL;  // headers
+    PyObject *arg3 = NULL;  // body
 
-    if (!PyArg_ParseTuple(args, "OUOO:Response",
-            &status, &reason, &headers, &body)) {
+    if (!PyArg_ParseTuple(args, "OOOO:Response", &arg0, &arg1, &arg2, &arg3)) {
         return NULL;
     }
-    return _Response(status, reason, headers, body);
+    return _Response(arg0, arg1, arg2, arg3);
 }
 
 
