@@ -3235,23 +3235,12 @@ static PyTypeObject WriterType = {
 /******************************************************************************
  * Body object
  ******************************************************************************/
-typedef struct {
-    PyObject_HEAD
-    PyObject *rfile;
-    PyObject *rfile_read;
-    uint64_t content_length;
-    size_t io_size;
-    uint64_t remaining;
-    bool closed;
-    bool chunked;
-} Body;
-
 static void
 Body_dealloc(Body *self)
 {
     Py_CLEAR(self->rfile);
     Py_CLEAR(self->rfile_read);
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Make sure to do this!
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int
@@ -3502,63 +3491,6 @@ Body_next(Body *self)
     }
     return _Body_read(self, self->io_size);
 }
-
-static PyMemberDef Body_members[] = {
-    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          0, NULL},
-    {"content_length", T_ULONGLONG, offsetof(Body, content_length), 0, NULL},
-    {"_remaining",     T_ULONGLONG, offsetof(Body, remaining),      0, NULL},
-    {"io_size",        T_PYSSIZET,  offsetof(Body, io_size),        0, NULL},
-    {"closed",         T_BOOL,      offsetof(Body, closed),         0, NULL},
-    {"chunked",        T_BOOL,      offsetof(Body, chunked),        0, NULL},
-    {NULL}
-};
-
-static PyMethodDef Body_methods[] = {
-    {"read",     (PyCFunction)Body_read,     METH_VARARGS|METH_KEYWORDS, "read(size)"},
-    {"write_to", (PyCFunction)Body_write_to, METH_VARARGS, "write_to(wfile)"},
-    {NULL}
-};
-
-static PyTypeObject BodyType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Body",                  /* tp_name */
-    sizeof(Body),                       /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Body_dealloc,           /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)Body_repr,                /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Body(rfile, content_length, io_size=1048576)",  /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    (getiterfunc)Body_iter,             /* tp_iter */
-    (iternextfunc)Body_next,            /* tp_iternext */
-    Body_methods,                       /* tp_methods */
-    Body_members,                       /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Body_init,                /* tp_init */
-};
-
-
 
 
 /*******************************************************************************
