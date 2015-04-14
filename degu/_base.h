@@ -26,7 +26,6 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 
-
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
 #define MAX_PREAMBLE 65536
@@ -41,7 +40,6 @@
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
-
 #define _SET(dst, src) \
     if (dst != NULL) { \
         Py_FatalError("_SET(): dst != NULL prior to assignment"); \
@@ -51,21 +49,18 @@
         goto error; \
     }
 
-
 #define _SET_AND_INC(dst, src) \
     _SET(dst, src) \
     Py_INCREF(dst);
 
-
 #define _ADD_MODULE_ATTR(module, name, obj) \
     if (module == NULL || name == NULL || obj == NULL) { \
-        Py_FatalError("_ADD_MODULE_ATTR(): bad internal calls"); \
+        Py_FatalError("_ADD_MODULE_ATTR(): bad internal call"); \
     } \
     Py_INCREF(obj); \
     if (PyModule_AddObject(module, name, obj) != 0) { \
         goto error; \
     }
-
 
 
 /******************************************************************************
@@ -85,7 +80,6 @@ typedef const struct {
     const size_t len;
 } DeguSrc;
 
-
 /* DeguDst (destination): a writable buffer.
  *
  * You can modify the buffer content:
@@ -102,36 +96,29 @@ typedef const struct {
     const size_t len;
 } DeguDst;
 
-
 /* A "NULL" DeguSrc */
 #define NULL_DeguSrc ((DeguSrc){NULL, 0})
 
-
 /* A "NULL" DeguDst */
 #define NULL_DeguDst ((DeguDst){NULL, 0})
-
 
 /* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc globals */
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
 
-
 /******************************************************************************
  * Structures for internal C parsing API.
  ******************************************************************************/
-
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
     PyObject *body; \
     uint64_t content_length; \
     uint8_t flags;
 
-
 typedef struct {
     DEGU_HEADERS_HEAD
 } DeguHeaders;
-
 
 typedef struct {
     DEGU_HEADERS_HEAD
@@ -142,25 +129,20 @@ typedef struct {
     PyObject *query;
 } DeguRequest;
 
-
 typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
 } DeguResponse;
 
-
 #define NEW_DEGU_HEADERS \
     ((DeguHeaders) {NULL, NULL, 0, 0})
-
 
 #define NEW_DEGU_REQUEST \
     ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
 
-
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
-
 
 typedef const struct {
     DeguDst scratch;
@@ -179,14 +161,12 @@ typedef struct {
     uint64_t stop;
 } Range;
 
+static PyObject * Range_New(uint64_t, uint64_t);
+
 static void Range_dealloc(Range *);
-
 static int Range_init(Range *, PyObject *, PyObject *);
-
 static PyObject * Range_repr(Range *);
-
 static PyObject * Range_str(Range *);
-
 static PyObject * Range_richcompare(Range *, PyObject *, int);
 
 static PyMemberDef Range_members[] = {
@@ -235,7 +215,6 @@ static PyTypeObject RangeType = {
 };
 
 
-
 /******************************************************************************
  * Body object
  ******************************************************************************/
@@ -253,7 +232,6 @@ typedef struct {
 static PyObject * Body_New(PyObject *, uint64_t);
 
 static PyObject * Body_read(Body *, PyObject *, PyObject *);
-
 static PyObject * Body_write_to(Body *, PyObject *);
 
 static PyMethodDef Body_methods[] = {
@@ -263,7 +241,7 @@ static PyMethodDef Body_methods[] = {
 };
 
 static PyMemberDef Body_members[] = {
-    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          0, NULL},
+    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), 0, NULL},
     {"_remaining",     T_ULONGLONG, offsetof(Body, remaining),      0, NULL},
     {"io_size",        T_PYSSIZET,  offsetof(Body, io_size),        0, NULL},
@@ -273,14 +251,10 @@ static PyMemberDef Body_members[] = {
 };
 
 static void Body_dealloc(Body *);
-
-static PyObject * Body_repr(Body *);
-
-static PyObject * Body_iter(Body *);
-
-static PyObject * Body_next(Body *);
-
 static int Body_init(Body *, PyObject *, PyObject *);
+static PyObject * Body_repr(Body *);
+static PyObject * Body_iter(Body *);
+static PyObject * Body_next(Body *);
 
 static PyTypeObject BodyType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -303,7 +277,7 @@ static PyTypeObject BodyType = {
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Body(rfile, content_length, io_size=1048576)",  /* tp_doc */
+    "Body(rfile, content_length)",      /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
     0,                                  /* tp_richcompare */

@@ -64,10 +64,10 @@ static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_crlf              = NULL;  //  '\r\n'
 static PyObject *str_empty             = NULL;  //  ''
-static PyObject *bytes_empty           = NULL;  //  b''
 
-/* Misc `int` objects */
+/* Other misc PyObject */
 static PyObject *int_SHUT_RDWR = NULL;  //  2  (socket.SHUT_RDWR)
+static PyObject *bytes_empty           = NULL;  //  b''
 
 
 /* _init_all_globals(): called by PyInit__base() */
@@ -113,10 +113,10 @@ _init_all_globals(PyObject *module)
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_crlf,   PyUnicode_FromString("\r\n"))
     _SET(str_empty,  PyUnicode_FromString(""))
-    _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
-    /* Init int objects */
+    /* Init misc objects */
     _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
+    _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
     return true;
 
@@ -125,12 +125,9 @@ error:
 }
 
 
-
-
 /******************************************************************************
  * DeguSrc static globals.
  ******************************************************************************/
-
 _DEGU_SRC_CONSTANT(LF, "\n")
 _DEGU_SRC_CONSTANT(CRLF, "\r\n")
 _DEGU_SRC_CONSTANT(CRLFCRLF, "\r\n\r\n")
@@ -810,6 +807,18 @@ _clear_degu_response(DeguResponse *dr)
 /******************************************************************************
  * Range object
  ******************************************************************************/
+static PyObject *
+Range_New(uint64_t start, uint64_t stop)
+{
+    Range *self = PyObject_New(Range, &RangeType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->start = start;
+    self->stop = stop;
+    return (PyObject *)PyObject_INIT(self, &RangeType);
+}
+ 
 static void
 Range_dealloc(Range *self)
 {
@@ -1027,13 +1036,7 @@ _parse_range(DeguSrc src)
     if (start < 0 || end < start || (uint64_t)end >= MAX_LENGTH) {
         goto bad_range;
     }
-    Range *r = PyObject_New(Range, &RangeType);
-    if (r == NULL) {
-        return NULL;
-    }
-    r->start = (uint64_t)start;
-    r->stop = (uint64_t)end + 1;
-    return (PyObject *)PyObject_INIT(r, &RangeType);
+    return Range_New((uint64_t)start, (uint64_t)end + 1);
 
 bad_range:
     _value_error("bad range: %R", src);
@@ -1170,21 +1173,17 @@ static PyObject *
 _parse_method(DeguSrc src)
 {
     PyObject *method = NULL;
-    if (src.len == 3) {
-        if (_equal(src, GET)) {
-            method = str_GET;
-        }
-        else if (_equal(src, PUT)) {
-            method = str_PUT;
-        }
+    if (_equal(src, GET)) {
+        method = str_GET;
     }
-    else if (src.len == 4) {
-        if (_equal(src, POST)) {
-            method = str_POST;
-        }
-        else if (_equal(src, HEAD)) {
-            method = str_HEAD;
-        }
+    else if (_equal(src, PUT)) {
+        method = str_PUT;
+    }
+    if (_equal(src, POST)) {
+        method = str_POST;
+    }
+    else if (_equal(src, HEAD)) {
+        method = str_HEAD;
     }
     else if (_equal(src, DELETE)) {
         method = str_DELETE;
