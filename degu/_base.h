@@ -223,7 +223,6 @@ typedef struct {
     PyObject *rfile;
     PyObject *rfile_read;
     uint64_t content_length;
-    size_t io_size;
     uint64_t remaining;
     bool closed;
     bool chunked;
@@ -244,7 +243,6 @@ static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), 0, NULL},
     {"_remaining",     T_ULONGLONG, offsetof(Body, remaining),      0, NULL},
-    {"io_size",        T_PYSSIZET,  offsetof(Body, io_size),        0, NULL},
     {"closed",         T_BOOL,      offsetof(Body, closed),         0, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        0, NULL},
     {NULL}

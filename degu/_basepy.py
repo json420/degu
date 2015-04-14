@@ -898,35 +898,17 @@ class Writer:
 
 class Body:
     chunked = False
-    __slots__ = ('rfile', 'content_length', 'io_size', 'closed', '_remaining')
+    __slots__ = ('rfile', 'content_length', 'closed', '_remaining')
 
-    def __init__(self, rfile, content_length, io_size=None):
+    def __init__(self, rfile, content_length):
         if type(content_length) is not int:
             raise TypeError(TYPE_ERROR.format(
                 'content_length', int, type(content_length), content_length)
             )
         if content_length < 0:
             raise OverflowError("can't convert negative int to unsigned")
-        if io_size is None:
-            io_size = IO_SIZE
-        else:
-            if type(io_size) is not int:
-                raise TypeError(
-                    TYPE_ERROR.format('io_size', int, type(io_size), io_size)
-                )
-            if not (4096 <= io_size <= MAX_READ_SIZE):
-                raise ValueError(
-                    'need 4096 <= io_size <= {}; got {}'.format(
-                        MAX_READ_SIZE, io_size
-                    )
-                )
-            if io_size & (io_size - 1):
-                raise ValueError(
-                    'io_size must be a power of 2; got {}'.format(io_size)
-                )
         self.rfile = rfile
         self.content_length = content_length
-        self.io_size = io_size
         self.closed = False
         self._remaining = content_length
 
@@ -942,7 +924,7 @@ class Body:
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
         self._remaining = 0
-        io_size = self.io_size
+        io_size = IO_SIZE
         read = self.rfile.read
         while remaining > 0:
             readsize = min(remaining, io_size)

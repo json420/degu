@@ -3184,7 +3184,6 @@ Body_New(PyObject *rfile, const uint64_t content_length)
     self->rfile = NULL;
     self->rfile_read = NULL;
     self->remaining = self->content_length = content_length;
-    self->io_size = IO_SIZE;
     self->closed = false;
     self->chunked = false;
     if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
@@ -3203,61 +3202,24 @@ error:
 static int
 Body_init(Body *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"rfile", "content_length", "io_size", NULL};
+    static char *keys[] = {"rfile", "content_length", NULL};
     PyObject *rfile = NULL;
     PyObject *content_length = NULL;
-    PyObject *io_size = Py_None;
     int64_t _content_length;
-    size_t _io_size;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|O:Body", keys,
-                &rfile, &content_length, &io_size)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Body", keys,
+                &rfile, &content_length)) {
         goto error;
     }
-
-    /* content_length */
     _content_length = _validate_length("content_length", content_length);
     if (_content_length < 0) {
         goto error;
     }
-
-    /* io_size */
-    if (io_size == Py_None) {
-        _io_size = IO_SIZE;
-    }
-    else {
-        if (!PyLong_CheckExact(io_size)) {
-            PyErr_Format(PyExc_TypeError,
-                "io_size: need a <class 'int'>; got a %R: %R",
-                Py_TYPE(io_size), io_size
-            );
-            goto error;
-        }
-        _io_size = PyLong_AsSize_t(io_size);
-        if (PyErr_Occurred()) {
-            _io_size = 0;
-            PyErr_Clear();
-        }
-        if (_io_size < 4096 || _io_size > MAX_IO_SIZE) {
-            PyErr_Format(PyExc_ValueError,
-                "need 4096 <= io_size <= %zu; got %R", MAX_IO_SIZE, io_size
-            );
-            goto error;
-        }
-        if (_io_size & (_io_size - 1)) {
-            PyErr_Format(PyExc_ValueError,
-                "io_size must be a power of 2; got %R", io_size
-            );
-            goto error;
-        }
-    }
-
     _SET_AND_INC(self->rfile, rfile)
     if (Py_TYPE(rfile) != &ReaderType) {
         _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
     }
     self->remaining = self->content_length = (uint64_t)_content_length;
-    self->io_size = _io_size;
     self->closed = false;
     self->chunked = false;
     return 0;
@@ -3358,7 +3320,7 @@ _Body_fast_write_to(Body *self, Writer *wfile)
     PyObject *ret = NULL;
 
     while (self->remaining > 0) {
-        _SET(data, _Body_read(self, self->io_size))
+        _SET(data, _Body_read(self, IO_SIZE))
         wrote = _Writer_write(wfile, _frombytes(data));
         if (wrote < 0) {
             goto error;
@@ -3389,7 +3351,7 @@ _Body_write_to(Body *self, PyObject *wfile)
 
     _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
     while (self->remaining > 0) {
-        _SET(data, _Body_read(self, self->io_size))
+        _SET(data, _Body_read(self, IO_SIZE))
         _SET(size, PyObject_CallFunctionObjArgs(wfile_write, data, NULL))
         Py_CLEAR(data);
         Py_CLEAR(size);
@@ -3446,7 +3408,7 @@ Body_next(Body *self)
         self->closed = true;
         return NULL;
     }
-    return _Body_read(self, self->io_size);
+    return _Body_read(self, IO_SIZE);
 }
 
 
