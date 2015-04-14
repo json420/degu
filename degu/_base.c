@@ -709,61 +709,9 @@ _init_all_namedtuples(PyObject *module)
 }
 
 
-
-/*******************************************************************************
- * Internal API: DeguHeaders/DeguRequest/DeguResponse:
- *     _clear_degu_headers()
- *     _clear_degu_request()
- *     _clear_degu_response()   
- */
-
-static void
-_clear_degu_headers(DeguHeaders *dh)
-{
-    Py_CLEAR(dh->headers);
-    Py_CLEAR(dh->content_length);
-    Py_CLEAR(dh->body);
-}
-
-static void
-_clear_degu_request(DeguRequest *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->method);
-    Py_CLEAR(dr->uri);
-    Py_CLEAR(dr->script);
-    Py_CLEAR(dr->path);
-    Py_CLEAR(dr->query);
-}
-
-static void
-_clear_degu_response(DeguResponse *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->status);
-    Py_CLEAR(dr->reason);
-}
-
-
-
-/*******************************************************************************
- * Range object
- */
-typedef struct {
-    PyObject_HEAD
-    PyObject *start;
-    PyObject *stop;
-    uint64_t _start;
-    uint64_t _stop;
-} Range;
-
-static void
-Range_dealloc(Range *self)
-{
-    Py_CLEAR(self->start);
-    Py_CLEAR(self->stop);
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
-}
+/******************************************************************************
+ * Integer validation
+ ******************************************************************************/
 
 static bool
 _validate_int(const char *name, PyObject *obj)
@@ -821,6 +769,62 @@ _validate_size(const char *name, PyObject *obj, const size_t remaining)
         return -1;
     }
     return (ssize_t)size;
+}
+
+
+/*******************************************************************************
+ * Internal API: DeguHeaders/DeguRequest/DeguResponse:
+ *     _clear_degu_headers()
+ *     _clear_degu_request()
+ *     _clear_degu_response()   
+ */
+
+static void
+_clear_degu_headers(DeguHeaders *dh)
+{
+    Py_CLEAR(dh->headers);
+    Py_CLEAR(dh->content_length);
+    Py_CLEAR(dh->body);
+}
+
+static void
+_clear_degu_request(DeguRequest *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->method);
+    Py_CLEAR(dr->uri);
+    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->path);
+    Py_CLEAR(dr->query);
+}
+
+static void
+_clear_degu_response(DeguResponse *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+}
+
+
+
+/*******************************************************************************
+ * Range object
+ */
+typedef struct {
+    PyObject_HEAD
+    PyObject *start;
+    PyObject *stop;
+    uint64_t _start;
+    uint64_t _stop;
+} Range;
+
+static void
+Range_dealloc(Range *self)
+{
+    Py_CLEAR(self->start);
+    Py_CLEAR(self->stop);
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
 }
 
 static int
