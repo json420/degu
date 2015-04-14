@@ -260,7 +260,7 @@ def parse_range(src):
         _raise_bad_range(src)
     start = _parse_decimal(parts[0])
     end = _parse_decimal(parts[1])
-    if start < 0 or end < start:
+    if start < 0 or end < start or end >= MAX_LENGTH:
         _raise_bad_range(src)
     return Range(start, end + 1)
 

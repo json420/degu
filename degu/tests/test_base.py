@@ -582,6 +582,21 @@ class TestParsingFunctions_Py(BackendTestCase):
                 parse_range(bad)
             self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
 
+        # end > (MAX_LENGTH - 1)
+        stop = MAX_LENGTH
+        start = stop - 1
+        good = 'bytes={}-{}'.format(start, stop - 1).encode()
+        r = parse_range(good)
+        self.assertIs(type(r), Range)
+        self.assertEqual(r.start, start)
+        self.assertEqual(r.stop, stop)
+        self.assertEqual(str(r), good.decode())
+        self.assertEqual(r, (start, stop))
+        bad = 'bytes={}-{}'.format(start, stop).encode()
+        with self.assertRaises(ValueError) as cm:
+            parse_range(bad)
+        self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
+
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
 

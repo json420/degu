@@ -1080,7 +1080,7 @@ _parse_range(DeguSrc src)
     }
     start = _parse_decimal(_slice(inner, 0, (size_t)index));
     end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
-    if (start < 0 || end < start) {
+    if (start < 0 || end < start || (uint64_t)end >= MAX_LENGTH) {
         goto bad_range;
     }
     Range *r = PyObject_New(Range, &RangeType);
