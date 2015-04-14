@@ -710,7 +710,7 @@ _init_all_namedtuples(PyObject *module)
 
 
 /******************************************************************************
- * Integer validation
+ * Integer validation.
  ******************************************************************************/
 
 static bool
@@ -865,7 +865,7 @@ error:
 static PyObject *
 Range_repr(Range *self)
 {
-    return PyUnicode_FromFormat("Range(%R, %R)", self->start, self->stop);
+    return PyUnicode_FromFormat("Range(%llu, %llu)", self->_start, self->_stop);
 }
 
 static PyObject *
@@ -879,8 +879,8 @@ Range_str(Range *self)
 static PyObject * Range_richcompare(Range *self, PyObject *other, int op);
 
 static PyMemberDef Range_members[] = {
-    {"start", T_OBJECT_EX, offsetof(Range, start), 0, "start"},
-    {"stop",  T_OBJECT_EX, offsetof(Range, stop),  0, "stop"},
+    {"start", T_OBJECT_EX, offsetof(Range, start), READONLY, "start"},
+    {"stop",  T_OBJECT_EX, offsetof(Range, stop),  READONLY, "stop"},
     {NULL}
 };
 

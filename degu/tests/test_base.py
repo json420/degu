@@ -357,6 +357,10 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(str(r),  'bytes=0-9999999999999998')
 
         # Check reference counting:
+        if self.backend is _base:
+            delmsg = 'readonly attribute'
+        else:
+            delmsg = "can't delete attribute"
         for i in range(1000):
             stop = random.randrange(1, max_length + 1)
             stop_cnt = sys.getrefcount(stop)
@@ -379,6 +383,16 @@ class TestRange_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(start), start_cnt + 1)
             self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
 
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+
+            # start, stop should be read-only:
+            r = self.Range(start, stop)
+            for name in ('start', 'stop'):
+                with self.assertRaises(AttributeError) as cm:
+                    delattr(r, name)
+                self.assertEqual(str(cm.exception), delmsg)
             del r
             self.assertEqual(sys.getrefcount(start), start_cnt)
             self.assertEqual(sys.getrefcount(stop), stop_cnt)

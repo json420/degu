@@ -122,25 +122,35 @@ def _validate_length(name, length):
 
 
 class Range:
-    __slots__ = ('start', 'stop')
+    __slots__ = ('_start', '_stop')
 
     def __init__(self, start, stop):
-        self.start = _validate_length('start', start)
-        self.stop = _validate_length('stop', stop)
-        if self.start >= self.stop:
+        start = _validate_length('start', start)
+        stop = _validate_length('stop', stop)
+        if start >= stop:
             raise ValueError(
-                'need start < stop; got {} >= {}'.format(self.start, self.stop)
+                'need start < stop; got {} >= {}'.format(start, stop)
             )
+        self._start = start
+        self._stop = stop
+
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def stop(self):
+        return self._stop
 
     def __repr__(self):
-        return 'Range({}, {})'.format(self.start, self.stop)
+        return 'Range({}, {})'.format(self._start, self._stop)
 
     def __str__(self):
-        return 'bytes={}-{}'.format(self.start, self.stop - 1)
+        return 'bytes={}-{}'.format(self._start, self._stop - 1)
 
     def __get_this(self, other):
         if type(other) is tuple or type(other) is type(self):
-            return (self.start, self.stop)
+            return (self._start, self._stop)
         if type(other) is str:
             return str(self)
 
