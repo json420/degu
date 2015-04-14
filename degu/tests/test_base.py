@@ -52,6 +52,7 @@ class UserInt(int):
     pass
 
 
+MAX_LENGTH = int('9' * 16)
 CRLF = b'\r\n'
 TERM = CRLF * 2
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -564,6 +565,22 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(str(cm.exception),
                         'bad range: {!r}'.format(src)
                     )
+
+        # end < start
+        for i in range(2000):
+            stop = random.randrange(1, MAX_LENGTH + 1)
+            start = stop - 1
+            good = 'bytes={}-{}'.format(start, stop - 1).encode()
+            r = parse_range(good)
+            self.assertIs(type(r), Range)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
+            self.assertEqual(str(r), good.decode())
+            self.assertEqual(r, (start, stop))
+            bad = 'bytes={}-{}'.format(start, stop - 2).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_range(bad)
+            self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
 
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
