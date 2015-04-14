@@ -242,7 +242,6 @@ static PyMethodDef Body_methods[] = {
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), 0, NULL},
-    {"_remaining",     T_ULONGLONG, offsetof(Body, remaining),      0, NULL},
     {"closed",         T_BOOL,      offsetof(Body, closed),         0, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        0, NULL},
     {NULL}
