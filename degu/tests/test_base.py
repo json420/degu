@@ -2147,24 +2147,22 @@ class TestBody_Py(BackendTestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(repr(body), 'Body(<rfile>, 17)')
 
+        # Body.closed should be read-only:
+        with self.assertRaises(AttributeError) as cm:
+            body.closed = True
+        if self.backend is _basepy:
+            self.assertEqual(str(cm.exception), "can't set attribute")
+        else:
+            self.assertEqual(str(cm.exception), 'readonly attribute')
+        self.assertIs(body.closed, False)
+
     def test_read(self):
         Body = self.Body
         data = os.urandom(1776)
         rfile = io.BytesIO(data)
         body = Body(rfile, len(data))
 
-        # body.closed is True:
-        body.closed = True
-        with self.assertRaises(ValueError) as cm:
-            body.read()
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, True)
-        self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.content_length, 1776)
-
         # Bad size type:
-        body.closed = False
         with self.assertRaises(TypeError) as cm:
             body.read(18.0)
         self.assertEqual(str(cm.exception),

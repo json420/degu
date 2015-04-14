@@ -898,7 +898,7 @@ class Writer:
 
 class Body:
     chunked = False
-    __slots__ = ('rfile', 'content_length', 'closed', '_remaining')
+    __slots__ = ('rfile', 'content_length', '_closed', '_remaining')
 
     def __init__(self, rfile, content_length):
         if type(content_length) is not int:
@@ -909,8 +909,12 @@ class Body:
             raise OverflowError("can't convert negative int to unsigned")
         self.rfile = rfile
         self.content_length = content_length
-        self.closed = False
+        self._closed = False
         self._remaining = content_length
+
+    @property
+    def closed(self):
+        return self._closed
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -918,7 +922,7 @@ class Body:
         )
 
     def __iter__(self):
-        if self.closed:
+        if self._closed:
             raise ValueError('Body.closed, already consumed')
         remaining = self._remaining
         if remaining != self.content_length:
@@ -937,14 +941,14 @@ class Body:
                     'underflow: {} < {}'.format(len(data), readsize)
                 )
             yield data
-        self.closed = True
+        self._closed = True
 
     # FIXME: Add 2nd, max_size=None optional keyword argument
     def read(self, size=None):
-        if self.closed:
+        if self._closed:
             raise ValueError('Body.closed, already consumed')
         if self._remaining <= 0:
-            self.closed = True
+            self._closed = True
             return b''
         if size is None:
             read = self._remaining
@@ -979,7 +983,7 @@ class Body:
         assert self._remaining >= 0
         if size is None:
             # Entire body was read at once, so close:
-            self.closed = True
+            self._closed = True
         return data
 
     def write_to(self, wfile):
