@@ -813,74 +813,65 @@ _clear_degu_response(DeguResponse *dr)
  */
 typedef struct {
     PyObject_HEAD
-    PyObject *start;
-    PyObject *stop;
-    uint64_t _start;
-    uint64_t _stop;
+    uint64_t start;
+    uint64_t stop;
 } Range;
 
 static void
 Range_dealloc(Range *self)
 {
-    Py_CLEAR(self->start);
-    Py_CLEAR(self->stop);
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int
 Range_init(Range *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"start", "stop", NULL};
-    PyObject *start = NULL;
-    PyObject *stop = NULL;
-    int64_t _start, _stop;
+    PyObject *arg0 = NULL;
+    PyObject *arg1 = NULL;
+    int64_t start, stop;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys, &start, &stop)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys, &arg0, &arg1)) {
         return -1;
     }
-    _start = _validate_length("start", start);
-    if (_start < 0) {
+    start = _validate_length("start", arg0);
+    if (start < 0) {
         return -1;
     }
-    _stop = _validate_length("stop", stop);
-    if (_stop < 0) {
+    stop = _validate_length("stop", arg1);
+    if (stop < 0) {
         return -1;
     }
-    if (_start >= _stop) {
+    if (start >= stop) {
         PyErr_Format(PyExc_ValueError,
-            "need start < stop; got %lld >= %lld", _start, _stop
+            "need start < stop; got %lld >= %lld", start, stop
         );
         return -1;
     }
-    self->_start = (uint64_t)_start;
-    self->_stop = (uint64_t)_stop;
-    _SET_AND_INC(self->start, start)
-    _SET_AND_INC(self->stop,  stop)
+    self->start = (uint64_t)start;
+    self->stop = (uint64_t)stop;
     return 0;
-
-error:
-    return -1;
 }
 
 static PyObject *
 Range_repr(Range *self)
 {
-    return PyUnicode_FromFormat("Range(%llu, %llu)", self->_start, self->_stop);
+    return PyUnicode_FromFormat("Range(%llu, %llu)", self->start, self->stop);
 }
 
 static PyObject *
 Range_str(Range *self)
 {
     return PyUnicode_FromFormat("bytes=%llu-%llu",
-        self->_start, self->_stop - 1
+        self->start, self->stop - 1
     );
 }
 
 static PyObject * Range_richcompare(Range *self, PyObject *other, int op);
 
 static PyMemberDef Range_members[] = {
-    {"start", T_OBJECT_EX, offsetof(Range, start), READONLY, "start"},
-    {"stop",  T_OBJECT_EX, offsetof(Range, stop),  READONLY, "stop"},
+    {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
+    {"stop",  T_ULONGLONG, offsetof(Range, stop),  READONLY, NULL},
     {NULL}
 };
 
@@ -924,13 +915,30 @@ static PyTypeObject RangeType = {
 };
 
 static PyObject *
+_Range_as_tuple(Range *self)
+{
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    PyObject *ret = NULL;
+
+    _SET(start, PyLong_FromUnsignedLongLong(self->start))
+    _SET(stop, PyLong_FromUnsignedLongLong(self->stop))
+    _SET(ret, PyTuple_Pack(2, start, stop))
+
+error:
+    Py_CLEAR(start);  // Always cleared, whether or not there was an error
+    Py_CLEAR(stop);   // Same as above
+    return ret;
+}
+
+static PyObject *
 Range_richcompare(Range *self, PyObject *other, int op)
 {
     PyObject *this = NULL;
     PyObject *ret = NULL;
 
     if (PyTuple_CheckExact(other) || Py_TYPE(other) == &RangeType) {
-        _SET(this, PyTuple_Pack(2, self->start, self->stop))
+        _SET(this, _Range_as_tuple(self))
     }
     else if (PyUnicode_CheckExact(other)) {
         _SET(this, Range_str(self))

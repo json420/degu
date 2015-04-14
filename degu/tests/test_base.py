@@ -363,26 +363,17 @@ class TestRange_Py(BackendTestCase):
             delmsg = "can't delete attribute"
         for i in range(1000):
             stop = random.randrange(1, max_length + 1)
-            stop_cnt = sys.getrefcount(stop)
             start = random.randrange(0, stop)
+            stop_cnt = sys.getrefcount(stop)
             start_cnt = sys.getrefcount(start)
+
             r = self.Range(start, stop)
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
-            self.assertIs(r.start, start)
-            self.assertIs(r.stop, stop)
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
+            self.assertIs(type(r.start), int)
+            self.assertIs(type(r.stop), int)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
             self.assertEqual(repr(r), 'Range({}, {})'.format(start, stop))
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
             self.assertEqual(str(r), 'bytes={}-{}'.format(start, stop - 1))
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
             del r
             self.assertEqual(sys.getrefcount(start), start_cnt)
             self.assertEqual(sys.getrefcount(stop), stop_cnt)
