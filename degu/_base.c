@@ -807,15 +807,9 @@ _clear_degu_response(DeguResponse *dr)
 
 
 
-/*******************************************************************************
+/******************************************************************************
  * Range object
- */
-typedef struct {
-    PyObject_HEAD
-    uint64_t start;
-    uint64_t stop;
-} Range;
-
+ ******************************************************************************/
 static void
 Range_dealloc(Range *self)
 {
@@ -866,53 +860,6 @@ Range_str(Range *self)
     );
 }
 
-static PyObject * Range_richcompare(Range *self, PyObject *other, int op);
-
-static PyMemberDef Range_members[] = {
-    {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
-    {"stop",  T_ULONGLONG, offsetof(Range, stop),  READONLY, NULL},
-    {NULL}
-};
-
-static PyTypeObject RangeType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Range",                 /* tp_name */
-    sizeof(Range),                      /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Range_dealloc,          /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)Range_repr,               /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    (reprfunc)Range_str,                /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Range(start, stop)",               /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    (richcmpfunc)Range_richcompare,     /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    0,                                  /* tp_methods */
-    Range_members,                      /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Range_init,               /* tp_init */
-};
-
 static PyObject *
 _Range_as_tuple(Range *self)
 {
@@ -955,7 +902,6 @@ cleanup:
     Py_CLEAR(this);
     return ret;  
 }
-
 
 
 /*******************************************************************************
