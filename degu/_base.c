@@ -1069,9 +1069,6 @@ _parse_range(DeguSrc src)
 {
     ssize_t index;
     int64_t start, end;
-    PyObject *int_start = NULL;
-    PyObject *int_stop = NULL;
-    PyObject *ret = NULL;
 
     if (src.len < 9 || src.len > 39 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
         goto bad_range;
@@ -1089,25 +1086,17 @@ _parse_range(DeguSrc src)
     if (end < 0) {
         goto bad_range;
     }
-    _SET(int_start, PyLong_FromLongLong(start))
-    _SET(int_stop, PyLong_FromLongLong(end + 1))
-    _SET(ret,
-        PyObject_CallFunctionObjArgs(
-            (PyObject *)&RangeType, int_start, int_stop, NULL
-        )
-    )
-    goto done;
+    Range *r = PyObject_New(Range, &RangeType);
+    if (r == NULL) {
+        return NULL;
+    }
+    r->start = (uint64_t)start;
+    r->stop = (uint64_t)end + 1;
+    return (PyObject *)PyObject_INIT(r, &RangeType);
 
 bad_range:
     _value_error("bad range: %R", src);
-
-error:
-    Py_CLEAR(ret);
-
-done:
-    Py_CLEAR(int_start);
-    Py_CLEAR(int_stop);
-    return ret;
+    return NULL;
 }
 
 static bool
