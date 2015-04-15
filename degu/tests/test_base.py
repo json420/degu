@@ -534,7 +534,6 @@ class TestParsingFunctions_Py(BackendTestCase):
                             self.assertEqual(str(cm.exception),
                                 'bad hexadecimal: {!r}'.format(new)
                             )
-
         hmax = int(b'f' * 7, 16)
         self.assertEqual(hmax, 268435455)
         self.assertEqual(len('{:x}'.format(hmax)), 7)
