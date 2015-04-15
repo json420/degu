@@ -507,6 +507,51 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 
 
 class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_hexadecimal(self):
+        parse_hexadecimal  = self.getattr('parse_hexadecimal')
+        HEX = b'0123456789ABCDEFabcdef'
+        for num in range(2000):
+            lcase = '{:x}'.format(num).encode()
+            ucase = '{:X}'.format(num).encode()
+            self.assertEqual(lcase, lcase.lower())
+            self.assertEqual(ucase, ucase.upper())
+            for src in (lcase, ucase):
+                n = parse_hexadecimal(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+                for i in range(len(src)):
+                    tmp = bytearray(src)
+                    for b in range(256):
+                        tmp[i] = b
+                        new = bytes(tmp)
+                        if b in HEX and (new[0] != 48 or len(new) == 1):
+                            n = parse_hexadecimal(new)
+                            self.assertIs(type(n), int)
+                            self.assertEqual(n, int(new, 16))
+                        else:
+                            with self.assertRaises(ValueError) as cm:
+                                parse_hexadecimal(new)
+                            self.assertEqual(str(cm.exception),
+                                'bad hexadecimal: {!r}'.format(new)
+                            )
+
+        hmax = int(b'f' * 7, 16)
+        self.assertEqual(hmax, 268435455)
+        self.assertEqual(len('{:x}'.format(hmax)), 7)
+        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
+        for num in range(hmax - 1000, hmax + 1000):
+            src = '{:x}'.format(num).encode()
+            if num > hmax:
+                with self.assertRaises(ValueError) as cm:
+                    parse_hexadecimal(src)
+                self.assertEqual(str(cm.exception),
+                    'bad hexadecimal: {!r}'.format(src)
+                )
+            else:
+                n = parse_hexadecimal(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
         Range = self.getattr('Range')

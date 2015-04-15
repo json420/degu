@@ -93,6 +93,7 @@ VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 
 
 KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
+HEX = frozenset(b'0123456789ABCDEFabcdef')
 
 
 def _getcallable(objname, obj, name):
@@ -235,6 +236,14 @@ def parse_content_length(src):
             'content-length has leading zero: {!r}'.format(src)
         )
     return int(src)
+
+
+def parse_hexadecimal(src):
+    L = len(src)
+    if (1 <= L <= 7 and HEX.issuperset(src) and (src[0] != 48 or L == 1)):
+        return int(src, 16)
+    raise ValueError('bad hexadecimal: {!r}'.format(src))
+
 
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:

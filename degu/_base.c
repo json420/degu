@@ -983,6 +983,51 @@ _parse_decimal(DeguSrc src)
     return accum;
 }
 
+static ssize_t
+_parse_hexadecimal(DeguSrc src)
+{
+    ssize_t accum;
+    uint8_t n, err;
+    size_t i;
+
+    if (src.len < 1 || src.len > 7) {
+        return -1;
+    }
+    /* 239 == ^16 ==  0b11101111, see degu.tables.build_num_table() */
+    accum = err = _NUM[src.buf[0]] & 239;
+    for (i = 1; i < src.len; i++) {
+        n = _NUM[src.buf[i]] & 239;
+        err |= n;
+        accum *= 16;
+        accum += n;
+    }
+    if ((err & 240) != 0) {
+        return -2;
+    }
+    if (src.buf[0] == 48 && src.len != 1) {
+        return -3;
+    }
+    return accum;
+}
+
+static PyObject *
+parse_hexadecimal(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:hexadecimal", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    const ssize_t value = _parse_hexadecimal(src);
+    if (value < 0) {
+        _value_error("bad hexadecimal: %R", src);
+        return NULL;
+    }
+    return PyLong_FromSsize_t(value);
+}
+
 static void
 _set_content_length_error(DeguSrc src, const int64_t value)
 {
@@ -1015,6 +1060,22 @@ _parse_content_length(DeguSrc src)
         _set_content_length_error(src, value);
     }
     return value;
+}
+
+static PyObject *
+parse_content_length(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
+        return NULL;
+    }
+    const int64_t value = _parse_content_length((DeguSrc){buf, len});
+    if (value < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(value);
 }
 
 static PyObject *
@@ -1760,22 +1821,6 @@ done:
 }
 
 static PyObject *
-parse_content_length(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
-        return NULL;
-    }
-    const int64_t value = _parse_content_length((DeguSrc){buf, len});
-    if (value < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(value);
-}
-
-static PyObject *
 parse_range(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
@@ -2074,7 +2119,9 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_header_name", parse_header_name, METH_VARARGS,
         "parse_header_name(name)"},
     {"parse_content_length", parse_content_length, METH_VARARGS,
-        "parse_content_length(value)"},
+        "parse_content_length(src)"},
+    {"parse_hexadecimal", parse_hexadecimal, METH_VARARGS,
+        "parse_hexadecimal(src)"},
     {"parse_range", parse_range, METH_VARARGS, "parse_range(src)"},
     {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
 
