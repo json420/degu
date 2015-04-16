@@ -2633,19 +2633,9 @@ cleanup:
 }
 
 
-/*******************************************************************************
- * Writer:
- */
-typedef struct {
-    PyObject_HEAD
-    bool closed;
-    PyObject *shutdown;
-    PyObject *send;
-    PyObject *length_types;
-    PyObject *chunked_types;
-    uint64_t tell;
-} Writer;
-
+/******************************************************************************
+ * Writer object.
+ ******************************************************************************/
 static void
 Writer_dealloc(Writer *self)
 {
@@ -3027,69 +3017,6 @@ cleanup:
     }
     return PyLong_FromLongLong(total);
 }
-
-
-/*******************************************************************************
- * Writer: PyMethodDef, PyTypeObject:
- */
-static PyMethodDef Writer_methods[] = {
-    {"close", (PyCFunction)Writer_close, METH_NOARGS, "close()"},
-    {"tell", (PyCFunction)Writer_tell, METH_NOARGS, "tell()"},
-    {"flush", (PyCFunction)Writer_flush, METH_NOARGS, "flush()"},
-    {"write", (PyCFunction)Writer_write, METH_VARARGS, "write(buf)"},
-
-    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS,
-        "write_output(preamble, body)"},
-    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS,
-        "set_default_headers(headers, body)"},
-    {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS,
-        "write_request(method, uri, headers, body)"},
-    {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS,
-        "write_response(status, reason, headers, body)"},
-    {NULL}
-};
-
-static PyTypeObject WriterType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Writer",          /* tp_name */
-    sizeof(Writer),               /* tp_basicsize */
-    0,                            /* tp_itemsize */
-    (destructor)Writer_dealloc,   /* tp_dealloc */
-    0,                            /* tp_print */
-    0,                            /* tp_getattr */
-    0,                            /* tp_setattr */
-    0,                            /* tp_reserved */
-    0,                            /* tp_repr */
-    0,                            /* tp_as_number */
-    0,                            /* tp_as_sequence */
-    0,                            /* tp_as_mapping */
-    0,                            /* tp_hash  */
-    0,                            /* tp_call */
-    0,                            /* tp_str */
-    0,                            /* tp_getattro */
-    0,                            /* tp_setattro */
-    0,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,           /* tp_flags */
-    "Writer(sock, bodies)",       /* tp_doc */
-    0,                            /* tp_traverse */
-    0,                            /* tp_clear */
-    0,                            /* tp_richcompare */
-    0,                            /* tp_weaklistoffset */
-    0,                            /* tp_iter */
-    0,                            /* tp_iternext */
-    Writer_methods,               /* tp_methods */
-    0,                            /* tp_members */
-    0,                            /* tp_getset */
-    0,                            /* tp_base */
-    0,                            /* tp_dict */
-    0,                            /* tp_descr_get */
-    0,                            /* tp_descr_set */
-    0,                            /* tp_dictoffset */
-    (initproc)Writer_init,        /* tp_init */
-    0,                            /* tp_alloc */
-    0,                            /* tp_new */
-};
-
 
 
 /******************************************************************************

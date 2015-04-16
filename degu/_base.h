@@ -163,17 +163,17 @@ typedef struct {
 
 static PyObject * Range_New(uint64_t, uint64_t);
 
-static void Range_dealloc(Range *);
-static int Range_init(Range *, PyObject *, PyObject *);
-static PyObject * Range_repr(Range *);
-static PyObject * Range_str(Range *);
-static PyObject * Range_richcompare(Range *, PyObject *, int);
-
 static PyMemberDef Range_members[] = {
     {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
     {"stop",  T_ULONGLONG, offsetof(Range, stop),  READONLY, NULL},
     {NULL}
 };
+
+static void Range_dealloc(Range *);
+static int Range_init(Range *, PyObject *, PyObject *);
+static PyObject * Range_repr(Range *);
+static PyObject * Range_str(Range *);
+static PyObject * Range_richcompare(Range *, PyObject *, int);
 
 static PyTypeObject RangeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -297,6 +297,83 @@ static PyTypeObject ReaderType = {
     0,                            /* tp_descr_set */
     0,                            /* tp_dictoffset */
     (initproc)Reader_init,        /* tp_init */
+};
+
+
+/******************************************************************************
+ * Writer object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    bool closed;
+    PyObject *shutdown;
+    PyObject *send;
+    PyObject *length_types;
+    PyObject *chunked_types;
+    uint64_t tell;
+} Writer;
+
+static PyObject * Writer_close(Writer *);
+static PyObject * Writer_tell(Writer *);
+static PyObject * Writer_flush(Writer *);
+static PyObject * Writer_write(Writer *, PyObject *);
+static PyObject * Writer_write_output(Writer *, PyObject *);
+static PyObject * Writer_set_default_headers(Writer *, PyObject *);
+static PyObject * Writer_write_request(Writer *, PyObject *);
+static PyObject * Writer_write_response(Writer *, PyObject *);
+
+static PyMethodDef Writer_methods[] = {
+    {"close", (PyCFunction)Writer_close, METH_NOARGS, NULL},
+    {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
+    {"flush", (PyCFunction)Writer_flush, METH_NOARGS, NULL},
+    {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},
+    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
+    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, NULL},
+    {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
+    {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Writer_dealloc(Writer *);
+static int Writer_init(Writer *, PyObject *, PyObject *);
+
+static PyTypeObject WriterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Writer",          /* tp_name */
+    sizeof(Writer),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Writer_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Writer(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Writer_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Writer_init,        /* tp_init */
 };
 
 
