@@ -1237,10 +1237,10 @@ class TestFunctions(AlternatesTestCase):
         self.assertIsInstance(reader, base.Reader)
         self.assertIsInstance(writer, base.Writer)
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 4)
         del reader
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         del writer
         self.assertEqual(sock._calls, [])
         self.assertEqual(sys.getrefcount(sock), 2)
@@ -3626,7 +3626,7 @@ class TestWriter_Py(BackendTestCase):
         counts = tuple(sys.getrefcount(b) for b in bodies)
 
         writer = self.Writer(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
             tuple(c + 1 for c in counts)

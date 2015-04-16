@@ -781,7 +781,6 @@ def set_default_header(headers, key, val):
 
 class Writer:
     __slots__ = (
-        '_sock_shutdown',
         '_sock_send',
         '_length_types',
         '_chunked_types',
@@ -789,7 +788,6 @@ class Writer:
     )
 
     def __init__(self, sock, bodies):
-        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_send = _getcallable('sock', sock, 'send')
         self._length_types = (bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)

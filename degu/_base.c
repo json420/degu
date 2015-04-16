@@ -34,7 +34,6 @@ static PyObject *EmptyPreambleError = NULL;
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_read             = NULL;  //  'read'
 static PyObject *attr_write            = NULL;  //  'write'
-static PyObject *attr_shutdown         = NULL;  //  'shutdown'
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
 static PyObject *attr_send             = NULL;  //  'send'
 static PyObject *attr_write_to         = NULL;  //  'write_to'
@@ -65,7 +64,6 @@ static PyObject *str_crlf              = NULL;  //  '\r\n'
 static PyObject *str_empty             = NULL;  //  ''
 
 /* Other misc PyObject */
-static PyObject *int_SHUT_RDWR = NULL;  //  2  (socket.SHUT_RDWR)
 static PyObject *bytes_empty           = NULL;  //  b''
 
 
@@ -82,7 +80,6 @@ _init_all_globals(PyObject *module)
     /* Init interned attribute names */
     _SET(attr_read,            PyUnicode_InternFromString("read"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
-    _SET(attr_shutdown,        PyUnicode_InternFromString("shutdown"))
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
     _SET(attr_send,            PyUnicode_InternFromString("send"))
     _SET(attr_write_to,        PyUnicode_InternFromString("write_to"))
@@ -113,7 +110,6 @@ _init_all_globals(PyObject *module)
     _SET(str_empty,  PyUnicode_FromString(""))
 
     /* Init misc objects */
-    _SET(int_SHUT_RDWR, PyLong_FromLong(SHUT_RDWR))
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
 
     return true;
@@ -2639,7 +2635,6 @@ cleanup:
 static void
 Writer_dealloc(Writer *self)
 {
-    Py_CLEAR(self->shutdown);
     Py_CLEAR(self->send);
     Py_CLEAR(self->length_types);
     Py_CLEAR(self->chunked_types);
@@ -2662,7 +2657,6 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
         goto error;
     }
     self->tell = 0;
-    _SET(self->shutdown,  _getcallable("sock", sock, attr_shutdown))
     _SET(self->send,      _getcallable("sock", sock, attr_send))
     _SET(Body,            PyObject_GetAttr(bodies, attr_Body))
     _SET(BodyIter,        PyObject_GetAttr(bodies, attr_BodyIter))

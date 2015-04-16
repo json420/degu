@@ -24,7 +24,6 @@
 #include <Python.h>
 #include <structmember.h>
 #include <stdbool.h>
-#include <sys/socket.h>
 
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
@@ -305,7 +304,6 @@ static PyTypeObject ReaderType = {
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
-    PyObject *shutdown;
     PyObject *send;
     PyObject *length_types;
     PyObject *chunked_types;
