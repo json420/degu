@@ -1238,7 +1238,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertIsInstance(reader, base.Reader)
         self.assertIsInstance(writer, base.Writer)
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 6)
+        self.assertEqual(sys.getrefcount(sock), 5)
         del reader
         self.assertEqual(sock._calls, [])
         self.assertEqual(sys.getrefcount(sock), 4)
@@ -3037,7 +3037,7 @@ class TestReader_Py(BackendTestCase):
         c2 = sys.getrefcount(bodies.Body)
         c3 = sys.getrefcount(bodies.ChunkedBody)
         reader = self.Reader(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)

@@ -515,7 +515,6 @@ def format_response(status, reason, headers):
 
 class Reader:
     __slots__ = (
-        '_sock_shutdown',
         '_sock_recv_into',
         '_Body',
         '_ChunkedBody',
@@ -534,7 +533,6 @@ class Reader:
                     MIN_PREAMBLE, MAX_PREAMBLE, size
                 )
             )
-        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._Body = _getcallable('bodies', bodies, 'Body')
         self._ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')

@@ -2161,7 +2161,6 @@ static struct PyMethodDef degu_functions[] = {
 static void
 Reader_dealloc(Reader *self)
 {
-    Py_CLEAR(self->shutdown);
     Py_CLEAR(self->recv_into);
     Py_CLEAR(self->bodies_Body);
     Py_CLEAR(self->bodies_ChunkedBody);
@@ -2195,7 +2194,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         );
         return -1;
     }
-    _SET(self->shutdown,  _getcallable("sock", sock, attr_shutdown))
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
     _SET(self->bodies_Body, _getcallable("bodies", bodies, attr_Body))
     _SET(self->bodies_ChunkedBody,

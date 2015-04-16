@@ -221,7 +221,6 @@ static PyTypeObject RangeType = {
 typedef struct {
     PyObject_HEAD
     bool closed;
-    PyObject *shutdown;
     PyObject *recv_into;
     PyObject *bodies_Body;
     PyObject *bodies_ChunkedBody;
