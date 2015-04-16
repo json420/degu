@@ -907,7 +907,7 @@ class Writer:
 
 class Body:
     chunked = False
-    __slots__ = ('rfile', 'content_length', '_closed', '_remaining')
+    __slots__ = ('rfile', 'content_length', '_remaining', '_closed', '_error')
 
     def __init__(self, rfile, content_length):
         if type(content_length) is not int:
@@ -917,13 +917,26 @@ class Body:
         if content_length < 0:
             raise OverflowError("can't convert negative int to unsigned")
         self.rfile = rfile
-        self.content_length = content_length
+        self._remaining = self.content_length = content_length
         self._closed = False
-        self._remaining = content_length
+        self._error = False
+
+    def _raise_exception(self):
+        if self._closed is True:
+            assert self._error is False
+            raise ValueError('Body.closed, already consumed')
+        if self._error is True:
+            assert self._closed is False
+            raise ValueError('Body.error, cannot be used')
+        raise RuntimeError('should not be reached')
 
     @property
     def closed(self):
         return self._closed
+
+    @property
+    def error(self):
+        return self._error
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -931,8 +944,9 @@ class Body:
         )
 
     def __iter__(self):
-        if self._closed:
-            raise ValueError('Body.closed, already consumed')
+        if (self._closed is True or self._error is True):
+            self._raise_exception()
+        assert self._closed is False and self._error is False
         remaining = self._remaining
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
@@ -945,17 +959,17 @@ class Body:
             assert remaining >= 0
             data = read(readsize)
             if len(data) != readsize:
-                self.rfile.close()
+                self._error = True
                 raise ValueError(
                     'underflow: {} < {}'.format(len(data), readsize)
                 )
             yield data
         self._closed = True
 
-    # FIXME: Add 2nd, max_size=None optional keyword argument
     def read(self, size=None):
-        if self._closed:
-            raise ValueError('Body.closed, already consumed')
+        if (self._closed is True or self._error is True):
+            self._raise_exception()
+        assert self._closed is False and self._error is False
         if self._remaining <= 0:
             self._closed = True
             return b''
@@ -981,10 +995,10 @@ class Body:
             # with their exception handling, they might continue to use a
             # connection even after an ValueError which could create a
             # request/response stream state inconsistency.  So in this
-            # circumstance, we close the rfile, but we do *not* set Body.closed
-            # to True (which means "fully consumed") because the body was not in
-            # fact fully read. 
-            self.rfile.close()
+            # circumstance, we set Body.error to True, but we do *not* set
+            # Body.closed to True (which means "fully consumed") because the
+            # body was not in fact fully read. 
+            self._error = True
             raise ValueError(
                 'underflow: {} < {}'.format(len(data), read)
             )

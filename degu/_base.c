@@ -34,7 +34,6 @@ static PyObject *EmptyPreambleError = NULL;
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_read             = NULL;  //  'read'
 static PyObject *attr_write            = NULL;  //  'write'
-static PyObject *attr_close            = NULL;  //  'close'
 static PyObject *attr_shutdown         = NULL;  //  'shutdown'
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
 static PyObject *attr_send             = NULL;  //  'send'
@@ -83,7 +82,6 @@ _init_all_globals(PyObject *module)
     /* Init interned attribute names */
     _SET(attr_read,            PyUnicode_InternFromString("read"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
-    _SET(attr_close,           PyUnicode_InternFromString("close"))
     _SET(attr_shutdown,        PyUnicode_InternFromString("shutdown"))
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
     _SET(attr_send,            PyUnicode_InternFromString("send"))
@@ -3131,6 +3129,7 @@ Body_New(PyObject *rfile, const uint64_t content_length)
     self->rfile_read = NULL;
     self->remaining = self->content_length = content_length;
     self->closed = false;
+    self->error = false;
     self->chunked = false;
     if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
         return NULL;
@@ -3167,6 +3166,7 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
     }
     self->remaining = self->content_length = (uint64_t)_content_length;
     self->closed = false;
+    self->error = false;
     self->chunked = false;
     return 0;
 
@@ -3175,14 +3175,38 @@ error:
 }
 
 static PyObject *
+_Body_set_exception(Body *self)
+{
+    if (self->closed) {
+        if (self->error) {
+            goto bad_times;
+        }
+        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
+    }
+    else if (self->error) {
+        if (self->closed) {
+            goto bad_times;
+        }
+        PyErr_SetString(PyExc_ValueError, "Body.error, cannot be used");
+    }
+    else {
+        goto bad_times;
+    }
+    return NULL;
+
+bad_times:
+    Py_FatalError("_Body_set_exception(): bad internal call or state");
+    return NULL;
+}
+
+static PyObject *
 _Body_read(Body *self, const size_t max_size)
 {
     PyObject *pysize = NULL;
     PyObject *ret = NULL;
 
-    if (self->closed) {
-        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
-        return NULL;
+    if (self->closed || self->error) {
+        return _Body_set_exception(self);
     }
     if (max_size > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
@@ -3228,8 +3252,7 @@ _Body_read(Body *self, const size_t max_size)
 
 error:
     Py_CLEAR(ret);
-    ret = PyObject_CallMethodObjArgs(self->rfile, attr_close, NULL);
-    Py_CLEAR(ret);
+    self->error = true;
 
 cleanup:
     Py_CLEAR(pysize);
@@ -3338,9 +3361,8 @@ Body_repr(Body *self)
 static PyObject *
 Body_iter(Body *self)
 {
-    if (self->closed) {
-        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
-        return NULL;
+    if (self->closed || self->error) {
+        return _Body_set_exception(self);
     }
     PyObject *ret = (PyObject *)self;
     Py_INCREF(ret);
@@ -3368,7 +3390,6 @@ static struct PyModuleDef degu = {
     -1,
     degu_functions
 };
-
 
 static bool
 _init_all_types(PyObject *module)

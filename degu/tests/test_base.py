@@ -2318,7 +2318,14 @@ class TestBody_Py(BackendTestCase):
             body.read()
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1800')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # ValueError (underflow) error when read in parts:
         data = os.urandom(35)
@@ -2333,7 +2340,14 @@ class TestBody_Py(BackendTestCase):
             body.read(19)
         self.assertEqual(str(cm.exception), 'underflow: 17 < 19')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # Test with empty body:
         rfile = io.BytesIO(os.urandom(21))
@@ -2410,7 +2424,14 @@ class TestBody_Py(BackendTestCase):
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # Make sure data is read in IO_SIZE chunks:
         data1 = os.urandom(base.IO_SIZE)
@@ -2458,7 +2479,14 @@ class TestBody_Py(BackendTestCase):
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
     def test_write_to(self):
         Body = self.Body
