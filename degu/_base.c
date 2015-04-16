@@ -2468,7 +2468,6 @@ cleanup:
 
 /*******************************************************************************
  * Reader: Public API:
- *     Reader.close()
  *     Reader.Body()
  *     Reader.ChunkedBody()
  *     Reader.rawtell()
@@ -2483,16 +2482,6 @@ cleanup:
  *     Reader.read()
  *     Reader.readinto()
  */
-static PyObject *
-Reader_close(Reader *self)
-{
-    if (self->closed) {
-        Py_RETURN_NONE;
-    }
-    self->closed = true;
-    return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
-}
-
 static PyObject *
 Reader_rawtell(Reader *self) {
     return PyLong_FromUnsignedLongLong(self->rawtell);

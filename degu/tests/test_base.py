@@ -3047,13 +3047,6 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(bodies.Body), c2)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3)
 
-    def test_close(self):
-        (sock, reader) = self.new()
-        self.assertIsNone(reader.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(reader.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-
     def test_read_until(self):
         default = self.DEFAULT_PREAMBLE
         end = b'\r\n'

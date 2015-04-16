@@ -233,7 +233,6 @@ typedef struct {
     size_t stop;
 } Reader;
 
-static PyObject * Reader_close(Reader *);
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
 static PyObject * Reader_read_request(Reader *);
@@ -246,7 +245,6 @@ static PyObject * Reader_read(Reader *, PyObject *);
 static PyObject * Reader_readinto(Reader *, PyObject *);
 
 static PyMethodDef Reader_methods[] = {
-    {"close", (PyCFunction)Reader_close, METH_NOARGS, NULL},
     {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS, NULL},
     {"tell", (PyCFunction)Reader_tell, METH_NOARGS, NULL},
     {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS, NULL},

@@ -544,13 +544,6 @@ class Reader:
         self._buf = b''
         self._closed = False
 
-    def close(self):
-        if self._closed is True:
-            return None
-        assert self._closed is False
-        self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)
-
     def rawtell(self):
         return self._rawtell
 
