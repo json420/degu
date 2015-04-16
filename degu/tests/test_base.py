@@ -28,7 +28,6 @@ import os
 import io
 import sys
 from random import SystemRandom
-import socket
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -3637,14 +3636,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
-
-    def test_close(self):
-        sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
-        self.assertIsNone(writer.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(writer.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_tell(self):
         sock = WSocket()

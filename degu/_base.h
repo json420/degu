@@ -305,7 +305,6 @@ static PyTypeObject ReaderType = {
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
-    bool closed;
     PyObject *shutdown;
     PyObject *send;
     PyObject *length_types;
@@ -313,7 +312,6 @@ typedef struct {
     uint64_t tell;
 } Writer;
 
-static PyObject * Writer_close(Writer *);
 static PyObject * Writer_tell(Writer *);
 static PyObject * Writer_flush(Writer *);
 static PyObject * Writer_write(Writer *, PyObject *);
@@ -323,7 +321,6 @@ static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
 static PyMethodDef Writer_methods[] = {
-    {"close", (PyCFunction)Writer_close, METH_NOARGS, NULL},
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
     {"flush", (PyCFunction)Writer_flush, METH_NOARGS, NULL},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},

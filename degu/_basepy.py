@@ -31,7 +31,6 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
-import socket
 import sys
 
 
@@ -787,7 +786,6 @@ class Writer:
         '_length_types',
         '_chunked_types',
         '_tell',
-        '_closed',
     )
 
     def __init__(self, sock, bodies):
@@ -796,14 +794,6 @@ class Writer:
         self._length_types = (bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
-        self._closed = False
-
-    def close(self):
-        if self._closed is True:
-            return None
-        assert self._closed is False
-        self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)
 
     def tell(self):
         return self._tell

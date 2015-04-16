@@ -2661,8 +2661,6 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
             &sock, &bodies)) {
         goto error;
     }
-
-    self->closed = false;
     self->tell = 0;
     _SET(self->shutdown,  _getcallable("sock", sock, attr_shutdown))
     _SET(self->send,      _getcallable("sock", sock, attr_send))
@@ -2885,16 +2883,6 @@ cleanup:
  *     Writer.write()
  *     Writer.flush()
  */
-static PyObject *
-Writer_close(Writer *self)
-{
-    if (self->closed) {
-        Py_RETURN_NONE;
-    }
-    self->closed = true;
-    return PyObject_CallFunctionObjArgs(self->shutdown, int_SHUT_RDWR, NULL);
-}
-
 static PyObject *
 Writer_tell(Writer *self) {
     return PyLong_FromUnsignedLongLong(self->tell);
