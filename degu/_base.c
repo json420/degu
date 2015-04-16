@@ -732,23 +732,16 @@ _validate_length(const char *name, PyObject *obj)
 }
 
 static ssize_t
-_validate_size(const char *name, PyObject *obj, const size_t remaining)
+_validate_size(const char *name, PyObject *obj, const size_t max_size)
 {
-    if (obj == Py_None) {
-        if (remaining > MAX_IO_SIZE) {
-            PyErr_Format(PyExc_ValueError,
-                "max read size exceeded: %zu > %zu", remaining, MAX_IO_SIZE
-            );
-            return -1;
-        }
-        return (ssize_t)remaining;
-    }
-
     if (! _validate_int(name, obj)) {
         return -1;
     }
+    if (PyErr_Occurred() || max_size > MAX_IO_SIZE) {
+        Py_FatalError("_validate_size(): bad internal call");
+    }
     const size_t size = PyLong_AsSize_t(obj);
-    if (PyErr_Occurred() || size > MAX_IO_SIZE) {
+    if (PyErr_Occurred() || size > max_size) {
         PyErr_Clear();
         PyErr_Format(PyExc_ValueError,
             "need 0 <= %s <= %zu; got %R", name, MAX_IO_SIZE, obj
@@ -756,6 +749,21 @@ _validate_size(const char *name, PyObject *obj, const size_t remaining)
         return -1;
     }
     return (ssize_t)size;
+}
+
+static ssize_t
+_validate_read_size(const char *name, PyObject *obj, const uint64_t remaining)
+{
+    if (obj == Py_None) {
+        if (remaining > MAX_IO_SIZE) {
+            PyErr_Format(PyExc_ValueError,
+                "would exceed max read size: %llu > %zu", remaining, MAX_IO_SIZE
+            );
+            return -1;
+        }
+        return (ssize_t)remaining;
+    }
+    return _validate_size(name, obj, MAX_IO_SIZE);
 }
 
 
@@ -3164,7 +3172,7 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
     if (!PyArg_ParseTupleAndKeywords(args, kw, "|O", keys, &pysize)) {
         return NULL;
     }
-    const ssize_t size = _validate_size("size", pysize, self->remaining);
+    const ssize_t size = _validate_read_size("size", pysize, self->remaining);
     if (size < 0) {
         return NULL;
     }

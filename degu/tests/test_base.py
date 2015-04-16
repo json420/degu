@@ -2257,14 +2257,14 @@ class TestBody_Py(BackendTestCase):
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception),
-            'max read size exceeded: 16777217 > 16777216'
+            'would exceed max read size: 16777217 > 16777216'
         )
         body = Body(rfile, toobig)
         self.assertEqual(body.content_length, toobig)
         with self.assertRaises(ValueError) as cm:
             body.read(None)
         self.assertEqual(str(cm.exception),
-            'max read size exceeded: 16777217 > 16777216'
+            'would exceed max read size: 16777217 > 16777216'
         )
 
         # Now read it all at once:

@@ -956,7 +956,9 @@ class Body:
             read = self._remaining
             if read > MAX_READ_SIZE:
                 raise ValueError(
-                    'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
+                    'would exceed max read size: {} > {}'.format(
+                        read, MAX_READ_SIZE
+                    )
                 )
         else:
             if type(size) is not int:
