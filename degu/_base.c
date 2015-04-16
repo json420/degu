@@ -2161,24 +2161,9 @@ static struct PyMethodDef degu_functions[] = {
 };
 
 
-/*******************************************************************************
- * Reader:
- */
-typedef struct {
-    PyObject_HEAD
-    bool closed;
-    PyObject *shutdown;
-    PyObject *recv_into;
-    PyObject *bodies_Body;
-    PyObject *bodies_ChunkedBody;
-    uint8_t *scratch;
-    uint64_t rawtell;
-    uint8_t *buf;
-    size_t len;
-    size_t start;
-    size_t stop;
-} Reader;
-
+/******************************************************************************
+ * Reader object
+ ******************************************************************************/
 static void
 Reader_dealloc(Reader *self)
 {
@@ -2674,79 +2659,6 @@ cleanup:
     PyBuffer_Release(&pybuf);
     return ret;
 }
-
-
-/*******************************************************************************
- * Reader: PyMethodDef, PyTypeObject:
- */
-static PyMethodDef Reader_methods[] = {
-    {"close", (PyCFunction)Reader_close, METH_NOARGS, "close()"},
-    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS,
-        "return number of bytes thus far read from the underlying socket"
-    },
-    {"tell", (PyCFunction)Reader_tell, METH_NOARGS,
-        "total bytes thus far read from logical stream"
-    },
-    {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS,
-        "read_request()"
-    },
-    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS,
-        "read_response(method)"
-    },
-
-    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, "expose()"},
-    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, "peek(size)"},
-    {"drain", (PyCFunction)Reader_drain, METH_VARARGS, "drain(size)"},
-    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS | METH_KEYWORDS,
-        "read_until(size, end, always_drain=False, stip_end=False)"
-    },
-    {"readline", (PyCFunction)Reader_readline, METH_VARARGS, "readline(size)"},
-    {"read", (PyCFunction)Reader_read, METH_VARARGS, "read(size)"},
-    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, "readinto(buf)"},
-
-    {NULL}
-};
-
-static PyTypeObject ReaderType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Reader",          /* tp_name */
-    sizeof(Reader),               /* tp_basicsize */
-    0,                            /* tp_itemsize */
-    (destructor)Reader_dealloc,   /* tp_dealloc */
-    0,                            /* tp_print */
-    0,                            /* tp_getattr */
-    0,                            /* tp_setattr */
-    0,                            /* tp_reserved */
-    0,                            /* tp_repr */
-    0,                            /* tp_as_number */
-    0,                            /* tp_as_sequence */
-    0,                            /* tp_as_mapping */
-    0,                            /* tp_hash  */
-    0,                            /* tp_call */
-    0,                            /* tp_str */
-    0,                            /* tp_getattro */
-    0,                            /* tp_setattro */
-    0,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,           /* tp_flags */
-    "Reader(sock, bodies)",       /* tp_doc */
-    0,                            /* tp_traverse */
-    0,                            /* tp_clear */
-    0,                            /* tp_richcompare */
-    0,                            /* tp_weaklistoffset */
-    0,                            /* tp_iter */
-    0,                            /* tp_iternext */
-    Reader_methods,               /* tp_methods */
-    0,                            /* tp_members */
-    0,                            /* tp_getset */
-    0,                            /* tp_base */
-    0,                            /* tp_dict */
-    0,                            /* tp_descr_get */
-    0,                            /* tp_descr_set */
-    0,                            /* tp_dictoffset */
-    (initproc)Reader_init,        /* tp_init */
-    0,                            /* tp_alloc */
-    0,                            /* tp_new */
-};
 
 
 /*******************************************************************************

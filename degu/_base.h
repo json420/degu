@@ -216,6 +216,96 @@ static PyTypeObject RangeType = {
 
 
 /******************************************************************************
+ * Reader object
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    bool closed;
+    PyObject *shutdown;
+    PyObject *recv_into;
+    PyObject *bodies_Body;
+    PyObject *bodies_ChunkedBody;
+    uint8_t *scratch;
+    uint64_t rawtell;
+    uint8_t *buf;
+    size_t len;
+    size_t start;
+    size_t stop;
+} Reader;
+
+static PyObject * Reader_close(Reader *);
+static PyObject * Reader_rawtell(Reader *);
+static PyObject * Reader_tell(Reader *);
+static PyObject * Reader_read_request(Reader *);
+static PyObject * Reader_read_response(Reader *, PyObject *);
+static PyObject * Reader_expose(Reader *);
+static PyObject * Reader_peek(Reader *, PyObject *);
+static PyObject * Reader_drain(Reader *, PyObject *);
+static PyObject * Reader_read_until(Reader *, PyObject *, PyObject *);
+static PyObject * Reader_readline(Reader *, PyObject *);
+static PyObject * Reader_read(Reader *, PyObject *);
+static PyObject * Reader_readinto(Reader *, PyObject *);
+
+static PyMethodDef Reader_methods[] = {
+    {"close", (PyCFunction)Reader_close, METH_NOARGS, NULL},
+    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS, NULL},
+    {"tell", (PyCFunction)Reader_tell, METH_NOARGS, NULL},
+    {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS, NULL},
+    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS, NULL},
+    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
+    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
+    {"drain", (PyCFunction)Reader_drain, METH_VARARGS, NULL},
+    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"readline", (PyCFunction)Reader_readline, METH_VARARGS, NULL},
+    {"read", (PyCFunction)Reader_read, METH_VARARGS, NULL},
+    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Reader_dealloc(Reader *);
+static int Reader_init(Reader *, PyObject *, PyObject *);
+
+static PyTypeObject ReaderType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Reader",          /* tp_name */
+    sizeof(Reader),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Reader_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Reader(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Reader_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Reader_init,        /* tp_init */
+};
+
+
+/******************************************************************************
  * Body object
  ******************************************************************************/
 typedef struct {
