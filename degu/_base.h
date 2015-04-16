@@ -240,7 +240,6 @@ static PyObject * Reader_read_request(Reader *);
 static PyObject * Reader_read_response(Reader *, PyObject *);
 static PyObject * Reader_expose(Reader *);
 static PyObject * Reader_peek(Reader *, PyObject *);
-static PyObject * Reader_drain(Reader *, PyObject *);
 static PyObject * Reader_read_until(Reader *, PyObject *, PyObject *);
 static PyObject * Reader_readline(Reader *, PyObject *);
 static PyObject * Reader_read(Reader *, PyObject *);
@@ -254,7 +253,6 @@ static PyMethodDef Reader_methods[] = {
     {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS, NULL},
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
-    {"drain", (PyCFunction)Reader_drain, METH_VARARGS, NULL},
     {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS|METH_KEYWORDS, NULL},
     {"readline", (PyCFunction)Reader_readline, METH_VARARGS, NULL},
     {"read", (PyCFunction)Reader_read, METH_VARARGS, NULL},

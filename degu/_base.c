@@ -2529,15 +2529,6 @@ Reader_peek(Reader *self, PyObject *args) {
 }
 
 static PyObject *
-Reader_drain(Reader *self, PyObject *args) {
-    size_t size = 0;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_drain(self, size));
-}
-
-static PyObject *
 Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"size", "end", "always_drain", "strip_end", NULL};

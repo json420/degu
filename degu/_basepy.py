@@ -636,7 +636,7 @@ class Reader:
             return self._buf
         return self._buf[0:size]
 
-    def drain(self, size):
+    def _drain(self, size):
         avail = len(self._buf)
         src = self.peek(size)
         if len(src) == 0:
@@ -648,14 +648,14 @@ class Reader:
         return src
 
     def _found(self, index, end, strip_end):
-        src = self.drain(index + len(end))
+        src = self._drain(index + len(end))
         if strip_end:
             return src[0:-len(end)]
         return src
 
     def _not_found(self, cur, end, always_drain):
         if always_drain:
-            return self.drain(len(cur))
+            return self._drain(len(cur))
         if len(cur) == 0:
             return cur
         raise ValueError(
@@ -738,7 +738,7 @@ class Reader:
             )
         if size == 0:
             return b''
-        src = self.drain(size)
+        src = self._drain(size)
         src_len = len(src)
         if src_len == size:
             return src
@@ -762,7 +762,7 @@ class Reader:
             raise ValueError(
                 'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
             )
-        src = self.drain(dst_len)
+        src = self._drain(dst_len)
         src_len = len(src)
         dst[0:src_len] = src
         start = src_len
