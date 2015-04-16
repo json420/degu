@@ -154,7 +154,6 @@ _DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
 _DEGU_SRC_CONSTANT(MINUS, "-")
 
 
-
 /***************    BEGIN GENERATED TABLES    *********************************/
 static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
@@ -278,11 +277,9 @@ static const uint8_t _FLAGS[256] = {
 /***************    END GENERATED TABLES      *********************************/
 
 
-
 /******************************************************************************
  * Internal functions for working with DeguSrc and DeguDst memory buffers.
  ******************************************************************************/
-
 static inline bool
 _isempty(DeguSrc src)
 {
@@ -466,7 +463,6 @@ _calloc_dst(const size_t len)
     }
     return (DeguDst){buf, len};
 }
-
 
 
 /*******************************************************************************

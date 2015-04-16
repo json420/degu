@@ -153,7 +153,7 @@ typedef const struct {
 
 
 /******************************************************************************
- * Range object
+ * Range object.
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
@@ -216,7 +216,7 @@ static PyTypeObject RangeType = {
 
 
 /******************************************************************************
- * Reader object
+ * Reader object.
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
@@ -304,7 +304,7 @@ static PyTypeObject ReaderType = {
 
 
 /******************************************************************************
- * Body object
+ * Body object.
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
@@ -318,20 +318,20 @@ typedef struct {
 
 static PyObject * Body_New(PyObject *, uint64_t);
 
-static PyObject * Body_read(Body *, PyObject *, PyObject *);
-static PyObject * Body_write_to(Body *, PyObject *);
-
-static PyMethodDef Body_methods[] = {
-    {"read",     (PyCFunction)Body_read,     METH_VARARGS|METH_KEYWORDS, "read(size)"},
-    {"write_to", (PyCFunction)Body_write_to, METH_VARARGS, "write_to(wfile)"},
-    {NULL}
-};
-
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
     {"closed",         T_BOOL,      offsetof(Body, closed),         READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * Body_read(Body *, PyObject *, PyObject *);
+static PyObject * Body_write_to(Body *, PyObject *);
+
+static PyMethodDef Body_methods[] = {
+    {"read",     (PyCFunction)Body_read,     METH_VARARGS|METH_KEYWORDS, NULL},
+    {"write_to", (PyCFunction)Body_write_to, METH_VARARGS, NULL},
     {NULL}
 };
 

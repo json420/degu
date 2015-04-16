@@ -729,7 +729,7 @@ class Reader:
         return _parse_response(
             method, preamble, self, self._Body, self._ChunkedBody
         )
-        
+
     def read(self, size):
         assert isinstance(size, int)
         if not (0 <= size <= MAX_IO_SIZE):
