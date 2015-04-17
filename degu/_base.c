@@ -1608,8 +1608,8 @@ cleanup:
 /******************************************************************************
  * Chunk line parsing.
  ******************************************************************************/
-static ssize_t
-_parse_chunk_size(DeguSrc src)
+static bool
+_parse_chunk_size(DeguSrc src, DeguChunk *dc)
 {
     size_t accum;
     uint8_t n, err;
@@ -1617,7 +1617,7 @@ _parse_chunk_size(DeguSrc src)
 
     if (src.len > 7) {
         _value_error("chunk_size is too long: %R...", _slice(src, 0, 7));
-        return -1;
+        return false;
     }
     if (src.len < 1 || (src.buf[0] == 48 && src.len != 1)) {
         goto bad_chunk_size;
@@ -1636,13 +1636,14 @@ _parse_chunk_size(DeguSrc src)
         PyErr_Format(PyExc_ValueError,
             "need chunk_size <= %zu; got %zu", MAX_IO_SIZE, accum
         );
-        return -1;
+        return false;
     }
-    return (ssize_t)accum;
+    dc->size = accum;
+    return true;
 
 bad_chunk_size:
     _value_error("bad chunk_size: %R", src);
-    return -1;
+    return false;
 }
 
 static PyObject *
@@ -1655,14 +1656,12 @@ parse_chunk_size(PyObject *self, PyObject *args)
         return NULL;
     }
     DeguSrc src = {buf, len};
-    const ssize_t size = _parse_chunk_size(src);
-    if (size < 0) {
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    if (! _parse_chunk_size(src, &dc)) {
         return NULL;
     }
-    return PyLong_FromSsize_t(size);
+    return PyLong_FromSize_t(dc.size);
 }
-
-
 
 
 /*******************************************************************************

@@ -147,9 +147,11 @@ typedef struct {
     size_t size;
     PyObject *key;
     PyObject *val;
+    bool has_ext;
 } DeguChunk;
 
-#define NEW_DEGU_CHUNK ((DeguChunk){0, NULL})
+#define NEW_DEGU_CHUNK \
+    ((DeguChunk){0, NULL, NULL, false})
 
 typedef const struct {
     DeguDst scratch;
