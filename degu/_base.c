@@ -958,7 +958,7 @@ _parse_val(DeguSrc src)
 static int64_t
 _parse_decimal(DeguSrc src)
 {
-    int64_t accum;
+    uint64_t accum;
     uint8_t n, err;
     size_t i;
 
@@ -978,13 +978,13 @@ _parse_decimal(DeguSrc src)
     if (src.buf[0] == 48 && src.len != 1) {
         return -3;
     }
-    return accum;
+    return (int64_t)accum;
 }
 
 static ssize_t
 _parse_hexadecimal(DeguSrc src)
 {
-    ssize_t accum;
+    size_t accum;
     uint8_t n, err;
     size_t i;
 
@@ -1005,7 +1005,7 @@ _parse_hexadecimal(DeguSrc src)
     if (src.buf[0] == 48 && src.len != 1) {
         return -3;
     }
-    return accum;
+    return (ssize_t)accum;
 }
 
 static PyObject *
