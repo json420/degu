@@ -554,6 +554,65 @@ class TestParsingFunctions_Py(BackendTestCase):
                 self.assertIs(type(n), int)
                 self.assertEqual(n, num)
 
+    def test_parse_chunk_size(self):
+        parse_chunk_size  = self.getattr('parse_chunk_size')
+        HEX = b'0123456789ABCDEFabcdef'
+        for num in range(2000):
+            lcase = '{:x}'.format(num).encode()
+            ucase = '{:X}'.format(num).encode()
+            self.assertEqual(lcase, lcase.lower())
+            self.assertEqual(ucase, ucase.upper())
+            for src in (lcase, ucase):
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+                for i in range(len(src)):
+                    tmp = bytearray(src)
+                    for b in range(256):
+                        tmp[i] = b
+                        new = bytes(tmp)
+                        if b in HEX and (new[0] != 48 or len(new) == 1):
+                            n = parse_chunk_size(new)
+                            self.assertIs(type(n), int)
+                            self.assertEqual(n, int(new, 16))
+                        else:
+                            with self.assertRaises(ValueError) as cm:
+                                parse_chunk_size(new)
+                            self.assertEqual(str(cm.exception),
+                                'bad chunk_size: {!r}'.format(new)
+                            )
+
+        iomax = 16 * 1024 * 1024
+        for num in range(iomax - 2000, iomax + 2000):
+            src = '{:x}'.format(num).encode()
+            if num > iomax:
+                with self.assertRaises(ValueError) as cm:
+                    parse_chunk_size(src)
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+            else:
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+
+        hmax = int(b'f' * 7, 16)
+        self.assertEqual(hmax, 268435455)
+        self.assertEqual(len('{:x}'.format(hmax)), 7)
+        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
+        for num in range(hmax - 2000, hmax + 2000):
+            src = '{:x}'.format(num).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_chunk_size(src)
+            if num > hmax:
+                self.assertEqual(str(cm.exception),
+                    'chunk_size is too long: {!r}...'.format(src[:7])
+                )
+            else:
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
         Range = self.getattr('Range')

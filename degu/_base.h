@@ -143,6 +143,14 @@ typedef struct {
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
 
+typedef struct {
+    size_t size;
+    PyObject *key;
+    PyObject *val;
+} DeguChunk;
+
+#define NEW_DEGU_CHUNK ((DeguChunk){0, NULL})
+
 typedef const struct {
     DeguDst scratch;
     PyObject *rfile;

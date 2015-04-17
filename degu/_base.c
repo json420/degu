@@ -146,6 +146,8 @@ _DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
 _DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
 _DEGU_SRC_CONSTANT(MINUS, "-")
+_DEGU_SRC_CONSTANT(SEMICOLON, ";")
+_DEGU_SRC_CONSTANT(EQUALS, "=")
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/
@@ -1603,6 +1605,66 @@ cleanup:
 }
 
 
+/******************************************************************************
+ * Chunk line parsing.
+ ******************************************************************************/
+static ssize_t
+_parse_chunk_size(DeguSrc src)
+{
+    size_t accum;
+    uint8_t n, err;
+    size_t i;
+
+    if (src.len > 7) {
+        _value_error("chunk_size is too long: %R...", _slice(src, 0, 7));
+        return -1;
+    }
+    if (src.len < 1 || (src.buf[0] == 48 && src.len != 1)) {
+        goto bad_chunk_size;
+    }
+    accum = err = _NUM[src.buf[0]] & 239;
+    for (i = 1; i < src.len; i++) {
+        n = _NUM[src.buf[i]] & 239;
+        err |= n;
+        accum *= 16;
+        accum += n;
+    }
+    if ((err & 240) != 0) {
+        goto bad_chunk_size;
+    }
+    if (accum > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need chunk_size <= %zu; got %zu", MAX_IO_SIZE, accum
+        );
+        return -1;
+    }
+    return (ssize_t)accum;
+
+bad_chunk_size:
+    _value_error("bad chunk_size: %R", src);
+    return -1;
+}
+
+static PyObject *
+parse_chunk_size(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_chunk_size", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    const ssize_t size = _parse_chunk_size(src);
+    if (size < 0) {
+        return NULL;
+    }
+    return PyLong_FromSsize_t(size);
+}
+
+
+
+
 /*******************************************************************************
  * Internal API: Formatting:
  *     _set_default_header()
@@ -2120,6 +2182,8 @@ static struct PyMethodDef degu_functions[] = {
         "parse_content_length(src)"},
     {"parse_hexadecimal", parse_hexadecimal, METH_VARARGS,
         "parse_hexadecimal(src)"},
+    {"parse_chunk_size", parse_chunk_size, METH_VARARGS,
+        "parse_chunk_size(src)"},
     {"parse_range", parse_range, METH_VARARGS, "parse_range(src)"},
     {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
 

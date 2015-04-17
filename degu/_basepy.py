@@ -251,6 +251,21 @@ def parse_hexadecimal(src):
     raise ValueError('bad hexadecimal: {!r}'.format(src))
 
 
+def parse_chunk_size(src):
+    L = len(src)
+    if (L > 7):
+        raise ValueError('chunk_size is too long: {!r}...'.format(src[:7]))
+    if not (HEX.issuperset(src) and L >= 1 and (src[0] != 48 or L == 1)):
+        raise ValueError('bad chunk_size: {!r}'.format(src))
+    size = int(src, 16)
+    if size > MAX_IO_SIZE:
+        raise ValueError(
+            'need chunk_size <= {}; got {}'.format(MAX_IO_SIZE, size)
+        )
+    assert size >= 0
+    return size
+
+
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:
         return -1
