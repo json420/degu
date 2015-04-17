@@ -3652,51 +3652,22 @@ class TestWriter_Py(BackendTestCase):
             with self.assertRaises(TypeError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'need a {!r}; send() returned a {!r}: {!r}'.format(
-                    int, type(bad), bad
-                )
+                TYPE_ERROR.format('sent', int, type(bad), bad)
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        # sock.send() returns a negative int
+        # sock.send() returns a bad int value:
         smin = -sys.maxsize - 1
-        for bad in (smin - 1, smin, smin + 1, -2, -1):
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OverflowError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                "can't convert negative value to size_t"
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        # sock.send() returns an int > sys.maxsize:
         smax = sys.maxsize * 2 + 1
-        for bad in (smax + 1, smax + 2, smax + 3): 
+        for bad in (smin - 1, smin, -17, -1, 18, 19, smax, smax + 1):
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'Python int too large to convert to C size_t'
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        # soct.send() size > len(buf):
-        for bad in (18, 19, smax - 2, smax - 1, smax):
-            self.assertGreater(bad, 17)
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OSError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                'need 0 <= size <= 17; send() returned {!r}'.format(bad)
+                'need 0 <= sent <= 17; got {!r}'.format(bad)
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)

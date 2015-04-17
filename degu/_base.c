@@ -2232,6 +2232,11 @@ _Reader_get_parse_helpers(Reader *self)
     };
 }
 
+/* _Reader_recv_into(): makes a single call to sock.recv_into().
+ *
+ * Note that a single call to Reader.read(), etc., can result in multiple calls
+ * sock.recv_into(), depending on the rcvbuf size and available data.
+ */
 static ssize_t
 _Reader_recv_into(Reader *self, DeguDst dst)
 {
@@ -2257,9 +2262,7 @@ _Reader_recv_into(Reader *self, DeguDst dst)
 
 error:
     if (size >= 0) {
-        Py_FatalError(
-            "_Reader_recv_into(): in error, but size >= 0"
-        );
+        Py_FatalError("_Reader_recv_into(): in error, but size >= 0");
     }
 
 cleanup:
@@ -2662,62 +2665,43 @@ cleanup:
     return ret;
 }
 
-
-/*******************************************************************************
- * Writer: Internal API:
- *     _Writer_write()
- *     _Writer_set_default_headers()
+/* _Writer_send(): makes a single call to sock.send().
+ *
+ * Note that a single call to Writer.write(), etc., can result in multiple calls
+ * sock.send(), depending on the sndbuf size and how much has been received
+ * by the other endpoint in the meantime.
  */
-
-
 static ssize_t
-_Writer_write1(Writer *self, DeguSrc src)
+_Writer_send(Writer *self, DeguSrc src)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    size_t size;
-    ssize_t ret = -2;
+    ssize_t size = -1;
 
-    if (src.buf == NULL || src.len == 0) {
-        Py_FatalError("_Writer_write1(): bad internal call");
-    }
-    if (src.len > MAX_IO_SIZE) {
-        Py_FatalError("_Writer_write1(): src.len > MAX_IO_SIZE");
+    if (_isempty(src) || src.len > MAX_IO_SIZE) {
+        Py_FatalError("_Writer_send(): bad internal call");
     }
     _SET(view,
         PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
     )
     _SET(int_size, PyObject_CallFunctionObjArgs(self->send, view, NULL))
-    if (!PyLong_CheckExact(int_size)) {
-        PyErr_Format(PyExc_TypeError,
-            "need a <class 'int'>; send() returned a %R: %R",
-            Py_TYPE(int_size), int_size
-        );
+    size = _validate_size("sent", int_size, src.len);
+    if (size < 0) {
         goto error;
     }
-    size = PyLong_AsSize_t(int_size);
-    if (PyErr_Occurred()) {
-        goto error;
-    }
-    if (size > src.len) {
-        PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zu; send() returned %zu", src.len, size
-        );
-        goto error;
-    }
-    ret = (ssize_t)size;
     goto cleanup;
 
 error:
-    ret = -1;
+    if (size >= 0) {
+        Py_FatalError(
+            "_Writer_send(): in error, but size >= 0"
+        );
+    }
 
 cleanup:
     Py_CLEAR(view);
     Py_CLEAR(int_size);
-    if (ret < 0 && ret != -1) {
-        Py_FatalError("_Writer_write1(): ret < 0 && ret != -1");
-    }
-    return ret;
+    return size;
 }
 
 static ssize_t
@@ -2727,7 +2711,7 @@ _Writer_write(Writer *self, DeguSrc src)
     ssize_t wrote;
 
     while (total < src.len) {
-        wrote = _Writer_write1(self, _slice(src, total, src.len));
+        wrote = _Writer_send(self, _slice(src, total, src.len));
         if (wrote < 0) {
             return -1;
         }

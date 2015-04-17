@@ -31,7 +31,6 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
-import sys
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -792,29 +791,16 @@ class Writer:
     def flush(self):
         pass
 
-    def _write1(self, buf):
+    def _send(self, buf):
         size = self._sock_send(buf)
-        if type(size) is not int:
-            raise TypeError(
-                'need a {!r}; send() returned a {!r}: {!r}'.format(
-                    int, type(size), size
-                )
-            )
-        if size < 0:
-            raise OverflowError("can't convert negative value to size_t")
-        if size > sys.maxsize * 2 + 1:
-            raise OverflowError('Python int too large to convert to C size_t')
-        if size > len(buf):
-            raise OSError(
-                'need 0 <= size <= {!r}; send() returned {!r}'.format(len(buf), size)
-            )
+        _validate_size('sent', size, len(buf))
         return size
 
     def write(self, buf):
         buf = memoryview(buf)
         size = 0
         while size < len(buf):
-            added = self._write1(buf[size:])
+            added = self._send(buf[size:])
             if added == 0:
                 break
             size += added
