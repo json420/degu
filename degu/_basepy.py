@@ -105,20 +105,28 @@ def _getcallable(objname, obj, name):
 ################################################################################
 # Header parsing:
 
-def _validate_length(name, length):
-    if type(length) is not int:
+def _validate_int(name, obj):
+    if type(obj) is not int:
         raise TypeError(
-            TYPE_ERROR.format(name, int, type(length), length)
+            TYPE_ERROR.format(name, int, type(obj), obj)
         )
-    if (length < 0):
-        raise OverflowError("can't convert negative int to unsigned")
-    if (length >= 2**64):
-        raise OverflowError('int too big to convert')
-    if (length > MAX_LENGTH):
+
+def _validate_length(name, length):
+    _validate_int(name, length)
+    if not (0 <= length <= MAX_LENGTH):
         raise ValueError(
             'need 0 <= {} <= {}; got {}'.format(name, MAX_LENGTH, length)
         )
     return length
+
+def _validate_size(name, size, max_size):
+    assert max_size <= MAX_IO_SIZE
+    _validate_int(name, size)
+    if not (0 <= size <= max_size):
+        raise ValueError(
+            'need 0 <= {} <= {}; got {}'.format(name, max_size, size)
+        )
+    return size
 
 
 class Range:
@@ -549,22 +557,7 @@ class Reader:
 
     def _recv_into(self, buf):
         added = self._sock_recv_into(buf)
-        if type(added) is not int:
-            raise TypeError(
-                'need a {!r}; recv_into() returned a {!r}: {!r}'.format(
-                    int, type(added), added
-                )
-            )
-        if added < 0:
-            raise OverflowError("can't convert negative value to size_t")
-        if added > sys.maxsize * 2 + 1:
-            raise OverflowError('Python int too large to convert to C size_t')
-        if not (0 <= added <= len(buf)):
-            raise OSError(
-                'need 0 <= size <= {}; recv_into() returned {}'.format(
-                    len(buf), added
-                )
-            )
+        _validate_size('received', added, len(buf))
         self._rawtell += added
         return added
 
@@ -889,12 +882,7 @@ class Body:
     __slots__ = ('rfile', 'content_length', '_remaining', '_closed', '_error')
 
     def __init__(self, rfile, content_length):
-        if type(content_length) is not int:
-            raise TypeError(TYPE_ERROR.format(
-                'content_length', int, type(content_length), content_length)
-            )
-        if content_length < 0:
-            raise OverflowError("can't convert negative int to unsigned")
+        _validate_length('content_length', content_length)
         self.rfile = rfile
         self._remaining = self.content_length = content_length
         self._closed = False

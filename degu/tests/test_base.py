@@ -287,27 +287,31 @@ class TestRange_Py(BackendTestCase):
 
         # start < 0, stop < 0:
         for bad in [-1, -2, -9999999999999999]:
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
             )
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(16, bad)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
             )
 
         # start > max64, stop > max64:
         max64 = 2**64 - 1
         for offset in [1, 2, 3]:
             bad = max64 + offset
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
-            self.assertEqual(str(cm.exception), 'int too big to convert')
-            with self.assertRaises(OverflowError) as cm:
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
                 self.Range(16, bad)
-            self.assertEqual(str(cm.exception), 'int too big to convert')
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
 
         # start > max_length, stop > max_length:
         max_length = int('9' * 16)
@@ -2175,20 +2179,23 @@ class TestBody_Py(BackendTestCase):
         )
 
         # Bad content_length value:
-        for bad in (-1, -17):
-            with self.assertRaises(OverflowError) as cm:
+        max_uint64 = 2**64 - 1
+        max_length = 9999999999999999
+        for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
+            with self.assertRaises(ValueError) as cm:
                 Body(rfile, bad)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
             )
 
         # All good:
-        body = Body(rfile, 17)
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.rfile, rfile)
-        self.assertEqual(body.content_length, 17)
-        self.assertIs(body.closed, False)
-        self.assertEqual(repr(body), 'Body(<rfile>, 17)')
+        for good in (0, 1, 17, 34969, max_length):
+            body = Body(rfile, good)
+            self.assertIs(body.chunked, False)
+            self.assertIs(body.rfile, rfile)
+            self.assertEqual(body.content_length, good)
+            self.assertIs(body.closed, False)
+            self.assertEqual(repr(body), 'Body(<rfile>, {!r})'.format(good))
 
         # Body.closed should be read-only:
         with self.assertRaises(AttributeError) as cm:
@@ -3455,33 +3462,19 @@ class TestReader_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+            "received: need a <class 'int'>; got a <class 'float'>: 17.0"
         )
 
         smax = sys.maxsize * 2 + 1
-        badsocket = BadSocket(smax + 1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C size_t'
-        )
-
-        badsocket = BadSocket(-1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            "can't convert negative value to size_t"
-        )
-
-        badsocket = BadSocket(12346)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned 12346'
-        )
+        twosmax = smax * 2
+        for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
+            badsocket = BadSocket(badsize)
+            reader = self.Reader(badsocket, base.bodies)
+            with self.assertRaises(ValueError) as cm:
+                reader.read(12345)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= received <= 12345; got {!r}'.format(badsize)
+            )
 
         marker = random_id()
         exc = ValueError(marker)
@@ -3533,41 +3526,19 @@ class TestReader_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+            TYPE_ERROR.format('received', int, float, 17.0)
         )
 
         smax = sys.maxsize * 2 + 1
-        badsocket = BadSocket(smax + 1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C size_t'
-        )
-
-        badsocket = BadSocket(-1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            "can't convert negative value to size_t"
-        )
-
-        badsocket = BadSocket(12346)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned 12346'
-        )
-
-        badsocket = BadSocket(smax)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned {!r}'.format(smax)
-        )
+        twosmax = smax * 2
+        for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
+            badsocket = BadSocket(badsize)
+            reader = self.Reader(badsocket, base.bodies)
+            with self.assertRaises(ValueError) as cm:
+                reader.readinto(dst)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= received <= 12345; got {!r}'.format(badsize)
+            )
 
         marker = random_id()
         exc = ValueError(marker)

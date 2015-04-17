@@ -718,13 +718,13 @@ _validate_length(const char *name, PyObject *obj)
     if (! _validate_int(name, obj)) {
         return -1;
     }
-    const uint64_t length = PyLong_AsUnsignedLongLong(obj);
     if (PyErr_Occurred()) {
-        return -1;
+        Py_FatalError("_validate_length(): PyErr_Occurred()");
     }
-    if (length > MAX_LENGTH) {
+    const uint64_t length = PyLong_AsUnsignedLongLong(obj);
+    if (PyErr_Occurred() || length > MAX_LENGTH) {
         PyErr_Format(PyExc_ValueError,
-            "need 0 <= %s <= %llu; got %llu", name, MAX_LENGTH, length
+            "need 0 <= %s <= %llu; got %R", name, MAX_LENGTH, obj
         );
         return -1;
     }
@@ -744,7 +744,7 @@ _validate_size(const char *name, PyObject *obj, const size_t max_size)
     if (PyErr_Occurred() || size > max_size) {
         PyErr_Clear();
         PyErr_Format(PyExc_ValueError,
-            "need 0 <= %s <= %zu; got %R", name, MAX_IO_SIZE, obj
+            "need 0 <= %s <= %zu; got %R", name, max_size, obj
         );
         return -1;
     }
@@ -2237,8 +2237,7 @@ _Reader_recv_into(Reader *self, DeguDst dst)
 {
     PyObject *view = NULL;
     PyObject *int_size = NULL;
-    size_t size;
-    ssize_t ret = -1;
+    ssize_t size = -1;
 
     if (_dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
         Py_FatalError("_Reader_recv_into(): bad internal call");
@@ -2249,46 +2248,24 @@ _Reader_recv_into(Reader *self, DeguDst dst)
     _SET(int_size,
         PyObject_CallFunctionObjArgs(self->recv_into, view, NULL)
     )
-
-    /* sock.recv_into() must return an `int` */
-    if (!PyLong_CheckExact(int_size)) {
-        PyErr_Format(PyExc_TypeError,
-            "need a <class 'int'>; recv_into() returned a %R: %R",
-            Py_TYPE(int_size), int_size
-        );
+    size = _validate_size("received", int_size, dst.len);
+    if (size < 0) {
         goto error;
     }
-
-    /* Convert to size_t, check for OverflowError */
-    size = PyLong_AsSize_t(int_size);
-    if (PyErr_Occurred()) {
-        goto error;
-    }
-
-    /* sock.recv_into() must return (0 <= size <= dst.len) */
-    if (size > dst.len) {
-        PyErr_Format(PyExc_OSError,
-            "need 0 <= size <= %zu; recv_into() returned %zu", dst.len, size
-        );
-        goto error;
-    }
-
-    /* Add this number into our running raw read total */
-    self->rawtell += size;
-    ret = (ssize_t)size;
+    self->rawtell += (size_t)size;
     goto cleanup;
 
 error:
-    if (ret >= 0) {
+    if (size >= 0) {
         Py_FatalError(
-            "_Reader_recv_into(): in error, but ret >= 0"
+            "_Reader_recv_into(): in error, but size >= 0"
         );
     }
 
 cleanup:
     Py_CLEAR(view);
     Py_CLEAR(int_size);
-    return ret;
+    return size;
 }
 
 static DeguSrc
