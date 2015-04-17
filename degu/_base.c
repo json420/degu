@@ -222,37 +222,37 @@ static const uint8_t _NUM[256] = {
 };
 
 /*
- * DIGIT  1 00000001  b'0123456789'
- * ALPHA  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
- * PATH   4 00000100  b'+-.:_~'
+ * LOWER  1 00000001  b'-0123456789abcdefghijklmnopqrstuvwxyz'
+ * UPPER  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+ * PATH   4 00000100  b'+.:_~'
  * QUERY  8 00001000  b'%&='
  * URI   16 00010000  b'/?'
  * SPACE 32 00100000  b' '
  * VALUE 64 01000000  b'"\'()*,;[]'
  */
-#define DIGIT_MASK  254  // 11111110  ~(DIGIT)
-#define PATH_MASK   248  // 11111000  ~(DIGIT|ALPHA|PATH)
-#define QUERY_MASK  240  // 11110000  ~(DIGIT|ALPHA|PATH|QUERY)
-#define URI_MASK    224  // 11100000  ~(DIGIT|ALPHA|PATH|QUERY|URI)
-#define REASON_MASK 220  // 11011100  ~(DIGIT|ALPHA|SPACE)
-#define VALUE_MASK  128  // 10000000  ~(DIGIT|ALPHA|PATH|QUERY|URI|SPACE|VALUE)
+#define KEY_MASK    254  // 11111110  ~(LOWER)
+#define PATH_MASK   248  // 11111000  ~(LOWER|UPPER|PATH)
+#define QUERY_MASK  240  // 11110000  ~(LOWER|UPPER|PATH|QUERY)
+#define URI_MASK    224  // 11100000  ~(LOWER|UPPER|PATH|QUERY|URI)
+#define REASON_MASK 220  // 11011100  ~(LOWER|UPPER|SPACE)
+#define VALUE_MASK  128  // 10000000  ~(LOWER|UPPER|PATH|QUERY|URI|SPACE|VALUE)
 static const uint8_t _FLAGS[256] = {
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
      32,128, 64,128,128,  8,  8, 64, //  ' '       '"'            '%'  '&'  "'"
-     64, 64, 64,  4, 64,  4,  4, 16, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+     64, 64, 64,  4, 64,  1,  4, 16, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
       1,  1,  1,  1,  1,  1,  1,  1, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
       1,  1,  4, 64,128,  8,128, 16, //  '8'  '9'  ':'  ';'       '='       '?'
     128,  2,  2,  2,  2,  2,  2,  2, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
       2,  2,  2,  2,  2,  2,  2,  2, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
       2,  2,  2,  2,  2,  2,  2,  2, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
       2,  2,  2, 64,128, 64,128,  4, //  'X'  'Y'  'Z'  '['       ']'       '_'
-    128,  2,  2,  2,  2,  2,  2,  2, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
-      2,  2,  2,  2,  2,  2,  2,  2, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
-      2,  2,  2,  2,  2,  2,  2,  2, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-      2,  2,  2,128,128,128,  4,128, //  'x'  'y'  'z'                 '~'
+    128,  1,  1,  1,  1,  1,  1,  1, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+      1,  1,  1,  1,  1,  1,  1,  1, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+      1,  1,  1,  1,  1,  1,  1,  1, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+      1,  1,  1,128,128,128,  4,128, //  'x'  'y'  'z'                 '~'
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
@@ -1735,7 +1735,7 @@ static bool
 _validate_key(PyObject *key)
 {
     size_t i;
-    uint8_t c;
+    uint8_t bits;
 
     if (!PyUnicode_CheckExact(key)) {
         PyErr_Format(PyExc_TypeError,
@@ -1755,11 +1755,14 @@ _validate_key(PyObject *key)
     }
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
     const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
-    for (i = 0; i < key_len; i++) {
-        c = key_buf[i];
-        if (! (islower(c) || isdigit(c) || c == '-')) {
-            goto bad_key;
-        }
+    for (bits = i = 0; i < key_len; i++) {
+        bits |= _FLAGS[key_buf[i]];
+    }
+    if (bits == 0) {
+        Py_FatalError("_validate_key(): bits == 0");
+    }
+    if ((bits & KEY_MASK) != 0) {
+        goto bad_key;
     }
     return true;
 

@@ -73,25 +73,25 @@ NAME = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 )
 
-_DIGIT = b'0123456789'
-_ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-_PATH  = b'+-.:_~'
+_LOWER = b'-0123456789abcdefghijklmnopqrstuvwxyz'
+_UPPER = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+_PATH  = b'+.:_~'
 _QUERY = b'%&='
 _URI   = b'/?'
 _SPACE = b' '
 _VALUE = b'"\'()*,;[]'
 
-DIGIT  = frozenset(_DIGIT)
-PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
-QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
-URI    = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI)
-REASON = frozenset(_DIGIT + _ALPHA + _SPACE)
-VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+KEY    = frozenset(_LOWER)
+PATH   = frozenset(_LOWER + _UPPER + _PATH)
+QUERY  = frozenset(_LOWER + _UPPER + _PATH + _QUERY)
+URI    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI)
+REASON = frozenset(_LOWER + _UPPER + _SPACE)
+VALUE  = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
 
-KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
-HEX = frozenset(b'0123456789ABCDEFabcdef')
+DECIMAL = frozenset(b'0123456789')
+HEXADECIMAL = frozenset(b'0123456789ABCDEFabcdef')
 
 
 def _getcallable(objname, obj, name):
@@ -233,7 +233,7 @@ def parse_content_length(src):
         raise ValueError(
             'content-length too long: {!r}...'.format(src[:16])
         )
-    if not DIGIT.issuperset(src):
+    if not DECIMAL.issuperset(src):
         raise ValueError(
             'bad bytes in content-length: {!r}'.format(src)
         )
@@ -246,7 +246,7 @@ def parse_content_length(src):
 
 def parse_hexadecimal(src):
     L = len(src)
-    if (1 <= L <= 7 and HEX.issuperset(src) and (src[0] != 48 or L == 1)):
+    if (1 <= L <= 7 and HEXADECIMAL.issuperset(src) and (src[0] != 48 or L == 1)):
         return int(src, 16)
     raise ValueError('bad hexadecimal: {!r}'.format(src))
 
@@ -255,7 +255,7 @@ def parse_chunk_size(src):
     L = len(src)
     if (L > 7):
         raise ValueError('chunk_size is too long: {!r}...'.format(src[:7]))
-    if not (HEX.issuperset(src) and L >= 1 and (src[0] != 48 or L == 1)):
+    if not (HEXADECIMAL.issuperset(src) and L >= 1 and (src[0] != 48 or L == 1)):
         raise ValueError('bad chunk_size: {!r}'.format(src))
     size = int(src, 16)
     if size > MAX_IO_SIZE:
@@ -269,7 +269,7 @@ def parse_chunk_size(src):
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:
         return -1
-    if not DIGIT.issuperset(src):
+    if not DECIMAL.issuperset(src):
         return -1
     if src[0:1] == b'0' and src != b'0':
         return -1
@@ -438,7 +438,7 @@ def parse_request(preamble, rfile, bodies):
 # Response parsing:
 
 def _parse_status(src):
-    if DIGIT.issuperset(src):
+    if DECIMAL.issuperset(src):
         status = int(src)
         if 100 <= status <= 599:
             return status
@@ -502,7 +502,7 @@ def format_headers(headers):
             raise TypeError(
                 TYPE_ERROR.format('key', str, type(key), key)
             )
-        if not KEY.issuperset(key):
+        if not KEY.issuperset(key.encode()):
             raise ValueError('bad key: {!r}'.format(key))
         lines.append('{}: {}\r\n'.format(key, value))
     lines.sort()
