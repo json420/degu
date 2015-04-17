@@ -1663,6 +1663,43 @@ parse_chunk_size(PyObject *self, PyObject *args)
     return PyLong_FromSize_t(dc.size);
 }
 
+/*
+static inline PyObject *
+_parse_chunk_ext_key(DeguSrc src)
+{
+    return _decode(src, PATH_MASK, "bad chunk extension: %R");
+}
+
+static bool
+_parse_chunk_ext(DeguSrc src, DeguChunk *dc)
+{
+    ssize_t index;
+    size_t key_stop, val_start;
+
+    index = _find(src, EQUALS);
+    if (index < 0) {
+        return false;
+    }
+    keystop = (size_t)index;
+    valstart = keystop + EQUALS.len;
+    DeguSrc keysrc = _slice(src, 0, keystop);
+    DeguSrc valsrc = _slice(src, valstart, src.len);
+    if (keysrc.len == 0 || valsrc.len == 0) {
+        return false;
+    }
+    _SET(dc->key, _parse_chunk_ext_key(keysrc))
+    _SET(dc->val, _parse_chunk_ext_val(valsrc))
+    return true;
+
+error:
+    return false;
+
+bad_chunk_size:
+    _value_error("bad chunk extension: %R", src);
+    return false;
+}
+*/
+
 
 /*******************************************************************************
  * Internal API: Formatting:

@@ -69,21 +69,21 @@ NUM_DEF = b'0123456789ABCDEFabcdef'
 
 # Generic bit-flag based validation table with 7 sets, plus 1 error set:
 BIT_FLAGS_DEF = (
-    ('DIGIT', b'0123456789'),
-    ('ALPHA', b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'),
-    ('PATH',  b'+-.:_~'),
+    ('LOWER', b'-0123456789abcdefghijklmnopqrstuvwxyz'),
+    ('UPPER', b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+    ('PATH',  b'+.:_~'),
     ('QUERY', b'%&='),
     ('URI',   b'/?'),
     ('SPACE', b' '),
     ('VALUE', b'"\'()*,;[]'),   
 )
 BIT_MASKS_DEF = (
-    ('DIGIT', ('DIGIT',)),
-    ('PATH', ('DIGIT', 'ALPHA', 'PATH')),
-    ('QUERY', ('DIGIT', 'ALPHA', 'PATH', 'QUERY')),
-    ('URI', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI')),
-    ('REASON', ('DIGIT', 'ALPHA', 'SPACE')),
-    ('VALUE', ('DIGIT', 'ALPHA', 'PATH', 'QUERY', 'URI', 'SPACE', 'VALUE')),
+    ('KEY', ('LOWER',)),
+    ('PATH', ('LOWER', 'UPPER', 'PATH')),
+    ('QUERY', ('LOWER', 'UPPER', 'PATH', 'QUERY')),
+    ('URI', ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI')),
+    ('REASON', ('LOWER', 'UPPER', 'SPACE')),
+    ('VALUE', ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI', 'SPACE', 'VALUE')),
 )
 
 
