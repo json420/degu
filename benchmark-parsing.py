@@ -13,6 +13,8 @@ from degu._base import (
     parse_headers,
     parse_content_length,
     parse_range,
+    parse_hexadecimal,
+    parse_chunk_size,
 
     parse_request,
     parse_request_line,
@@ -73,6 +75,11 @@ run("parse_content_length(b'0')")
 run("parse_content_length(b'9999999999999999')")
 run("parse_range(b'bytes=0-0')")
 run("parse_range(b'bytes=9999999999999998-9999999999999998')")
+run("parse_hexadecimal(b'0')")
+run("parse_hexadecimal(b'ff')")
+run("parse_hexadecimal(b'fffffff')")
+run("parse_chunk_size(b'0')")
+run("parse_chunk_size(b'1000000')")
 
 print('\nRequest parsing:')
 run('parse_request(request, BytesIO(), bodies)')

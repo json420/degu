@@ -28,7 +28,6 @@ import os
 import io
 import sys
 from random import SystemRandom
-import socket
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -52,6 +51,7 @@ class UserInt(int):
     pass
 
 
+MAX_LENGTH = int('9' * 16)
 CRLF = b'\r\n'
 TERM = CRLF * 2
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -287,27 +287,31 @@ class TestRange_Py(BackendTestCase):
 
         # start < 0, stop < 0:
         for bad in [-1, -2, -9999999999999999]:
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
             )
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(16, bad)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
             )
 
         # start > max64, stop > max64:
         max64 = 2**64 - 1
         for offset in [1, 2, 3]:
             bad = max64 + offset
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
-            self.assertEqual(str(cm.exception), 'int too big to convert')
-            with self.assertRaises(OverflowError) as cm:
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
                 self.Range(16, bad)
-            self.assertEqual(str(cm.exception), 'int too big to convert')
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
 
         # start > max_length, stop > max_length:
         max_length = int('9' * 16)
@@ -357,28 +361,33 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(str(r),  'bytes=0-9999999999999998')
 
         # Check reference counting:
+        if self.backend is _base:
+            delmsg = 'readonly attribute'
+        else:
+            delmsg = "can't delete attribute"
         for i in range(1000):
             stop = random.randrange(1, max_length + 1)
-            stop_cnt = sys.getrefcount(stop)
             start = random.randrange(0, stop)
+            stop_cnt = sys.getrefcount(stop)
             start_cnt = sys.getrefcount(start)
+
             r = self.Range(start, stop)
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
-            self.assertIs(r.start, start)
-            self.assertIs(r.stop, stop)
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
+            self.assertIs(type(r.start), int)
+            self.assertIs(type(r.stop), int)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
             self.assertEqual(repr(r), 'Range({}, {})'.format(start, stop))
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
-
             self.assertEqual(str(r), 'bytes={}-{}'.format(start, stop - 1))
-            self.assertEqual(sys.getrefcount(start), start_cnt + 1)
-            self.assertEqual(sys.getrefcount(stop), stop_cnt + 1)
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
 
+            # start, stop should be read-only:
+            r = self.Range(start, stop)
+            for name in ('start', 'stop'):
+                with self.assertRaises(AttributeError) as cm:
+                    delattr(r, name)
+                self.assertEqual(str(cm.exception), delmsg)
             del r
             self.assertEqual(sys.getrefcount(start), start_cnt)
             self.assertEqual(sys.getrefcount(stop), stop_cnt)
@@ -501,6 +510,109 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 
 
 class TestParsingFunctions_Py(BackendTestCase):
+    def test_parse_hexadecimal(self):
+        parse_hexadecimal  = self.getattr('parse_hexadecimal')
+        HEX = b'0123456789ABCDEFabcdef'
+        for num in range(2000):
+            lcase = '{:x}'.format(num).encode()
+            ucase = '{:X}'.format(num).encode()
+            self.assertEqual(lcase, lcase.lower())
+            self.assertEqual(ucase, ucase.upper())
+            for src in (lcase, ucase):
+                n = parse_hexadecimal(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+                for i in range(len(src)):
+                    tmp = bytearray(src)
+                    for b in range(256):
+                        tmp[i] = b
+                        new = bytes(tmp)
+                        if b in HEX and (new[0] != 48 or len(new) == 1):
+                            n = parse_hexadecimal(new)
+                            self.assertIs(type(n), int)
+                            self.assertEqual(n, int(new, 16))
+                        else:
+                            with self.assertRaises(ValueError) as cm:
+                                parse_hexadecimal(new)
+                            self.assertEqual(str(cm.exception),
+                                'bad hexadecimal: {!r}'.format(new)
+                            )
+        hmax = int(b'f' * 7, 16)
+        self.assertEqual(hmax, 268435455)
+        self.assertEqual(len('{:x}'.format(hmax)), 7)
+        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
+        for num in range(hmax - 1000, hmax + 1000):
+            src = '{:x}'.format(num).encode()
+            if num > hmax:
+                with self.assertRaises(ValueError) as cm:
+                    parse_hexadecimal(src)
+                self.assertEqual(str(cm.exception),
+                    'bad hexadecimal: {!r}'.format(src)
+                )
+            else:
+                n = parse_hexadecimal(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+
+    def test_parse_chunk_size(self):
+        parse_chunk_size  = self.getattr('parse_chunk_size')
+        HEX = b'0123456789ABCDEFabcdef'
+        for num in range(2000):
+            lcase = '{:x}'.format(num).encode()
+            ucase = '{:X}'.format(num).encode()
+            self.assertEqual(lcase, lcase.lower())
+            self.assertEqual(ucase, ucase.upper())
+            for src in (lcase, ucase):
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+                for i in range(len(src)):
+                    tmp = bytearray(src)
+                    for b in range(256):
+                        tmp[i] = b
+                        new = bytes(tmp)
+                        if b in HEX and (new[0] != 48 or len(new) == 1):
+                            n = parse_chunk_size(new)
+                            self.assertIs(type(n), int)
+                            self.assertEqual(n, int(new, 16))
+                        else:
+                            with self.assertRaises(ValueError) as cm:
+                                parse_chunk_size(new)
+                            self.assertEqual(str(cm.exception),
+                                'bad chunk_size: {!r}'.format(new)
+                            )
+
+        iomax = 16 * 1024 * 1024
+        for num in range(iomax - 2000, iomax + 2000):
+            src = '{:x}'.format(num).encode()
+            if num > iomax:
+                with self.assertRaises(ValueError) as cm:
+                    parse_chunk_size(src)
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+            else:
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+
+        hmax = int(b'f' * 7, 16)
+        self.assertEqual(hmax, 268435455)
+        self.assertEqual(len('{:x}'.format(hmax)), 7)
+        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
+        for num in range(hmax - 2000, hmax + 2000):
+            src = '{:x}'.format(num).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_chunk_size(src)
+            if num > hmax:
+                self.assertEqual(str(cm.exception),
+                    'chunk_size is too long: {!r}...'.format(src[:7])
+                )
+            else:
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
         Range = self.getattr('Range')
@@ -559,6 +671,37 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(str(cm.exception),
                         'bad range: {!r}'.format(src)
                     )
+
+        # end < start
+        for i in range(2000):
+            stop = random.randrange(1, MAX_LENGTH + 1)
+            start = stop - 1
+            good = 'bytes={}-{}'.format(start, stop - 1).encode()
+            r = parse_range(good)
+            self.assertIs(type(r), Range)
+            self.assertEqual(r.start, start)
+            self.assertEqual(r.stop, stop)
+            self.assertEqual(str(r), good.decode())
+            self.assertEqual(r, (start, stop))
+            bad = 'bytes={}-{}'.format(start, stop - 2).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_range(bad)
+            self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
+
+        # end > (MAX_LENGTH - 1)
+        stop = MAX_LENGTH
+        start = stop - 1
+        good = 'bytes={}-{}'.format(start, stop - 1).encode()
+        r = parse_range(good)
+        self.assertIs(type(r), Range)
+        self.assertEqual(r.start, start)
+        self.assertEqual(r.stop, stop)
+        self.assertEqual(str(r), good.decode())
+        self.assertEqual(r, (start, stop))
+        bad = 'bytes={}-{}'.format(start, stop).encode()
+        with self.assertRaises(ValueError) as cm:
+            parse_range(bad)
+        self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
 
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
@@ -1157,10 +1300,10 @@ class TestFunctions(AlternatesTestCase):
         self.assertIsInstance(reader, base.Reader)
         self.assertIsInstance(writer, base.Writer)
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 6)
+        self.assertEqual(sys.getrefcount(sock), 4)
         del reader
         self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         del writer
         self.assertEqual(sock._calls, [])
         self.assertEqual(sys.getrefcount(sock), 2)
@@ -2073,115 +2216,62 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(base.read_chunk(fp), chunk)
 
 
-class TestBody(TestCase):
+class TestBody_Py(BackendTestCase):
+    @property
+    def Body(self):
+        return self.getattr('Body')
+
     def test_init(self):
+        Body = self.Body
         rfile = io.BytesIO()
 
         # Bad content_length type:
         with self.assertRaises(TypeError) as cm:
-            base.Body(rfile, 17.0)
+            Body(rfile, 17.0)
         self.assertEqual(str(cm.exception),
             base._TYPE_ERROR.format('content_length', int, float, 17.0)
         )
         with self.assertRaises(TypeError) as cm:
-            base.Body(rfile, '17')
+            Body(rfile, '17')
         self.assertEqual(str(cm.exception),
             base._TYPE_ERROR.format('content_length', int, str, '17')
         )
 
         # Bad content_length value:
-        for bad in (-1, -17):
-            with self.assertRaises(OverflowError) as cm:
-                base.Body(rfile, bad)
+        max_uint64 = 2**64 - 1
+        max_length = 9999999999999999
+        for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
+            with self.assertRaises(ValueError) as cm:
+                Body(rfile, bad)
             self.assertEqual(str(cm.exception),
-                "can't convert negative int to unsigned"
+                'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
             )
 
-        # Bad io_size type:
-        with self.assertRaises(TypeError) as cm:
-            base.Body(rfile, 17, '8192')
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('io_size', int, str, '8192')
-        )
-        with self.assertRaises(TypeError) as cm:
-            base.Body(rfile, 17, 8192.0)
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('io_size', int, float, 8192.0)
-        )
-
-        # io_size too small:
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, 2048)
-        self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got 2048'.format(base.MAX_READ_SIZE)
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, 4095)
-        self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got 4095'.format(base.MAX_READ_SIZE)
-        )
-
-        # io_size too big:
-        size = base.MAX_READ_SIZE * 2
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, size)
-        self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_SIZE, size)
-        )
-        size = base.MAX_READ_SIZE + 1
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, size)
-        self.assertEqual(str(cm.exception),
-            'need 4096 <= io_size <= {}; got {}'.format(base.MAX_READ_SIZE, size)
-        )
-
-        # io_size not a power of 2:
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, 40960)
-        self.assertEqual(str(cm.exception),
-            'io_size must be a power of 2; got 40960'
-        )
-        with self.assertRaises(ValueError) as cm:
-            base.Body(rfile, 17, 4097)
-        self.assertEqual(str(cm.exception),
-            'io_size must be a power of 2; got 4097'
-        )
-
         # All good:
-        body = base.Body(rfile, 17)
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.rfile, rfile)
-        self.assertEqual(body.content_length, 17)
-        self.assertEqual(body.io_size, base.IO_SIZE)
-        self.assertIs(body.closed, False)
-        self.assertEqual(body._remaining, 17)
-        self.assertEqual(repr(body), 'Body(<rfile>, 17)')
+        for good in (0, 1, 17, 34969, max_length):
+            body = Body(rfile, good)
+            self.assertIs(body.chunked, False)
+            self.assertIs(body.rfile, rfile)
+            self.assertEqual(body.content_length, good)
+            self.assertIs(body.closed, False)
+            self.assertEqual(repr(body), 'Body(<rfile>, {!r})'.format(good))
 
-        # Now override io_size with a number of good values:
-        for size in (4096, 8192, 1048576, base.MAX_READ_SIZE):
-            body = base.Body(rfile, 17, size)
-            self.assertEqual(body.io_size, size)
-            body = base.Body(rfile, 17, io_size=size)
-            self.assertEqual(body.io_size, size)
+        # Body.closed should be read-only:
+        with self.assertRaises(AttributeError) as cm:
+            body.closed = True
+        if self.backend is _basepy:
+            self.assertEqual(str(cm.exception), "can't set attribute")
+        else:
+            self.assertEqual(str(cm.exception), 'readonly attribute')
+        self.assertIs(body.closed, False)
 
     def test_read(self):
+        Body = self.Body
         data = os.urandom(1776)
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, len(data))
-
-        # body.closed is True:
-        body.closed = True
-        with self.assertRaises(ValueError) as cm:
-            body.read()
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
-        self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, True)
-        self.assertEqual(rfile.tell(), 0)
-        self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1776)
+        body = Body(rfile, len(data))
 
         # Bad size type:
-        body.closed = False
         with self.assertRaises(TypeError) as cm:
             body.read(18.0)
         self.assertEqual(str(cm.exception),
@@ -2191,7 +2281,6 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1776)
         with self.assertRaises(TypeError) as cm:
             body.read('18')
         self.assertEqual(str(cm.exception),
@@ -2201,12 +2290,11 @@ class TestBody(TestCase):
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1776)
 
         # size < 0 or size > MAX_READ_SIZE
         toobig = base.MAX_READ_SIZE + 1
         for bad in (-18, -1, toobig):
-            body = base.Body(rfile, 1776)
+            body = Body(rfile, 1776)
             with self.assertRaises(ValueError) as cm:
                 body.read(bad)
             self.assertEqual(str(cm.exception),
@@ -2216,9 +2304,8 @@ class TestBody(TestCase):
             self.assertIs(body.closed, False)
             self.assertEqual(rfile.tell(), 0)
             self.assertEqual(body.content_length, 1776)
-            self.assertEqual(body._remaining, 1776)
 
-            body = base.Body(rfile, toobig)
+            body = Body(rfile, toobig)
             with self.assertRaises(ValueError) as cm:
                 body.read(bad)
             self.assertEqual(str(cm.exception),
@@ -2228,68 +2315,62 @@ class TestBody(TestCase):
             self.assertIs(body.closed, False)
             self.assertEqual(rfile.tell(), 0)
             self.assertEqual(body.content_length, toobig)
-            self.assertEqual(body._remaining, toobig)
 
         # Test when read size > MAX_READ_SIZE:
         rfile = io.BytesIO()
-        body = base.Body(rfile, toobig)
+        body = Body(rfile, toobig)
         self.assertEqual(body.content_length, toobig)
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception),
-            'max read size exceeded: 16777217 > 16777216'
+            'would exceed max read size: 16777217 > 16777216'
         )
-        body = base.Body(rfile, toobig)
+        body = Body(rfile, toobig)
         self.assertEqual(body.content_length, toobig)
         with self.assertRaises(ValueError) as cm:
             body.read(None)
         self.assertEqual(str(cm.exception),
-            'max read size exceeded: 16777217 > 16777216'
+            'would exceed max read size: 16777217 > 16777216'
         )
 
         # Now read it all at once:
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, len(data))
+        body = Body(rfile, len(data))
         self.assertEqual(body.read(), data)
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 0)
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
 
         # Read it again, this time in parts:
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 1776)
+        body = Body(rfile, 1776)
         self.assertEqual(body.read(17), data[0:17])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 17)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1759)
 
         self.assertEqual(body.read(18), data[17:35])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 35)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 1741)
 
         self.assertEqual(body.read(1741), data[35:])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 0)
 
         self.assertEqual(body.read(1776), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
-        self.assertEqual(body._remaining, 0)
 
         with self.assertRaises(ValueError) as cm:
             body.read(17)
@@ -2297,38 +2378,50 @@ class TestBody(TestCase):
 
         # ValueError (underflow) when trying to read all:
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 1800)
+        body = Body(rfile, 1800)
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1800')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # ValueError (underflow) error when read in parts:
         data = os.urandom(35)
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 37)
+        body = Body(rfile, 37)
         self.assertEqual(body.read(18), data[:18])
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, False)
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(body.content_length, 37)
-        self.assertEqual(body._remaining, 19)
         with self.assertRaises(ValueError) as cm:
             body.read(19)
         self.assertEqual(str(cm.exception), 'underflow: 17 < 19')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # Test with empty body:
         rfile = io.BytesIO(os.urandom(21))
-        body = base.Body(rfile, 0)
+        body = Body(rfile, 0)
         self.assertEqual(body.read(17), b'')
         self.assertIs(body.chunked, False)
         self.assertIs(body.closed, True)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 0)
-        self.assertEqual(body._remaining, 0)
         with self.assertRaises(ValueError) as cm:
             body.read(17)
         self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
@@ -2340,27 +2433,26 @@ class TestBody(TestCase):
             data = b''.join(chunks)
             trailer = os.urandom(17)
             rfile = io.BytesIO(data + trailer)
-            body = base.Body(rfile, len(data))
+            body = Body(rfile, len(data))
             for chunk in chunks:
                 self.assertEqual(body.read(len(chunk)), chunk)
             self.assertIs(body.chunked, False)
             self.assertIs(body.closed, True)
             self.assertEqual(rfile.tell(), len(data))
             self.assertEqual(body.content_length, len(data))
-            self.assertEqual(body._remaining, 0)
             with self.assertRaises(ValueError) as cm:
                 body.read(17)
             self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
             self.assertEqual(rfile.read(), trailer)
 
     def test_iter(self):
+        Body = self.Body
         data = os.urandom(1776)
 
         # content_length=0
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 0)
+        body = Body(rfile, 0)
         self.assertEqual(list(body), [])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2370,9 +2462,8 @@ class TestBody(TestCase):
 
         # content_length=69
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 69)
+        body = Body(rfile, 69)
         self.assertEqual(list(body), [data[:69]])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2382,9 +2473,8 @@ class TestBody(TestCase):
 
         # content_length=1776
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 1776)
+        body = Body(rfile, 1776)
         self.assertEqual(list(body), [data])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2394,21 +2484,27 @@ class TestBody(TestCase):
 
         # content_length=1777
         rfile = io.BytesIO(data)
-        body = base.Body(rfile, 1777)
+        body = Body(rfile, 1777)
         with self.assertRaises(ValueError) as cm:
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
         # Make sure data is read in IO_SIZE chunks:
         data1 = os.urandom(base.IO_SIZE)
         data2 = os.urandom(base.IO_SIZE)
         length = base.IO_SIZE * 2
         rfile = io.BytesIO(data1 + data2)
-        body = base.Body(rfile, length)
+        body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2419,9 +2515,8 @@ class TestBody(TestCase):
         # Again, with smaller final chunk:
         length = base.IO_SIZE * 2 + len(data)
         rfile = io.BytesIO(data1 + data2 + data)
-        body = base.Body(rfile, length)
+        body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2432,9 +2527,8 @@ class TestBody(TestCase):
         # Again, with length 1 byte less than available:
         length = base.IO_SIZE * 2 + len(data) - 1
         rfile = io.BytesIO(data1 + data2 + data)
-        body = base.Body(rfile, length)
+        body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1]])
-        self.assertEqual(body._remaining, 0)
         self.assertIs(body.closed, True)
         with self.assertRaises(ValueError) as cm:
             list(body)
@@ -2445,19 +2539,27 @@ class TestBody(TestCase):
         # Again, with length 1 byte *more* than available:
         length = base.IO_SIZE * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
-        body = base.Body(rfile, length)
+        body = Body(rfile, length)
         with self.assertRaises(ValueError) as cm:
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
         self.assertIs(body.closed, False)
-        self.assertIs(rfile.closed, True)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertIs(rfile.closed, False)
 
     def test_write_to(self):
+        Body = self.Body
         data1 = os.urandom(17)
         data2 = os.urandom(19)
         rfile = io.BytesIO(data1 + data2)
         wfile = io.BytesIO()
-        body = base.Body(rfile, 17)
+        body = Body(rfile, 17)
         self.assertIs(body.closed, False)
         self.assertEqual(body.write_to(wfile), 17)
         self.assertIs(body.closed, True)
@@ -2465,6 +2567,10 @@ class TestBody(TestCase):
         self.assertEqual(wfile.tell(), 17)
         self.assertEqual(rfile.read(), data2)
         self.assertEqual(wfile.getvalue(), data1)
+
+
+class TestBody_C(TestBody_Py):
+    backend = _base
 
 
 class TestChunkedBody(TestCase):
@@ -2996,7 +3102,7 @@ class TestReader_Py(BackendTestCase):
         c2 = sys.getrefcount(bodies.Body)
         c3 = sys.getrefcount(bodies.ChunkedBody)
         reader = self.Reader(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
@@ -3005,13 +3111,6 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(bodies), c1)
         self.assertEqual(sys.getrefcount(bodies.Body), c2)
         self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3)
-
-    def test_close(self):
-        (sock, reader) = self.new()
-        self.assertIsNone(reader.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(reader.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_read_until(self):
         default = self.DEFAULT_PREAMBLE
@@ -3422,33 +3521,19 @@ class TestReader_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
-            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+            "received: need a <class 'int'>; got a <class 'float'>: 17.0"
         )
 
         smax = sys.maxsize * 2 + 1
-        badsocket = BadSocket(smax + 1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C size_t'
-        )
-
-        badsocket = BadSocket(-1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            "can't convert negative value to size_t"
-        )
-
-        badsocket = BadSocket(12346)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned 12346'
-        )
+        twosmax = smax * 2
+        for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
+            badsocket = BadSocket(badsize)
+            reader = self.Reader(badsocket, base.bodies)
+            with self.assertRaises(ValueError) as cm:
+                reader.read(12345)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= received <= 12345; got {!r}'.format(badsize)
+            )
 
         marker = random_id()
         exc = ValueError(marker)
@@ -3500,41 +3585,19 @@ class TestReader_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
-            "need a <class 'int'>; recv_into() returned a <class 'float'>: 17.0"
+            TYPE_ERROR.format('received', int, float, 17.0)
         )
 
         smax = sys.maxsize * 2 + 1
-        badsocket = BadSocket(smax + 1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'Python int too large to convert to C size_t'
-        )
-
-        badsocket = BadSocket(-1)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OverflowError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            "can't convert negative value to size_t"
-        )
-
-        badsocket = BadSocket(12346)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned 12346'
-        )
-
-        badsocket = BadSocket(smax)
-        reader = self.Reader(badsocket, base.bodies)
-        with self.assertRaises(OSError) as cm:
-            reader.readinto(dst)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 12345; recv_into() returned {!r}'.format(smax)
-        )
+        twosmax = smax * 2
+        for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
+            badsocket = BadSocket(badsize)
+            reader = self.Reader(badsocket, base.bodies)
+            with self.assertRaises(ValueError) as cm:
+                reader.readinto(dst)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= received <= 12345; got {!r}'.format(badsize)
+            )
 
         marker = random_id()
         exc = ValueError(marker)
@@ -3593,7 +3656,7 @@ class TestWriter_Py(BackendTestCase):
         counts = tuple(sys.getrefcount(b) for b in bodies)
 
         writer = self.Writer(sock, bodies)
-        self.assertEqual(sys.getrefcount(sock), 4)
+        self.assertEqual(sys.getrefcount(sock), 3)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
             tuple(c + 1 for c in counts)
@@ -3603,14 +3666,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(bodies), bcount)
         self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
-
-    def test_close(self):
-        sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
-        self.assertIsNone(writer.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(writer.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
 
     def test_tell(self):
         sock = WSocket()
@@ -3656,51 +3711,22 @@ class TestWriter_Py(BackendTestCase):
             with self.assertRaises(TypeError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'need a {!r}; send() returned a {!r}: {!r}'.format(
-                    int, type(bad), bad
-                )
+                TYPE_ERROR.format('sent', int, type(bad), bad)
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)
             self.assertEqual(sock._calls, [('send', data1)])
 
-        # sock.send() returns a negative int
+        # sock.send() returns a bad int value:
         smin = -sys.maxsize - 1
-        for bad in (smin - 1, smin, smin + 1, -2, -1):
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OverflowError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                "can't convert negative value to size_t"
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        # sock.send() returns an int > sys.maxsize:
         smax = sys.maxsize * 2 + 1
-        for bad in (smax + 1, smax + 2, smax + 3): 
+        for bad in (smin - 1, smin, -17, -1, 18, 19, smax, smax + 1):
             sock = WSocket(send=bad)
             writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OverflowError) as cm:
+            with self.assertRaises(ValueError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
-                'Python int too large to convert to C size_t'
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        # soct.send() size > len(buf):
-        for bad in (18, 19, smax - 2, smax - 1, smax):
-            self.assertGreater(bad, 17)
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
-            with self.assertRaises(OSError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                'need 0 <= size <= 17; send() returned {!r}'.format(bad)
+                'need 0 <= sent <= 17; got {!r}'.format(bad)
             )
             self.assertEqual(writer.tell(), 0)
             self.assertEqual(sock._fp.getvalue(), data1)

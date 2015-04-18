@@ -31,8 +31,6 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
-import socket
-import sys
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -75,24 +73,26 @@ NAME = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 )
 
-_DIGIT = b'0123456789'
-_ALPHA = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-_PATH  = b'+-.:_~'
-_QUERY = b'%&='
+DECIMAL = frozenset(b'0123456789')
+HEXADECIMAL = frozenset(b'0123456789ABCDEFabcdef')
+
+_LOWER = b'-0123456789abcdefghijklmnopqrstuvwxyz'
+_UPPER = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 _URI   = b'/?'
+_PATH  = b'+.:_~'
+_QUERY = b'%&='
 _SPACE = b' '
 _VALUE = b'"\'()*,;[]'
 
-DIGIT  = frozenset(_DIGIT)
-PATH   = frozenset(_DIGIT + _ALPHA + _PATH)
-QUERY  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY)
-URI    = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI)
-REASON = frozenset(_DIGIT + _ALPHA + _SPACE)
-VALUE  = frozenset(_DIGIT + _ALPHA + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+KEY    = frozenset(_LOWER)
+VAL    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+URI    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI)
+PATH   = frozenset(_LOWER + _UPPER + _PATH)
+QUERY  = frozenset(_LOWER + _UPPER + _PATH + _QUERY)
+REASON = frozenset(_LOWER + _UPPER + _SPACE)
+EXTKEY = frozenset(_LOWER + _UPPER)
+EXTVAL = frozenset(_LOWER + _UPPER + _PATH + _VALUE)
 ################    END GENERATED TABLES      ##################################
-
-
-KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
 
 
 def _getcallable(objname, obj, name):
@@ -105,42 +105,60 @@ def _getcallable(objname, obj, name):
 ################################################################################
 # Header parsing:
 
-def _validate_length(name, length):
-    if type(length) is not int:
+def _validate_int(name, obj):
+    if type(obj) is not int:
         raise TypeError(
-            TYPE_ERROR.format(name, int, type(length), length)
+            TYPE_ERROR.format(name, int, type(obj), obj)
         )
-    if (length < 0):
-        raise OverflowError("can't convert negative int to unsigned")
-    if (length >= 2**64):
-        raise OverflowError('int too big to convert')
-    if (length > MAX_LENGTH):
+
+def _validate_length(name, length):
+    _validate_int(name, length)
+    if not (0 <= length <= MAX_LENGTH):
         raise ValueError(
             'need 0 <= {} <= {}; got {}'.format(name, MAX_LENGTH, length)
         )
     return length
 
+def _validate_size(name, size, max_size):
+    assert max_size <= MAX_IO_SIZE
+    _validate_int(name, size)
+    if not (0 <= size <= max_size):
+        raise ValueError(
+            'need 0 <= {} <= {}; got {}'.format(name, max_size, size)
+        )
+    return size
+
 
 class Range:
-    __slots__ = ('start', 'stop')
+    __slots__ = ('_start', '_stop')
 
     def __init__(self, start, stop):
-        self.start = _validate_length('start', start)
-        self.stop = _validate_length('stop', stop)
-        if self.start >= self.stop:
+        start = _validate_length('start', start)
+        stop = _validate_length('stop', stop)
+        if start >= stop:
             raise ValueError(
-                'need start < stop; got {} >= {}'.format(self.start, self.stop)
+                'need start < stop; got {} >= {}'.format(start, stop)
             )
+        self._start = start
+        self._stop = stop
+
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def stop(self):
+        return self._stop
 
     def __repr__(self):
-        return 'Range({}, {})'.format(self.start, self.stop)
+        return 'Range({}, {})'.format(self._start, self._stop)
 
     def __str__(self):
-        return 'bytes={}-{}'.format(self.start, self.stop - 1)
+        return 'bytes={}-{}'.format(self._start, self._stop - 1)
 
     def __get_this(self, other):
         if type(other) is tuple or type(other) is type(self):
-            return (self.start, self.stop)
+            return (self._start, self._stop)
         if type(other) is str:
             return str(self)
 
@@ -203,7 +221,7 @@ def parse_header_name(src):
 def _parse_val(src):
     if len(src) < 1:
         raise ValueError('header value is empty')
-    if VALUE.issuperset(src):
+    if VAL.issuperset(src):
         return src.decode('ascii')
     raise ValueError('bad bytes in header value: {!r}'.format(src))
 
@@ -216,7 +234,7 @@ def parse_content_length(src):
         raise ValueError(
             'content-length too long: {!r}...'.format(src[:16])
         )
-    if not DIGIT.issuperset(src):
+    if not DECIMAL.issuperset(src):
         raise ValueError(
             'bad bytes in content-length: {!r}'.format(src)
         )
@@ -226,10 +244,33 @@ def parse_content_length(src):
         )
     return int(src)
 
+
+def parse_hexadecimal(src):
+    L = len(src)
+    if (1 <= L <= 7 and HEXADECIMAL.issuperset(src) and (src[0] != 48 or L == 1)):
+        return int(src, 16)
+    raise ValueError('bad hexadecimal: {!r}'.format(src))
+
+
+def parse_chunk_size(src):
+    L = len(src)
+    if (L > 7):
+        raise ValueError('chunk_size is too long: {!r}...'.format(src[:7]))
+    if not (HEXADECIMAL.issuperset(src) and L >= 1 and (src[0] != 48 or L == 1)):
+        raise ValueError('bad chunk_size: {!r}'.format(src))
+    size = int(src, 16)
+    if size > MAX_IO_SIZE:
+        raise ValueError(
+            'need chunk_size <= {}; got {}'.format(MAX_IO_SIZE, size)
+        )
+    assert size >= 0
+    return size
+
+
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:
         return -1
-    if not DIGIT.issuperset(src):
+    if not DECIMAL.issuperset(src):
         return -1
     if src[0:1] == b'0' and src != b'0':
         return -1
@@ -250,7 +291,7 @@ def parse_range(src):
         _raise_bad_range(src)
     start = _parse_decimal(parts[0])
     end = _parse_decimal(parts[1])
-    if start < 0 or end < start:
+    if start < 0 or end < start or end >= MAX_LENGTH:
         _raise_bad_range(src)
     return Range(start, end + 1)
 
@@ -398,7 +439,7 @@ def parse_request(preamble, rfile, bodies):
 # Response parsing:
 
 def _parse_status(src):
-    if DIGIT.issuperset(src):
+    if DECIMAL.issuperset(src):
         status = int(src)
         if 100 <= status <= 599:
             return status
@@ -462,7 +503,7 @@ def format_headers(headers):
             raise TypeError(
                 TYPE_ERROR.format('key', str, type(key), key)
             )
-        if not KEY.issuperset(key):
+        if not KEY.issuperset(key.encode()):
             raise ValueError('bad key: {!r}'.format(key))
         lines.append('{}: {}\r\n'.format(key, value))
     lines.sort()
@@ -496,7 +537,6 @@ def format_response(status, reason, headers):
 
 class Reader:
     __slots__ = (
-        '_sock_shutdown',
         '_sock_recv_into',
         '_Body',
         '_ChunkedBody',
@@ -515,7 +555,6 @@ class Reader:
                     MIN_PREAMBLE, MAX_PREAMBLE, size
                 )
             )
-        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._Body = _getcallable('bodies', bodies, 'Body')
         self._ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')
@@ -525,13 +564,6 @@ class Reader:
         self._buf = b''
         self._closed = False
 
-    def close(self):
-        if self._closed is True:
-            return None
-        assert self._closed is False
-        self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)
-
     def rawtell(self):
         return self._rawtell
 
@@ -540,22 +572,7 @@ class Reader:
 
     def _recv_into(self, buf):
         added = self._sock_recv_into(buf)
-        if type(added) is not int:
-            raise TypeError(
-                'need a {!r}; recv_into() returned a {!r}: {!r}'.format(
-                    int, type(added), added
-                )
-            )
-        if added < 0:
-            raise OverflowError("can't convert negative value to size_t")
-        if added > sys.maxsize * 2 + 1:
-            raise OverflowError('Python int too large to convert to C size_t')
-        if not (0 <= added <= len(buf)):
-            raise OSError(
-                'need 0 <= size <= {}; recv_into() returned {}'.format(
-                    len(buf), added
-                )
-            )
+        _validate_size('received', added, len(buf))
         self._rawtell += added
         return added
 
@@ -617,7 +634,7 @@ class Reader:
             return self._buf
         return self._buf[0:size]
 
-    def drain(self, size):
+    def _drain(self, size):
         avail = len(self._buf)
         src = self.peek(size)
         if len(src) == 0:
@@ -629,14 +646,14 @@ class Reader:
         return src
 
     def _found(self, index, end, strip_end):
-        src = self.drain(index + len(end))
+        src = self._drain(index + len(end))
         if strip_end:
             return src[0:-len(end)]
         return src
 
     def _not_found(self, cur, end, always_drain):
         if always_drain:
-            return self.drain(len(cur))
+            return self._drain(len(cur))
         if len(cur) == 0:
             return cur
         raise ValueError(
@@ -710,7 +727,7 @@ class Reader:
         return _parse_response(
             method, preamble, self, self._Body, self._ChunkedBody
         )
-        
+
     def read(self, size):
         assert isinstance(size, int)
         if not (0 <= size <= MAX_IO_SIZE):
@@ -719,7 +736,7 @@ class Reader:
             )
         if size == 0:
             return b''
-        src = self.drain(size)
+        src = self._drain(size)
         src_len = len(src)
         if src_len == size:
             return src
@@ -743,7 +760,7 @@ class Reader:
             raise ValueError(
                 'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
             )
-        src = self.drain(dst_len)
+        src = self._drain(dst_len)
         src_len = len(src)
         dst[0:src_len] = src
         start = src_len
@@ -772,28 +789,17 @@ def set_default_header(headers, key, val):
 
 class Writer:
     __slots__ = (
-        '_sock_shutdown',
         '_sock_send',
         '_length_types',
         '_chunked_types',
         '_tell',
-        '_closed',
     )
 
     def __init__(self, sock, bodies):
-        self._sock_shutdown = _getcallable('sock', sock, 'shutdown')
         self._sock_send = _getcallable('sock', sock, 'send')
         self._length_types = (bodies.Body, bodies.BodyIter)
         self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
-        self._closed = False
-
-    def close(self):
-        if self._closed is True:
-            return None
-        assert self._closed is False
-        self._closed = True
-        return self._sock_shutdown(socket.SHUT_RDWR)
 
     def tell(self):
         return self._tell
@@ -801,29 +807,16 @@ class Writer:
     def flush(self):
         pass
 
-    def _write1(self, buf):
+    def _send(self, buf):
         size = self._sock_send(buf)
-        if type(size) is not int:
-            raise TypeError(
-                'need a {!r}; send() returned a {!r}: {!r}'.format(
-                    int, type(size), size
-                )
-            )
-        if size < 0:
-            raise OverflowError("can't convert negative value to size_t")
-        if size > sys.maxsize * 2 + 1:
-            raise OverflowError('Python int too large to convert to C size_t')
-        if size > len(buf):
-            raise OSError(
-                'need 0 <= size <= {!r}; send() returned {!r}'.format(len(buf), size)
-            )
+        _validate_size('sent', size, len(buf))
         return size
 
     def write(self, buf):
         buf = memoryview(buf)
         size = 0
         while size < len(buf):
-            added = self._write1(buf[size:])
+            added = self._send(buf[size:])
             if added == 0:
                 break
             size += added
@@ -888,37 +881,31 @@ class Writer:
 
 class Body:
     chunked = False
-    __slots__ = ('rfile', 'content_length', 'io_size', 'closed', '_remaining')
+    __slots__ = ('rfile', 'content_length', '_remaining', '_closed', '_error')
 
-    def __init__(self, rfile, content_length, io_size=None):
-        if type(content_length) is not int:
-            raise TypeError(TYPE_ERROR.format(
-                'content_length', int, type(content_length), content_length)
-            )
-        if content_length < 0:
-            raise OverflowError("can't convert negative int to unsigned")
-        if io_size is None:
-            io_size = IO_SIZE
-        else:
-            if type(io_size) is not int:
-                raise TypeError(
-                    TYPE_ERROR.format('io_size', int, type(io_size), io_size)
-                )
-            if not (4096 <= io_size <= MAX_READ_SIZE):
-                raise ValueError(
-                    'need 4096 <= io_size <= {}; got {}'.format(
-                        MAX_READ_SIZE, io_size
-                    )
-                )
-            if io_size & (io_size - 1):
-                raise ValueError(
-                    'io_size must be a power of 2; got {}'.format(io_size)
-                )
+    def __init__(self, rfile, content_length):
+        _validate_length('content_length', content_length)
         self.rfile = rfile
-        self.content_length = content_length
-        self.io_size = io_size
-        self.closed = False
-        self._remaining = content_length
+        self._remaining = self.content_length = content_length
+        self._closed = False
+        self._error = False
+
+    def _raise_exception(self):
+        if self._closed is True:
+            assert self._error is False
+            raise ValueError('Body.closed, already consumed')
+        if self._error is True:
+            assert self._closed is False
+            raise ValueError('Body.error, cannot be used')
+        raise RuntimeError('should not be reached')
+
+    @property
+    def closed(self):
+        return self._closed
+
+    @property
+    def error(self):
+        return self._error
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -926,13 +913,14 @@ class Body:
         )
 
     def __iter__(self):
-        if self.closed:
-            raise ValueError('Body.closed, already consumed')
+        if (self._closed is True or self._error is True):
+            self._raise_exception()
+        assert self._closed is False and self._error is False
         remaining = self._remaining
         if remaining != self.content_length:
             raise Exception('cannot mix Body.read() with Body.__iter__()')
         self._remaining = 0
-        io_size = self.io_size
+        io_size = IO_SIZE
         read = self.rfile.read
         while remaining > 0:
             readsize = min(remaining, io_size)
@@ -940,25 +928,27 @@ class Body:
             assert remaining >= 0
             data = read(readsize)
             if len(data) != readsize:
-                self.rfile.close()
+                self._error = True
                 raise ValueError(
                     'underflow: {} < {}'.format(len(data), readsize)
                 )
             yield data
-        self.closed = True
+        self._closed = True
 
-    # FIXME: Add 2nd, max_size=None optional keyword argument
     def read(self, size=None):
-        if self.closed:
-            raise ValueError('Body.closed, already consumed')
+        if (self._closed is True or self._error is True):
+            self._raise_exception()
+        assert self._closed is False and self._error is False
         if self._remaining <= 0:
-            self.closed = True
+            self._closed = True
             return b''
         if size is None:
             read = self._remaining
             if read > MAX_READ_SIZE:
                 raise ValueError(
-                    'max read size exceeded: {} > {}'.format(read, MAX_READ_SIZE)
+                    'would exceed max read size: {} > {}'.format(
+                        read, MAX_READ_SIZE
+                    )
                 )
         else:
             if type(size) is not int:
@@ -976,10 +966,10 @@ class Body:
             # with their exception handling, they might continue to use a
             # connection even after an ValueError which could create a
             # request/response stream state inconsistency.  So in this
-            # circumstance, we close the rfile, but we do *not* set Body.closed
-            # to True (which means "fully consumed") because the body was not in
-            # fact fully read. 
-            self.rfile.close()
+            # circumstance, we set Body.error to True, but we do *not* set
+            # Body.closed to True (which means "fully consumed") because the
+            # body was not in fact fully read. 
+            self._error = True
             raise ValueError(
                 'underflow: {} < {}'.format(len(data), read)
             )
@@ -987,7 +977,7 @@ class Body:
         assert self._remaining >= 0
         if size is None:
             # Entire body was read at once, so close:
-            self.closed = True
+            self._closed = True
         return data
 
     def write_to(self, wfile):

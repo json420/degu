@@ -24,8 +24,6 @@
 #include <Python.h>
 #include <structmember.h>
 #include <stdbool.h>
-#include <sys/socket.h>
-
 
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
@@ -41,7 +39,6 @@
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
-
 #define _SET(dst, src) \
     if (dst != NULL) { \
         Py_FatalError("_SET(): dst != NULL prior to assignment"); \
@@ -51,21 +48,18 @@
         goto error; \
     }
 
-
 #define _SET_AND_INC(dst, src) \
     _SET(dst, src) \
     Py_INCREF(dst);
 
-
 #define _ADD_MODULE_ATTR(module, name, obj) \
     if (module == NULL || name == NULL || obj == NULL) { \
-        Py_FatalError("_ADD_MODULE_ATTR(): bad internal calls"); \
+        Py_FatalError("_ADD_MODULE_ATTR(): bad internal call"); \
     } \
     Py_INCREF(obj); \
     if (PyModule_AddObject(module, name, obj) != 0) { \
         goto error; \
     }
-
 
 
 /******************************************************************************
@@ -85,7 +79,6 @@ typedef const struct {
     const size_t len;
 } DeguSrc;
 
-
 /* DeguDst (destination): a writable buffer.
  *
  * You can modify the buffer content:
@@ -102,36 +95,29 @@ typedef const struct {
     const size_t len;
 } DeguDst;
 
-
 /* A "NULL" DeguSrc */
 #define NULL_DeguSrc ((DeguSrc){NULL, 0})
 
-
 /* A "NULL" DeguDst */
 #define NULL_DeguDst ((DeguDst){NULL, 0})
-
 
 /* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc globals */
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
 
-
 /******************************************************************************
  * Structures for internal C parsing API.
  ******************************************************************************/
-
 #define DEGU_HEADERS_HEAD \
     PyObject *headers; \
-    PyObject *content_length; \
     PyObject *body; \
+    uint64_t content_length; \
     uint8_t flags;
-
 
 typedef struct {
     DEGU_HEADERS_HEAD
 } DeguHeaders;
-
 
 typedef struct {
     DEGU_HEADERS_HEAD
@@ -142,25 +128,30 @@ typedef struct {
     PyObject *query;
 } DeguRequest;
 
-
 typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
 } DeguResponse;
 
-
 #define NEW_DEGU_HEADERS \
-    ((DeguHeaders) {NULL, NULL, NULL, 0})
-
+    ((DeguHeaders) {NULL, NULL, 0, 0})
 
 #define NEW_DEGU_REQUEST \
-    ((DeguRequest) {NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL})
-
+    ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, NULL, 0, NULL, NULL})
+    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
 
+typedef struct {
+    size_t size;
+    PyObject *key;
+    PyObject *val;
+    bool has_ext;
+} DeguChunk;
+
+#define NEW_DEGU_CHUNK \
+    ((DeguChunk){0, NULL, NULL, false})
 
 typedef const struct {
     DeguDst scratch;
@@ -168,4 +159,305 @@ typedef const struct {
     PyObject *Body;
     PyObject *ChunkedBody;
 } DeguParse;
+
+
+/******************************************************************************
+ * Range object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    uint64_t start;
+    uint64_t stop;
+} Range;
+
+static PyObject * Range_New(uint64_t, uint64_t);
+
+static PyMemberDef Range_members[] = {
+    {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
+    {"stop",  T_ULONGLONG, offsetof(Range, stop),  READONLY, NULL},
+    {NULL}
+};
+
+static void Range_dealloc(Range *);
+static int Range_init(Range *, PyObject *, PyObject *);
+static PyObject * Range_repr(Range *);
+static PyObject * Range_str(Range *);
+static PyObject * Range_richcompare(Range *, PyObject *, int);
+
+static PyTypeObject RangeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Range",                 /* tp_name */
+    sizeof(Range),                      /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Range_dealloc,          /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)Range_repr,               /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    (reprfunc)Range_str,                /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Range(start, stop)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    (richcmpfunc)Range_richcompare,     /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    Range_members,                      /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Range_init,               /* tp_init */
+};
+
+
+/******************************************************************************
+ * Reader object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    bool closed;
+    PyObject *recv_into;
+    PyObject *bodies_Body;
+    PyObject *bodies_ChunkedBody;
+    uint8_t *scratch;
+    uint64_t rawtell;
+    uint8_t *buf;
+    size_t len;
+    size_t start;
+    size_t stop;
+} Reader;
+
+static PyObject * Reader_rawtell(Reader *);
+static PyObject * Reader_tell(Reader *);
+static PyObject * Reader_read_request(Reader *);
+static PyObject * Reader_read_response(Reader *, PyObject *);
+static PyObject * Reader_expose(Reader *);
+static PyObject * Reader_peek(Reader *, PyObject *);
+static PyObject * Reader_read_until(Reader *, PyObject *, PyObject *);
+static PyObject * Reader_readline(Reader *, PyObject *);
+static PyObject * Reader_read(Reader *, PyObject *);
+static PyObject * Reader_readinto(Reader *, PyObject *);
+
+static PyMethodDef Reader_methods[] = {
+    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS, NULL},
+    {"tell", (PyCFunction)Reader_tell, METH_NOARGS, NULL},
+    {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS, NULL},
+    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS, NULL},
+    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
+    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
+    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"readline", (PyCFunction)Reader_readline, METH_VARARGS, NULL},
+    {"read", (PyCFunction)Reader_read, METH_VARARGS, NULL},
+    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Reader_dealloc(Reader *);
+static int Reader_init(Reader *, PyObject *, PyObject *);
+
+static PyTypeObject ReaderType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Reader",          /* tp_name */
+    sizeof(Reader),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Reader_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Reader(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Reader_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Reader_init,        /* tp_init */
+};
+
+
+/******************************************************************************
+ * Writer object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *send;
+    PyObject *length_types;
+    PyObject *chunked_types;
+    uint64_t tell;
+} Writer;
+
+static PyObject * Writer_tell(Writer *);
+static PyObject * Writer_flush(Writer *);
+static PyObject * Writer_write(Writer *, PyObject *);
+static PyObject * Writer_write_output(Writer *, PyObject *);
+static PyObject * Writer_set_default_headers(Writer *, PyObject *);
+static PyObject * Writer_write_request(Writer *, PyObject *);
+static PyObject * Writer_write_response(Writer *, PyObject *);
+
+static PyMethodDef Writer_methods[] = {
+    {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
+    {"flush", (PyCFunction)Writer_flush, METH_NOARGS, NULL},
+    {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},
+    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
+    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, NULL},
+    {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
+    {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Writer_dealloc(Writer *);
+static int Writer_init(Writer *, PyObject *, PyObject *);
+
+static PyTypeObject WriterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Writer",          /* tp_name */
+    sizeof(Writer),               /* tp_basicsize */
+    0,                            /* tp_itemsize */
+    (destructor)Writer_dealloc,   /* tp_dealloc */
+    0,                            /* tp_print */
+    0,                            /* tp_getattr */
+    0,                            /* tp_setattr */
+    0,                            /* tp_reserved */
+    0,                            /* tp_repr */
+    0,                            /* tp_as_number */
+    0,                            /* tp_as_sequence */
+    0,                            /* tp_as_mapping */
+    0,                            /* tp_hash  */
+    0,                            /* tp_call */
+    0,                            /* tp_str */
+    0,                            /* tp_getattro */
+    0,                            /* tp_setattro */
+    0,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,           /* tp_flags */
+    "Writer(sock, bodies)",       /* tp_doc */
+    0,                            /* tp_traverse */
+    0,                            /* tp_clear */
+    0,                            /* tp_richcompare */
+    0,                            /* tp_weaklistoffset */
+    0,                            /* tp_iter */
+    0,                            /* tp_iternext */
+    Writer_methods,               /* tp_methods */
+    0,                            /* tp_members */
+    0,                            /* tp_getset */
+    0,                            /* tp_base */
+    0,                            /* tp_dict */
+    0,                            /* tp_descr_get */
+    0,                            /* tp_descr_set */
+    0,                            /* tp_dictoffset */
+    (initproc)Writer_init,        /* tp_init */
+};
+
+
+/******************************************************************************
+ * Body object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *rfile;
+    PyObject *rfile_read;
+    uint64_t content_length;
+    uint64_t remaining;
+    bool closed;
+    bool error;
+    bool chunked;
+} Body;
+
+static PyObject * Body_New(PyObject *, uint64_t);
+
+static PyMemberDef Body_members[] = {
+    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
+    {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
+    {"closed",         T_BOOL,      offsetof(Body, closed),         READONLY, NULL},
+    {"error",          T_BOOL,      offsetof(Body, error),          READONLY, NULL},
+    {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * Body_read(Body *, PyObject *, PyObject *);
+static PyObject * Body_write_to(Body *, PyObject *);
+
+static PyMethodDef Body_methods[] = {
+    {"read",     (PyCFunction)Body_read,     METH_VARARGS|METH_KEYWORDS, NULL},
+    {"write_to", (PyCFunction)Body_write_to, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Body_dealloc(Body *);
+static int Body_init(Body *, PyObject *, PyObject *);
+static PyObject * Body_repr(Body *);
+static PyObject * Body_iter(Body *);
+static PyObject * Body_next(Body *);
+
+static PyTypeObject BodyType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Body",                  /* tp_name */
+    sizeof(Body),                       /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Body_dealloc,           /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)Body_repr,                /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Body(rfile, content_length)",      /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    (getiterfunc)Body_iter,             /* tp_iter */
+    (iternextfunc)Body_next,            /* tp_iternext */
+    Body_methods,                       /* tp_methods */
+    Body_members,                       /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Body_init,                /* tp_init */
+};
 
