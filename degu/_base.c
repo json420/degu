@@ -151,7 +151,7 @@ _DEGU_SRC_CONSTANT(EQUALS, "=")
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/
-static const uint8_t _NAMES[256] = {
+static const uint8_t _NAME[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -186,7 +186,7 @@ static const uint8_t _NAMES[256] = {
     255,255,255,255,255,255,255,255,
 };
 
-static const uint8_t _NUM[256] = {
+static const uint8_t _NUMBER[256] = {
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
     255,255,255,255,255,255,255,255,
@@ -224,35 +224,37 @@ static const uint8_t _NUM[256] = {
 /*
  * LOWER  1 00000001  b'-0123456789abcdefghijklmnopqrstuvwxyz'
  * UPPER  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
- * PATH   4 00000100  b'+.:_~'
- * QUERY  8 00001000  b'%&='
- * URI   16 00010000  b'/?'
+ * URI    4 00000100  b'/?'
+ * PATH   8 00001000  b'+.:_~'
+ * QUERY 16 00010000  b'%&='
  * SPACE 32 00100000  b' '
  * VALUE 64 01000000  b'"\'()*,;[]'
  */
-#define KEY_MASK    254  // 11111110  ~(LOWER)
-#define PATH_MASK   248  // 11111000  ~(LOWER|UPPER|PATH)
-#define QUERY_MASK  240  // 11110000  ~(LOWER|UPPER|PATH|QUERY)
-#define URI_MASK    224  // 11100000  ~(LOWER|UPPER|PATH|QUERY|URI)
-#define REASON_MASK 220  // 11011100  ~(LOWER|UPPER|SPACE)
-#define VALUE_MASK  128  // 10000000  ~(LOWER|UPPER|PATH|QUERY|URI|SPACE|VALUE)
-static const uint8_t _FLAGS[256] = {
+#define KEY_MASK    254  // 11111110 ~(LOWER)
+#define VAL_MASK    128  // 10000000 ~(LOWER|UPPER|PATH|QUERY|URI|SPACE|VALUE)
+#define URI_MASK    224  // 11100000 ~(LOWER|UPPER|PATH|QUERY|URI)
+#define PATH_MASK   244  // 11110100 ~(LOWER|UPPER|PATH)
+#define QUERY_MASK  228  // 11100100 ~(LOWER|UPPER|PATH|QUERY)
+#define REASON_MASK 220  // 11011100 ~(LOWER|UPPER|SPACE)
+#define EXTKEY_MASK 252  // 11111100 ~(LOWER|UPPER)
+#define EXTVAL_MASK 180  // 10110100 ~(LOWER|UPPER|PATH|VALUE)
+static const uint8_t _FLAG[256] = {
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
-     32,128, 64,128,128,  8,  8, 64, //  ' '       '"'            '%'  '&'  "'"
-     64, 64, 64,  4, 64,  1,  4, 16, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+     32,128, 64,128,128, 16, 16, 64, //  ' '       '"'            '%'  '&'  "'"
+     64, 64, 64,  8, 64,  1,  8,  4, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
       1,  1,  1,  1,  1,  1,  1,  1, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
-      1,  1,  4, 64,128,  8,128, 16, //  '8'  '9'  ':'  ';'       '='       '?'
+      1,  1,  8, 64,128, 16,128,  4, //  '8'  '9'  ':'  ';'       '='       '?'
     128,  2,  2,  2,  2,  2,  2,  2, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
       2,  2,  2,  2,  2,  2,  2,  2, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
       2,  2,  2,  2,  2,  2,  2,  2, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
-      2,  2,  2, 64,128, 64,128,  4, //  'X'  'Y'  'Z'  '['       ']'       '_'
+      2,  2,  2, 64,128, 64,128,  8, //  'X'  'Y'  'Z'  '['       ']'       '_'
     128,  1,  1,  1,  1,  1,  1,  1, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
       1,  1,  1,  1,  1,  1,  1,  1, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
       1,  1,  1,  1,  1,  1,  1,  1, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
-      1,  1,  1,128,128,128,  4,128, //  'x'  'y'  'z'                 '~'
+      1,  1,  1,128,128,128,  8,128, //  'x'  'y'  'z'                 '~'
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
     128,128,128,128,128,128,128,128,
@@ -395,7 +397,7 @@ _decode(DeguSrc src, const uint8_t mask, const char *format)
     dst_buf = PyUnicode_1BYTE_DATA(dst);
     for (bits = i = 0; i < src.len; i++) {
         c = dst_buf[i] = src.buf[i];
-        bits |= _FLAGS[c];
+        bits |= _FLAG[c];
     }
     if (bits == 0) {
         Py_FatalError("internal error in `_decode()`");
@@ -701,7 +703,6 @@ _init_all_namedtuples(PyObject *module)
 /******************************************************************************
  * Integer validation.
  ******************************************************************************/
-
 static bool
 _validate_int(const char *name, PyObject *obj)
 {
@@ -769,13 +770,9 @@ _validate_read_size(const char *name, PyObject *obj, const uint64_t remaining)
 }
 
 
-/*******************************************************************************
- * Internal API: DeguHeaders/DeguRequest/DeguResponse:
- *     _clear_degu_headers()
- *     _clear_degu_request()
- *     _clear_degu_response()   
- */
-
+/******************************************************************************
+ * Helper functions for clearing DeguHeaders, DeguRequest, DeguResponse. 
+ ******************************************************************************/
 static void
 _clear_degu_headers(DeguHeaders *dh)
 {
@@ -801,7 +798,6 @@ _clear_degu_response(DeguResponse *dr)
     Py_CLEAR(dr->status);
     Py_CLEAR(dr->reason);
 }
-
 
 
 /******************************************************************************
@@ -935,7 +931,7 @@ _parse_key(DeguSrc src, DeguDst dst)
         return false;
     }
     for (r = i = 0; i < src.len; i++) {
-        r |= dst.buf[i] = _NAMES[src.buf[i]];
+        r |= dst.buf[i] = _NAME[src.buf[i]];
     }
     if (r & 128) {
         if (r != 255) {
@@ -954,7 +950,7 @@ _parse_val(DeguSrc src)
         PyErr_SetString(PyExc_ValueError, "header value is empty");
         return NULL; 
     }
-    return _decode(src, VALUE_MASK, "bad bytes in header value: %R");
+    return _decode(src, VAL_MASK, "bad bytes in header value: %R");
 }
 
 static int64_t
@@ -967,9 +963,9 @@ _parse_decimal(DeguSrc src)
     if (src.len < 1 || src.len > MAX_CL_LEN) {
         return -1;
     }
-    accum = err = _NUM[src.buf[0]];
+    accum = err = _NUMBER[src.buf[0]];
     for (i = 1; i < src.len; i++) {
-        n = _NUM[src.buf[i]];
+        n = _NUMBER[src.buf[i]];
         err |= n;
         accum *= 10;
         accum += n;
@@ -994,9 +990,9 @@ _parse_hexadecimal(DeguSrc src)
         return -1;
     }
     /* 239 == ^16 ==  0b11101111, see degu.tables.build_num_table() */
-    accum = err = _NUM[src.buf[0]] & 239;
+    accum = err = _NUMBER[src.buf[0]] & 239;
     for (i = 1; i < src.len; i++) {
-        n = _NUM[src.buf[i]] & 239;
+        n = _NUMBER[src.buf[i]] & 239;
         err |= n;
         accum *= 16;
         accum += n;
@@ -1622,9 +1618,9 @@ _parse_chunk_size(DeguSrc src, DeguChunk *dc)
     if (src.len < 1 || (src.buf[0] == 48 && src.len != 1)) {
         goto bad_chunk_size;
     }
-    accum = err = _NUM[src.buf[0]] & 239;
+    accum = err = _NUMBER[src.buf[0]] & 239;
     for (i = 1; i < src.len; i++) {
-        n = _NUM[src.buf[i]] & 239;
+        n = _NUMBER[src.buf[i]] & 239;
         err |= n;
         accum *= 16;
         accum += n;
@@ -1756,7 +1752,7 @@ _validate_key(PyObject *key)
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
     const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
     for (bits = i = 0; i < key_len; i++) {
-        bits |= _FLAGS[key_buf[i]];
+        bits |= _FLAG[key_buf[i]];
     }
     if (bits == 0) {
         Py_FatalError("_validate_key(): bits == 0");

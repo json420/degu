@@ -73,25 +73,26 @@ NAME = frozenset(
     b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 )
 
+DECIMAL = frozenset(b'0123456789')
+HEXADECIMAL = frozenset(b'0123456789ABCDEFabcdef')
+
 _LOWER = b'-0123456789abcdefghijklmnopqrstuvwxyz'
 _UPPER = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+_URI   = b'/?'
 _PATH  = b'+.:_~'
 _QUERY = b'%&='
-_URI   = b'/?'
 _SPACE = b' '
 _VALUE = b'"\'()*,;[]'
 
 KEY    = frozenset(_LOWER)
+VAL    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+URI    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI)
 PATH   = frozenset(_LOWER + _UPPER + _PATH)
 QUERY  = frozenset(_LOWER + _UPPER + _PATH + _QUERY)
-URI    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI)
 REASON = frozenset(_LOWER + _UPPER + _SPACE)
-VALUE  = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+EXTKEY = frozenset(_LOWER + _UPPER)
+EXTVAL = frozenset(_LOWER + _UPPER + _PATH + _VALUE)
 ################    END GENERATED TABLES      ##################################
-
-
-DECIMAL = frozenset(b'0123456789')
-HEXADECIMAL = frozenset(b'0123456789ABCDEFabcdef')
 
 
 def _getcallable(objname, obj, name):
@@ -220,7 +221,7 @@ def parse_header_name(src):
 def _parse_val(src):
     if len(src) < 1:
         raise ValueError('header value is empty')
-    if VALUE.issuperset(src):
+    if VAL.issuperset(src):
         return src.decode('ascii')
     raise ValueError('bad bytes in header value: {!r}'.format(src))
 
