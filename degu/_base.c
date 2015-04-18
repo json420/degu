@@ -2198,59 +2198,6 @@ format_response(PyObject *self, PyObject *args)
     return _format_response(status, reason, headers);
 }
 
-
-/*******************************************************************************
- * Public API: PyMethodDef table:
- */
-static struct PyMethodDef degu_functions[] = {
-    /* Header Parsing */
-    {"parse_header_name", parse_header_name, METH_VARARGS,
-        "parse_header_name(name)"},
-    {"parse_content_length", parse_content_length, METH_VARARGS,
-        "parse_content_length(src)"},
-    {"parse_hexadecimal", parse_hexadecimal, METH_VARARGS,
-        "parse_hexadecimal(src)"},
-    {"parse_chunk_size", parse_chunk_size, METH_VARARGS,
-        "parse_chunk_size(src)"},
-    {"parse_range", parse_range, METH_VARARGS, "parse_range(src)"},
-    {"parse_headers", parse_headers, METH_VARARGS, "parse_headers(src)"},
-
-    /* Request Parsing */
-    {"parse_method", parse_method, METH_VARARGS, "parse_method(method)"},
-    {"parse_uri", parse_uri, METH_VARARGS, "parse_uri(uri)"},
-    {"parse_request_line", parse_request_line, METH_VARARGS,
-        "parse_request_line(line)"},
-    {"parse_request", parse_request, METH_VARARGS, "parse_request(preamble)"},
-
-    /* Response Parsing */
-    {"parse_response_line", parse_response_line, METH_VARARGS,
-        "parse_response_line(line)"},
-    {"parse_response", parse_response, METH_VARARGS, "parse_response(preamble)"},
-
-    /* Formatting */
-    {"set_default_header", set_default_header, METH_VARARGS,
-        "set_default_header(headers, key, val)"},
-    {"format_headers", format_headers, METH_VARARGS, "format_headers(headers)"},
-    {"format_request", format_request, METH_VARARGS,
-        "format_request(method, uri, headers)"},
-    {"format_response", format_response, METH_VARARGS,
-        "format_response(status, reason, headers)"},
-
-    /* namedtuples */
-    {"Bodies", Bodies, METH_VARARGS,
-        "Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)"
-    },
-    {"Request", Request, METH_VARARGS,
-        "Request(method, uri, headers, body, script, path, query)"
-    },
-    {"Response", Response, METH_VARARGS,
-        "Response(status, reason, headers, body)"
-    },
-
-    {NULL, NULL, 0, NULL}
-};
-
-
 /******************************************************************************
  * Reader object
  ******************************************************************************/

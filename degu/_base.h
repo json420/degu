@@ -162,6 +162,77 @@ typedef const struct {
 
 
 /******************************************************************************
+ * Exported Python functions
+ ******************************************************************************/
+
+/* Header parsing */
+static PyObject * parse_header_name(PyObject *, PyObject *);
+static PyObject * parse_content_length(PyObject *, PyObject *);
+static PyObject * parse_range(PyObject *, PyObject *);
+static PyObject * parse_headers(PyObject *, PyObject *);
+
+/* Request parsing */
+static PyObject * parse_method(PyObject *, PyObject *);
+static PyObject * parse_uri(PyObject *, PyObject *);
+static PyObject * parse_request_line(PyObject *, PyObject *);
+static PyObject * parse_request(PyObject *, PyObject *);
+
+/* Response parsing */
+static PyObject * parse_response_line(PyObject *, PyObject *);
+static PyObject * parse_response(PyObject *, PyObject *);
+
+/* Chunk line parsing */
+static PyObject * parse_hexadecimal(PyObject *, PyObject *);
+static PyObject * parse_chunk_size(PyObject *, PyObject *);
+
+/* Formatting */
+static PyObject * set_default_header(PyObject *, PyObject *);
+static PyObject * format_headers(PyObject *, PyObject *);
+static PyObject * format_request(PyObject *, PyObject *);
+static PyObject * format_response(PyObject *, PyObject *);
+
+/* namedtuples */
+static PyObject * Bodies(PyObject *, PyObject *);
+static PyObject * Request(PyObject *, PyObject *);
+static PyObject * Response(PyObject *, PyObject *);
+
+static struct PyMethodDef degu_functions[] = {
+    /* Header parsing */
+    {"parse_header_name", parse_header_name, METH_VARARGS, NULL},
+    {"parse_content_length", parse_content_length, METH_VARARGS, NULL},
+    {"parse_range", parse_range, METH_VARARGS, NULL},
+    {"parse_headers", parse_headers, METH_VARARGS, NULL},
+
+    /* Request parsing */
+    {"parse_method", parse_method, METH_VARARGS, NULL},
+    {"parse_uri", parse_uri, METH_VARARGS, NULL},
+    {"parse_request_line", parse_request_line, METH_VARARGS, NULL},
+    {"parse_request", parse_request, METH_VARARGS, NULL},
+
+    /* Response parsing */
+    {"parse_response_line", parse_response_line, METH_VARARGS, NULL},
+    {"parse_response", parse_response, METH_VARARGS, NULL},
+
+    /* Chunk line parsing */
+    {"parse_hexadecimal", parse_hexadecimal, METH_VARARGS, NULL},
+    {"parse_chunk_size", parse_chunk_size, METH_VARARGS, NULL},
+
+    /* Formatting */
+    {"set_default_header", set_default_header, METH_VARARGS, NULL},
+    {"format_headers", format_headers, METH_VARARGS, NULL},
+    {"format_request", format_request, METH_VARARGS, NULL},
+    {"format_response", format_response, METH_VARARGS, NULL},
+
+    /* namedtuples */
+    {"Bodies", Bodies, METH_VARARGS, NULL},
+    {"Request", Request, METH_VARARGS, NULL},
+    {"Response", Response, METH_VARARGS, NULL},
+
+    {NULL, NULL, 0, NULL}
+};
+
+
+/******************************************************************************
  * Range object.
  ******************************************************************************/
 typedef struct {
