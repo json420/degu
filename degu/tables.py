@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Generate tables for validating the HTTP preamble.
+Generate tables for validating the HTTP preamble and the HTTP chunk line.
 
 Print the C tables like this::
 
@@ -34,6 +34,8 @@ Finally, replace the existing tables in the "degu/_base.c" and "degu/_basepy.py"
 files with the tables as currently defined in this module like this::
 
     $ python3 -m degu.tables --update
+
+Obviously you should only use --update within the source tree.
 
 If the existing tables already matched the current table definitions, the
 content of these files should not change (if it does change, that's a bug).
@@ -56,34 +58,39 @@ BitFlag = namedtuple('BitFlag', 'bit name allowed')
 BitMask = namedtuple('BitMask', 'mask name flags allowed')
 Info = namedtuple('Info', 'flags masks table')
 Markers = namedtuple('Markers', 'begin end')
+Numbers = namedtuple('Numbers', 'decimal hexadecimal')
 
 COOKIE = b' -/0123456789:;=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
-
 
 # For case-folding and validating header names:
 NAMES_DEF = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 # For parsing decimal and hexadecimal values:
-NUM_DEF = b'0123456789ABCDEFabcdef'
-
+DECIMAL_DEF = b'0123456789'
+HEXADECIMAL_DEF = DECIMAL_DEF + b'ABCDEFabcdef'
+NUM_DEF = Numbers(DECIMAL_DEF, HEXADECIMAL_DEF)
 
 # Generic bit-flag based validation table with 7 sets, plus 1 error set:
 BIT_FLAGS_DEF = (
     ('LOWER', b'-0123456789abcdefghijklmnopqrstuvwxyz'),
     ('UPPER', b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+    ('URI',   b'/?'),
     ('PATH',  b'+.:_~'),
     ('QUERY', b'%&='),
-    ('URI',   b'/?'),
     ('SPACE', b' '),
     ('VALUE', b'"\'()*,;[]'),   
 )
+
+# The above can be combined to produce a number of validation masks:
 BIT_MASKS_DEF = (
-    ('KEY', ('LOWER',)),
-    ('PATH', ('LOWER', 'UPPER', 'PATH')),
-    ('QUERY', ('LOWER', 'UPPER', 'PATH', 'QUERY')),
-    ('URI', ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI')),
+    ('KEY',    ('LOWER',)),
+    ('VAL',    ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI', 'SPACE', 'VALUE')),
+    ('URI',    ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI')),
+    ('PATH',   ('LOWER', 'UPPER', 'PATH')),
+    ('QUERY',  ('LOWER', 'UPPER', 'PATH', 'QUERY')),
     ('REASON', ('LOWER', 'UPPER', 'SPACE')),
-    ('VALUE', ('LOWER', 'UPPER', 'PATH', 'QUERY', 'URI', 'SPACE', 'VALUE')),
+    ('EXTKEY', ('LOWER', 'UPPER')),
+    ('EXTVAL', ('LOWER', 'UPPER', 'PATH', 'VALUE')),
 )
 
 
@@ -147,10 +154,12 @@ def build_names_table(allowed):
         else:
             pair = (i, 255)
         items.append(pair)
-    return Table('_NAMES', 255, tuple(items))
+    return Table('_NAME', 255, tuple(items))
 
 
-def build_num_table(allowed):
+def build_num_table(num):
+    assert type(num) is Numbers
+    allowed = num.hexadecimal
     check_allowed(allowed)
     items = []
     for i in range(256):
@@ -159,11 +168,13 @@ def build_num_table(allowed):
             assert 0 <= r < 16
             if r >= 10:
                 r |= 16
+            else:
+                assert i in num.decimal
             pair = (i, r)
         else:
             pair = (i, 255)
         items.append(pair)
-    return Table('_NUM', 255, tuple(items))
+    return Table('_NUMBER', 255, tuple(items))
 
 
 def build_flags(flags_def):
@@ -205,7 +216,7 @@ def build_flags_table(flags):
         table.setdefault(key, 128)
     assert len(table) == 256
     items = tuple(sorted(table.items()))
-    return Table('_FLAGS', 128, items)
+    return Table('_FLAG', 128, items)
 
 
 def build_info(flags_def, masks_def):
@@ -248,6 +259,7 @@ def iter_c_table_rows(table):
 
 
 def iter_c_table(table):
+    assert len(table.items) == 256
     yield 'static const uint8_t {}[{:d}] = {{'.format(
         table.name, len(table.items)
     )
@@ -266,6 +278,7 @@ def iter_c_bit_flags_comment(flags):
 
 def mask_name(name):
     assert 'mask' not in name.lower()
+    assert name.upper() == name
     return name + '_MASK'
 
 
@@ -273,11 +286,11 @@ def iter_c_bit_masks(masks):
     width = max(len(mask_name(m.name)) for m in masks)
     for m in masks:
         name = mask_name(m.name).ljust(width)
-        line = '#define {} {:>3}  // {:08b} '.format(name, m.mask, m.mask)
-        if m.flags is None:
-            yield line
-        else:
-            yield line + ' ~({})'.format('|'.join(m.flags))
+        assert m.flags is not None
+        parts = '~({})'.format('|'.join(m.flags))
+        yield '#define {} {:>3}  // {:08b} {}'.format(
+            name, m.mask, m.mask, parts
+        )
 
 
 def iter_c_info(info):
@@ -384,6 +397,9 @@ class Generated:
         yield 'NAME = frozenset('
         yield '    {!r}'.format(self.names_def)
         yield ')'
+        yield ''
+        yield 'DECIMAL = frozenset({!r})'.format(self.num_def.decimal)
+        yield 'HEXADECIMAL = frozenset({!r})'.format(self.num_def.hexadecimal)
         yield ''
         yield from iter_py_info(self.info)
         yield self.markers_py.end
