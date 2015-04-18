@@ -1475,27 +1475,20 @@ cleanup:
  *     _parse_response_line()
  *     _parse_response()
  */
-
-static inline uint8_t
-_sub48(const uint8_t d)
-{
-    return (uint8_t)(d - 48);
-}
-
 static inline PyObject *
 _parse_status(DeguSrc src)
 {
-    uint8_t d, err;
+    uint8_t n, err;
     unsigned long accum;
 
     if (src.len != 3) {
         _value_error("bad status length: %R", src);
         return NULL;
     }
-    d = src.buf[0];    err =  (d < 49 || d > 53);    accum =  _sub48(d) * 100u;
-    d = src.buf[1];    err |= (d < 48 || d > 57);    accum += _sub48(d) *  10u;
-    d = src.buf[2];    err |= (d < 48 || d > 57);    accum += _sub48(d);
-    if (err || accum < 100 || accum > 599) {
+    n = _NUMBER[src.buf[0]];  err  = n;  accum   = n * 100u;
+    n = _NUMBER[src.buf[1]];  err |= n;  accum  += n * 10u;
+    n = _NUMBER[src.buf[2]];  err |= n;  accum  += n;
+    if ((err & 240) != 0 || accum < 100 || accum > 599) {
         _value_error("bad status: %R", src);
         return NULL;
     }
