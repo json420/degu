@@ -267,6 +267,28 @@ def parse_chunk_size(src):
     return size
 
 
+def _parse_chunk_extension_key(src):
+    if EXTKEY.issuperset(src):
+        return src.decode()
+    raise ValueError('bad chunk extension key: {!r}'.format(src))
+
+
+def _parse_chunk_extension_val(src):
+    if EXTVAL.issuperset(src):
+        return src.decode()
+    raise ValueError('bad chunk extension value: {!r}'.format(src))
+
+
+def parse_chunk_extension(src):
+    assert type(src) is bytes
+    parts = src.split(b'=', 1)
+    if len(parts) == 2 and parts[0] and parts[1]:
+        key = _parse_chunk_extension_key(parts[0])
+        val = _parse_chunk_extension_val(parts[1])
+        return (key, val)
+    raise ValueError('bad chunk extension: {!r}'.format(src))
+
+
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:
         return -1

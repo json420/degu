@@ -771,7 +771,7 @@ _validate_read_size(const char *name, PyObject *obj, const uint64_t remaining)
 
 
 /******************************************************************************
- * Helper functions for clearing DeguHeaders, DeguRequest, DeguResponse. 
+ * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk.
  ******************************************************************************/
 static void
 _clear_degu_headers(DeguHeaders *dh)
@@ -797,6 +797,13 @@ _clear_degu_response(DeguResponse *dr)
     _clear_degu_headers((DeguHeaders *)dr);
     Py_CLEAR(dr->status);
     Py_CLEAR(dr->reason);
+}
+
+static void
+_clear_degu_chunk(DeguChunk *dc)
+{
+    Py_CLEAR(dc->key);
+    Py_CLEAR(dc->val);
 }
 
 
@@ -1652,42 +1659,68 @@ parse_chunk_size(PyObject *self, PyObject *args)
     return PyLong_FromSize_t(dc.size);
 }
 
-/*
 static inline PyObject *
-_parse_chunk_ext_key(DeguSrc src)
+_parse_chunk_extension_key(DeguSrc src)
 {
-    return _decode(src, PATH_MASK, "bad chunk extension: %R");
+    return _decode(src, EXTKEY_MASK, "bad chunk extension key: %R");
+}
+
+static inline PyObject *
+_parse_chunk_extension_val(DeguSrc src)
+{
+    return _decode(src, EXTVAL_MASK, "bad chunk extension value: %R");
 }
 
 static bool
-_parse_chunk_ext(DeguSrc src, DeguChunk *dc)
+_parse_chunk_extension(DeguSrc src, DeguChunk *dc)
 {
     ssize_t index;
     size_t key_stop, val_start;
 
+    if (src.len < 3) {
+        goto bad_chunk_extension;
+    }
     index = _find(src, EQUALS);
     if (index < 0) {
-        return false;
+        goto bad_chunk_extension;
     }
-    keystop = (size_t)index;
-    valstart = keystop + EQUALS.len;
-    DeguSrc keysrc = _slice(src, 0, keystop);
-    DeguSrc valsrc = _slice(src, valstart, src.len);
+    key_stop = (size_t)index;
+    val_start = key_stop + EQUALS.len;
+    DeguSrc keysrc = _slice(src, 0, key_stop);
+    DeguSrc valsrc = _slice(src, val_start, src.len);
     if (keysrc.len == 0 || valsrc.len == 0) {
-        return false;
+        goto bad_chunk_extension;
     }
-    _SET(dc->key, _parse_chunk_ext_key(keysrc))
-    _SET(dc->val, _parse_chunk_ext_val(valsrc))
+    _SET(dc->key, _parse_chunk_extension_key(keysrc))
+    _SET(dc->val, _parse_chunk_extension_val(valsrc))
     return true;
 
 error:
     return false;
 
-bad_chunk_size:
+bad_chunk_extension:
     _value_error("bad chunk extension: %R", src);
     return false;
 }
-*/
+
+static PyObject *
+parse_chunk_extension(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_chunk_extension", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    if (_parse_chunk_extension(src, &dc)) {
+        ret = PyTuple_Pack(2, dc.key, dc.val);
+    }
+    _clear_degu_chunk(&dc);
+    return ret;
+}
 
 
 /*******************************************************************************

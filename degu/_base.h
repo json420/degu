@@ -184,6 +184,7 @@ static PyObject * parse_response(PyObject *, PyObject *);
 /* Chunk line parsing */
 static PyObject * parse_hexadecimal(PyObject *, PyObject *);
 static PyObject * parse_chunk_size(PyObject *, PyObject *);
+static PyObject * parse_chunk_extension(PyObject *, PyObject *);
 
 /* Formatting */
 static PyObject * set_default_header(PyObject *, PyObject *);
@@ -216,6 +217,7 @@ static struct PyMethodDef degu_functions[] = {
     /* Chunk line parsing */
     {"parse_hexadecimal", parse_hexadecimal, METH_VARARGS, NULL},
     {"parse_chunk_size", parse_chunk_size, METH_VARARGS, NULL},
+    {"parse_chunk_extension", parse_chunk_extension, METH_VARARGS, NULL},
 
     /* Formatting */
     {"set_default_header", set_default_header, METH_VARARGS, NULL},
