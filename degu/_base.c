@@ -986,51 +986,6 @@ _parse_decimal(DeguSrc src)
     return (int64_t)accum;
 }
 
-static ssize_t
-_parse_hexadecimal(DeguSrc src)
-{
-    size_t accum;
-    uint8_t n, err;
-    size_t i;
-
-    if (src.len < 1 || src.len > 7) {
-        return -1;
-    }
-    /* 239 == ^16 ==  0b11101111, see degu.tables.build_num_table() */
-    accum = err = _NUMBER[src.buf[0]] & 239;
-    for (i = 1; i < src.len; i++) {
-        n = _NUMBER[src.buf[i]] & 239;
-        err |= n;
-        accum *= 16;
-        accum += n;
-    }
-    if ((err & 240) != 0) {
-        return -2;
-    }
-    if (src.buf[0] == 48 && src.len != 1) {
-        return -3;
-    }
-    return (ssize_t)accum;
-}
-
-static PyObject *
-parse_hexadecimal(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:hexadecimal", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    const ssize_t value = _parse_hexadecimal(src);
-    if (value < 0) {
-        _value_error("bad hexadecimal: %R", src);
-        return NULL;
-    }
-    return PyLong_FromSsize_t(value);
-}
-
 static void
 _set_content_length_error(DeguSrc src, const int64_t value)
 {

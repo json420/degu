@@ -245,13 +245,6 @@ def parse_content_length(src):
     return int(src)
 
 
-def parse_hexadecimal(src):
-    L = len(src)
-    if (1 <= L <= 7 and HEXADECIMAL.issuperset(src) and (src[0] != 48 or L == 1)):
-        return int(src, 16)
-    raise ValueError('bad hexadecimal: {!r}'.format(src))
-
-
 def parse_chunk_size(src):
     L = len(src)
     if (L > 7):
