@@ -61,13 +61,6 @@ def run(statement, K=250):
     return rate
 
 
-print('\nHeader formating:')
-run('format_headers(headers)')
-run('format_headers({})')
-run("format_headers({'content-length': 17})")
-run("format_headers({'content-length': 17, 'content-type': 'text/plain'})")
-raise SystemExit()
-
 print('-' * 80)
 
 print('\nHeader parsing:')
