@@ -536,3 +536,83 @@ static PyTypeObject BodyType = {
     (initproc)Body_init,                /* tp_init */
 };
 
+
+/******************************************************************************
+ * ChunkedBody object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *rfile;
+    PyObject *rfile_readline;
+    PyObject *rfile_read;
+    bool fastpath;
+    bool closed;
+    bool error;
+    bool chunked;
+} ChunkedBody;
+
+//static PyObject * ChunkedBody_New(PyObject *, uint64_t);
+
+static PyMemberDef ChunkedBody_members[] = {
+    {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
+    {"fastpath", T_BOOL,      offsetof(ChunkedBody, fastpath), READONLY, NULL},
+    {"closed",   T_BOOL,      offsetof(ChunkedBody, closed),   READONLY, NULL},
+    {"error",    T_BOOL,      offsetof(ChunkedBody, error),    READONLY, NULL},
+    {"chunked",  T_BOOL,      offsetof(ChunkedBody, chunked),  READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * ChunkedBody_read(ChunkedBody *, PyObject *, PyObject *);
+static PyObject * ChunkedBody_write_to(ChunkedBody *, PyObject *);
+
+static PyMethodDef ChunkedBody_methods[] = {
+    {"read",     (PyCFunction)ChunkedBody_read,     METH_VARARGS|METH_KEYWORDS, NULL},
+    {"write_to", (PyCFunction)ChunkedBody_write_to, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void ChunkedBody_dealloc(ChunkedBody *);
+static int ChunkedBody_init(ChunkedBody *, PyObject *, PyObject *);
+static PyObject * ChunkedBody_repr(ChunkedBody *);
+static PyObject * ChunkedBody_iter(ChunkedBody *);
+static PyObject * ChunkedBody_next(ChunkedBody *);
+
+static PyTypeObject ChunkedBodyType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.ChunkedBody",           /* tp_name */
+    sizeof(ChunkedBody),                /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)ChunkedBody_dealloc,    /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)ChunkedBody_repr,         /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "ChunkedBody(rfile)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    (getiterfunc)ChunkedBody_iter,      /* tp_iter */
+    (iternextfunc)ChunkedBody_next,     /* tp_iternext */
+    ChunkedBody_methods,                /* tp_methods */
+    ChunkedBody_members,                /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)ChunkedBody_init,         /* tp_init */
+};
+

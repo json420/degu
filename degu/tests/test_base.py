@@ -2641,6 +2641,130 @@ class TestBody_C(TestBody_Py):
     backend = _base
 
 
+class TestChunkedBody_Py(BackendTestCase):
+    @property
+    def ChunkedBody(self):
+        return self.getattr('ChunkedBody')
+
+    @property
+    def Reader(self):
+        return self.getattr('Reader')
+
+    def check_common(self, body, rfile):
+        if self.backend is _basepy:
+            setmsg = "can't set attribute"
+            delmsg = "can't delete attribute"
+            setmsg2 = "'ChunkedBody' object attribute 'chunked' is read-only"
+            delmsg2 = setmsg2
+        else:
+            setmsg = 'readonly attribute'
+            delmsg =  setmsg
+            setmsg2 = setmsg
+            delmsg2 = delmsg
+        members = ('rfile', 'fastpath', 'closed', 'error')
+
+        # Test everything except body.chunked:
+        for name in members:  
+            with self.assertRaises(AttributeError) as cm:
+                setattr(body, name, True)
+            self.assertEqual(str(cm.exception), setmsg)
+            with self.assertRaises(AttributeError) as cm:
+                delattr(body, name)
+            self.assertEqual(str(cm.exception), delmsg)
+
+        # Test body.chunked:
+        with self.assertRaises(AttributeError) as cm:
+            body.chunked = False
+        self.assertEqual(str(cm.exception), setmsg2)
+        with self.assertRaises(AttributeError) as cm:
+            del body.chunked
+        self.assertEqual(str(cm.exception), delmsg2)
+
+        self.assertIs(body.rfile, rfile)
+        self.assertIs(body.chunked, True)
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, False)
+        self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
+
+    def test_init(self):
+        # Test with backend.Reader:
+        sock = MockSocket(b'', None)
+        rfile = self.Reader(sock, base.bodies)
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        body = self.ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        self.assertIs(body.fastpath, True)
+        self.check_common(body, rfile)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Test with arbitrary file-like object:
+        rfile = io.BytesIO()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        body = self.ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        self.assertIs(body.fastpath, False)
+        self.check_common(body, rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Not a backend.Reader, rfile.readline missing:
+        class MissingReadline:
+            def read(self, size=None):
+                assert False
+        rfile = MissingReadline()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(AttributeError) as cm:
+            self.ChunkedBody(rfile)
+        self.assertEqual(str(cm.exception),
+            "'MissingReadline' object has no attribute 'readline'"
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Not a backend.Reader, rfile.readline() not callable:
+        class BadReadline:
+            readline = 'hello'
+            def read(self, size=None):
+                assert False
+        rfile = BadReadline()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(TypeError) as cm:
+            self.ChunkedBody(rfile)
+        self.assertEqual(str(cm.exception), 'rfile.readline() is not callable')
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Not a backend.Reader, rfile.read missing:
+        class MissingRead:
+            def readline(self, size):
+                assert False
+        rfile = MissingRead()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(AttributeError) as cm:
+            self.ChunkedBody(rfile)
+        self.assertEqual(str(cm.exception),
+            "'MissingRead' object has no attribute 'read'"
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Not a backend.Reader, rfile.read() not callable:
+        class BadRead:
+            read = 'hello'
+            def readline(self, size):
+                assert False
+        rfile = BadRead()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(TypeError) as cm:
+            self.ChunkedBody(rfile)
+        self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+
+class TestChunkedBody_C(TestChunkedBody_Py):
+    backend = _base
+
+
 class TestChunkedBody(TestCase):
     def test_init(self):
         # All good:

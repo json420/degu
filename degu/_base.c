@@ -32,6 +32,7 @@
 static PyObject *EmptyPreambleError = NULL;
 
 /* Interned `str` for fast attribute lookup */
+static PyObject *attr_readline         = NULL;  //  'readline'
 static PyObject *attr_read             = NULL;  //  'read'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
@@ -78,6 +79,7 @@ _init_all_globals(PyObject *module)
     _ADD_MODULE_ATTR(module, "EmptyPreambleError", EmptyPreambleError)
 
     /* Init interned attribute names */
+    _SET(attr_readline,        PyUnicode_InternFromString("readline"))
     _SET(attr_read,            PyUnicode_InternFromString("read"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
@@ -523,7 +525,7 @@ _check_headers(PyObject *headers)
 }
 
 static PyObject *
-_getcallable(const char *objname, PyObject *obj, PyObject *name)
+_getcallable(const char *label, PyObject *obj, PyObject *name)
 {
     PyObject *attr = PyObject_GetAttr(obj, name);
     if (attr == NULL) {
@@ -531,7 +533,7 @@ _getcallable(const char *objname, PyObject *obj, PyObject *name)
     }
     if (!PyCallable_Check(attr)) {
         Py_CLEAR(attr);
-        PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", objname, name);
+        PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", label, name);
     }
     return attr;
 }
@@ -3418,6 +3420,98 @@ Body_next(Body *self)
 }
 
 
+/******************************************************************************
+ * ChunkedBody object
+ ******************************************************************************/
+static void
+ChunkedBody_dealloc(ChunkedBody *self)
+{
+    Py_CLEAR(self->rfile);
+    Py_CLEAR(self->rfile_readline);
+    Py_CLEAR(self->rfile_read);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"rfile", NULL};
+    PyObject *rfile = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "O:ChunkedBody", keys, &rfile)) {
+        goto error;
+    }
+    _SET_AND_INC(self->rfile, rfile)
+    if (Py_TYPE(rfile) == &ReaderType) {
+        self->fastpath = true;
+    }
+    else {
+        self->fastpath = false;
+        _SET(self->rfile_readline, _getcallable("rfile", rfile, attr_readline))
+        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
+    }
+    self->closed = false;
+    self->error = false;
+    self->chunked = true;
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+_ChunkedBody_read(ChunkedBody *self, const size_t max_size)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+ChunkedBody_read(ChunkedBody *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"size", NULL};
+    PyObject *pysize = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "|O", keys, &pysize)) {
+        return NULL;
+    }
+    const ssize_t size = _validate_read_size("size", pysize, MAX_IO_SIZE);
+    if (size < 0) {
+        return NULL;
+    }
+    return _ChunkedBody_read(self, (size_t)size);
+}
+
+static PyObject *
+ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    if (!PyArg_ParseTuple(args, "O", &wfile)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+ChunkedBody_repr(ChunkedBody *self)
+{
+    return PyUnicode_FromString("ChunkedBody(<rfile>)");
+}
+
+static PyObject *
+ChunkedBody_iter(ChunkedBody *self)
+{
+    PyObject *ret = (PyObject *)self;
+    Py_INCREF(ret);
+    return ret;
+}
+
+static PyObject *
+ChunkedBody_next(ChunkedBody *self)
+{
+    return NULL;
+}
+
+
 /*******************************************************************************
  * Module Init:
  */
@@ -3438,12 +3532,6 @@ _init_all_types(PyObject *module)
     }
     _ADD_MODULE_ATTR(module, "Range", (PyObject *)&RangeType)
 
-    BodyType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&BodyType) != 0) {
-        goto error;
-    }
-    _ADD_MODULE_ATTR(module, "Body", (PyObject *)&BodyType)
-
     ReaderType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ReaderType) != 0) {
         goto error;
@@ -3455,6 +3543,18 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Writer", (PyObject *)&WriterType)
+
+    BodyType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&BodyType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Body", (PyObject *)&BodyType)
+
+    ChunkedBodyType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ChunkedBodyType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "ChunkedBody", (PyObject *)&ChunkedBodyType)
 
     return true;
 

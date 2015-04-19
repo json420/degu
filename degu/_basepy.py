@@ -1016,3 +1016,47 @@ class Body:
         wfile.flush()
         return total
 
+
+class ChunkedBody:
+    chunked = True
+
+    __slots__ = (
+        '_rfile',
+        '_rfile_readline',
+        '_rfile_read',
+        '_fastpath',
+        '_closed',
+        '_error',
+    )
+
+    def __init__(self, rfile):
+        self._rfile = rfile
+        self._closed = False
+        self._error = False
+        if type(rfile) is Reader:
+            self._fastpath = True
+        else:
+            self._fastpath = False
+            self._rfile_read = _getcallable('rfile', rfile, 'read')
+            self._rfile_readline = _getcallable('rfile', rfile, 'readline')
+
+    @property
+    def rfile(self):
+        return self._rfile
+
+    @property
+    def fastpath(self):
+        return self._fastpath
+
+    @property
+    def closed(self):
+        return self._closed
+
+    @property
+    def error(self):
+        return self._error
+
+    def __repr__(self):
+        return '{}(<rfile>)'.format(self.__class__.__name__)
+
+
