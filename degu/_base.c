@@ -827,6 +827,7 @@ _clear_degu_chunk(DeguChunk *dc)
 {
     Py_CLEAR(dc->key);
     Py_CLEAR(dc->val);
+    Py_CLEAR(dc->data);
 }
 
 
@@ -1715,15 +1716,11 @@ _parse_chunk(DeguSrc src, DeguChunk *dc)
         return false;
     }
     if (size_stop < src.len) {
-        dc->has_ext = true;
         ext_start = size_stop + SEMICOLON.len;
         DeguSrc ext_src = _slice(src, ext_start, src.len);
         if (! _parse_chunk_ext(ext_src, dc)) {
             return false;
         }
-    }
-    else {
-        dc->has_ext = false;
     }
     return true;
 }
@@ -1746,17 +1743,14 @@ parse_chunk(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(size, PyLong_FromSize_t(dc.size))
-    if (dc.has_ext) {
+    if (dc.key == NULL && dc.val == NULL) {
+        _SET_AND_INC(ext, Py_None)
+    }
+    else {
         if (dc.key == NULL || dc.val == NULL) {
             Py_FatalError("parse_chunk(): dc.key == NULL || dc.val == NULL");
         }
         _SET(ext, PyTuple_Pack(2, dc.key, dc.val))
-    }
-    else {
-        if (dc.key != NULL || dc.val != NULL) {
-            Py_FatalError("parse_chunk(): dc.key != NULL || dc.val != NULL");
-        }
-        _SET_AND_INC(ext, Py_None)
     }
     if (size == NULL || ext == NULL) {
         Py_FatalError("parse_chunk(): size == NULL || ext == NULL");
@@ -2690,24 +2684,20 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-Reader_readchunk(Reader *self) {
+static bool
+_Reader_readchunk(Reader *self, DeguChunk *dc) {
     ssize_t size, read;
-    PyObject *ext = NULL;
-    PyObject *data = NULL;
-    PyObject *ret = NULL;
 
     DeguSrc line = _Reader_read_until(self, 4096, CRLF, false);
     if (line.buf == NULL) {
-        return NULL;
-    }
-    DeguChunk dc = NEW_DEGU_CHUNK;
-    if (! _parse_chunk(line, &dc)) {
         goto error;
     }
-    size = (ssize_t)dc.size + 2;
-    _SET(data, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = _dst_frombytes(data);
+    if (! _parse_chunk(line, dc)) {
+        goto error;
+    }
+    size = (ssize_t)dc->size + 2;
+    _SET(dc->data, PyBytes_FromStringAndSize(NULL, size))
+    DeguDst dst = _dst_frombytes(dc->data);
     read = _Reader_readinto(self, dst);
     if (read < 0) {
         goto error;
@@ -2721,23 +2711,34 @@ Reader_readchunk(Reader *self) {
         _value_error("bad chunk data termination: %R", end);
         goto error;
     }
-    if (_PyBytes_Resize(&data, (ssize_t)dc.size) != 0) {
-        goto error;
-    }    
+    return true;
 
-    if (dc.has_ext) {
+error:
+    return false;
+}
+
+static PyObject *
+Reader_readchunk(Reader *self) {
+    PyObject *ext = NULL;
+    PyObject *ret = NULL;
+    DeguChunk dc = NEW_DEGU_CHUNK;
+
+    if (! _Reader_readchunk(self, &dc)) {
+        goto error;
+    }
+    if (_PyBytes_Resize(&(dc.data), (ssize_t)dc.size) != 0) {
+        goto error;
+    }
+    if (dc.key == NULL && dc.val == NULL) {
+        _SET_AND_INC(ext, Py_None)
+    }
+    else {
         if (dc.key == NULL || dc.val == NULL) {
             Py_FatalError("parse_chunk(): dc.key == NULL || dc.val == NULL");
         }
         _SET(ext, PyTuple_Pack(2, dc.key, dc.val))
     }
-    else {
-        if (dc.key != NULL || dc.val != NULL) {
-            Py_FatalError("parse_chunk(): dc.key != NULL || dc.val != NULL");
-        }
-        _SET_AND_INC(ext, Py_None)
-    }
-    _SET(ret, PyTuple_Pack(2, ext, data))
+    _SET(ret, PyTuple_Pack(2, ext, dc.data))
     goto cleanup;
 
 error:
@@ -2745,7 +2746,6 @@ error:
 
 cleanup:
     Py_CLEAR(ext);
-    Py_CLEAR(data);
     _clear_degu_chunk(&dc);
     return ret;
 }
@@ -3461,6 +3461,12 @@ error:
 
 static PyObject *
 _ChunkedBody_read(ChunkedBody *self, const size_t max_size)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+ChunkedBody_readchunk(ChunkedBody *self)
 {
     Py_RETURN_NONE;
 }

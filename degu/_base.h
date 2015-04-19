@@ -144,10 +144,10 @@ typedef struct {
     ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
 
 typedef struct {
-    size_t size;
     PyObject *key;
     PyObject *val;
-    bool has_ext;
+    PyObject *data;
+    size_t size;
 } DeguChunk;
 
 #define NEW_DEGU_CHUNK \
@@ -562,12 +562,14 @@ static PyMemberDef ChunkedBody_members[] = {
     {NULL}
 };
 
+static PyObject * ChunkedBody_readchunk(ChunkedBody *);
 static PyObject * ChunkedBody_read(ChunkedBody *, PyObject *, PyObject *);
 static PyObject * ChunkedBody_write_to(ChunkedBody *, PyObject *);
 
 static PyMethodDef ChunkedBody_methods[] = {
-    {"read",     (PyCFunction)ChunkedBody_read,     METH_VARARGS|METH_KEYWORDS, NULL},
-    {"write_to", (PyCFunction)ChunkedBody_write_to, METH_VARARGS, NULL},
+    {"readchunk", (PyCFunction)ChunkedBody_readchunk, METH_NOARGS, NULL},
+    {"read",      (PyCFunction)ChunkedBody_read,     METH_VARARGS|METH_KEYWORDS, NULL},
+    {"write_to",  (PyCFunction)ChunkedBody_write_to, METH_VARARGS, NULL},
     {NULL}
 };
 
