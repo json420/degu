@@ -3362,6 +3362,48 @@ class TestReader_Py(BackendTestCase):
         (sock, reader) = self.new(data)
         self.assertEqual(reader.readline(size), data)
 
+    def test_readchunk(self):
+        (sock, reader) = self.new(b'0\r\n\r\n')
+        self.assertEqual(reader.readchunk(),
+            (None, b'')
+        )
+        (sock, reader) = self.new(b'0;key=value\r\n\r\n')
+        self.assertEqual(reader.readchunk(),
+            (('key', 'value'), b'')
+        )
+        (sock, reader) = self.new(b'c\r\nhello, world\r\n')
+        self.assertEqual(reader.readchunk(),
+            (None, b'hello, world')
+        )
+        (sock, reader) = self.new(b'c;key=value\r\nhello, world\r\n')
+        self.assertEqual(reader.readchunk(),
+            (('key', 'value'), b'hello, world')
+        )
+
+        (sock, reader) = self.new(b'')
+        with self.assertRaises(ValueError) as cm:
+            reader.readchunk()
+        self.assertEqual(str(cm.exception),
+            'chunk line is empty'
+        )
+        for bad in (b'0', b'0;key=value', b'c', b'c;key=value'):
+            (sock, reader) = self.new(bad)
+            with self.assertRaises(ValueError) as cm:
+                reader.readchunk()
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(b'\r\n', bad)
+            )
+
+        badset = tuple(frozenset(range(256)) - frozenset(b'\r\n'))
+        base = bytes(random.choice(badset) for i in range(4095))
+        for end in (b'\r', b'\n', b'\r\n'):
+            (sock, reader) = self.new(base + end)
+            with self.assertRaises(ValueError) as cm:
+                reader.readchunk()
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(b'\r\n', base[:32])
+            )
+
     def check_read_request(self, rcvbuf):
         # Empty preamble:
         (sock, reader) = self.new(b'', rcvbuf=rcvbuf)

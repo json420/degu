@@ -756,6 +756,17 @@ class Reader:
             method, preamble, self, self._Body, self._ChunkedBody
         )
 
+    def readchunk(self):
+        line = self.read_until(4096, b'\r\n', strip_end=True)
+        (size, ext) = parse_chunk(line)
+        data = self.read(size + 2)
+        if len(data) != size + 2:
+            raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
+        end = data[-2:]
+        if end != b'\r\n':
+            raise ValueError('bad chunk data termination: {!r}'.format(end))
+        return (ext, data[:-2])
+
     def read(self, size):
         assert isinstance(size, int)
         if not (0 <= size <= MAX_IO_SIZE):
