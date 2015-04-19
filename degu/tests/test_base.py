@@ -1196,6 +1196,76 @@ class TestFormatting_Py(BackendTestCase):
             'bar: 18\r\nfoo: 17\r\n'
         )
 
+    def test_format_chunk(self):
+        format_chunk = self.getattr('format_chunk')
+        MAX_IO_SIZE = self.getattr('MAX_IO_SIZE')
+
+        # chunk isn't a tuple:
+        chunk = [None, b'']
+        with self.assertRaises(TypeError) as cm:
+            format_chunk(chunk)
+        self.assertEqual(str(cm.exception),
+            'chunk must be a {!r}; got a {!r}'.format(tuple, list)
+        )
+
+        # chunk isn't a 2-tuple:
+        for chunk in [tuple(), (None,), (None, b'', b'hello')]:
+            with self.assertRaises(ValueError) as cm:
+                format_chunk(chunk)
+            self.assertEqual(str(cm.exception),
+                'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
+            )
+
+        # chunk[0] isn't a tuple:
+        chunk = (['key', 'value'], b'')
+        with self.assertRaises(TypeError) as cm:
+            format_chunk(chunk)
+        self.assertEqual(str(cm.exception),
+            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, list)
+        )
+
+        # chunk[0] isn't a 2-tuple:
+        for ext in [tuple(), ('foo',), ('foo', 'bar', 'baz')]:
+            chunk = (ext, b'')
+            with self.assertRaises(ValueError) as cm:
+                format_chunk(chunk)
+            self.assertEqual(str(cm.exception),
+                'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
+            )
+
+        # chunk[1] isn't bytes:
+        chunk = (None, bytearray())
+        with self.assertRaises(TypeError) as cm:
+            format_chunk(chunk)
+        self.assertEqual(str(cm.exception),
+            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, bytearray)
+        )
+
+        # len(chunk[1]) > MAX_IO_SIZE:
+        data = b'D' * (MAX_IO_SIZE + 1)
+        chunk = (None, data)
+        with self.assertRaises(ValueError) as cm:
+            format_chunk(chunk)
+        self.assertEqual(str(cm.exception),
+            'need len(chunk[1]) <= {}; got {}'.format(MAX_IO_SIZE, len(data))
+        )
+
+        ext = ('k', 'v')
+        self.assertEqual(format_chunk((None, b'')), b'0\r\n')
+        self.assertEqual(format_chunk((ext, b'')), b'0;k=v\r\n')
+
+        data = b'hello, world'
+        self.assertEqual(format_chunk((None, data)), b'c\r\n')
+        self.assertEqual(format_chunk((ext, data)), b'c;k=v\r\n')
+
+        data = b'D' * (MAX_IO_SIZE)
+        self.assertEqual(format_chunk((None, data)),
+            '{:x}\r\n'.format(MAX_IO_SIZE).encode()  
+        )
+        self.assertEqual(format_chunk((ext, data)),
+            '{:x};k=v\r\n'.format(MAX_IO_SIZE).encode()  
+        )
+
 
 class TestFormatting_C(TestFormatting_Py):
     backend = _base

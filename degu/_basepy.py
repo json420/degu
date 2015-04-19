@@ -558,6 +558,43 @@ def format_response(status, reason, headers):
     return ''.join(lines).encode()
 
 
+def _validate_chunk(chunk):
+    if type(chunk) is not tuple:
+        raise TypeError(
+            'chunk must be a {!r}; got a {!r}'.format(tuple, type(chunk))
+        )
+    if len(chunk) != 2:
+        raise ValueError(
+            'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
+        )
+    (ext, data) = chunk
+    if type(data) is not bytes:
+        raise TypeError(
+            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, type(data))
+        )
+    if len(data) > MAX_IO_SIZE:
+        raise ValueError(
+            'need len(chunk[1]) <= {}; got {}'.format(MAX_IO_SIZE, len(data))
+        )
+    if ext is None:
+        return chunk
+    if type(ext) is not tuple:
+        raise TypeError(
+            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, type(ext))
+        )
+    if len(ext) != 2:
+        raise ValueError(
+            'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
+        )
+    return chunk
+
+
+def format_chunk(chunk):
+    (ext, data) = _validate_chunk(chunk)
+    if ext is None:
+        return '{:x}\r\n'.format(len(data)).encode()
+    (key, value) = ext
+    return '{:x};{}={}\r\n'.format(len(data), key, value).encode()
 
 
 ################################################################################

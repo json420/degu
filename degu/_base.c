@@ -2277,6 +2277,112 @@ format_response(PyObject *self, PyObject *args)
     return _format_response(status, reason, headers);
 }
 
+static PyObject *
+_format_chunk(DeguChunk *dc)
+{
+    PyObject *str = NULL;
+    PyObject *bytes = NULL;
+
+    if (dc->key == NULL && dc->val == NULL) {
+        _SET(str, PyUnicode_FromFormat("%x\r\n", dc->size))
+    }
+    else {
+        if (dc->key == NULL || dc->val == NULL) {
+            Py_FatalError("_format_chunk(): bad internal call");
+        }
+        _SET(str,
+            PyUnicode_FromFormat("%x;%S=%S\r\n", dc->size, dc->key, dc->val)
+        )
+    }
+    _SET(bytes, PyUnicode_AsASCIIString(str))
+    goto cleanup;
+
+error:
+    Py_CLEAR(bytes);
+
+cleanup:
+    Py_CLEAR(str);
+    return bytes;
+}
+
+static bool
+_unpack_chunk(PyObject *chunk, DeguChunk *dc)
+{
+    if (chunk == NULL || dc->key != NULL || dc->val != NULL || dc->data != NULL || dc->size != 0) {
+        Py_FatalError("_unpack_chunk(): bad internal call");
+    }
+    PyObject *ext = NULL;
+
+    /* chunk itself */
+    if (! PyTuple_CheckExact(chunk)) {
+        PyErr_Format(PyExc_TypeError,
+            "chunk must be a <class 'tuple'>; got a %R", Py_TYPE(chunk)
+        );
+        return false;
+    }
+    if (PyTuple_GET_SIZE(chunk) != 2) {
+        PyErr_Format(PyExc_ValueError,
+            "chunk must be a 2-tuple; got a %zd-tuple", PyTuple_GET_SIZE(chunk)
+        );
+        return false;
+    }
+
+    /* chunk[0]: extension */
+    ext = PyTuple_GET_ITEM(chunk, 0);
+    if (ext != Py_None) {
+        if (! PyTuple_CheckExact(ext)) {
+            PyErr_Format(PyExc_TypeError,
+                "chunk[0] must be a <class 'tuple'>; got a %R",
+                Py_TYPE(ext)
+            );
+            return false;
+        }
+        if (PyTuple_GET_SIZE(ext) != 2) {
+            PyErr_Format(PyExc_ValueError,
+                "chunk[0] must be a 2-tuple; got a %zd-tuple",
+                PyTuple_GET_SIZE(ext)
+            );
+            return false;
+        }
+        dc->key = PyTuple_GET_ITEM(ext, 0);
+        dc->val = PyTuple_GET_ITEM(ext, 1);
+    }
+
+    /* chunk[1]: data */
+    dc->data = PyTuple_GET_ITEM(chunk, 1);
+    if (! PyBytes_CheckExact(dc->data)) {
+        PyErr_Format(PyExc_TypeError,
+            "chunk[1] must be a <class 'bytes'>; got a %R", Py_TYPE(dc->data)
+        );
+        return false;
+    }
+    dc->size = (size_t)PyBytes_GET_SIZE(dc->data);
+    if (dc->size > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need len(chunk[1]) <= %zu; got %zu", MAX_IO_SIZE, dc->size
+        );
+        return false;
+    }
+    return true;
+}
+
+static PyObject *
+format_chunk(PyObject *self, PyObject *args)
+{
+    PyObject *chunk = NULL;
+
+    DeguChunk dc = NEW_DEGU_CHUNK;
+
+    if (!PyArg_ParseTuple(args, "O:format_chunk", &chunk)) {
+        return NULL;
+    }
+    if (! _unpack_chunk(chunk, &dc)) {
+        return NULL;
+    }
+    return _format_chunk(&dc);
+}
+
+
 /******************************************************************************
  * Reader object
  ******************************************************************************/
@@ -3590,6 +3696,7 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MIN_PREAMBLE);
     PyModule_AddIntMacro(module, DEFAULT_PREAMBLE);
     PyModule_AddIntMacro(module, MAX_PREAMBLE);
+    PyModule_AddIntMacro(module, MAX_IO_SIZE);
     return module;
 }
 
