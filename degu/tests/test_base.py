@@ -3249,17 +3249,6 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
 
-        # Both always_drain and strip_end are True:
-        with self.assertRaises(ValueError) as cm:
-            reader.read_until(17, end, always_drain=True, strip_end=True)
-        self.assertEqual(str(cm.exception),
-            '`always_drain` and `strip_end` cannot both be True'
-        )
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
-        self.assertEqual(reader.expose(), b'\x00' * default)
-
         # No data:
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
@@ -3268,12 +3257,7 @@ class TestReader_Py(BackendTestCase):
 
         (sock, reader) = self.new()
         self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.read_until(4096, end, always_drain=True), b'')
-        self.assertEqual(sock._recv_into_calls, 1)
-
-        (sock, reader) = self.new()
-        self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.read_until(4096, end, strip_end=True), b'')
+        self.assertEqual(reader.read_until(4096, end, readline=True), b'')
         self.assertEqual(sock._recv_into_calls, 1)
 
         # Main event:
@@ -3283,38 +3267,39 @@ class TestReader_Py(BackendTestCase):
         data = part1 + end + part2 + end
         size = len(data)
 
+        # readline kwarg not provided:
         (sock, reader) = self.new(data)
         self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.read_until(size, end), part1 + end)
+        self.assertEqual(reader.read_until(size, end), part1)
         self.assertEqual(sock._recv_into_calls, 1)
         self.assertEqual(reader.peek(-1), part2 + end)
-        self.assertEqual(reader.read_until(size, end), part2 + end)
+        self.assertEqual(reader.read_until(size, end), part2)
         self.assertEqual(sock._recv_into_calls, 1)
         self.assertEqual(reader.peek(-1), b'')
 
-        # always_drain=True:
+        # readline=False:
+        (sock, reader) = self.new(data)
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(reader.read_until(size, end, readline=False), part1)
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), part2 + end)
+        self.assertEqual(reader.read_until(size, end, readline=False), part2)
+        self.assertEqual(sock._recv_into_calls, 1)
+        self.assertEqual(reader.peek(-1), b'')
+
+        # readline=True:
         (sock, reader) = self.new(data)
         self.assertIsNone(sock._rcvbuf)
         self.assertEqual(
-            reader.read_until(size, end, always_drain=True),
+            reader.read_until(size, end, readline=True),
             part1 + end
         )
         self.assertEqual(sock._recv_into_calls, 1)
         self.assertEqual(reader.peek(-1), part2 + end)
         self.assertEqual(
-            reader.read_until(size, end, always_drain=True),
+            reader.read_until(size, end, readline=True),
             part2 + end
         )
-        self.assertEqual(sock._recv_into_calls, 1)
-        self.assertEqual(reader.peek(-1), b'')
-
-        # strip_end=True:
-        (sock, reader) = self.new(data)
-        self.assertIsNone(sock._rcvbuf)
-        self.assertEqual(reader.read_until(size, end, strip_end=True), part1)
-        self.assertEqual(sock._recv_into_calls, 1)
-        self.assertEqual(reader.peek(-1), part2 + end)
-        self.assertEqual(reader.read_until(size, end, strip_end=True), part2)
         self.assertEqual(sock._recv_into_calls, 1)
         self.assertEqual(reader.peek(-1), b'')
 
@@ -3325,12 +3310,15 @@ class TestReader_Py(BackendTestCase):
             prefix = os.urandom(i)
             data = prefix + marker
             total_data = data + suffix
+
+            # readline=False, found:
             (sock, reader) = self.new(total_data, 333)
-            self.assertEqual(reader.read_until(333, marker), data)
+            self.assertEqual(reader.read_until(333, marker), prefix)
             self.assertEqual(reader.peek(-1), total_data[i+16:333])
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), i + 16)
 
+            # readline=False, not found:
             (sock, reader) = self.new(total_data, 333)
             with self.assertRaises(ValueError) as cm:
                 reader.read_until(333, nope)
@@ -3340,14 +3328,21 @@ class TestReader_Py(BackendTestCase):
             self.assertEqual(reader.peek(-1), total_data[:333])
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), 0)
-            self.assertEqual(reader.read_until(333, marker), data)
+            self.assertEqual(reader.read_until(333, marker), prefix)
             self.assertEqual(reader.peek(-1), total_data[i+16:333])
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), i + 16)
 
+            # readline=True, found:
             (sock, reader) = self.new(total_data, 333)
-            self.assertEqual(
-                reader.read_until(333, nope, always_drain=True),
+            self.assertEqual(reader.read_until(333, marker, True), data)
+            self.assertEqual(reader.peek(-1), total_data[i+16:333])
+            self.assertEqual(reader.rawtell(), 333)
+            self.assertEqual(reader.tell(), i + 16)
+
+            # readline=True, not found:
+            (sock, reader) = self.new(total_data, 333)
+            self.assertEqual(reader.read_until(333, nope, True),
                 total_data[:333]
             )
             self.assertEqual(reader.peek(-1), b'')

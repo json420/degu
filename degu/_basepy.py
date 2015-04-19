@@ -673,14 +673,14 @@ class Reader:
             self._update(self._start + len(src), avail - len(src))
         return src
 
-    def _found(self, index, end, strip_end):
+    def _found(self, index, end, readline):
         src = self._drain(index + len(end))
-        if strip_end:
-            return src[0:-len(end)]
-        return src
+        if readline:
+            return src
+        return src[0:-len(end)]
 
-    def _not_found(self, cur, end, always_drain):
-        if always_drain:
+    def _not_found(self, cur, end, readline):
+        if readline:
             return self._drain(len(cur))
         if len(cur) == 0:
             return cur
@@ -688,11 +688,10 @@ class Reader:
             '{!r} not found in {!r}...'.format(end, cur[:32])
         )
 
-    def read_until(self, size, end, always_drain=False, strip_end=False):
+    def read_until(self, size, end, readline=False):
         end = memoryview(end).tobytes()
         assert type(size) is int
-        assert type(strip_end) is bool
-        assert type(always_drain) is bool
+        assert type(readline) is bool
 
         if not end:
             raise ValueError('end cannot be empty')
@@ -702,18 +701,14 @@ class Reader:
                     len(end), len(self._rawbuf), size
                 )
             )
-        if always_drain and strip_end:
-            raise ValueError(
-                '`always_drain` and `strip_end` cannot both be True'
-            )
 
         # First, search current buffer:
         cur = self.peek(size)
         index = cur.find(end)
         if index >= 0:
-            return self._found(index, end, strip_end)
+            return self._found(index, end, readline)
         if len(cur) == size:
-            return self._not_found(cur, end, always_drain)
+            return self._not_found(cur, end, readline)
 
         # Shift buffer if needed:
         if self._start > 0:
@@ -733,31 +728,27 @@ class Reader:
             cur = self.peek(size)
             index = cur.find(end)
             if index >= 0:
-                return self._found(index, end, strip_end)
+                return self._found(index, end, readline)
 
         # Didn't find it:
-        return self._not_found(cur, end, always_drain)
+        return self._not_found(cur, end, readline)
 
     def readline(self, size):
-        return self.read_until(size, b'\n', always_drain=True)
+        return self.read_until(size, b'\n', readline=True)
 
     def read_request(self):
-        preamble = self.read_until(
-            len(self._rawbuf), b'\r\n\r\n', strip_end=True
-        )
+        preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
         return _parse_request(preamble, self, self._Body, self._ChunkedBody)
 
     def read_response(self, method):
         method = parse_method(method)
-        preamble = self.read_until(
-            len(self._rawbuf), b'\r\n\r\n', strip_end=True
-        )
+        preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
         return _parse_response(
             method, preamble, self, self._Body, self._ChunkedBody
         )
 
     def readchunk(self):
-        line = self.read_until(4096, b'\r\n', strip_end=True)
+        line = self.read_until(4096, b'\r\n')
         (size, ext) = parse_chunk(line)
         data = self.read(size + 2)
         if len(data) != size + 2:

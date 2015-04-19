@@ -2424,17 +2424,13 @@ _Reader_drain(Reader *self, const size_t size)
 
 static DeguSrc
 _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
-                   const bool always_drain, const bool strip_end)
+                   const bool readline)
 {
     ssize_t index = -1;
     ssize_t added;
 
-    if (end.buf == NULL || (always_drain && strip_end)) {
+    if (_isempty(end)) {
         Py_FatalError("_Reader_read_until(): bad internal call");
-    }
-    if (end.len == 0) {
-        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
-        return NULL_DeguSrc;
     }
     DeguDst dst = {self->buf, self->len};
     if (size < end.len || size > dst.len) {
@@ -2486,7 +2482,7 @@ not_found:
     if (index >= 0) {
         Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
     }
-    if (always_drain) {
+    if (readline) {
         return _Reader_drain(self, size);
     }
     DeguSrc tmp = _Reader_peek(self, size);
@@ -2503,10 +2499,10 @@ found:
         Py_FatalError("_Reader_read_until(): found, but index < 0");
     }
     DeguSrc src = _Reader_drain(self, (size_t)index + end.len);
-    if (strip_end) {
-        return _slice(src, 0, src.len - end.len);
+    if (readline) {
+        return src;
     }
-    return src;
+    return _slice(src, 0, src.len - end.len);
 }
 
 static ssize_t
@@ -2618,27 +2614,22 @@ Reader_peek(Reader *self, PyObject *args) {
 static PyObject *
 Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"size", "end", "always_drain", "strip_end", NULL};
+    static char *keys[] = {"size", "end", "readline", NULL};
     size_t size = 0;
     uint8_t *buf = NULL;
     size_t len = 0;
-    int always_drain = false;
-    int strip_end = false;
+    int readline = false;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|pp:read_until", keys,
-            &size, &buf, &len, &always_drain, &strip_end)) {
-        return NULL;
-    }
-    if (always_drain && strip_end) {
-        PyErr_SetString(PyExc_ValueError,
-            "`always_drain` and `strip_end` cannot both be True"
-        );
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|p:read_until", keys,
+            &size, &buf, &len, &readline)) {
         return NULL;
     }
     DeguSrc end = {buf, len};
-    return _tobytes(
-        _Reader_read_until(self, size, end, always_drain, strip_end)
-    );
+    if (end.len == 0) {
+        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
+        return NULL;
+    }
+    return _tobytes(_Reader_read_until(self, size, end, readline));
 }
 
 static PyObject *
@@ -2648,14 +2639,14 @@ Reader_readline(Reader *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "n", &size)) {
         return NULL;
     }
-    return _tobytes(_Reader_read_until(self, size, LF, true, false));
+    return _tobytes(_Reader_read_until(self, size, LF, true));
 }
 
 static PyObject *
 Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
 
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
+    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2682,7 +2673,7 @@ Reader_read_response(Reader *self, PyObject *args)
         return NULL;
     }
     DeguSrc method = {method_buf, method_len};
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false, true);
+    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false);
     if (src.buf == NULL) {
         goto error;
     }
@@ -2704,7 +2695,7 @@ Reader_readchunk(Reader *self) {
     PyObject *data = NULL;
     PyObject *ret = NULL;
 
-    DeguSrc line = _Reader_read_until(self, 4096, CRLF, false, true);
+    DeguSrc line = _Reader_read_until(self, 4096, CRLF, false);
     if (line.buf == NULL) {
         return NULL;
     }
