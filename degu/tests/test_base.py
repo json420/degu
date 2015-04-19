@@ -650,6 +650,37 @@ class TestParsingFunctions_Py(BackendTestCase):
                         'bad chunk extension value: {!r}'.format(bad)
                     )
 
+    def test_parse_chunk(self):
+        parse_chunk = self.getattr('parse_chunk')
+        self.assertEqual(parse_chunk(b'0'), (0, None))
+        self.assertEqual(parse_chunk(b'0;k=v'), (0, ('k', 'v')))
+
+        self.assertEqual(parse_chunk(b'1000000'), (16777216, None))
+        self.assertEqual(parse_chunk(b'1000000;k=v'), (16777216, ('k', 'v')))
+
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b'')
+        self.assertEqual(str(cm.exception), 'chunk line is empty')
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b';k=v')
+        self.assertEqual(str(cm.exception), "bad chunk_size: b''")
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b'0;')
+        self.assertEqual(str(cm.exception), "bad chunk extension: b''")
+
+        tmp = bytearray(b'0;k=v')
+        for b in range(256):
+            tmp[1] = b
+            src = bytes(tmp)
+            if b == 59:
+                self.assertEqual(parse_chunk(src), (0, ('k', 'v')))
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_chunk(src)
+                self.assertEqual(str(cm.exception),
+                    'bad chunk_size: {!r}'.format(src)
+                )
+
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
         Range = self.getattr('Range')

@@ -282,6 +282,19 @@ def parse_chunk_extension(src):
     raise ValueError('bad chunk extension: {!r}'.format(src))
 
 
+def parse_chunk(src):
+    assert type(src) is bytes
+    if len(src) < 1:
+        raise ValueError('chunk line is empty')
+    parts = src.split(b';', 1)
+    size = parse_chunk_size(parts[0])
+    if len(parts) == 2:
+        ext = parse_chunk_extension(parts[1])
+    else:
+        ext = None
+    return (size, ext)
+
+
 def _parse_decimal(src):
     if len(src) < 1 or len(src) > 16:
         return -1

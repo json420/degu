@@ -1615,45 +1615,45 @@ parse_chunk_size(PyObject *self, PyObject *args)
 }
 
 static inline PyObject *
-_parse_chunk_extension_key(DeguSrc src)
+_parse_chunk_extkey(DeguSrc src)
 {
     return _decode(src, EXTKEY_MASK, "bad chunk extension key: %R");
 }
 
 static inline PyObject *
-_parse_chunk_extension_val(DeguSrc src)
+_parse_chunk_extval(DeguSrc src)
 {
     return _decode(src, EXTVAL_MASK, "bad chunk extension value: %R");
 }
 
 static bool
-_parse_chunk_extension(DeguSrc src, DeguChunk *dc)
+_parse_chunk_ext(DeguSrc src, DeguChunk *dc)
 {
     ssize_t index;
     size_t key_stop, val_start;
 
     if (src.len < 3) {
-        goto bad_chunk_extension;
+        goto bad_chunk_ext;
     }
     index = _find(src, EQUALS);
     if (index < 0) {
-        goto bad_chunk_extension;
+        goto bad_chunk_ext;
     }
     key_stop = (size_t)index;
     val_start = key_stop + EQUALS.len;
     DeguSrc keysrc = _slice(src, 0, key_stop);
     DeguSrc valsrc = _slice(src, val_start, src.len);
     if (keysrc.len == 0 || valsrc.len == 0) {
-        goto bad_chunk_extension;
+        goto bad_chunk_ext;
     }
-    _SET(dc->key, _parse_chunk_extension_key(keysrc))
-    _SET(dc->val, _parse_chunk_extension_val(valsrc))
+    _SET(dc->key, _parse_chunk_extkey(keysrc))
+    _SET(dc->val, _parse_chunk_extval(valsrc))
     return true;
 
 error:
     return false;
 
-bad_chunk_extension:
+bad_chunk_ext:
     _value_error("bad chunk extension: %R", src);
     return false;
 }
@@ -1670,9 +1670,83 @@ parse_chunk_extension(PyObject *self, PyObject *args)
     }
     DeguSrc src = {buf, len};
     DeguChunk dc = NEW_DEGU_CHUNK;
-    if (_parse_chunk_extension(src, &dc)) {
+    if (_parse_chunk_ext(src, &dc)) {
         ret = PyTuple_Pack(2, dc.key, dc.val);
     }
+    _clear_degu_chunk(&dc);
+    return ret;
+}
+
+static bool
+_parse_chunk(DeguSrc src, DeguChunk *dc)
+{
+    size_t size_stop, ext_start;
+
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "chunk line is empty");
+        return false;
+    }
+    size_stop = _search(src, SEMICOLON);
+    DeguSrc size_src = _slice(src, 0, size_stop);
+    if (! _parse_chunk_size(size_src, dc)) {
+        return false;
+    }
+    if (size_stop < src.len) {
+        dc->has_ext = true;
+        ext_start = size_stop + SEMICOLON.len;
+        DeguSrc ext_src = _slice(src, ext_start, src.len);
+        if (! _parse_chunk_ext(ext_src, dc)) {
+            return false;
+        }
+    }
+    else {
+        dc->has_ext = false;
+    }
+    return true;
+}
+
+static PyObject *
+parse_chunk(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *size = NULL;
+    PyObject *ext = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_chunk", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    if (! _parse_chunk(src, &dc)) {
+        goto error;
+    }
+    _SET(size, PyLong_FromSize_t(dc.size))
+    if (dc.has_ext) {
+        if (dc.key == NULL || dc.val == NULL) {
+            Py_FatalError("parse_chunk(): dc.key == NULL || dc.val == NULL");
+        }
+        _SET(ext, PyTuple_Pack(2, dc.key, dc.val))
+    }
+    else {
+        if (dc.key != NULL || dc.val != NULL) {
+            Py_FatalError("parse_chunk(): dc.key != NULL || dc.val != NULL");
+        }
+        _SET_AND_INC(ext, Py_None)
+    }
+    if (size == NULL || ext == NULL) {
+        Py_FatalError("parse_chunk(): size == NULL || ext == NULL");
+    }
+    _SET(ret, PyTuple_Pack(2, size, ext))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(size);
+    Py_CLEAR(ext);
     _clear_degu_chunk(&dc);
     return ret;
 }
