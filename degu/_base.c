@@ -2367,6 +2367,39 @@ _unpack_chunk(PyObject *chunk, DeguChunk *dc)
 }
 
 static PyObject *
+_pack_chunk(DeguChunk *dc)
+{
+    PyObject *ext = NULL;
+    PyObject *ret = NULL;
+
+    if (dc->data == NULL || ! PyBytes_CheckExact(dc->data)) {
+        Py_FatalError("_pack_chunk(): bad internal call");
+    }
+    if (_PyBytes_Resize(&(dc->data), (ssize_t)dc->size) != 0) {
+        goto error;
+    }
+    if (dc->key == NULL && dc->val == NULL) {
+        _SET_AND_INC(ext, Py_None)
+    }
+    else {
+        if (dc->key == NULL || dc->val == NULL) {
+            Py_FatalError("parse_chunk(): dc->key == NULL || dc->val == NULL");
+        }
+        _SET(ext, PyTuple_Pack(2, dc->key, dc->val))
+    }
+    _SET(ret, PyTuple_Pack(2, ext, dc->data))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(ext);
+    return ret;
+}
+
+
+static PyObject *
 format_chunk(PyObject *self, PyObject *args)
 {
     PyObject *chunk = NULL;
@@ -2824,34 +2857,14 @@ error:
 }
 
 static PyObject *
-Reader_readchunk(Reader *self) {
-    PyObject *ext = NULL;
+Reader_readchunk(Reader *self)
+{
     PyObject *ret = NULL;
+
     DeguChunk dc = NEW_DEGU_CHUNK;
-
-    if (! _Reader_readchunk(self, &dc)) {
-        goto error;
+    if (_Reader_readchunk(self, &dc)) {
+        ret =  _pack_chunk(&dc);
     }
-    if (_PyBytes_Resize(&(dc.data), (ssize_t)dc.size) != 0) {
-        goto error;
-    }
-    if (dc.key == NULL && dc.val == NULL) {
-        _SET_AND_INC(ext, Py_None)
-    }
-    else {
-        if (dc.key == NULL || dc.val == NULL) {
-            Py_FatalError("parse_chunk(): dc.key == NULL || dc.val == NULL");
-        }
-        _SET(ext, PyTuple_Pack(2, dc.key, dc.val))
-    }
-    _SET(ret, PyTuple_Pack(2, ext, dc.data))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(ext);
     _clear_degu_chunk(&dc);
     return ret;
 }
@@ -3565,15 +3578,36 @@ error:
     return -1;
 }
 
-static PyObject *
-_ChunkedBody_read(ChunkedBody *self, const size_t max_size)
+static void
+_ChunkedBody_set_exception(ChunkedBody *self)
 {
-    Py_RETURN_NONE;
+    if (self->closed) {
+        if (self->error) {
+            goto bad_times;
+        }
+        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
+    }
+    else if (self->error) {
+        if (self->closed) {
+            goto bad_times;
+        }
+        PyErr_SetString(PyExc_ValueError, "Body.error, cannot be used");
+    }
+    else {
+        goto bad_times;
+    }
+
+bad_times:
+    Py_FatalError("_ChunkedBody_set_exception(): bad internal call or state");
 }
 
 static PyObject *
 ChunkedBody_readchunk(ChunkedBody *self)
 {
+    if (self->closed || self->error) {
+        _ChunkedBody_set_exception(self);
+        return NULL;
+    }
     Py_RETURN_NONE;
 }
 
@@ -3590,7 +3624,7 @@ ChunkedBody_read(ChunkedBody *self, PyObject *args, PyObject *kw)
     if (size < 0) {
         return NULL;
     }
-    return _ChunkedBody_read(self, (size_t)size);
+    Py_RETURN_NONE;
 }
 
 static PyObject *

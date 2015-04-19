@@ -1054,14 +1054,40 @@ class Body:
         return total
 
 
+
+def _not_found(self, cur, end, readline):
+    if readline:
+        return self._drain(len(cur))
+    if len(cur) == 0:
+        return cur
+    raise ValueError(
+        '{!r} not found in {!r}...'.format(end, cur[:32])
+    )
+
+
+def readchunk(rfile):
+    line = rfile.readline(4096)
+    if line[-2:] != b'\r\n':
+        raise ValueError(
+            '{!r} not found in {!r}...'.format(b'\r\n', line[:32])
+        )
+    (size, ext) = parse_chunk(line[:-2])
+    data = rfile.read(size + 2)
+    if len(data) != size + 2:
+        raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
+    end = data[-2:]
+    if end != b'\r\n':
+        raise ValueError('bad chunk data termination: {!r}'.format(end))
+    return (ext, data[:-2])
+
+
 class ChunkedBody:
     chunked = True
 
     __slots__ = (
         '_rfile',
-        '_rfile_readline',
-        '_rfile_read',
-        '_fastpath',
+        '_readline',
+        '_read',
         '_closed',
         '_error',
     )
@@ -1070,12 +1096,9 @@ class ChunkedBody:
         self._rfile = rfile
         self._closed = False
         self._error = False
-        if type(rfile) is Reader:
-            self._fastpath = True
-        else:
-            self._fastpath = False
-            self._rfile_read = _getcallable('rfile', rfile, 'read')
-            self._rfile_readline = _getcallable('rfile', rfile, 'readline')
+        if type(rfile) is not Reader:
+            self._read = _getcallable('rfile', rfile, 'read')
+            self._readline = _getcallable('rfile', rfile, 'readline')
 
     @property
     def rfile(self):
@@ -1083,7 +1106,7 @@ class ChunkedBody:
 
     @property
     def fastpath(self):
-        return self._fastpath
+        return type(self._rfile) is Reader
 
     @property
     def closed(self):
@@ -1096,4 +1119,28 @@ class ChunkedBody:
     def __repr__(self):
         return '{}(<rfile>)'.format(self.__class__.__name__)
 
+    def readchunk(self):
+        if self._closed:
+            raise ValueError('ChunkedBody.closed, already consumed')
+        if self._error:
+            raise ValueError('ChunkedBody.error, cannot be used')
+        try:
+            if type(self._rfile) is Reader:
+                chunk = self._rfile.readchunk()
+            else:
+                chunk = readchunk(self._rfile)
+        except:
+            self._error = True
+            raise
+        if len(chunk[1]) == 0:
+            self._closed = True
+        return chunk
+
+    def __iter__(self):
+        if self._closed:
+            raise ValueError('ChunkedBody.closed, already consumed')
+        if self._error:
+            raise ValueError('ChunkedBody.error, cannot be used')
+        while not self._closed:
+            yield self.readchunk()
 
