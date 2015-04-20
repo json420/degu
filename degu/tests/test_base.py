@@ -1050,6 +1050,143 @@ class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
 
 
+class TestMiscFunctions_Py(BackendTestCase):
+    def test_readchunk(self):
+        readchunk  = self.getattr('readchunk')
+ 
+        # rfile.readline missing:
+        class MissingReadline:
+            def read(self, size):
+                assert False
+        rfile = MissingReadline()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(AttributeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "'MissingReadline' object has no attribute 'readline'"
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # rfile.readline() not callable:
+        class BadReadline:
+            readline = 'hello'
+            def read(self):
+                assert False
+        rfile = BadReadline()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(TypeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception), 'rfile.readline() is not callable')
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # rfile.read missing:
+        class MissingRead:
+            def readline(self, size):
+                assert False
+        rfile = MissingRead()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(AttributeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception),
+            "'MissingRead' object has no attribute 'read'"
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # rfile.read() not callable:
+        class BadRead:
+            read = 'hello'
+            def readline(self, size):
+                assert False
+        rfile = BadRead()
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        with self.assertRaises(TypeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        rfile = io.BytesIO(b'0\r\n\r\n')
+        self.assertEqual(readchunk(rfile), (None, b''))
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        rfile = io.BytesIO(b'0;key=value\r\n\r\n')
+        self.assertEqual(readchunk(rfile), (('key', 'value'), b''))
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        rfile = io.BytesIO(b'c\r\nhello, world\r\n')
+        self.assertEqual(readchunk(rfile), (None, b'hello, world'))
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        rfile = io.BytesIO(b'c;key=value\r\nhello, world\r\n')
+        self.assertEqual(readchunk(rfile), (('key', 'value'), b'hello, world'))
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # readline() dosen't return bytes:
+        class Bad1:
+            def readline(self, size):
+                assert type(size) is int and size == 4096
+                return bytearray(b'c\r\n')
+            def read(self, size):
+                assert False
+        rfile = Bad1()
+        with self.assertRaises(TypeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need a {!r}; readline() returned a {!r}'.format(bytes, bytearray)
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # what readline() returns doesn't contain a b'\r\n':
+        class Bad2:
+            def __init__(self, line):
+                self.__line = line
+            def readline(self, size):
+                assert type(size) is int and size == 4096
+                return self.__line
+            def read(self, size):
+                assert False
+        for bad in (b'', b'\n', b'c', b'c\rhello, world', b'c\nhello, world'):
+            rfile = Bad2(bad)
+            with self.assertRaises(ValueError) as cm:
+                readchunk(rfile)
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(b'\r\n', bad)
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # read() dosen't return bytes:
+        class Bad3:
+            def __init__(self, data):
+                self.__data = data
+            def readline(self, size):
+                assert type(size) is int and size == 4096
+                return b'c\r\n'
+            def read(self, size):
+                assert type(size) is int and size == 14
+                return self.__data
+
+        ret = bytearray(b'hello, world\r\n')
+        self.assertEqual(len(ret), 14)
+        rfile = Bad3(ret)
+        with self.assertRaises(TypeError) as cm:
+            readchunk(rfile)
+        self.assertEqual(str(cm.exception),
+            'need a {!r}; read() returned a {!r}'.format(bytes, bytearray)
+        )
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # read() doesn't return the correct amount of data:
+        for bad in (b'', b'hello world\r\n', os.urandom(13), os.urandom(15)):
+            rfile = Bad3(bad)
+            with self.assertRaises(ValueError) as cm:
+                readchunk(rfile)
+            self.assertEqual(str(cm.exception),
+                'read() returned {} bytes, need 14'.format(len(bad))
+            ) 
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+
+class TestMiscFunctions_C(TestMiscFunctions_Py):
+    backend = _base
+
+
 class dict_subclass(dict):
     pass
 

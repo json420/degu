@@ -193,6 +193,9 @@ static PyObject * format_request(PyObject *, PyObject *);
 static PyObject * format_response(PyObject *, PyObject *);
 static PyObject * format_chunk(PyObject *, PyObject *);
 
+/* Misc */
+static PyObject * readchunk(PyObject *, PyObject *);
+
 /* namedtuples */
 static PyObject * Bodies(PyObject *, PyObject *);
 static PyObject * Request(PyObject *, PyObject *);
@@ -226,6 +229,9 @@ static struct PyMethodDef degu_functions[] = {
     {"format_request", format_request, METH_VARARGS, NULL},
     {"format_response", format_response, METH_VARARGS, NULL},
     {"format_chunk", format_chunk, METH_VARARGS, NULL},
+
+    /* Misc */
+    {"readchunk", readchunk, METH_VARARGS, NULL},
 
     /* namedtuples */
     {"Bodies", Bodies, METH_VARARGS, NULL},

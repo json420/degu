@@ -1065,19 +1065,36 @@ def _not_found(self, cur, end, readline):
     )
 
 
-def readchunk(rfile):
-    line = rfile.readline(4096)
+def _readchunk(readline, read):
+    line = readline(4096)
+    if type(line) is not bytes:
+        raise TypeError(
+            'need a {!r}; readline() returned a {!r}'.format(bytes, type(line))
+        )
     if line[-2:] != b'\r\n':
         raise ValueError(
             '{!r} not found in {!r}...'.format(b'\r\n', line[:32])
         )
     (size, ext) = parse_chunk(line[:-2])
-    data = rfile.read(size + 2)
+    data = read(size + 2)
+    if type(data) is not bytes:
+        raise TypeError(
+            'need a {!r}; read() returned a {!r}'.format(bytes, type(data))
+        )
     if len(data) != size + 2:
-        raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
+        raise ValueError(
+            'read() returned {} bytes, need {}'.format(len(data), size + 2)
+        )
     end = data[-2:]
     if end != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(end))
+    return (ext, data)
+
+
+def readchunk(rfile):
+    readline = _getcallable('rfile', rfile, 'readline')
+    read = _getcallable('rfile', rfile, 'read')
+    (ext, data) = _readchunk(readline, read)
     return (ext, data[:-2])
 
 

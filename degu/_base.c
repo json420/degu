@@ -66,6 +66,7 @@ static PyObject *str_empty             = NULL;  //  ''
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
+static PyObject *int_MAX_LINE_SIZE     = NULL;  //  4096
 
 
 /* _init_all_globals(): called by PyInit__base() */
@@ -113,6 +114,7 @@ _init_all_globals(PyObject *module)
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
+    _SET(int_MAX_LINE_SIZE, PyLong_FromLong(_MAX_LINE_SIZE))
 
     return true;
 
@@ -293,6 +295,9 @@ static DeguSrc
 _slice(DeguSrc src, const size_t start, const size_t stop)
 {
     if (_isempty(src) || start > stop || stop > src.len) {
+        printf("src.buf=%p, src.len=%zu, start=%zu, stop=%zu\n",
+            src.buf, src.len, start, stop
+        );
         Py_FatalError("_slice(): bad internal call");
     }
     return (DeguSrc){src.buf + start, stop - start};
@@ -531,7 +536,7 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
     if (attr == NULL) {
         return NULL;
     }
-    if (!PyCallable_Check(attr)) {
+    if (! PyCallable_Check(attr)) {
         Py_CLEAR(attr);
         PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", label, name);
     }
@@ -2398,7 +2403,6 @@ cleanup:
     return ret;
 }
 
-
 static PyObject *
 format_chunk(PyObject *self, PyObject *args)
 {
@@ -2413,6 +2417,106 @@ format_chunk(PyObject *self, PyObject *args)
         return NULL;
     }
     return _format_chunk(&dc);
+}
+
+static bool
+_readchunk(PyObject *readline, PyObject *read, DeguChunk *dc)
+{
+    if (readline == NULL || read == NULL) {
+        Py_FatalError("_readchunk(): bad internal call");
+    }
+    if (dc->key != NULL || dc->val != NULL || dc->data != NULL || dc->size != 0) {
+        Py_FatalError("_readchunk(): also bad internal call");
+    }
+
+    PyObject *line = NULL;
+    PyObject *size = NULL;
+    bool success = true;
+
+    /* Read and parse chunk line */
+    _SET(line, PyObject_CallFunctionObjArgs(readline, int_MAX_LINE_SIZE, NULL))
+    if (! PyBytes_CheckExact(line)) {
+        PyErr_Format(PyExc_TypeError,
+            "need a <class 'bytes'>; readline() returned a %R", Py_TYPE(line)
+        );
+        goto error;
+    }
+    DeguSrc src = _frombytes(line);
+    if (src.len < 2 || !_equal(_slice(src, src.len - 2, src.len), CRLF)) {
+        if (src.len == 0) {
+            _value_error("%R not found in b''...", CRLF);
+        }
+        else {
+            _value_error2("%R not found in %R...",
+                CRLF, _slice(src, 0, _min(src.len, 32))
+            );
+        }
+        goto error;
+    }
+    if (! _parse_chunk(_slice(src, 0, src.len - 2), dc)) {
+        goto error;
+    }
+
+    /* Read the chunk data */
+    _SET(size, PyLong_FromSize_t(dc->size + 2))
+    _SET(dc->data, PyObject_CallFunctionObjArgs(read, size, NULL))
+    if (! PyBytes_CheckExact(dc->data)) {
+        PyErr_Format(PyExc_TypeError,
+            "need a <class 'bytes'>; read() returned a %R", Py_TYPE(dc->data)
+        );
+        goto error;
+    }
+    if ((size_t)PyBytes_GET_SIZE(dc->data) != dc->size + 2) {
+        PyErr_Format(PyExc_ValueError, "read() returned %zd bytes, need %zu",
+            PyBytes_GET_SIZE(dc->data), dc->size + 2
+        );
+        goto error;
+    }
+    DeguSrc data = _frombytes(dc->data);
+    DeguSrc term = _slice(data, data.len - 2, data.len);
+    if (! _equal(term, CRLF)) {
+        _value_error("bad chunk data termination: %R", term);
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    success = false;
+
+cleanup:
+    Py_CLEAR(line);
+    Py_CLEAR(size);
+    return success;
+}
+
+static PyObject *
+readchunk(PyObject *self, PyObject *args)
+{
+    PyObject *rfile = NULL;
+    PyObject *readline = NULL;
+    PyObject *read = NULL;
+    PyObject *ret = NULL;
+    DeguChunk dc = NEW_DEGU_CHUNK;
+
+    if (!PyArg_ParseTuple(args, "O:readchunk", &rfile)) {
+        return NULL;
+    }
+    _SET(readline, _getcallable("rfile", rfile, attr_readline))
+    _SET(read, _getcallable("rfile", rfile, attr_read))
+    if (! _readchunk(readline, read, &dc)) {
+        goto error;
+    }
+    _SET(ret, _pack_chunk(&dc))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(readline);
+    Py_CLEAR(read);
+    _clear_degu_chunk(&dc);
+    return ret;
 }
 
 
