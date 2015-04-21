@@ -69,6 +69,30 @@ def random_identifier():
     return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
 
 
+def random_chunk_ext():
+    if random.randrange(3) == 0:
+        return None
+    return (random_identifier(), random_identifier())
+
+
+def random_chunks2(count=None):
+    """
+    Return between 0 and 10 random chunks (inclusive).
+
+    There will always be 1 additional, final chunk, an empty ``b''``, as per the
+    HTTP/1.1 specification.
+    """
+    if count is None:
+        count = random.range(10) + 1
+    assert type(count) is int and count > 0
+    chunks = [
+        (random_chunk_ext(), random_data()) for i in range(count - 1)
+    ]
+    chunks.append((random_chunk_ext(), b''))
+    assert len(chunks) == count
+    return tuple(chunks)
+
+
 def iter_good(good, allowed):
     for i in range(len(good)):
         for g in allowed:

@@ -3776,6 +3776,10 @@ ChunkedBody_repr(ChunkedBody *self)
 static PyObject *
 ChunkedBody_iter(ChunkedBody *self)
 {
+    if (self->closed || self->error) {
+        _ChunkedBody_set_exception(self);
+        return NULL;
+    }
     PyObject *ret = (PyObject *)self;
     Py_INCREF(ret);
     return ret;
@@ -3784,7 +3788,10 @@ ChunkedBody_iter(ChunkedBody *self)
 static PyObject *
 ChunkedBody_next(ChunkedBody *self)
 {
-    return NULL;
+    if (self->closed) {
+        return NULL;
+    }
+    return ChunkedBody_readchunk(self);
 }
 
 

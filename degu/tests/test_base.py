@@ -31,6 +31,7 @@ from random import SystemRandom
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
+from .helpers import random_chunks2
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
@@ -3183,6 +3184,119 @@ class TestChunkedBody_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # Now test internal Reader fast-path:
+        sock = MockSocket(b'', None)
+        rfile = self.Reader(sock, base.bodies)
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'chunk line is empty')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+        
+        for bad in (b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
+            sock = MockSocket(bad, None)
+            rfile = self.Reader(sock, base.bodies)
+            body = ChunkedBody(rfile)
+            self.assertEqual(sys.getrefcount(rfile), 3)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(b'\r\n', bad)
+            )
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            self.assertEqual(sys.getrefcount(rfile), 3)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        sock = MockSocket(b'c\r\nhello, worl\r\n', None)
+        rfile = self.Reader(sock, base.bodies)
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),'underflow: 13 < 14')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 3)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        def iter_rfiles(data):
+            yield io.BytesIO(data)
+            yield self.Reader(MockSocket(data, None), base.bodies)
+            yield self.Reader(MockSocket(data, 1), base.bodies)
+            yield self.Reader(MockSocket(data, 2), base.bodies)
+
+        for i in range(1, 5):
+            chunks = random_chunks2(i)
+            wfile = io.BytesIO()
+            for chunk in chunks:
+                base.write_chunk(wfile, chunk)
+            data = wfile.getvalue()
+            del wfile
+
+            for rfile in iter_rfiles(data):
+                body = self.ChunkedBody(rfile)
+                refcount = (3 if type(rfile) is self.Reader else 5)
+                for chunk in chunks:
+                    self.assertIs(body.closed, False)
+                    self.assertIs(body.error, False)
+                    self.assertEqual(body.readchunk(), chunk)
+                self.assertIs(body.closed, True)
+                self.assertIs(body.error, False)
+                with self.assertRaises(ValueError) as cm:
+                    body.readchunk()
+                self.assertEqual(str(cm.exception),
+                    'ChunkedBody.closed, already consumed'
+                )
+                self.assertIs(body.closed, True)
+                self.assertIs(body.error, False)
+                self.assertEqual(sys.getrefcount(rfile), refcount)
+                del body
+                self.assertEqual(sys.getrefcount(rfile), 2)
+
+            for rfile in iter_rfiles(data):
+                body = self.ChunkedBody(rfile)
+                refcount = (3 if type(rfile) is self.Reader else 5)
+                body = self.ChunkedBody(rfile)
+                result = tuple(body)
+                self.assertEqual(len(result), len(chunks))
+                self.assertEqual(result, chunks)
+                self.assertIs(body.closed, True)
+                self.assertIs(body.error, False)
+                with self.assertRaises(ValueError) as cm:
+                    tuple(body)
+                self.assertEqual(str(cm.exception),
+                    'ChunkedBody.closed, already consumed'
+                )
+                self.assertIs(body.closed, True)
+                self.assertIs(body.error, False)
+                self.assertEqual(sys.getrefcount(rfile), refcount)
+                del body
+                self.assertEqual(sys.getrefcount(rfile), 2)
+
 
 
 class TestChunkedBody_C(TestChunkedBody_Py):
