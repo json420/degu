@@ -2894,6 +2894,12 @@ class TestChunkedBody_Py(BackendTestCase):
         self.assertIs(body.error, False)
         self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
 
+    def iter_rfiles(self, data):
+        yield io.BytesIO(data)
+        yield self.Reader(MockSocket(data, None), base.bodies)
+        yield self.Reader(MockSocket(data, 1), base.bodies)
+        yield self.Reader(MockSocket(data, 2), base.bodies)
+
     def test_init(self):
         # Test with backend.Reader:
         sock = MockSocket(b'', None)
@@ -2967,6 +2973,18 @@ class TestChunkedBody_Py(BackendTestCase):
             self.ChunkedBody(rfile)
         self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
+
+    def test_repr(self):
+        data = b'c\r\nhello, world\r\n0;k=v\r\n\r\n'
+        for rfile in self.iter_rfiles(data):
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            body = self.ChunkedBody(rfile)
+            refcount = (3 if type(rfile) is self.Reader else 5)
+            self.assertEqual(sys.getrefcount(rfile), refcount)
+            self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
+            self.assertEqual(sys.getrefcount(rfile), refcount)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_readchunk(self):
         ChunkedBody  = self.getattr('ChunkedBody')
@@ -3243,12 +3261,6 @@ class TestChunkedBody_Py(BackendTestCase):
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        def iter_rfiles(data):
-            yield io.BytesIO(data)
-            yield self.Reader(MockSocket(data, None), base.bodies)
-            yield self.Reader(MockSocket(data, 1), base.bodies)
-            yield self.Reader(MockSocket(data, 2), base.bodies)
-
         for i in range(1, 5):
             chunks = random_chunks2(i)
             wfile = io.BytesIO()
@@ -3257,7 +3269,7 @@ class TestChunkedBody_Py(BackendTestCase):
             data = wfile.getvalue()
             del wfile
 
-            for rfile in iter_rfiles(data):
+            for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
                 refcount = (3 if type(rfile) is self.Reader else 5)
                 for chunk in chunks:
@@ -3277,7 +3289,7 @@ class TestChunkedBody_Py(BackendTestCase):
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
-            for rfile in iter_rfiles(data):
+            for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
                 refcount = (3 if type(rfile) is self.Reader else 5)
                 body = self.ChunkedBody(rfile)
@@ -3296,7 +3308,6 @@ class TestChunkedBody_Py(BackendTestCase):
                 self.assertEqual(sys.getrefcount(rfile), refcount)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
-
 
 
 class TestChunkedBody_C(TestChunkedBody_Py):
