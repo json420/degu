@@ -1071,6 +1071,10 @@ def _readchunk(readline, read):
         raise TypeError(
             'need a {!r}; readline() returned a {!r}'.format(bytes, type(line))
         )
+    if len(line) > 4096:
+        raise ValueError(
+            'readline() returned too many bytes: {} > {}'.format(len(line), 4096)
+        )
     if line[-2:] != b'\r\n':
         raise ValueError(
             '{!r} not found in {!r}...'.format(b'\r\n', line[:32])

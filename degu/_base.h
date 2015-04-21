@@ -551,8 +551,8 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *rfile_readline;
-    PyObject *rfile_read;
+    PyObject *readline;
+    PyObject *read;
     bool fastpath;
     bool closed;
     bool error;

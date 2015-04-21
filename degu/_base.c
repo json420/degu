@@ -2311,7 +2311,7 @@ cleanup:
 }
 
 static bool
-_unpack_chunk(PyObject *chunk, DeguChunk *dc)
+_unpack_chunk(DeguChunk *dc, PyObject *chunk)
 {
     if (chunk == NULL || dc->key != NULL || dc->val != NULL || dc->data != NULL || dc->size != 0) {
         Py_FatalError("_unpack_chunk(): bad internal call");
@@ -2413,7 +2413,7 @@ format_chunk(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O:format_chunk", &chunk)) {
         return NULL;
     }
-    if (! _unpack_chunk(chunk, &dc)) {
+    if (! _unpack_chunk(&dc, chunk)) {
         return NULL;
     }
     return _format_chunk(&dc);
@@ -2442,6 +2442,13 @@ _readchunk(PyObject *readline, PyObject *read, DeguChunk *dc)
         goto error;
     }
     DeguSrc src = _frombytes(line);
+    if (src.len > _MAX_LINE_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "readline() returned too many bytes: %zu > %zu",
+            src.len, _MAX_LINE_SIZE
+        );
+        goto error;
+    }
     if (src.len < 2 || !_equal(_slice(src, src.len - 2, src.len), CRLF)) {
         if (src.len == 0) {
             _value_error("%R not found in b''...", CRLF);
@@ -3650,8 +3657,8 @@ static void
 ChunkedBody_dealloc(ChunkedBody *self)
 {
     Py_CLEAR(self->rfile);
-    Py_CLEAR(self->rfile_readline);
-    Py_CLEAR(self->rfile_read);
+    Py_CLEAR(self->readline);
+    Py_CLEAR(self->read);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3670,8 +3677,8 @@ ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
     }
     else {
         self->fastpath = false;
-        _SET(self->rfile_readline, _getcallable("rfile", rfile, attr_readline))
-        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
+        _SET(self->readline, _getcallable("rfile", rfile, attr_readline))
+        _SET(self->read, _getcallable("rfile", rfile, attr_read))
     }
     self->closed = false;
     self->error = false;
@@ -3685,34 +3692,53 @@ error:
 static void
 _ChunkedBody_set_exception(ChunkedBody *self)
 {
-    if (self->closed) {
-        if (self->error) {
-            goto bad_times;
-        }
-        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
+    if (self->closed && !self->error) {
+        PyErr_SetString(PyExc_ValueError, "ChunkedBody.closed, already consumed");
     }
-    else if (self->error) {
-        if (self->closed) {
-            goto bad_times;
-        }
-        PyErr_SetString(PyExc_ValueError, "Body.error, cannot be used");
+    else if (self->error && !self->closed) {
+        PyErr_SetString(PyExc_ValueError, "ChunkedBody.error, cannot be used");
     }
     else {
-        goto bad_times;
+        Py_FatalError("_ChunkedBody_set_exception(): bad internal call");
     }
-
-bad_times:
-    Py_FatalError("_ChunkedBody_set_exception(): bad internal call or state");
 }
 
 static PyObject *
 ChunkedBody_readchunk(ChunkedBody *self)
 {
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    PyObject *ret = NULL;
+
     if (self->closed || self->error) {
         _ChunkedBody_set_exception(self);
         return NULL;
     }
-    Py_RETURN_NONE;
+    if (Py_TYPE(self->rfile) == &ReaderType) {
+        if (!_Reader_readchunk((Reader *)self->rfile, &dc)) {
+            goto error;
+        }
+    }
+    else {
+        if (self->readline == NULL || self->read == NULL) {
+            Py_FatalError("ChunkedBody_readchunk(): bad internal state");
+        }
+        if (! _readchunk(self->readline, self->read, &dc)) {
+            goto error;
+        }
+    }
+    _SET(ret, _pack_chunk(&dc))
+    if (dc.size == 0) {
+        self->closed = true;
+    }
+    goto cleanup;
+
+error:
+    self->error = true;
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_chunk(&dc);
+    return ret;
 }
 
 static PyObject *

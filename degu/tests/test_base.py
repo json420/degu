@@ -2967,6 +2967,223 @@ class TestChunkedBody_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
+    def test_readchunk(self):
+        ChunkedBody  = self.getattr('ChunkedBody')
+
+        rfile = io.BytesIO(b'0\r\n\r\n')
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        self.assertEqual(body.readchunk(), (None, b''))
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.closed, already consumed'
+        )
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        rfile = io.BytesIO(b'0;key=value\r\n\r\n')
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        self.assertEqual(body.readchunk(), (('key', 'value'), b''))
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.closed, already consumed'
+        )
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        rfile = io.BytesIO(b'c\r\nhello, world\r\n0;k=v\r\n\r\n')
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        self.assertEqual(body.readchunk(), (None, b'hello, world'))
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, False)
+        self.assertEqual(body.readchunk(), (('k', 'v'), b''))
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.closed, already consumed'
+        )
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        rfile = io.BytesIO(b'c;key=value\r\nhello, world\r\n0\r\n\r\n')
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        self.assertEqual(body.readchunk(), (('key', 'value'), b'hello, world'))
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, False)
+        self.assertEqual(body.readchunk(), (None, b''))
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.closed, already consumed'
+        )
+        self.assertIs(body.closed, True)
+        self.assertIs(body.error, False)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+
+        good1 = b'c;k=v\r\n'
+        good2 = b'hello, world\r\n'
+
+        class MockFile:
+            def __init__(self, ret1, ret2):
+                self.__ret1 = ret1
+                self.__ret2 = ret2
+            
+            def readline(self, size):
+                assert type(size) is int and size == 4096
+                return self.__ret1
+
+            def read(self, size):
+                assert type(size) is int and size == 14
+                return self.__ret2
+
+        # readline() dosen't return bytes:
+        rfile = MockFile(bytearray(good1), good2)
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        with self.assertRaises(TypeError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'need a {!r}; readline() returned a {!r}'.format(bytes, bytearray)
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # readline() returns to many bytes
+        bad1 = os.urandom(4097)
+        rfile = MockFile(bad1, good2)
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'readline() returned too many bytes: 4097 > 4096'
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # readline() returns bytes, but it doesn't contain a b'\r\n':
+        for bad1 in (b'', b'\n', b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
+            rfile = MockFile(bad1, good2)
+            body = ChunkedBody(rfile)
+            self.assertEqual(sys.getrefcount(rfile), 5)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(b'\r\n', bad1)
+            )
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            self.assertEqual(sys.getrefcount(rfile), 5)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # read() dosen't return bytes:
+        rfile = MockFile(good1, bytearray(good2))
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        with self.assertRaises(TypeError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception),
+            'need a {!r}; read() returned a {!r}'.format(bytes, bytearray)
+        )
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # read() doesn't return the correct amount of data:
+        for bad2 in (b'', b'hello world\r\n', os.urandom(13), os.urandom(15)):
+            rfile = MockFile(good1, bad2)
+            body = ChunkedBody(rfile)
+            self.assertEqual(sys.getrefcount(rfile), 5)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception),
+                'read() returned {} bytes, need 14'.format(len(bad2))
+            )
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            with self.assertRaises(ValueError) as cm:
+                body.readchunk()
+            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+            self.assertIs(body.closed, False)
+            self.assertIs(body.error, True)
+            self.assertEqual(sys.getrefcount(rfile), 5)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        # data isn't correctly terminated:
+        bad2 = (b'\r\n' * 6) + b'Az'
+        assert len(bad2) == 14
+        rfile = MockFile(good1, bad2)
+        body = ChunkedBody(rfile)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), "bad chunk data termination: b'Az'")
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        with self.assertRaises(ValueError) as cm:
+            body.readchunk()
+        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
+        self.assertIs(body.closed, False)
+        self.assertIs(body.error, True)
+        self.assertEqual(sys.getrefcount(rfile), 5)
+        del body
+        self.assertEqual(sys.getrefcount(rfile), 2)
+
 
 class TestChunkedBody_C(TestChunkedBody_Py):
     backend = _base
