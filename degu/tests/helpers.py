@@ -74,6 +74,13 @@ def random_chunk_ext():
         return None
     return (random_identifier(), random_identifier())
 
+def random_chunk(size=None):
+    if size is None:
+        size = random.randint(1, 34969)
+    assert type(size) is int and 0 <= size <= 34969
+    ext = random_chunk_ext()
+    data = os.urandom(size)
+    return (ext, data)
 
 def random_chunks2(count=None):
     """
@@ -83,12 +90,12 @@ def random_chunks2(count=None):
     HTTP/1.1 specification.
     """
     if count is None:
-        count = random.range(10) + 1
+        count = random.randrange(10) + 1
     assert type(count) is int and count > 0
     chunks = [
-        (random_chunk_ext(), random_data()) for i in range(count - 1)
+        random_chunk() for i in range(count - 1)
     ]
-    chunks.append((random_chunk_ext(), b''))
+    chunks.append(random_chunk(0))
     assert len(chunks) == count
     return tuple(chunks)
 

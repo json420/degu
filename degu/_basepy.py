@@ -44,6 +44,10 @@ MAX_LENGTH = 9999999999999999
 MAX_READ_SIZE = 16777216  # 16 MiB
 IO_SIZE = 1048576  # 1 MiB
 
+BODY_READY = 0
+BODY_CONSUMED = 1
+BODY_ERROR = 2
+
 _METHODS = {
     b'GET': 'GET',
     b'PUT': 'PUT',
@@ -597,6 +601,15 @@ def format_chunk(chunk):
     return '{:x};{}={}\r\n'.format(len(data), key, value).encode()
 
 
+def write_chunk(wfile, chunk):
+    line = format_chunk(chunk)
+    total = wfile.write(line)
+    total += wfile.write(chunk[1])
+    total += wfile.write(b'\r\n')
+    wfile.flush()
+    return total
+
+
 ################################################################################
 # Reader:
 
@@ -946,6 +959,20 @@ class Writer:
         return self.write_output(preamble, body)
 
 
+def _check_body_state(name, state):
+    if state is BODY_READY:
+        return
+    if state is BODY_CONSUMED:
+        raise ValueError(
+            '{}.state == BODY_CONSUMED, already consumed'.format(name)
+        )
+    if state is BODY_ERROR:
+        raise ValueError(
+            '{}.state == BODY_ERROR, cannot be used'.format(name)
+        )
+    raise Exception('bad state: {!r}'.format(state))
+
+
 class Body:
     chunked = False
     __slots__ = ('rfile', 'content_length', '_remaining', '_closed', '_error')
@@ -1109,17 +1136,18 @@ class ChunkedBody:
         '_rfile',
         '_readline',
         '_read',
-        '_closed',
-        '_error',
+        '_state',
     )
 
     def __init__(self, rfile):
         self._rfile = rfile
-        self._closed = False
-        self._error = False
         if type(rfile) is not Reader:
             self._read = _getcallable('rfile', rfile, 'read')
             self._readline = _getcallable('rfile', rfile, 'readline')
+        self._state = BODY_READY
+
+    def __repr__(self):
+        return 'ChunkedBody(<rfile>)'
 
     @property
     def rfile(self):
@@ -1130,38 +1158,62 @@ class ChunkedBody:
         return type(self._rfile) is Reader
 
     @property
-    def closed(self):
-        return self._closed
-
-    @property
-    def error(self):
-        return self._error
-
-    def __repr__(self):
-        return '{}(<rfile>)'.format(self.__class__.__name__)
+    def state(self):
+        return self._state
 
     def readchunk(self):
-        if self._closed:
-            raise ValueError('ChunkedBody.closed, already consumed')
-        if self._error:
-            raise ValueError('ChunkedBody.error, cannot be used')
+        _check_body_state('ChunkedBody', self._state)
         try:
             if type(self._rfile) is Reader:
                 chunk = self._rfile.readchunk()
             else:
                 chunk = readchunk(self._rfile)
+            if len(chunk[1]) == 0:
+                self._state = BODY_CONSUMED
         except:
-            self._error = True
+            self._state = BODY_ERROR
             raise
-        if len(chunk[1]) == 0:
-            self._closed = True
         return chunk
 
     def __iter__(self):
-        if self._closed:
-            raise ValueError('ChunkedBody.closed, already consumed')
-        if self._error:
-            raise ValueError('ChunkedBody.error, cannot be used')
-        while not self._closed:
+        _check_body_state('ChunkedBody', self._state)
+        while self._state != BODY_CONSUMED:
             yield self.readchunk()
+    
 
+class ChunkedBodyIter:
+    __slots__ = ('_source', '_state')
+
+    def __init__(self, source):
+        self._source = source
+        self._state = BODY_READY
+
+    def __repr__(self):
+        return 'ChunkedBodyIter(<source>)'
+
+    @property
+    def source(self):
+        return self._source
+
+    @property
+    def state(self):
+        return self._state
+
+    def write_to(self, wfile):
+        _check_body_state('ChunkedBodyIter', self._state)
+        empty = False
+        total = 0
+        try:
+            for chunk in self._source:
+                if empty:
+                    raise ValueError('additional chunk after empty chunk data')
+                total += write_chunk(wfile, chunk)
+                if not chunk[1]:  # Is chunk data empty?
+                    empty = True
+            if not empty:
+                raise ValueError('final chunk data was not empty')
+        except:
+            self._state = BODY_ERROR
+            raise
+        self._state = BODY_CONSUMED
+        return total

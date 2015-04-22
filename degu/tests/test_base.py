@@ -31,7 +31,7 @@ from random import SystemRandom
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
-from .helpers import random_chunks2
+from .helpers import random_chunks2, random_chunk
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
@@ -1182,6 +1182,49 @@ class TestMiscFunctions_Py(BackendTestCase):
                 'read() returned {} bytes, need 14'.format(len(bad))
             ) 
             self.assertEqual(sys.getrefcount(rfile), 2)
+
+    def test_write_chunk(self):
+        write_chunk  = self.getattr('write_chunk')
+
+        def getrefcounts(wfile, chunk):
+            counts = {
+                'wfile': sys.getrefcount(wfile),
+                'chunk': sys.getrefcount(chunk),
+                'chunk[0]': sys.getrefcount(chunk[0]),
+                'chunk[1]': sys.getrefcount(chunk[1]),
+            }
+            if chunk[0] is not None:
+                counts['chunk[0][0]'] = sys.getrefcount(chunk[0][0])
+                counts['chunk[0][1]'] = sys.getrefcount(chunk[0][1])
+            return counts
+
+        wfile = io.BytesIO()
+        chunk = (None, b'')
+        counts = getrefcounts(wfile, chunk)
+        self.assertEqual(write_chunk(wfile, chunk), 5)
+        self.assertEqual(wfile.getvalue(), b'0\r\n\r\n')
+        self.assertEqual(getrefcounts(wfile, chunk), counts)
+
+        wfile = io.BytesIO()
+        chunk = (('k', 'v'), b'')
+        counts = getrefcounts(wfile, chunk)
+        self.assertEqual(write_chunk(wfile, chunk), 9)
+        self.assertEqual(wfile.getvalue(), b'0;k=v\r\n\r\n')
+        self.assertEqual(getrefcounts(wfile, chunk), counts)
+
+        wfile = io.BytesIO()
+        chunk = (None, b'hello, world')
+        counts = getrefcounts(wfile, chunk)
+        self.assertEqual(write_chunk(wfile, chunk), 17)
+        self.assertEqual(wfile.getvalue(), b'c\r\nhello, world\r\n')
+        self.assertEqual(getrefcounts(wfile, chunk), counts)
+
+        wfile = io.BytesIO()
+        chunk = (('k', 'v'), b'hello, world')
+        counts = getrefcounts(wfile, chunk)
+        self.assertEqual(write_chunk(wfile, chunk), 21)
+        self.assertEqual(wfile.getvalue(), b'c;k=v\r\nhello, world\r\n')
+        self.assertEqual(getrefcounts(wfile, chunk), counts)
 
 
 class TestMiscFunctions_C(TestMiscFunctions_Py):
@@ -2849,7 +2892,21 @@ class TestBody_C(TestBody_Py):
     backend = _base
 
 
-class TestChunkedBody_Py(BackendTestCase):
+class BodyBackendTestCase(BackendTestCase):
+    @property
+    def BODY_READY(self):
+        return self.getattr('BODY_READY')
+
+    @property
+    def BODY_CONSUMED(self):
+        return self.getattr('BODY_CONSUMED')
+
+    @property
+    def BODY_ERROR(self):
+        return self.getattr('BODY_ERROR')
+
+
+class TestChunkedBody_Py(BodyBackendTestCase):
     @property
     def ChunkedBody(self):
         return self.getattr('ChunkedBody')
@@ -2869,7 +2926,7 @@ class TestChunkedBody_Py(BackendTestCase):
             delmsg =  setmsg
             setmsg2 = setmsg
             delmsg2 = delmsg
-        members = ('rfile', 'fastpath', 'closed', 'error')
+        members = ('rfile', 'fastpath', 'state')
 
         # Test everything except body.chunked:
         for name in members:  
@@ -2890,8 +2947,7 @@ class TestChunkedBody_Py(BackendTestCase):
 
         self.assertIs(body.rfile, rfile)
         self.assertIs(body.chunked, True)
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
 
     def iter_rfiles(self, data):
@@ -2987,82 +3043,69 @@ class TestChunkedBody_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_readchunk(self):
-        ChunkedBody  = self.getattr('ChunkedBody')
-
         rfile = io.BytesIO(b'0\r\n\r\n')
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (None, b''))
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
-            'ChunkedBody.closed, already consumed'
+            'ChunkedBody.state == BODY_CONSUMED, already consumed'
         )
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         rfile = io.BytesIO(b'0;key=value\r\n\r\n')
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (('key', 'value'), b''))
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
-            'ChunkedBody.closed, already consumed'
+            'ChunkedBody.state == BODY_CONSUMED, already consumed'
         )
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         rfile = io.BytesIO(b'c\r\nhello, world\r\n0;k=v\r\n\r\n')
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (None, b'hello, world'))
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(body.readchunk(), (('k', 'v'), b''))
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
-            'ChunkedBody.closed, already consumed'
+            'ChunkedBody.state == BODY_CONSUMED, already consumed'
         )
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         rfile = io.BytesIO(b'c;key=value\r\nhello, world\r\n0\r\n\r\n')
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (('key', 'value'), b'hello, world'))
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(body.readchunk(), (None, b''))
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
-            'ChunkedBody.closed, already consumed'
+            'ChunkedBody.state == BODY_CONSUMED, already consumed'
         )
-        self.assertIs(body.closed, True)
-        self.assertIs(body.error, False)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
-
 
         good1 = b'c;k=v\r\n'
         good2 = b'hello, world\r\n'
@@ -3082,20 +3125,20 @@ class TestChunkedBody_Py(BackendTestCase):
 
         # readline() dosen't return bytes:
         rfile = MockFile(bytearray(good1), good2)
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(TypeError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
             'need a {!r}; readline() returned a {!r}'.format(bytes, bytearray)
         )
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3103,20 +3146,20 @@ class TestChunkedBody_Py(BackendTestCase):
         # readline() returns to many bytes
         bad1 = os.urandom(4097)
         rfile = MockFile(bad1, good2)
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
             'readline() returned too many bytes: 4097 > 4096'
         )
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3124,40 +3167,40 @@ class TestChunkedBody_Py(BackendTestCase):
         # readline() returns bytes, but it doesn't contain a b'\r\n':
         for bad1 in (b'', b'\n', b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
             rfile = MockFile(bad1, good2)
-            body = ChunkedBody(rfile)
+            body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 5)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
                 '{!r} not found in {!r}...'.format(b'\r\n', bad1)
             )
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(body.state, self.BODY_ERROR)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
-            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBody.state == BODY_ERROR, cannot be used'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
             self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         # read() dosen't return bytes:
         rfile = MockFile(good1, bytearray(good2))
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(TypeError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
             'need a {!r}; read() returned a {!r}'.format(bytes, bytearray)
         )
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3165,20 +3208,20 @@ class TestChunkedBody_Py(BackendTestCase):
         # read() doesn't return the correct amount of data:
         for bad2 in (b'', b'hello world\r\n', os.urandom(13), os.urandom(15)):
             rfile = MockFile(good1, bad2)
-            body = ChunkedBody(rfile)
+            body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 5)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
                 'read() returned {} bytes, need 14'.format(len(bad2))
             )
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(body.state, self.BODY_ERROR)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
-            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBody.state == BODY_ERROR, cannot be used'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
             self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3187,18 +3230,18 @@ class TestChunkedBody_Py(BackendTestCase):
         bad2 = (b'\r\n' * 6) + b'Az'
         assert len(bad2) == 14
         rfile = MockFile(good1, bad2)
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception), "bad chunk data termination: b'Az'")
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3206,57 +3249,57 @@ class TestChunkedBody_Py(BackendTestCase):
         # Now test internal Reader fast-path:
         sock = MockSocket(b'', None)
         rfile = self.Reader(sock, base.bodies)
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 3)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception), 'chunk line is empty')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 3)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
-        
+
         for bad in (b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
             sock = MockSocket(bad, None)
             rfile = self.Reader(sock, base.bodies)
-            body = ChunkedBody(rfile)
+            body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 3)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
                 '{!r} not found in {!r}...'.format(b'\r\n', bad)
             )
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(body.state, self.BODY_ERROR)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
-            self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-            self.assertIs(body.closed, False)
-            self.assertIs(body.error, True)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBody.state == BODY_ERROR, cannot be used'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
             self.assertEqual(sys.getrefcount(rfile), 3)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         sock = MockSocket(b'c\r\nhello, worl\r\n', None)
         rfile = self.Reader(sock, base.bodies)
-        body = ChunkedBody(rfile)
+        body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 3)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),'underflow: 13 < 14')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
-        self.assertEqual(str(cm.exception), 'ChunkedBody.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'ChunkedBody.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertEqual(sys.getrefcount(rfile), 3)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3273,18 +3316,15 @@ class TestChunkedBody_Py(BackendTestCase):
                 body = self.ChunkedBody(rfile)
                 refcount = (3 if type(rfile) is self.Reader else 5)
                 for chunk in chunks:
-                    self.assertIs(body.closed, False)
-                    self.assertIs(body.error, False)
+                    self.assertEqual(body.state, self.BODY_READY)
                     self.assertEqual(body.readchunk(), chunk)
-                self.assertIs(body.closed, True)
-                self.assertIs(body.error, False)
+                self.assertEqual(body.state, self.BODY_CONSUMED)
                 with self.assertRaises(ValueError) as cm:
                     body.readchunk()
                 self.assertEqual(str(cm.exception),
-                    'ChunkedBody.closed, already consumed'
+                    'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
-                self.assertIs(body.closed, True)
-                self.assertIs(body.error, False)
+                self.assertEqual(body.state, self.BODY_CONSUMED)
                 self.assertEqual(sys.getrefcount(rfile), refcount)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3296,21 +3336,234 @@ class TestChunkedBody_Py(BackendTestCase):
                 result = tuple(body)
                 self.assertEqual(len(result), len(chunks))
                 self.assertEqual(result, chunks)
-                self.assertIs(body.closed, True)
-                self.assertIs(body.error, False)
+                self.assertEqual(body.state, self.BODY_CONSUMED)
                 with self.assertRaises(ValueError) as cm:
                     tuple(body)
                 self.assertEqual(str(cm.exception),
-                    'ChunkedBody.closed, already consumed'
+                    'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
-                self.assertIs(body.closed, True)
-                self.assertIs(body.error, False)
+                self.assertEqual(body.state, self.BODY_CONSUMED)
                 self.assertEqual(sys.getrefcount(rfile), refcount)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
 
 class TestChunkedBody_C(TestChunkedBody_Py):
+    backend = _base
+
+
+def get_source_refcounts(source):
+    counts = {'': sys.getrefcount(source)}
+    for i in range(len(source)):
+        base = str(i)
+        counts[base] = sys.getrefcount(source[i])
+        # Note, it's problematic to check refcounts on None, in both the 
+        # Python and C implementations.
+        if source[i][0] is not None:
+            counts[base + '.ext'] = sys.getrefcount(source[i][0])
+            counts[base + '.ext.key'] = sys.getrefcount(source[i][0][0])
+            counts[base + '.ext.val'] = sys.getrefcount(source[i][0][1])
+        counts[base + '.data'] = sys.getrefcount(source[i][1])
+    return counts
+
+
+class TestChunkedBodyIter_Py(BackendTestCase):
+    @property
+    def ChunkedBodyIter(self):
+        return self.getattr('ChunkedBodyIter')
+
+    @property
+    def ChunkedBody(self):
+        return self.getattr('ChunkedBody')
+
+    @property
+    def Writer(self):
+        return self.getattr('Writer')
+
+    @property
+    def BODY_READY(self):
+        return self.getattr('BODY_READY')
+
+    @property
+    def BODY_CONSUMED(self):
+        return self.getattr('BODY_CONSUMED')
+
+    @property
+    def BODY_ERROR(self):
+        return self.getattr('BODY_ERROR')
+
+    def test_init(self):
+        source = random_chunks2()
+        self.assertEqual(sys.getrefcount(source), 2)
+        body = self.ChunkedBodyIter(source)
+        self.assertEqual(sys.getrefcount(source), 3)
+        self.assertIs(body.source, source)
+        self.assertEqual(body.state, 0)
+        self.assertEqual(repr(body), 'ChunkedBodyIter(<source>)')
+        self.assertEqual(sys.getrefcount(source), 3)
+        del body
+        self.assertEqual(sys.getrefcount(source), 2)
+
+    def test_write_to(self):
+        ext = ('k', 'v')
+        pairs = (
+            (
+                (
+                    (None, b''),
+                ),
+                b'0\r\n\r\n',
+            ),
+            (
+                (
+                    (ext, b''),
+                ),
+                b'0;k=v\r\n\r\n',
+            ),
+            (
+                (
+                    (ext, b'hello, world'),
+                    (None, b''),
+                ),
+                b'c;k=v\r\nhello, world\r\n0\r\n\r\n',
+            ),
+            (
+                (
+                    (None, b'hello, world'),
+                    (ext, b''),
+                ),
+                b'c\r\nhello, world\r\n0;k=v\r\n\r\n',
+            ),
+        )
+        for (source, result) in pairs:
+            counts = get_source_refcounts(source)
+            body = self.ChunkedBodyIter(source)
+            wfile = io.BytesIO()
+            self.assertEqual(body.write_to(wfile), len(result))
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertEqual(wfile.getvalue(), result)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2) 
+            self.assertEqual(get_source_refcounts(source), counts)
+
+        for n in range(1, 10):
+            source = random_chunks2(n)
+            counts = get_source_refcounts(source)
+
+            body = self.ChunkedBodyIter(source)
+            wfile = io.BytesIO()
+            total = body.write_to(wfile)
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertIs(type(total), int)
+            self.assertGreater(total, 4)
+            self.assertEqual(wfile.tell(), total)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            result = wfile.getvalue()
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2) 
+            self.assertEqual(get_source_refcounts(source), counts)
+
+            rfile = io.BytesIO(result)
+            rbody = self.ChunkedBody(rfile)
+            self.assertEqual(tuple(rbody), source)
+            self.assertEqual(rfile.tell(), total)
+
+            body = self.ChunkedBodyIter(source)
+            wfile = io.BytesIO()
+            self.assertEqual(body.write_to(wfile), total)
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertEqual(wfile.tell(), total)
+            self.assertEqual(wfile.getvalue(), result)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBodyIter.state == BODY_CONSUMED, already consumed'
+            )
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2) 
+            self.assertEqual(get_source_refcounts(source), counts)
+
+            # no chunks, or final chunk is not empty:
+            bad = list(source)
+            del bad[-1]
+            bad = tuple(bad)
+            body = self.ChunkedBodyIter(bad)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'final chunk data was not empty'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
+            self.assertTrue(result.startswith(wfile.getvalue()))
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            body = self.ChunkedBodyIter(bad)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'final chunk data was not empty'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
+            self.assertTrue(result.startswith(wfile.getvalue()))
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBodyIter.state == BODY_ERROR, cannot be used'
+            )
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            del bad
+            self.assertEqual(get_source_refcounts(source), counts)
+
+            # additional chunk after an empty chunk:
+            bad = list(source)
+            bad.append(random_chunk(0))
+            random.shuffle(bad)
+            bad = tuple(bad)
+            body = self.ChunkedBodyIter(bad)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'additional chunk after empty chunk data'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            self.assertGreater(wfile.tell(), 4)
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2)
+
+            body = self.ChunkedBodyIter(bad)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'additional chunk after empty chunk data'
+            )
+            self.assertEqual(body.state, self.BODY_ERROR)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'ChunkedBodyIter.state == BODY_ERROR, cannot be used'
+            )
+            del body
+            self.assertEqual(sys.getrefcount(wfile), 2)
+
+            del bad
+            self.assertEqual(get_source_refcounts(source), counts)
+
+
+class TestChunkedBodyIter_C(TestChunkedBodyIter_Py):
     backend = _base
 
 
@@ -5111,6 +5364,7 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(),
             b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
+        
 
 
 class TestWriter_C(TestWriter_Py):
