@@ -31,7 +31,7 @@ from random import SystemRandom
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
-from .helpers import random_chunks2, random_chunk
+from .helpers import random_chunks2, random_chunk, random_data
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
@@ -53,6 +53,19 @@ class UserInt(int):
 
 
 MAX_LENGTH = int('9' * 16)
+MAX_UINT64 = 2**64 - 1
+assert 0 < MAX_LENGTH < MAX_UINT64
+BAD_LENGTHS = (
+    -MAX_UINT64 - 1,
+    -MAX_UINT64,
+    -MAX_LENGTH - 1,
+    -MAX_LENGTH,
+    -17,
+    -1,
+    MAX_LENGTH + 1,
+    MAX_UINT64,
+    MAX_UINT64 + 1,
+)
 CRLF = b'\r\n'
 TERM = CRLF * 2
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -2905,6 +2918,10 @@ class BodyBackendTestCase(BackendTestCase):
     def BODY_ERROR(self):
         return self.getattr('BODY_ERROR')
 
+    @property
+    def Writer(self):
+        return self.getattr('Writer')
+
 
 class TestChunkedBody_Py(BodyBackendTestCase):
     @property
@@ -3365,6 +3382,216 @@ def get_source_refcounts(source):
             counts[base + '.ext.val'] = sys.getrefcount(source[i][0][1])
         counts[base + '.data'] = sys.getrefcount(source[i][1])
     return counts
+
+
+def iter_body_sources():
+    for count in range(10):
+        yield tuple(random_data() for i in range(count))
+        source = [random_data() for i in range(count)]
+        source.extend([b'' for i in range(3)])
+        random.shuffle(source)
+        yield tuple(source)
+
+class TestBodyIter_Py(BodyBackendTestCase):
+    @property
+    def BodyIter(self):
+        return self.getattr('BodyIter')
+
+    def test_init(self):
+        source = tuple(random_data() for i in range(5))
+        content_length = sum(len(part) for part in source)
+        self.assertEqual(sys.getrefcount(source), 2)
+        body = self.BodyIter(source, content_length)
+        self.assertEqual(sys.getrefcount(source), 3)
+        self.assertIs(body.source, source)
+        self.assertEqual(body.content_length, content_length)
+        self.assertEqual(body.state, self.BODY_READY)
+        self.assertEqual(repr(body), 'BodyIter(<source>)')
+        self.assertEqual(sys.getrefcount(source), 3)
+        del body
+        self.assertEqual(sys.getrefcount(source), 2)
+
+    def test_write_to(self):
+        class BadFile:
+            def __init__(self, sizes):
+                assert type(sizes) is list
+                self.__sizes = sizes
+
+            def write(self, buf):
+                ret = self.__sizes.pop(0)
+                if isinstance(ret, Exception):
+                    raise ret
+                return ret
+
+        if self.backend is _basepy:
+            msg = 'memoryview: NoneType object does not have the buffer interface'
+        else:
+            msg = "'NoneType' does not support the buffer interface"
+
+        body = self.BodyIter(None, 17)
+        wfile = io.BytesIO()
+        with self.assertRaises(TypeError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception), "'NoneType' object is not iterable")
+        self.assertEqual(body.state, self.BODY_ERROR)
+        wfile = io.BytesIO()
+        with self.assertRaises(ValueError) as cm:
+            body.write_to(wfile)
+        self.assertEqual(str(cm.exception),
+            'BodyIter.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
+
+        for source in iter_body_sources():
+            total = sum(len(part) for part in source)
+            data = b''.join(source)
+
+            body = self.BodyIter(source, total)
+            wfile = io.BytesIO()
+            self.assertEqual(body.write_to(wfile), total)
+            self.assertEqual(wfile.tell(), total)
+            self.assertEqual(wfile.getvalue(), data)
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            del body
+            self.assertEqual(sys.getrefcount(source), 2)
+
+            body = self.BodyIter(source, total)
+            wfile = io.BytesIO()
+            self.assertEqual(body.write_to(wfile), total)
+            self.assertEqual(wfile.tell(), total)
+            self.assertEqual(wfile.getvalue(), data)
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            wfile = io.BytesIO()
+            with self.assertRaises(ValueError) as cm:
+                body.write_to(wfile)
+            self.assertEqual(str(cm.exception),
+                'BodyIter.state == BODY_CONSUMED, already consumed'
+            )
+            self.assertEqual(wfile.tell(), 0)
+            self.assertEqual(wfile.getvalue(), b'')
+            self.assertEqual(body.state, self.BODY_CONSUMED)
+            self.assertEqual(sys.getrefcount(wfile), 2)
+            del body
+            self.assertEqual(sys.getrefcount(source), 2)
+
+            sizes = tuple(filter(None, (len(part) for part in source)))
+            marker1 = random_id()
+            marker2 = random_id()
+            exc1 = Exception(marker1)
+            exc2 = ValueError(marker2)
+            for (i, s) in enumerate(sizes):
+                for offset in [-2, -1, 1, 2]:
+                    bad = list(sizes)
+                    bad[i] += offset
+                    wfile = BadFile(bad)
+                    body = self.BodyIter(source, total)
+                    with self.assertRaises(ValueError) as cm:
+                        body.write_to(wfile)
+                    self.assertEqual(str(cm.exception),
+                        'need wrote == {}; got {}'.format(s, s + offset)
+                    )
+                    self.assertEqual(body.state, self.BODY_ERROR)
+                    wfile = io.BytesIO()
+                    with self.assertRaises(ValueError) as cm:
+                        body.write_to(wfile)
+                    self.assertEqual(str(cm.exception),
+                        'BodyIter.state == BODY_ERROR, cannot be used'
+                    )
+                    self.assertEqual(body.state, self.BODY_ERROR)
+
+                for b in (str(s), float(s), None):
+                    bad = list(sizes)
+                    bad[i] = b
+                    wfile = BadFile(bad)
+                    body = self.BodyIter(source, total)
+                    with self.assertRaises(TypeError) as cm:
+                        body.write_to(wfile)
+                    self.assertEqual(str(cm.exception),
+                        TYPE_ERROR.format('wrote', int, type(b), b)
+                    )
+                    self.assertEqual(body.state, self.BODY_ERROR)
+                    wfile = io.BytesIO()
+                    with self.assertRaises(ValueError) as cm:
+                        body.write_to(wfile)
+                    self.assertEqual(str(cm.exception),
+                        'BodyIter.state == BODY_ERROR, cannot be used'
+                    )
+                    self.assertEqual(body.state, self.BODY_ERROR)
+
+                for exc in (exc1, exc2):
+                    bad = list(sizes)
+                    bad[i] = exc
+                    wfile = BadFile(bad)
+                    body = self.BodyIter(source, total)
+                    with self.assertRaises(type(exc)) as cm:
+                        body.write_to(wfile)
+                    self.assertIs(cm.exception, exc)
+                    self.assertEqual(str(cm.exception), str(exc))
+                    self.assertEqual(body.state, self.BODY_ERROR)
+                    wfile = io.BytesIO()
+                    with self.assertRaises(ValueError) as cm:
+                        body.write_to(wfile)
+                    self.assertEqual(str(cm.exception),
+                        'BodyIter.state == BODY_ERROR, cannot be used'
+                    )
+                    self.assertEqual(body.state, self.BODY_ERROR)
+
+            if total != 0:
+                wfile = io.BytesIO()
+                body = self.BodyIter(source, total - 1)
+                with self.assertRaises(ValueError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception),
+                    'exceeds content_length: {} > {}'.format(total, total - 1)
+                )
+                self.assertEqual(body.state, self.BODY_ERROR)
+                wfile = io.BytesIO()
+                with self.assertRaises(ValueError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception),
+                    'BodyIter.state == BODY_ERROR, cannot be used'
+                )
+                self.assertEqual(body.state, self.BODY_ERROR)
+
+            for n in (1, 2, 3):
+                wfile = io.BytesIO()
+                body = self.BodyIter(source, total + n)
+                with self.assertRaises(ValueError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception),
+                    'deceeds content_length: {} < {}'.format(total, total + n)
+                )
+                self.assertEqual(body.state, self.BODY_ERROR)
+                wfile = io.BytesIO()
+                with self.assertRaises(ValueError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception),
+                    'BodyIter.state == BODY_ERROR, cannot be used'
+                )
+                self.assertEqual(body.state, self.BODY_ERROR)
+
+            for i in range(len(source)):
+                badsource = list(source)
+                badsource[i] = None
+                wfile = io.BytesIO()
+                body = self.BodyIter(badsource, total)
+                with self.assertRaises(TypeError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception), msg)
+                self.assertEqual(body.state, self.BODY_ERROR)
+                wfile = io.BytesIO()
+                with self.assertRaises(ValueError) as cm:
+                    body.write_to(wfile)
+                self.assertEqual(str(cm.exception),
+                    'BodyIter.state == BODY_ERROR, cannot be used'
+                )
+                self.assertEqual(body.state, self.BODY_ERROR)
+
+class TestBodyIter_C(TestBodyIter_Py):
+    backend = _base
+
 
 
 class TestChunkedBodyIter_Py(BackendTestCase):
@@ -4916,7 +5143,7 @@ class TestWriter_Py(BackendTestCase):
             with self.assertRaises(TypeError) as cm:
                 writer.write_output(preamble, body)
             self.assertEqual(str(cm.exception),
-                "need a <class 'int'>; write_to() returned a <class 'float'>: 17.0"
+                "total_wrote: need a <class 'int'>; got a <class 'float'>: 17.0"
             )
             self.assertEqual(writer.tell(), total)
             self.assertEqual(sock._calls,
@@ -4931,10 +5158,10 @@ class TestWriter_Py(BackendTestCase):
                 sock = WSocket()
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
-                with self.assertRaises(OverflowError) as cm:
+                with self.assertRaises(ValueError) as cm:
                     writer.write_output(preamble, body)
                 self.assertEqual(str(cm.exception),
-                    "can't convert negative int to unsigned"
+                    'need 0 <= total_wrote <= 9999999999999999; got {!r}'.format(bad)
                 )
                 self.assertEqual(writer.tell(), total + len(preamble))
                 self.assertEqual(sock._calls,
@@ -4942,18 +5169,17 @@ class TestWriter_Py(BackendTestCase):
                 )
                 self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
 
-        # body.write_to() returns total >= 2**64:
-        tmax = 2**64 - 1
+        # body.write_to() returns a bad length:
         for chunks in chunks_permutations:
             total = sum(len(d) for d in chunks)
-            for bad in (tmax + 1, tmax + 2, tmax + 3):
+            for bad in BAD_LENGTHS:
                 sock = WSocket()
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
-                with self.assertRaises(OverflowError) as cm:
+                with self.assertRaises(ValueError) as cm:
                     writer.write_output(preamble, body)
                 self.assertEqual(str(cm.exception),
-                    'int too big to convert'
+                    'need 0 <= total_wrote <= 9999999999999999; got {!r}'.format(bad)
                 )
                 self.assertEqual(writer.tell(), total + len(preamble))
                 self.assertEqual(sock._calls,
@@ -4970,10 +5196,10 @@ class TestWriter_Py(BackendTestCase):
                 writer = self.Writer(sock, bodies)
                 body = Body(*chunks, write_to=bad)
                 if bad < 0:
-                    with self.assertRaises(OverflowError) as cm:
+                    with self.assertRaises(ValueError) as cm:
                         writer.write_output(preamble, body)
                     self.assertEqual(str(cm.exception),
-                        "can't convert negative int to unsigned"
+                        'need 0 <= total_wrote <= 9999999999999999; got {!r}'.format(bad)
                     )
                 else:
                     with self.assertRaises(ValueError) as cm:
@@ -5001,7 +5227,6 @@ class TestWriter_Py(BackendTestCase):
                     [('send', preamble)] + [('send', d) for d in chunks]
                 )
             self.assertEqual(sock._fp.getvalue(), preamble + b''.join(chunks))
-
             p = os.urandom(19)
             b = os.urandom(23)
             c = p + b

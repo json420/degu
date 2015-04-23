@@ -631,6 +631,77 @@ static PyTypeObject ChunkedBodyType = {
 
 
 /******************************************************************************
+ * BodyIter object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *source;
+    uint64_t content_length;
+    uint8_t state;
+} BodyIter;
+
+//static int64_t _BodyIter_write_to_writer(BodyIter *, Writer *);
+
+static PyMemberDef BodyIter_members[] = {
+    {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
+    {"content_length", T_ULONGLONG, offsetof(BodyIter, content_length), READONLY, NULL},
+    {"state", T_UBYTE, offsetof(BodyIter, state), READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * BodyIter_write_to(BodyIter *, PyObject *);
+
+static PyMethodDef BodyIter_methods[] = {
+    {"write_to",  (PyCFunction)BodyIter_write_to, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void BodyIter_dealloc(BodyIter *);
+static int BodyIter_init(BodyIter *, PyObject *, PyObject *);
+static PyObject * BodyIter_repr(BodyIter *);
+
+static PyTypeObject BodyIterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.BodyIter",                  /* tp_name */
+    sizeof(BodyIter),                       /* tp_basicsize */
+    0,                                      /* tp_itemsize */
+    (destructor)BodyIter_dealloc,           /* tp_dealloc */
+    0,                                      /* tp_print */
+    0,                                      /* tp_getattr */
+    0,                                      /* tp_setattr */
+    0,                                      /* tp_reserved */
+    (reprfunc)BodyIter_repr,                /* tp_repr */
+    0,                                      /* tp_as_number */
+    0,                                      /* tp_as_sequence */
+    0,                                      /* tp_as_mapping */
+    0,                                      /* tp_hash  */
+    0,                                      /* tp_call */
+    0,                                      /* tp_str */
+    0,                                      /* tp_getattro */
+    0,                                      /* tp_setattro */
+    0,                                      /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                     /* tp_flags */
+    "BodyIter(source)",                     /* tp_doc */
+    0,                                      /* tp_traverse */
+    0,                                      /* tp_clear */
+    0,                                      /* tp_richcompare */
+    0,                                      /* tp_weaklistoffset */
+    0,                                      /* tp_iter */
+    0,                                      /* tp_iternext */
+    BodyIter_methods,                       /* tp_methods */
+    BodyIter_members,                       /* tp_members */
+    0,                                      /* tp_getset */
+    0,                                      /* tp_base */
+    0,                                      /* tp_dict */
+    0,                                      /* tp_descr_get */
+    0,                                      /* tp_descr_set */
+    0,                                      /* tp_dictoffset */
+    (initproc)BodyIter_init,                /* tp_init */
+};
+
+
+
+/******************************************************************************
  * ChunkedBodyIter object.
  ******************************************************************************/
 typedef struct {
@@ -639,7 +710,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-//static int64_t _ChunkedBodyIter_write_to_writer(ChunkedBodyIter *, Writer *);
+static int64_t _ChunkedBodyIter_write_to_writer(ChunkedBodyIter *, Writer *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},

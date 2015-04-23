@@ -124,13 +124,32 @@ def _validate_length(name, length):
     return length
 
 def _validate_size(name, size, max_size):
-    assert max_size <= MAX_IO_SIZE
+    assert 0 <= max_size <= MAX_IO_SIZE
     _validate_int(name, size)
     if not (0 <= size <= max_size):
         raise ValueError(
             'need 0 <= {} <= {}; got {}'.format(name, max_size, size)
         )
     return size
+
+def _validate_exact_size(name, size, expected):
+    assert 0 <= expected <= MAX_IO_SIZE
+    _validate_int(name, size)
+    if size != expected:
+        raise ValueError(
+            'need {} == {!r}; got {!r}'.format(name, expected, size)
+        )
+    return size
+
+
+def _send(method, src, name, exact=False):
+    assert exact in (True, False)
+    if len(src) == 0:
+        return 0
+    size = method(src)
+    if exact:
+        return _validate_exact_size(name, size, len(src))
+    return _validate_size(name, size, len(src))
 
 
 class Range:
@@ -927,17 +946,7 @@ class Writer:
             return self.write(preamble + body)
         self.write(preamble)
         orig_tell = self.tell()
-        total = body.write_to(self)
-        if type(total) is not int:
-            raise TypeError(
-                'need a {!r}; write_to() returned a {!r}: {!r}'.format(
-                    int, type(total), total
-                )
-            )
-        if total < 0:
-            raise OverflowError("can't convert negative int to unsigned")
-        if total >= 2**64:
-            raise OverflowError('int too big to convert')
+        total = _validate_length("total_wrote", body.write_to(self))
         delta = self.tell() - orig_tell
         if delta != total:
             raise ValueError(
@@ -1179,7 +1188,55 @@ class ChunkedBody:
         _check_body_state('ChunkedBody', self._state)
         while self._state != BODY_CONSUMED:
             yield self.readchunk()
-    
+
+
+class BodyIter:
+    __slots__ = ('_source', '_state', '_content_length')
+
+    def __init__(self, source, content_length):
+        self._source = source
+        self._state = BODY_READY
+        self._content_length = _validate_length("content_length", content_length)
+
+    def __repr__(self):
+        return 'BodyIter(<source>)'
+
+    @property
+    def source(self):
+        return self._source
+
+    @property
+    def content_length(self):
+        return self._content_length
+
+    @property
+    def state(self):
+        return self._state
+
+    def write_to(self, wfile):
+        _check_body_state('BodyIter', self._state)
+        wfile_write = _getcallable('wfile', wfile, 'write')
+        length = self._content_length
+        total = 0
+        try:
+            for obj in self._source:
+                obj = memoryview(obj)
+                total += len(obj)
+                if total > length:
+                    raise ValueError(
+                        'exceeds content_length: {} > {}'.format(total, length)
+                    )
+                _send(wfile_write, obj, 'wrote', exact=True)
+            if total != length:
+                raise ValueError(
+                    'deceeds content_length: {} < {}'.format(total, length)
+                )
+        except:
+            self._state = BODY_ERROR
+            raise
+        self._state = BODY_CONSUMED
+        return total
+
 
 class ChunkedBodyIter:
     __slots__ = ('_source', '_state')
