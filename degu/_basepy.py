@@ -1199,7 +1199,7 @@ class BodyIter:
         self._content_length = _validate_length("content_length", content_length)
 
     def __repr__(self):
-        return 'BodyIter(<source>)'
+        return 'BodyIter(<source>, {})'.format(self._content_length)
 
     @property
     def source(self):

@@ -3406,7 +3406,9 @@ class TestBodyIter_Py(BodyBackendTestCase):
         self.assertIs(body.source, source)
         self.assertEqual(body.content_length, content_length)
         self.assertEqual(body.state, self.BODY_READY)
-        self.assertEqual(repr(body), 'BodyIter(<source>)')
+        self.assertEqual(repr(body),
+            'BodyIter(<source>, {})'.format(content_length)
+        )
         self.assertEqual(sys.getrefcount(source), 3)
         del body
         self.assertEqual(sys.getrefcount(source), 2)

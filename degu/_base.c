@@ -4052,6 +4052,12 @@ error:
 }
 
 static PyObject *
+BodyIter_repr(BodyIter *self)
+{
+    return PyUnicode_FromFormat("BodyIter(<source>, %llu)", self->content_length);
+}
+
+static PyObject *
 BodyIter_write_to(BodyIter *self, PyObject *args)
 {
     PyObject *wfile = NULL;
@@ -4116,12 +4122,6 @@ cleanup:
     Py_CLEAR(iterator);
     Py_CLEAR(wfile_write);
     return ret;
-}
-
-static PyObject *
-BodyIter_repr(BodyIter *self)
-{
-    return PyUnicode_FromString("BodyIter(<source>)");
 }
 
 
