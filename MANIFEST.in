@@ -1,4 +1,5 @@
 include COPYING COPYING.LESSER
 include benchmark.py benchmark-parsing.py benchmark-ssl.py
+include degu/_base.h
 include doc/*
 include doc/_static/*
