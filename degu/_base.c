@@ -4390,14 +4390,6 @@ ChunkedBodyIter_repr(ChunkedBodyIter *self)
 /*******************************************************************************
  * Module Init:
  */
-static struct PyModuleDef degu = {
-    PyModuleDef_HEAD_INIT,
-    "degu._base",
-    NULL,
-    -1,
-    degu_functions
-};
-
 static bool
 _init_all_types(PyObject *module)
 {
@@ -4444,7 +4436,7 @@ _init_all_types(PyObject *module)
     _ADD_MODULE_ATTR(module, "ChunkedBodyIter", (PyObject *)&ChunkedBodyIterType)
 
     if (! _init_all_namedtuples(module)) {
-        return NULL;
+        goto error;
     }
     _SET(bodies,
         _Bodies(
@@ -4455,13 +4447,19 @@ _init_all_types(PyObject *module)
         )
     )
     _ADD_MODULE_ATTR(module, "bodies", bodies)
-
     return true;
 
 error:
     return false;
 }
 
+static struct PyModuleDef degu = {
+    PyModuleDef_HEAD_INIT,
+    "degu._base",
+    NULL,
+    -1,
+    degu_functions
+};
 
 PyMODINIT_FUNC
 PyInit__base(void)

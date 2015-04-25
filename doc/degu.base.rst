@@ -256,7 +256,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: BodyIter.closed, already consumed
+    ValueError: BodyIter.state == BODY_CONSUMED, already consumed
 
     A ``ValueError`` will be raised in the total produced by *source* is less
     than *content_length*:
@@ -266,7 +266,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: underflow: 12 < 13
+    ValueError: deceeds content_length: 12 < 13
 
     Likewise, a ``ValueError`` will be raised if the total produced by *source*
     is greater than *content_length*:
@@ -276,7 +276,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: overflow: 12 > 11
+    ValueError: exceeds content_length: 12 > 11
 
 
     .. attribute:: source
@@ -340,7 +340,7 @@ Constants
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: ChunkedBody.closed, already consumed
+    ValueError: ChunkedBody.state == BODY_CONSUMED, already consumed
 
     .. attribute:: chunked
 
@@ -436,7 +436,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: ChunkedBodyIter.closed, already consumed
+    ValueError: ChunkedBodyIter.state == BODY_CONSUMED, already consumed
 
     A ``ValueError`` will be raised if the *data* in the final chunk isn't
     empty:
@@ -465,7 +465,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: non-empty chunk data after empty
+    ValueError: additional chunk after empty chunk data
 
     .. attribute:: source
 
