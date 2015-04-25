@@ -38,6 +38,7 @@ try:
         ChunkedBody,
         ChunkedBodyIter,
         BODY_CONSUMED,
+        bodies,
     )
 except ImportError:
     from ._basepy import (
@@ -54,6 +55,7 @@ except ImportError:
         ChunkedBody,
         ChunkedBodyIter,
         BODY_CONSUMED,
+        bodies,
     )
 
 
@@ -66,6 +68,11 @@ __all__ = (
     'Range',
     'Reader',
     'Writer',
+    'bodies',
+    'Body',
+    'ChunkedBody',
+    'BodyIter',
+    'ChunkedBodyIter',
 )
 
 
@@ -76,10 +83,6 @@ IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
-
-# Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 
 def _makefiles(sock, bodies):

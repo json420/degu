@@ -328,6 +328,8 @@ typedef struct {
     size_t stop;
 } Reader;
 
+static bool _Reader_create_body(Reader *, DeguHeaders *);
+
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
 static PyObject * Reader_read_request(Reader *);

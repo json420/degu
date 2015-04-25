@@ -1310,3 +1310,6 @@ class ChunkedBodyIter:
         self._state = BODY_CONSUMED
         return total
 
+
+# Used to expose the RGI IO wrappers:
+bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)

@@ -298,9 +298,6 @@ static DeguSrc
 _slice(DeguSrc src, const size_t start, const size_t stop)
 {
     if (_isempty(src) || start > stop || stop > src.len) {
-        printf("src.buf=%p, src.len=%zu, start=%zu, stop=%zu\n",
-            src.buf, src.len, start, stop
-        );
         Py_FatalError("_slice(): bad internal call");
     }
     return (DeguSrc){src.buf + start, stop - start};
@@ -462,9 +459,6 @@ static DeguDst
 _dst_slice(DeguDst dst, const size_t start, const size_t stop)
 {
     if (_dst_isempty(dst) || start > stop || stop > dst.len) {
-        printf("\ndst.buf=%p, dst.len=%zu, start=%zu, stop=%zu\n",
-            dst.buf, dst.len, start, stop
-        );
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (DeguDst){dst.buf + start, stop - start};
@@ -1536,6 +1530,10 @@ error:
 static bool
 _create_body(DeguParse dp, DeguHeaders *dh) 
 {
+    if (Py_TYPE(dp.rfile) == &ReaderType) {
+        return _Reader_create_body((Reader *)dp.rfile, dh);
+    }
+
     PyObject *length = NULL;
     bool ret = true;
 
@@ -1543,27 +1541,16 @@ _create_body(DeguParse dp, DeguHeaders *dh)
     if (bodyflags == 0) {
         _SET_AND_INC(dh->body, Py_None)
     }
-    else if (Py_TYPE(dp.rfile) == &ReaderType) {
-        Reader *reader = (Reader *)dp.rfile;
-        if (bodyflags == 1) {
-            _SET(dh->body, Body_New(reader, dh->content_length))
-        }
-        else if (bodyflags == 2) {
-            _SET(dh->body, ChunkedBody_New(reader))
-        }
+    if (bodyflags == 1) {
+        _SET(length, PyLong_FromUnsignedLongLong(dh->content_length))
+        _SET(dh->body,
+            PyObject_CallFunctionObjArgs(dp.Body, dp.rfile, length, NULL)
+        )
     }
-    else {
-        if (bodyflags == 1) {
-            _SET(length, PyLong_FromUnsignedLongLong(dh->content_length))
-            _SET(dh->body,
-                PyObject_CallFunctionObjArgs(dp.Body, dp.rfile, length, NULL)
-            )
-        }
-        else if (bodyflags == 2) {
-            _SET(dh->body,
-                PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
-            )
-        }
+    else if (bodyflags == 2) {
+        _SET(dh->body,
+            PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
+        )
     }
     goto cleanup;
 
@@ -2846,6 +2833,25 @@ error:
     return -1;
 }
 
+static bool
+_Reader_create_body(Reader *self, DeguHeaders *dh) 
+{
+    const uint8_t bodyflags = (dh->flags & 3);
+    if (bodyflags == 0) {
+        _SET_AND_INC(dh->body, Py_None)
+    }
+    if (bodyflags == 1) {
+        _SET(dh->body, Body_New(self, dh->content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dh->body, ChunkedBody_New(self))
+    }
+    return true;
+
+error:
+    return false;
+}
+
 static DeguParse
 _Reader_get_parse_helpers(Reader *self)
 {
@@ -3506,17 +3512,18 @@ Writer_tell(Writer *self) {
 static PyObject *
 Writer_write(Writer *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    if (!PyArg_ParseTuple(args, "y#:write", &buf, &len)) {
+    Py_buffer pybuf;
+
+    if (!PyArg_ParseTuple(args, "y*:write", &pybuf)) {
         return NULL;
     }
-    DeguSrc src = {buf, len};
+    DeguSrc src = _frompybuf(&pybuf);
     const ssize_t total = _Writer_write(self, src);
-    if (total < 0) {
-        return NULL;
+    PyBuffer_Release(&pybuf);
+    if (total >= 0) {
+        return PyLong_FromSsize_t(total);
     }
-    return PyLong_FromSsize_t(total);
+    return NULL;
 }
 
 static PyObject *
@@ -4221,7 +4228,7 @@ BodyIter_write_to(BodyIter *self, PyObject *args)
     _SET(iterator, PyObject_GetIter(self->source))
     while ((item = PyIter_Next(iterator))) {
         _SET(obj, item)
-        if (PyObject_GetBuffer(obj, &pybuf, 0) != 0) {
+        if (PyObject_GetBuffer(obj, &pybuf, PyBUF_SIMPLE|PyBUF_C_CONTIGUOUS|PyBUF_CONTIG_RO) != 0) {
             goto error;
         }
         total += (uint64_t)pybuf.len;
