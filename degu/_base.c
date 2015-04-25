@@ -1843,7 +1843,7 @@ _parse_chunk(DeguSrc src, DeguChunk *dc)
     size_t size_stop, ext_start;
 
     if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "chunk line is empty");
+        PyErr_SetString(PyExc_ValueError, "b'\\r\\n' not found in b''...");
         return false;
     }
     size_stop = _search(src, SEMICOLON);
@@ -3950,7 +3950,7 @@ _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
         if (self->readline != NULL || self->read != NULL) {
             Py_FatalError("ChunkedBody_readchunk(): bad internal state");
         }
-        if (!_Reader_readchunk((Reader *)self->rfile, dc)) {
+        if (! _Reader_readchunk((Reader *)self->rfile, dc)) {
             return false;
         }
     }
@@ -4060,10 +4060,42 @@ static PyObject *
 ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
 {
     PyObject *wfile = NULL;
+    PyObject *wfile_write = NULL;
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    ssize_t wrote;
+    uint64_t total = 0;
+    PyObject *ret = NULL;
+
     if (!PyArg_ParseTuple(args, "O", &wfile)) {
         return NULL;
     }
-    Py_RETURN_NONE;
+    if (! _check_body_state("ChunkedBody", self->state, BODY_READY)) {
+        return NULL;
+    }
+    self->state = BODY_STARTED;
+    _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
+    while (self->state < BODY_CONSUMED) {
+        if (! _ChunkedBody_readchunk(self, &dc)) {
+            goto error; 
+        }
+        wrote = _write_chunk(wfile_write, &dc);
+        if (wrote < 0) {
+            goto error;
+        }
+        total += (uint64_t)wrote;
+        _clear_degu_chunk(&dc);
+    }
+    _SET(ret, PyLong_FromUnsignedLongLong(total))
+    self->state = BODY_CONSUMED;
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+    self->state = BODY_ERROR;
+    
+cleanup:
+    Py_CLEAR(wfile_write);
+    return ret;
 }
 
 static PyObject *
@@ -4348,7 +4380,6 @@ cleanup:
     Py_CLEAR(iterator);
     Py_CLEAR(chunk);
     return ret;
-    
 }
 
 static PyObject *

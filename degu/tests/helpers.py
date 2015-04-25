@@ -195,10 +195,6 @@ class MockSocket:
         self._recv_into_calls = 0
         self._calls = []
 
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-        return None
-
     def recv_into(self, buf):
         assert isinstance(buf, memoryview)
         self._calls.append(('recv_into', len(buf)))
@@ -209,6 +205,21 @@ class MockSocket:
 
     def send(self, data):
         return self._wfile.write(data)
+
+
+class MockSocket2:
+    __slots__ = ('__rfile', '__rcvbuf')
+
+    def __init__(self, rfile, rcvbuf=None):
+        assert rcvbuf is None or (type(rcvbuf) is int and rcvbuf > 0)
+        self.__rfile = rfile
+        self.__rcvbuf = rcvbuf
+
+    def recv_into(self, buf):
+        assert isinstance(buf, memoryview)
+        if self.__rcvbuf is not None:
+            buf = buf[0:self.__rcvbuf]
+        return self.__rfile.readinto(buf)
 
 
 class FuzzTestCase(TestCase):

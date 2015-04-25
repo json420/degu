@@ -309,7 +309,7 @@ def parse_chunk_extension(src):
 def parse_chunk(src):
     assert type(src) is bytes
     if len(src) < 1:
-        raise ValueError('chunk line is empty')
+        raise ValueError('{!r} not found in {!r}...'.format(b'\r\n', b''))
     parts = src.split(b';', 1)
     size = parse_chunk_size(parts[0])
     if len(parts) == 2:
@@ -1219,8 +1219,11 @@ class ChunkedBody:
     def __iter__(self):
         _check_body_state('ChunkedBody', self._state, BODY_READY)
         self._state = BODY_STARTED
-        while self._state != BODY_CONSUMED:
+        while self._state < BODY_CONSUMED:
             yield self.readchunk()
+
+    def write_to(self, wfile):
+        return sum(write_chunk(wfile, chunk) for chunk in self)
 
 
 class BodyIter:
