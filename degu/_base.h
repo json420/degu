@@ -35,9 +35,11 @@
 #define MAX_LENGTH 9999999999999999ull
 #define IO_SIZE 1048576
 
-#define BODY_READY 0
-#define BODY_CONSUMED 1
-#define BODY_ERROR 2
+#define BODY_READY 0u
+#define BODY_STARTED 1u
+#define BODY_READMODE 2u
+#define BODY_CONSUMED 3u
+#define BODY_ERROR 4u
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -700,7 +702,6 @@ static PyTypeObject BodyIterType = {
 };
 
 
-
 /******************************************************************************
  * ChunkedBodyIter object.
  ******************************************************************************/
@@ -767,5 +768,4 @@ static PyTypeObject ChunkedBodyIterType = {
     0,                                      /* tp_dictoffset */
     (initproc)ChunkedBodyIter_init,         /* tp_init */
 };
-
 

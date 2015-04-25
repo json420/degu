@@ -3591,12 +3591,26 @@ cleanup:
  * Shared internal API for *Body*() objects.
  ******************************************************************************/
 static bool
-_check_body_state(const char *name, const uint8_t state)
+_check_body_state(const char *name, const uint8_t state, const uint8_t max_state)
 {
-    if (state == BODY_READY) {
+    if (max_state >= BODY_CONSUMED) {
+        Py_FatalError("_check_state(): bad internal call");
+    }
+    if (state <= max_state) {
         return true;
     }
-    if (state == BODY_CONSUMED) {
+    if (state == BODY_STARTED) {
+        PyErr_Format(PyExc_ValueError,
+            "%s.state == BODY_STARTED, cannot start another operation", name
+        );
+    }
+    else if (state == BODY_READMODE) {
+        PyErr_Format(PyExc_ValueError,
+            "%s.state == BODY_READMODE, cannot mix read() with readchunk()",
+            name
+        );
+    }
+    else if (state == BODY_CONSUMED) {
         PyErr_Format(PyExc_ValueError,
             "%s.state == BODY_CONSUMED, already consumed", name
         );
@@ -3932,9 +3946,10 @@ ChunkedBody_readchunk(ChunkedBody *self)
     DeguChunk dc = NEW_DEGU_CHUNK;
     PyObject *ret = NULL;
 
-    if (! _check_body_state("ChunkedBody", self->state)) {
+    if (! _check_body_state("ChunkedBody", self->state, BODY_STARTED)) {
         return NULL;
     }
+    self->state = BODY_STARTED;
     if (Py_TYPE(self->rfile) == &ReaderType) {
         if (!_Reader_readchunk((Reader *)self->rfile, &dc)) {
             goto error;
@@ -3998,9 +4013,10 @@ ChunkedBody_repr(ChunkedBody *self)
 static PyObject *
 ChunkedBody_iter(ChunkedBody *self)
 {
-    if (! _check_body_state("ChunkedBody", self->state)) {
+    if (! _check_body_state("ChunkedBody", self->state, BODY_READY)) {
         return NULL;
     }
+    self->state = BODY_STARTED;
     PyObject *ret = (PyObject *)self;
     Py_INCREF(ret);
     return ret;
@@ -4073,9 +4089,10 @@ BodyIter_write_to(BodyIter *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O", &wfile)) {
         return NULL;
     }
-    if (! _check_body_state("BodyIter", self->state)) {
+    if (! _check_body_state("BodyIter", self->state, BODY_READY)) {
         return NULL;
     }
+    self->state = BODY_STARTED;
     _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
     _SET(iterator, PyObject_GetIter(self->source))
     while ((item = PyIter_Next(iterator))) {
@@ -4163,9 +4180,10 @@ _ChunkedBodyIter_write_to_writer(ChunkedBodyIter *self, Writer *writer)
     ssize_t wrote;
     int64_t total = 0;
 
-    if (! _check_body_state("ChunkedBodyIter", self->state)) {
+    if (! _check_body_state("ChunkedBodyIter", self->state, BODY_READY)) {
         goto error;
     }
+    self->state = BODY_STARTED;
     _SET(iterator, PyObject_GetIter(self->source))
     while ((item = PyIter_Next(iterator))) {
         _SET(chunk, item)
@@ -4223,9 +4241,10 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O", &wfile)) {
         return NULL;
     }
-    if (! _check_body_state("ChunkedBodyIter", self->state)) {
+    if (! _check_body_state("ChunkedBodyIter", self->state, BODY_READY)) {
         return NULL;
     }
+    self->state = BODY_STARTED;
     _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
     _SET(iterator, PyObject_GetIter(self->source))
     while ((item = PyIter_Next(iterator))) {
@@ -4363,6 +4382,8 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_PREAMBLE);
     PyModule_AddIntMacro(module, MAX_IO_SIZE);
     PyModule_AddIntMacro(module, BODY_READY);
+    PyModule_AddIntMacro(module, BODY_STARTED);
+    PyModule_AddIntMacro(module, BODY_READMODE);
     PyModule_AddIntMacro(module, BODY_CONSUMED);
     PyModule_AddIntMacro(module, BODY_ERROR);
     return module;

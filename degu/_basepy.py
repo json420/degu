@@ -45,8 +45,10 @@ MAX_READ_SIZE = 16777216  # 16 MiB
 IO_SIZE = 1048576  # 1 MiB
 
 BODY_READY = 0
-BODY_CONSUMED = 1
-BODY_ERROR = 2
+BODY_STARTED = 1
+BODY_READMODE = 2
+BODY_CONSUMED = 3
+BODY_ERROR = 4
 
 _METHODS = {
     b'GET': 'GET',
@@ -968,9 +970,23 @@ class Writer:
         return self.write_output(preamble, body)
 
 
-def _check_body_state(name, state):
-    if state is BODY_READY:
+def _check_body_state(name, state, max_state):
+    assert max_state < BODY_CONSUMED
+    if state <= max_state:
         return
+    if state is BODY_STARTED:
+        raise ValueError(
+            '{}.state == BODY_STARTED, cannot start another operation'.format(
+                name
+            )
+        )
+    if state is BODY_READMODE:
+        raise ValueError(
+            '{}.state == BODY_READMODE, cannot mix read() with readchunk()'.format(
+                name
+            )
+            
+        )
     if state is BODY_CONSUMED:
         raise ValueError(
             '{}.state == BODY_CONSUMED, already consumed'.format(name)
@@ -1170,8 +1186,8 @@ class ChunkedBody:
     def state(self):
         return self._state
 
-    def readchunk(self):
-        _check_body_state('ChunkedBody', self._state)
+    def _readchunk(self):
+        #_check_body_state('ChunkedBody', self._state, BODY_READMODE)
         try:
             if type(self._rfile) is Reader:
                 chunk = self._rfile.readchunk()
@@ -1184,10 +1200,16 @@ class ChunkedBody:
             raise
         return chunk
 
+    def readchunk(self):
+        _check_body_state('ChunkedBody', self._state, BODY_STARTED)
+        self._state = BODY_STARTED
+        return self._readchunk()
+
     def __iter__(self):
-        _check_body_state('ChunkedBody', self._state)
+        _check_body_state('ChunkedBody', self._state, BODY_READY)
+        self._state = BODY_STARTED
         while self._state != BODY_CONSUMED:
-            yield self.readchunk()
+            yield self._readchunk()
 
 
 class BodyIter:
@@ -1214,7 +1236,8 @@ class BodyIter:
         return self._state
 
     def write_to(self, wfile):
-        _check_body_state('BodyIter', self._state)
+        _check_body_state('BodyIter', self._state, BODY_READY)
+        self._state = BODY_STARTED
         wfile_write = _getcallable('wfile', wfile, 'write')
         length = self._content_length
         total = 0
@@ -1257,7 +1280,8 @@ class ChunkedBodyIter:
         return self._state
 
     def write_to(self, wfile):
-        _check_body_state('ChunkedBodyIter', self._state)
+        _check_body_state('ChunkedBodyIter', self._state, BODY_READY)
+        self._state = BODY_STARTED
         empty = False
         total = 0
         try:
@@ -1274,3 +1298,4 @@ class ChunkedBodyIter:
             raise
         self._state = BODY_CONSUMED
         return total
+

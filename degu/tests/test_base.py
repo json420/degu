@@ -2911,6 +2911,14 @@ class BodyBackendTestCase(BackendTestCase):
         return self.getattr('BODY_READY')
 
     @property
+    def BODY_STARTED(self):
+        return self.getattr('BODY_STARTED')
+
+    @property
+    def BODY_READMODE(self):
+        return self.getattr('BODY_READMODE')
+
+    @property
     def BODY_CONSUMED(self):
         return self.getattr('BODY_CONSUMED')
 
@@ -3094,7 +3102,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (None, b'hello, world'))
-        self.assertEqual(body.state, self.BODY_READY)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(body.readchunk(), (('k', 'v'), b''))
         self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
@@ -3111,7 +3119,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertEqual(body.readchunk(), (('key', 'value'), b'hello, world'))
-        self.assertEqual(body.state, self.BODY_READY)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(body.readchunk(), (None, b''))
         self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
@@ -3332,8 +3340,12 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
                 refcount = (3 if type(rfile) is self.Reader else 5)
-                for chunk in chunks:
-                    self.assertEqual(body.state, self.BODY_READY)
+                self.assertEqual(body.state, self.BODY_READY)
+                for (j, chunk) in enumerate(chunks):
+                    if j == 0:
+                        self.assertEqual(body.state, self.BODY_READY)
+                    else:
+                        self.assertEqual(body.state, self.BODY_STARTED)
                     self.assertEqual(body.readchunk(), chunk)
                 self.assertEqual(body.state, self.BODY_CONSUMED)
                 with self.assertRaises(ValueError) as cm:
