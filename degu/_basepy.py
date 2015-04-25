@@ -142,6 +142,17 @@ def _validate_exact_size(name, size, expected):
         )
     return size
 
+def _validate_read_size(name, size, remaining):
+    if size is None:
+        if remaining > MAX_IO_SIZE:
+            raise ValueError(
+                'would exceed max read size: {} > {}'.format(
+                    remaining, MAX_IO_SIZE
+                )
+            )
+        return remaining
+    return _validate_size(name, size, MAX_IO_SIZE)
+
 
 def _send(method, src, name, exact=False):
     assert exact in (True, False)
@@ -992,31 +1003,38 @@ def _check_body_state(name, state, max_state):
 
 class Body:
     chunked = False
-    __slots__ = ('rfile', 'content_length', '_remaining', '_closed', '_error')
+
+    __slots__ = (
+        '_rfile',
+        '_rfile_read',
+        '_content_length',
+        '_remaining',
+        '_state',
+    )
 
     def __init__(self, rfile, content_length):
         _validate_length('content_length', content_length)
-        self.rfile = rfile
-        self._remaining = self.content_length = content_length
-        self._closed = False
-        self._error = False
-
-    def _raise_exception(self):
-        if self._closed is True:
-            assert self._error is False
-            raise ValueError('Body.closed, already consumed')
-        if self._error is True:
-            assert self._closed is False
-            raise ValueError('Body.error, cannot be used')
-        raise RuntimeError('should not be reached')
+        self._rfile = rfile
+        self._remaining = self._content_length = content_length
+        self._state = BODY_READY
+        if type(rfile) is not Reader:
+            self._rfile_read = _getcallable('rfile', rfile, 'read')
 
     @property
-    def closed(self):
-        return self._closed
+    def rfile(self):
+        return self._rfile
 
     @property
-    def error(self):
-        return self._error
+    def fastpath(self):
+        return type(self._rfile) is Reader
+
+    @property
+    def content_length(self):
+        return self._content_length
+
+    @property
+    def state(self):
+        return self._state
 
     def __repr__(self):
         return '{}(<rfile>, {!r})'.format(
@@ -1024,72 +1042,51 @@ class Body:
         )
 
     def __iter__(self):
-        if (self._closed is True or self._error is True):
-            self._raise_exception()
-        assert self._closed is False and self._error is False
-        remaining = self._remaining
-        if remaining != self.content_length:
-            raise Exception('cannot mix Body.read() with Body.__iter__()')
-        self._remaining = 0
-        io_size = IO_SIZE
-        read = self.rfile.read
-        while remaining > 0:
-            readsize = min(remaining, io_size)
-            remaining -= readsize
-            assert remaining >= 0
-            data = read(readsize)
-            if len(data) != readsize:
-                self._error = True
-                raise ValueError(
-                    'underflow: {} < {}'.format(len(data), readsize)
-                )
-            yield data
-        self._closed = True
+        _check_body_state('Body', self._state, BODY_READY)
+        self._state = BODY_STARTED
+        try:
+            remaining = self._remaining
+            io_size = IO_SIZE
+            read = self._rfile.read
+            while remaining > 0:
+                readsize = min(remaining, io_size)
+                remaining -= readsize
+                assert remaining >= 0
+                data = read(readsize)
+                if len(data) != readsize:
+                    raise ValueError(
+                        'underflow: {} < {}'.format(len(data), readsize)
+                    )
+                yield data
+        except:
+            self._state = BODY_ERROR
+            raise
+        assert remaining == 0
+        self._remaining = remaining
+        self._state = BODY_CONSUMED
 
     def read(self, size=None):
-        if (self._closed is True or self._error is True):
-            self._raise_exception()
-        assert self._closed is False and self._error is False
-        if self._remaining <= 0:
-            self._closed = True
+        size = _validate_read_size('size', size, self._remaining)
+        _check_body_state('Body', self._state, BODY_STARTED)
+        self._state = BODY_STARTED
+        if self._remaining == 0:
+            self._state = BODY_CONSUMED
             return b''
-        if size is None:
-            read = self._remaining
-            if read > MAX_READ_SIZE:
+        try:
+            rsize = min(self._remaining, size)
+            data = self._rfile.read(rsize)
+            if len(data) != rsize:
                 raise ValueError(
-                    'would exceed max read size: {} > {}'.format(
-                        read, MAX_READ_SIZE
-                    )
+                    'underflow: {} < {}'.format(len(data), rsize)
                 )
-        else:
-            if type(size) is not int:
-                raise TypeError(
-                    TYPE_ERROR.format('size', int, type(size), size) 
-                )
-            if not (0 <= size <= MAX_READ_SIZE):
-                raise ValueError(
-                    'need 0 <= size <= {}; got {}'.format(MAX_READ_SIZE, size)
-                )
-            read = min(self._remaining, size)
-        data = self.rfile.read(read)
-        if len(data) != read:
-            # Security note: if application-level code is being overly general
-            # with their exception handling, they might continue to use a
-            # connection even after an ValueError which could create a
-            # request/response stream state inconsistency.  So in this
-            # circumstance, we set Body.error to True, but we do *not* set
-            # Body.closed to True (which means "fully consumed") because the
-            # body was not in fact fully read. 
-            self._error = True
-            raise ValueError(
-                'underflow: {} < {}'.format(len(data), read)
-            )
-        self._remaining -= read
-        assert self._remaining >= 0
-        if size is None:
-            # Entire body was read at once, so close:
-            self._closed = True
-        return data
+            self._remaining -= read
+            assert self._remaining >= 0
+            if size is None:
+                self._state = BODY_CONSUMED
+            return data
+        except:
+            self._state = BODY_ERROR
+            raise
 
     def write_to(self, wfile):
         total = sum(wfile.write(data) for data in self)

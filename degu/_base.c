@@ -3655,7 +3655,7 @@ static void
 Body_dealloc(Body *self)
 {
     Py_CLEAR(self->rfile);
-    Py_CLEAR(self->rfile_read);
+    Py_CLEAR(self->read);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3670,10 +3670,10 @@ Body_New(Reader *reader, const uint64_t content_length)
         return NULL;
     }
     self->rfile = NULL;
-    self->rfile_read = NULL;
+    self->read = NULL;
     self->remaining = self->content_length = content_length;
-    self->closed = false;
-    self->error = false;
+    self->state = BODY_READY;
+    self->fastpath = true;
     self->chunked = false;
     if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
         return NULL;
@@ -3701,11 +3701,14 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
     }
     _SET_AND_INC(self->rfile, rfile)
     if (Py_TYPE(rfile) != &ReaderType) {
-        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
+        self->fastpath = false;
+        _SET(self->read, _getcallable("rfile", rfile, attr_read))
+    }
+    else {
+        self->fastpath = true;
     }
     self->remaining = self->content_length = (uint64_t)_content_length;
-    self->closed = false;
-    self->error = false;
+    self->state = BODY_READY;
     self->chunked = false;
     return 0;
 
@@ -3714,39 +3717,15 @@ error:
 }
 
 static PyObject *
-_Body_set_exception(Body *self)
-{
-    if (self->closed) {
-        if (self->error) {
-            goto bad_times;
-        }
-        PyErr_SetString(PyExc_ValueError, "Body.closed, already consumed");
-    }
-    else if (self->error) {
-        if (self->closed) {
-            goto bad_times;
-        }
-        PyErr_SetString(PyExc_ValueError, "Body.error, cannot be used");
-    }
-    else {
-        goto bad_times;
-    }
-    return NULL;
-
-bad_times:
-    Py_FatalError("_Body_set_exception(): bad internal call or state");
-    return NULL;
-}
-
-static PyObject *
 _Body_read(Body *self, const size_t max_size)
 {
     PyObject *pysize = NULL;
     PyObject *ret = NULL;
 
-    if (self->closed || self->error) {
-        return _Body_set_exception(self);
+    if (! _check_body_state("Body", self->state, BODY_STARTED)) {
+        return NULL;
     }
+    self->state = BODY_STARTED;
     if (max_size > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
             "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, max_size
@@ -3754,20 +3733,20 @@ _Body_read(Body *self, const size_t max_size)
         return NULL;
     }
     if (self->remaining == 0) {
-        self->closed = true;
+        self->state = BODY_CONSUMED;
         Py_INCREF(bytes_empty);
         return bytes_empty;
     }
     const size_t size = _min(max_size, self->remaining);
 
     /* Call rfile.read() */
-    if (self->rfile_read == NULL) {
+    if (self->read == NULL) {
         /* Fast-path for when rfile is a Reader instance */
         _SET(ret, _Reader_read((Reader *)self->rfile, (ssize_t)size))
     }
     else {
         _SET(pysize, PyLong_FromSize_t(size))
-        _SET(ret, PyObject_CallFunctionObjArgs(self->rfile_read, pysize, NULL))
+        _SET(ret, PyObject_CallFunctionObjArgs(self->read, pysize, NULL))
         if (! PyBytes_CheckExact(ret)) {
             PyErr_Format(PyExc_TypeError,
                 "need a <class 'bytes'>; rfile.read() returned a %R: %R",
@@ -3791,7 +3770,7 @@ _Body_read(Body *self, const size_t max_size)
 
 error:
     Py_CLEAR(ret);
-    self->error = true;
+    self->state = BODY_ERROR;
 
 cleanup:
     Py_CLEAR(pysize);
@@ -3813,7 +3792,7 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
     }
     PyObject *ret = _Body_read(self, (size_t)size);
     if (pysize == Py_None && ret != NULL) {
-        self->closed = true;
+        self->state = BODY_CONSUMED;
     }
     return ret;
 }
@@ -3837,7 +3816,7 @@ _Body_fast_write_to(Body *self, Writer *wfile)
         Py_CLEAR(data);
     }
     _SET(ret, PyLong_FromUnsignedLong(total))
-    self->closed = true;
+    self->state = BODY_CONSUMED;
     goto cleanup;
 
 error:
@@ -3865,7 +3844,7 @@ _Body_write_to(Body *self, PyObject *wfile)
         Py_CLEAR(size);
     }
     _SET(ret, PyLong_FromUnsignedLong(total))
-    self->closed = true;
+    self->state = BODY_CONSUMED;
     goto cleanup;
 
 error:
@@ -3900,9 +3879,10 @@ Body_repr(Body *self)
 static PyObject *
 Body_iter(Body *self)
 {
-    if (self->closed || self->error) {
-        return _Body_set_exception(self);
+    if (! _check_body_state("Body", self->state, BODY_READY)) {
+        return NULL;
     }
+    self->state = BODY_STARTED;
     PyObject *ret = (PyObject *)self;
     Py_INCREF(ret);
     return ret;
@@ -3912,7 +3892,7 @@ static PyObject *
 Body_next(Body *self)
 {
     if (self->remaining == 0) {
-        self->closed = true;
+        self->state = BODY_CONSUMED;
         return NULL;
     }
     return _Body_read(self, IO_SIZE);
@@ -3937,7 +3917,6 @@ ChunkedBody_New(Reader *reader)
     if (reader == NULL || Py_TYPE((PyObject *)reader) != &ReaderType) {
         Py_FatalError("ChunkedBody_New(): bad internal state");
     }
-
     ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
     if (self == NULL) {
         return NULL;

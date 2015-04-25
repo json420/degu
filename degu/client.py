@@ -32,6 +32,7 @@ from .base import (
     _makefiles,
     Response,
     Range,
+    _isconsumed,
 )
 
 __all__ = (
@@ -200,7 +201,7 @@ class Connection:
         if self.sock is None:
             raise ClosedConnectionError(self)
         try:
-            if not (self._response_body is None or self._response_body.closed):
+            if not _isconsumed(self._response_body):
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)

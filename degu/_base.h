@@ -477,11 +477,11 @@ static PyTypeObject WriterType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *rfile_read;
+    PyObject *read;
     uint64_t content_length;
     uint64_t remaining;
-    bool closed;
-    bool error;
+    uint8_t state;
+    bool fastpath;
     bool chunked;
 } Body;
 
@@ -490,8 +490,8 @@ static PyObject * Body_New(Reader *, uint64_t);
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
-    {"closed",         T_BOOL,      offsetof(Body, closed),         READONLY, NULL},
-    {"error",          T_BOOL,      offsetof(Body, error),          READONLY, NULL},
+    {"state",          T_UBYTE,     offsetof(Body, state),          READONLY, NULL},
+    {"fastpath",       T_BOOL,      offsetof(Body, fastpath),       READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
     {NULL}
 };

@@ -34,6 +34,10 @@ try:
         Reader,
         Writer,
         Body,
+        ChunkedBody,
+        BodyIter,
+        ChunkedBodyIter,
+        BODY_CONSUMED,
     )
 except ImportError:
     from ._basepy import (
@@ -46,6 +50,10 @@ except ImportError:
         Reader,
         Writer,
         Body,
+        ChunkedBody,
+        BodyIter,
+        ChunkedBodyIter,
+        BODY_CONSUMED,
     )
 
 
@@ -70,11 +78,19 @@ IO_SIZE = 1048576  # 1 MiB
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
+# Used to expose the RGI IO wrappers:
+bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+
+
 def _makefiles(sock, bodies):
     """
     Create (rfile, wfile) from a socket connection.
     """
     return (Reader(sock, bodies), Writer(sock, bodies))
+
+
+def _isconsumed(body, state=BODY_CONSUMED):
+    return body is None or body.state == state
 
 
 # FIXME: Add optional max_size=None keyword argument
@@ -175,134 +191,3 @@ def write_chunk(wfile, chunk, max_size=None):
     wfile.flush()
     return total
 
-
-
-
-
-class ChunkedBody:
-    chunked = True
-    __slots__ = ('rfile', 'closed')
-
-    def __init__(self, rfile):
-        if not callable(rfile.read):
-            raise TypeError('rfile.read is not callable: {!r}'.format(rfile))
-        self.rfile = rfile
-        self.closed = False
-
-    def __repr__(self):
-        return '{}(<rfile>)'.format(self.__class__.__name__)
-
-    def __iter__(self):
-        if self.closed:
-            raise ValueError('ChunkedBody.closed, already consumed')
-        while not self.closed:
-            yield self.readchunk()
-
-    # FIXME: Add optional max_size=None keyword argument
-    def readchunk(self):
-        if self.closed:
-            raise ValueError('ChunkedBody.closed, already consumed')
-        try:
-            (extension, data) = read_chunk(self.rfile)
-        except:
-            self.rfile.close()
-            raise
-        if not data:
-            self.closed = True
-        return (extension, data)
-
-    # FIXME: Add optional size=None, max_size=None keyword arguments
-    def read(self, size=None):
-        if self.closed:
-            raise ValueError('ChunkedBody.closed, already consumed')
-        buf = bytearray()
-        while not self.closed:
-            buf.extend(self.readchunk()[1])
-            if len(buf) > MAX_READ_SIZE:
-                raise ValueError(
-                    'max read size exceeded: {} > {}'.format(
-                        len(buf), MAX_READ_SIZE
-                    )
-                )
-        return bytes(buf)
-
-    def write_to(self, wfile):
-        wfile.flush()  # Flush preamble before writting first chunk
-        return sum(write_chunk(wfile, chunk) for chunk in self) 
-
-
-class BodyIter:
-    chunked = False
-    __slots__ = ('source', 'content_length', 'closed', '_started')
-
-    def __init__(self, source, content_length):
-        if not isinstance(content_length, int):
-            raise TypeError(_TYPE_ERROR.format(
-                'content_length', int, type(content_length), content_length)
-            )
-        if content_length < 0:
-            raise ValueError(
-                'content_length must be >= 0, got: {!r}'.format(content_length)
-            )
-        self.source = source
-        self.content_length = content_length
-        self.closed = False
-        self._started = False
-
-    def write_to(self, wfile):
-        if self.closed:
-            raise ValueError('BodyIter.closed, already consumed')
-        if self._started:
-            raise ValueError('BodyIter._started')
-        self._started = True
-        content_length = self.content_length
-        total = 0
-        for data in self.source:
-            total += len(data)
-            if total > content_length:
-                raise ValueError(
-                    'overflow: {} > {}'.format(total, content_length)
-                )
-            if wfile.write(data) != len(data):
-                raise Exception('wfile.write() returned wrong size written')
-        if total != content_length:
-            raise ValueError(
-                'underflow: {} < {}'.format(total, content_length)
-            )
-        wfile.flush()
-        self.closed = True
-        return total
-
-
-class ChunkedBodyIter:
-    chunked = True
-    __slots__ = ('source', 'closed', '_started')
-
-    def __init__(self, source):
-        self.source = source
-        self.closed = False
-        self._started = False
-
-    def write_to(self, wfile):
-        if self.closed:
-            raise ValueError('ChunkedBodyIter.closed, already consumed')
-        if self._started:
-            raise ValueError('ChunkedBodyIter._started')
-        self._started = True
-        wfile.flush()  # Flush preamble before writting first chunk
-        empty = False
-        total = 0
-        for chunk in self.source:
-            if empty:
-                raise ValueError('non-empty chunk data after empty')
-            total += write_chunk(wfile, chunk)
-            if not chunk[1]:  # Is chunk data empty?
-                empty = True
-        if not empty:
-            raise ValueError('final chunk data was not empty')
-        self.closed = True
-        return total
-
-
-# Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
