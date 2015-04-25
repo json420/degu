@@ -3311,41 +3311,47 @@ cleanup:
 }
 
 static bool
-_set_default_content_length(PyObject *headers, PyObject *val)
+_set_content_length(PyObject *headers, const uint64_t content_length)
 {
+    PyObject *val = PyLong_FromUnsignedLongLong(content_length);
     if (val == NULL) {
         return false;
     }
-    bool result = _set_default_header(headers, key_content_length, val);
+    const bool result = _set_default_header(headers, key_content_length, val);
     Py_CLEAR(val);
     return result;
 }
 
 static bool
-_Writer_set_default_headers(Writer *self, PyObject *headers, PyObject *body)
+_set_transfer_encoding(PyObject *headers)
 {
-    ssize_t len;
-    PyObject *val;
+    return _set_default_header(headers, key_transfer_encoding, val_chunked);
+}
 
+static bool
+_set_output_headers(PyObject *headers, PyObject *body)
+{
     if (body == Py_None) {
         return true;
     }
     if (PyBytes_CheckExact(body)) {
-        len = PyBytes_GET_SIZE(body);
-        val = PyLong_FromSsize_t(len);
-        return _set_default_content_length(headers, val);
+        return _set_content_length(headers, (uint64_t)PyBytes_GET_SIZE(body));
     }
-    if (PyObject_IsInstance(body, self->length_types)) {
-        val = PyObject_GetAttr(body, attr_content_length);
-        return _set_default_content_length(headers, val);
+    if (Py_TYPE(body) == &BodyType) {
+        return _set_content_length(headers, ((Body *)body)->content_length);
     }
-    if (PyObject_IsInstance(body, self->chunked_types)) {
-        return _set_default_header(headers, key_transfer_encoding, val_chunked);
+    if (Py_TYPE(body) == &BodyIterType) {
+        return _set_content_length(headers, ((BodyIter *)body)->content_length);
+    }
+    if (Py_TYPE(body) == &ChunkedBodyType) {
+        return _set_transfer_encoding(headers);
+    }
+    if (Py_TYPE(body) == &ChunkedBodyIterType) {
+        return _set_transfer_encoding(headers);
     }
     PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
     return false;
 }
-
 
 static int64_t
 _Writer_write_combined(Writer *self, DeguSrc src1, DeguSrc src2)
@@ -3489,7 +3495,7 @@ Writer_set_default_headers(Writer *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "OO", &headers, &body)) {
         return NULL;
     }
-    if (!_Writer_set_default_headers(self, headers, body)) {
+    if (! _set_output_headers(headers, body)) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -3510,7 +3516,7 @@ Writer_write_request(Writer *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#UOO:", &buf, &len, &uri, &headers, &body)) {
         return NULL;
     }
-    if (!_Writer_set_default_headers(self, headers, body)) {
+    if (! _set_output_headers(headers, body)) {
         return NULL;
     }
     DeguSrc method_src = {buf, len};
@@ -3541,7 +3547,7 @@ Writer_write_response(Writer *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OUOO:", &status, &reason, &headers, &body)) {
         return NULL;
     }
-    if (!_Writer_set_default_headers(self, headers, body)) {
+    if (! _set_output_headers(headers, body)) {
         return NULL;
     }
     total = 0;
