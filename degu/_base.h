@@ -485,7 +485,7 @@ typedef struct {
     bool chunked;
 } Body;
 
-static PyObject * Body_New(PyObject *, uint64_t);
+static PyObject * Body_New(Reader *, uint64_t);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
@@ -564,7 +564,7 @@ typedef struct {
     bool chunked;
 } ChunkedBody;
 
-//static PyObject * ChunkedBody_New(PyObject *, uint64_t);
+static PyObject * ChunkedBody_New(Reader *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},

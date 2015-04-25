@@ -1526,23 +1526,45 @@ error:
 
 
 static bool
-_create_body(DeguParse dp, DeguHeaders *dh) {
+_create_body(DeguParse dp, DeguHeaders *dh) 
+{
+    PyObject *length = NULL;
+    bool ret = true;
+
     const uint8_t bodyflags = (dh->flags & 3);
     if (bodyflags == 0) {
         _SET_AND_INC(dh->body, Py_None)
     }
-    else if (bodyflags == 1) {
-        _SET(dh->body, Body_New(dp.rfile, dh->content_length))
+    else if (Py_TYPE(dp.rfile) == &ReaderType) {
+        Reader *reader = (Reader *)dp.rfile;
+        if (bodyflags == 1) {
+            _SET(dh->body, Body_New(reader, dh->content_length))
+        }
+        else if (bodyflags == 2) {
+            _SET(dh->body, ChunkedBody_New(reader))
+        }
     }
-    else if (bodyflags == 2) {
-        _SET(dh->body,
-            PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
-        )
+    else {
+        if (bodyflags == 1) {
+            _SET(length, PyLong_FromUnsignedLongLong(dh->content_length))
+            _SET(dh->body,
+                PyObject_CallFunctionObjArgs(dp.Body, dp.rfile, length, NULL)
+            )
+        }
+        else if (bodyflags == 2) {
+            _SET(dh->body,
+                PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
+            )
+        }
     }
-    return true;
+    goto cleanup;
 
 error:
-    return false;
+    ret = false;
+
+cleanup:
+    Py_CLEAR(length);
+    return ret;
 }
 
 static PyObject *
@@ -3638,11 +3660,12 @@ Body_dealloc(Body *self)
 }
 
 static PyObject *
-Body_New(PyObject *rfile, const uint64_t content_length)
+Body_New(Reader *reader, const uint64_t content_length)
 {
-    Body *self;
-
-    self = PyObject_New(Body, &BodyType);
+    if (reader == NULL || Py_TYPE((PyObject *)reader) != &ReaderType) {
+        Py_FatalError("Body_New(): bad internal call");
+    }
+    Body *self = PyObject_New(Body, &BodyType);
     if (self == NULL) {
         return NULL;
     }
@@ -3655,14 +3678,9 @@ Body_New(PyObject *rfile, const uint64_t content_length)
     if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
         return NULL;
     }
-    _SET_AND_INC(self->rfile, rfile)
-    if (Py_TYPE(rfile) != &ReaderType) {
-        _SET(self->rfile_read, _getcallable("rfile", rfile, attr_read))
-    }
+    self->rfile = (PyObject *)reader;
+    Py_INCREF(self->rfile);
     return (PyObject *)self;
-
-error:
-    return NULL;
 }
 
 static int
@@ -3911,6 +3929,31 @@ ChunkedBody_dealloc(ChunkedBody *self)
     Py_CLEAR(self->readline);
     Py_CLEAR(self->read);
     Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject *
+ChunkedBody_New(Reader *reader)
+{
+    if (reader == NULL || Py_TYPE((PyObject *)reader) != &ReaderType) {
+        Py_FatalError("ChunkedBody_New(): bad internal state");
+    }
+
+    ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->rfile = NULL;
+    self->readline = NULL;
+    self->read = NULL;
+    self->state = BODY_READY;
+    self->fastpath = true;
+    self->chunked = true;
+    if (PyObject_Init((PyObject *)self, &ChunkedBodyType) == NULL) {
+        return NULL;
+    }
+    self->rfile = (PyObject *)reader;
+    Py_INCREF(self->rfile);
+    return (PyObject *)self;
 }
 
 static int
