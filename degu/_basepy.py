@@ -478,23 +478,19 @@ def parse_request_line(line):
     return (method, uri, script, path, query)
 
 
-def _parse_request(preamble, rfile, _Body, _ChunkedBody):
+def parse_request(preamble, rfile):
     if preamble == b'':
         raise EmptyPreambleError('request preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
     (method, uri, script, path, query) = parse_request_line(first_line)
     headers = _parse_header_lines(header_lines)
     if 'content-length' in headers:
-        body = _Body(rfile, headers['content-length'])
+        body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = _ChunkedBody(rfile)
+        body = ChunkedBody(rfile)
     else:
         body = None
     return Request(method, uri, headers, body, script, path, query)
-
-
-def parse_request(preamble, rfile, bodies):
-    return _parse_request(preamble, rfile, bodies.Body, bodies.ChunkedBody)
 
 
 
@@ -528,7 +524,8 @@ def parse_response_line(src):
     return (status, reason)
 
 
-def _parse_response(method, preamble, rfile, _Body, _ChunkedBody):
+def parse_response(method, preamble, rfile):
+    method = parse_method(method)
     if preamble == b'':
         raise EmptyPreambleError('response preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
@@ -537,19 +534,12 @@ def _parse_response(method, preamble, rfile, _Body, _ChunkedBody):
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
-        body = _Body(rfile, headers['content-length'])
+        body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
-        body = _ChunkedBody(rfile)
+        body = ChunkedBody(rfile)
     else:
         body = None
     return Response(status, reason, headers, body)
-
-
-def parse_response(method, preamble, rfile, bodies):
-    method = parse_method(method)
-    return _parse_response(
-        method, preamble, rfile, bodies.Body, bodies.ChunkedBody
-    )
 
 
 ################################################################################
@@ -647,8 +637,6 @@ def write_chunk(wfile, chunk):
 class Reader:
     __slots__ = (
         '_sock_recv_into',
-        '_Body',
-        '_ChunkedBody',
         '_rawtell',
         '_rawbuf',
         '_start',
@@ -656,7 +644,7 @@ class Reader:
         '_closed',
     )
 
-    def __init__(self, sock, bodies, size=DEFAULT_PREAMBLE):
+    def __init__(self, sock, size=DEFAULT_PREAMBLE):
         assert isinstance(size, int)
         if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
             raise ValueError(
@@ -665,8 +653,6 @@ class Reader:
                 )
             )
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
-        self._Body = _getcallable('bodies', bodies, 'Body')
-        self._ChunkedBody = _getcallable('bodies', bodies, 'ChunkedBody')
         self._rawtell = 0
         self._rawbuf = memoryview(bytearray(size))
         self._start = 0
@@ -819,14 +805,12 @@ class Reader:
 
     def read_request(self):
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
-        return _parse_request(preamble, self, self._Body, self._ChunkedBody)
+        return parse_request(preamble, self)
 
     def read_response(self, method):
         method = parse_method(method)
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
-        return _parse_response(
-            method, preamble, self, self._Body, self._ChunkedBody
-        )
+        return parse_response(method, preamble, self)
 
     def readchunk(self):
         line = self.read_until(4096, b'\r\n')

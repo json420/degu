@@ -2753,8 +2753,6 @@ static void
 Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->recv_into);
-    Py_CLEAR(self->bodies_Body);
-    Py_CLEAR(self->bodies_ChunkedBody);
     if (self->scratch != NULL) {
         free(self->scratch);
         self->scratch = NULL;
@@ -2770,12 +2768,10 @@ static int
 Reader_init(Reader *self, PyObject *args, PyObject *kw)
 {
     PyObject *sock = NULL;
-    PyObject *bodies = NULL;
     ssize_t len = DEFAULT_PREAMBLE;
-    static char *keys[] = {"sock", "bodies", "size", NULL};
+    static char *keys[] = {"sock", "size", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO|n:Reader",
-            keys, &sock, &bodies, &len)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "O|n:Reader", keys, &sock,  &len)) {
         return -1;
     }
     if (len < MIN_PREAMBLE || len > MAX_PREAMBLE) {
@@ -2786,10 +2782,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->bodies_Body, _getcallable("bodies", bodies, attr_Body))
-    _SET(self->bodies_ChunkedBody,
-        _getcallable("bodies", bodies, attr_ChunkedBody)
-    )
     _SET(self->scratch, _calloc_buf(MAX_KEY))
     self->len = (size_t)len;
     _SET(self->buf, _calloc_buf(self->len))

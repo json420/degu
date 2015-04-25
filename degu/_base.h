@@ -311,8 +311,6 @@ typedef struct {
     PyObject_HEAD
     bool closed;
     PyObject *recv_into;
-    PyObject *bodies_Body;
-    PyObject *bodies_ChunkedBody;
     uint8_t *scratch;
     uint64_t rawtell;
     uint8_t *buf;

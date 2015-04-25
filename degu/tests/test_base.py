@@ -896,7 +896,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(good_count, 2)
 
     def test_parse_request(self):
-        bodies = base.bodies
+        bodies = self.getattr('bodies')
         parse_request = self.getattr('parse_request')
         EmptyPreambleError = self.getattr('EmptyPreambleError')
         RequestType = self.getattr('RequestType')
@@ -904,10 +904,10 @@ class TestParsingFunctions_Py(BackendTestCase):
         rfile = io.BytesIO()
 
         with self.assertRaises(EmptyPreambleError) as cm:
-            parse_request(b'', rfile, bodies)
+            parse_request(b'', rfile)
         self.assertEqual(str(cm.exception), 'request preamble is empty')
 
-        r = parse_request(b'GET / HTTP/1.1', rfile, bodies)
+        r = parse_request(b'GET / HTTP/1.1', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/')
@@ -918,7 +918,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIsNone(r.query)
         self.assertEqual(r, ('GET', '/', {}, None, [], [], None))
 
-        r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile, bodies)
+        r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/')
@@ -939,7 +939,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(repr(_range), 'Range(17, 21)')
         self.assertEqual(str(_range), 'bytes=17-20')
 
-        r = parse_request(b'GET /foo? HTTP/1.1', rfile, bodies)
+        r = parse_request(b'GET /foo? HTTP/1.1', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/foo?')
@@ -950,7 +950,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.query, '')
         self.assertEqual(r, ('GET', '/foo?', {}, None, [], ['foo'], ''))
 
-        r = parse_request(b'GET /foo/bar/?stuff=junk HTTP/1.1', rfile, bodies)
+        r = parse_request(b'GET /foo/bar/?stuff=junk HTTP/1.1', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/foo/bar/?stuff=junk')
@@ -963,7 +963,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             ('GET', '/foo/bar/?stuff=junk', {}, None, [], ['foo', 'bar', ''], 'stuff=junk')
         )
 
-        r = parse_request(b'PUT /foo HTTP/1.1', rfile, bodies)
+        r = parse_request(b'PUT /foo HTTP/1.1', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
@@ -974,7 +974,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIsNone(r.query)
         self.assertEqual(r, ('PUT', '/foo', {}, None, [], ['foo'], None))
 
-        r = parse_request(b'PUT /foo HTTP/1.1\r\nContent-Length: 17', rfile, bodies)
+        r = parse_request(b'PUT /foo HTTP/1.1\r\nContent-Length: 17', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
@@ -989,7 +989,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             ('PUT', '/foo', {'content-length': 17}, r.body, [], ['foo'], None)
         )
 
-        r = parse_request(b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile, bodies)
+        r = parse_request(b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile)
         self.assertIs(type(r), RequestType)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
@@ -1004,17 +1004,17 @@ class TestParsingFunctions_Py(BackendTestCase):
         )
 
     def test_parse_response(self):
-        bodies = base.bodies
+        bodies = self.getattr('bodies')
         parse_response = self.getattr('parse_response')
         EmptyPreambleError = self.getattr('EmptyPreambleError')
         ResponseType = self.getattr('ResponseType')
         rfile = io.BytesIO()
 
         with self.assertRaises(EmptyPreambleError) as cm:
-            parse_response('GET', b'', rfile, bodies)
+            parse_response('GET', b'', rfile)
         self.assertEqual(str(cm.exception), 'response preamble is empty')
 
-        r = parse_response('GET', b'HTTP/1.1 200 OK', rfile, bodies)
+        r = parse_response('GET', b'HTTP/1.1 200 OK', rfile)
         self.assertIs(type(r), ResponseType)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -1024,7 +1024,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         body_methods = ('GET', 'PUT', 'POST', 'DELETE')
         length = b'HTTP/1.1 200 OK\r\nContent-Length: 17'
 
-        r = parse_response('HEAD', length, rfile, bodies)
+        r = parse_response('HEAD', length, rfile)
         self.assertIs(type(r), ResponseType)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -1032,7 +1032,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIsNone(r.body)
 
         for method in body_methods:
-            r = parse_response(method, length, rfile, bodies)
+            r = parse_response(method, length, rfile)
             self.assertIs(type(r), ResponseType)
             self.assertEqual(r.status, 200)
             self.assertEqual(r.reason, 'OK')
@@ -1043,7 +1043,7 @@ class TestParsingFunctions_Py(BackendTestCase):
 
         chunked = b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked'
 
-        r = parse_response('HEAD', chunked, rfile, bodies)
+        r = parse_response('HEAD', chunked, rfile)
         self.assertIs(type(r), ResponseType)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.reason, 'OK')
@@ -1051,7 +1051,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIsNone(r.body)
 
         for method in body_methods:
-            r = parse_response(method, chunked, rfile, bodies)
+            r = parse_response(method, chunked, rfile)
             self.assertIs(type(r), ResponseType)
             self.assertEqual(r.status, 200)
             self.assertEqual(r.reason, 'OK')
@@ -3000,14 +3000,14 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
     def iter_rfiles(self, data):
         yield io.BytesIO(data)
-        yield self.Reader(MockSocket(data, None), base.bodies)
-        yield self.Reader(MockSocket(data, 1), base.bodies)
-        yield self.Reader(MockSocket(data, 2), base.bodies)
+        yield self.Reader(MockSocket(data, None))
+        yield self.Reader(MockSocket(data, 1))
+        yield self.Reader(MockSocket(data, 2))
 
     def test_init(self):
         # Test with backend.Reader:
         sock = MockSocket(b'', None)
-        rfile = self.Reader(sock, base.bodies)
+        rfile = self.Reader(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 3)
@@ -3297,7 +3297,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         # Now test internal Reader fast-path:
         for bad in (b'', b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
             sock = MockSocket(bad, None)
-            rfile = self.Reader(sock, base.bodies)
+            rfile = self.Reader(sock)
             body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 3)
             with self.assertRaises(ValueError) as cm:
@@ -3317,7 +3317,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         sock = MockSocket(b'c\r\nhello, worl\r\n', None)
-        rfile = self.Reader(sock, base.bodies)
+        rfile = self.Reader(sock)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 3)
         with self.assertRaises(ValueError) as cm:
@@ -3512,7 +3512,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
     def get_rfile_plus_body(self, data, mock=False, rcvbuf=None):
         rfile = io.BytesIO(data)
         if mock is True:
-            obj = self.Reader(MockSocket2(rfile, rcvbuf), base.bodies)
+            obj = self.Reader(MockSocket2(rfile, rcvbuf))
         else:
             assert mock is False
             obj = rfile
@@ -4117,7 +4117,7 @@ class TestReader_Py(BackendTestCase):
 
     def new(self, data=b'', rcvbuf=None):
         sock = MockSocket(data, rcvbuf)
-        reader = self.Reader(sock, base.bodies)
+        reader = self.Reader(sock)
         return (sock, reader)
 
     def test_init(self):
@@ -4127,7 +4127,7 @@ class TestReader_Py(BackendTestCase):
         self.assertTrue(_min <= default <= _max)
 
         sock = MockSocket(b'')
-        reader = self.Reader(sock, base.bodies)
+        reader = self.Reader(sock)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
@@ -4135,13 +4135,13 @@ class TestReader_Py(BackendTestCase):
 
         # Test min and max sizes:
         for good in (_min, _max):
-            reader = self.Reader(sock, base.bodies, size=good)
+            reader = self.Reader(sock, size=good)
             self.assertEqual(reader.expose(), b'\x00' * good)
 
         # size out of range:
         for bad in (_min - 1, _max + 1):
             with self.assertRaises(ValueError) as cm:
-                self.Reader(sock, base.bodies, size=bad)
+                self.Reader(sock, size=bad)
             self.assertEqual(str(cm.exception),
                 'need {} <= size <= {}; got {}'.format(_min, _max, bad)
             )
@@ -4149,20 +4149,10 @@ class TestReader_Py(BackendTestCase):
     def test_del(self):
         sock = MockSocket(b'')
         self.assertEqual(sys.getrefcount(sock), 2)
-        bodies = base.bodies
-        c1 = sys.getrefcount(bodies)
-        c2 = sys.getrefcount(bodies.Body)
-        c3 = sys.getrefcount(bodies.ChunkedBody)
-        reader = self.Reader(sock, bodies)
+        reader = self.Reader(sock)
         self.assertEqual(sys.getrefcount(sock), 3)
-        self.assertEqual(sys.getrefcount(bodies), c1)
-        self.assertEqual(sys.getrefcount(bodies.Body), c2 + 1)
-        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3 + 1)
         del reader
         self.assertEqual(sys.getrefcount(sock), 2)
-        self.assertEqual(sys.getrefcount(bodies), c1)
-        self.assertEqual(sys.getrefcount(bodies.Body), c2)
-        self.assertEqual(sys.getrefcount(bodies.ChunkedBody), c3)
 
     def test_read_until(self):
         default = self.DEFAULT_PREAMBLE
@@ -4600,7 +4590,7 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(reader.read(default + 1), D)
 
         badsocket = BadSocket(17.0)
-        reader = self.Reader(badsocket, base.bodies)
+        reader = self.Reader(badsocket)
         with self.assertRaises(TypeError) as cm:
             reader.read(12345)
         self.assertEqual(str(cm.exception),
@@ -4611,7 +4601,7 @@ class TestReader_Py(BackendTestCase):
         twosmax = smax * 2
         for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
             badsocket = BadSocket(badsize)
-            reader = self.Reader(badsocket, base.bodies)
+            reader = self.Reader(badsocket)
             with self.assertRaises(ValueError) as cm:
                 reader.read(12345)
             self.assertEqual(str(cm.exception),
@@ -4621,7 +4611,7 @@ class TestReader_Py(BackendTestCase):
         marker = random_id()
         exc = ValueError(marker)
         badsocket = BadSocket(exc)
-        reader = self.Reader(badsocket, base.bodies)
+        reader = self.Reader(badsocket)
         with self.assertRaises(ValueError) as cm:
             reader.read(12345)
         self.assertIs(cm.exception, exc)
@@ -4664,7 +4654,7 @@ class TestReader_Py(BackendTestCase):
 
         dst = memoryview(bytearray(12345))
         badsocket = BadSocket(17.0)
-        reader = self.Reader(badsocket, base.bodies)
+        reader = self.Reader(badsocket)
         with self.assertRaises(TypeError) as cm:
             reader.readinto(dst)
         self.assertEqual(str(cm.exception),
@@ -4675,7 +4665,7 @@ class TestReader_Py(BackendTestCase):
         twosmax = smax * 2
         for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
             badsocket = BadSocket(badsize)
-            reader = self.Reader(badsocket, base.bodies)
+            reader = self.Reader(badsocket)
             with self.assertRaises(ValueError) as cm:
                 reader.readinto(dst)
             self.assertEqual(str(cm.exception),
@@ -4685,7 +4675,7 @@ class TestReader_Py(BackendTestCase):
         marker = random_id()
         exc = ValueError(marker)
         badsocket = BadSocket(exc)
-        reader = self.Reader(badsocket, base.bodies)
+        reader = self.Reader(badsocket)
         with self.assertRaises(ValueError) as cm:
             reader.readinto(dst)
         self.assertIs(cm.exception, exc)
