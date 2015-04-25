@@ -37,9 +37,8 @@
 
 #define BODY_READY 0u
 #define BODY_STARTED 1u
-#define BODY_READMODE 2u
-#define BODY_CONSUMED 3u
-#define BODY_ERROR 4u
+#define BODY_CONSUMED 2u
+#define BODY_ERROR 3u
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -576,13 +575,13 @@ static PyMemberDef ChunkedBody_members[] = {
 };
 
 static PyObject * ChunkedBody_readchunk(ChunkedBody *);
-static PyObject * ChunkedBody_read(ChunkedBody *, PyObject *, PyObject *);
+static PyObject * ChunkedBody_read(ChunkedBody *);
 static PyObject * ChunkedBody_write_to(ChunkedBody *, PyObject *);
 
 static PyMethodDef ChunkedBody_methods[] = {
-    {"readchunk", (PyCFunction)ChunkedBody_readchunk, METH_NOARGS, NULL},
-    {"read",      (PyCFunction)ChunkedBody_read,     METH_VARARGS|METH_KEYWORDS, NULL},
-    {"write_to",  (PyCFunction)ChunkedBody_write_to, METH_VARARGS, NULL},
+    {"readchunk", (PyCFunction)ChunkedBody_readchunk, METH_NOARGS,  NULL},
+    {"read",      (PyCFunction)ChunkedBody_read,      METH_NOARGS,  NULL},
+    {"write_to",  (PyCFunction)ChunkedBody_write_to,  METH_VARARGS, NULL},
     {NULL}
 };
 

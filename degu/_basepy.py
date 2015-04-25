@@ -46,9 +46,8 @@ IO_SIZE = 1048576  # 1 MiB
 
 BODY_READY = 0
 BODY_STARTED = 1
-BODY_READMODE = 2
-BODY_CONSUMED = 3
-BODY_ERROR = 4
+BODY_CONSUMED = 2
+BODY_ERROR = 3
 
 _METHODS = {
     b'GET': 'GET',
@@ -980,13 +979,6 @@ def _check_body_state(name, state, max_state):
                 name
             )
         )
-    if state is BODY_READMODE:
-        raise ValueError(
-            '{}.state == BODY_READMODE, cannot mix read() with readchunk()'.format(
-                name
-            )
-            
-        )
     if state is BODY_CONSUMED:
         raise ValueError(
             '{}.state == BODY_CONSUMED, already consumed'.format(name)
@@ -1105,8 +1097,6 @@ class Body:
         wfile.flush()
         return total
 
-
-
 def _not_found(self, cur, end, readline):
     if readline:
         return self._drain(len(cur))
@@ -1186,8 +1176,9 @@ class ChunkedBody:
     def state(self):
         return self._state
 
-    def _readchunk(self):
-        #_check_body_state('ChunkedBody', self._state, BODY_READMODE)
+    def readchunk(self):
+        _check_body_state('ChunkedBody', self._state, BODY_STARTED)
+        self._state = BODY_STARTED
         try:
             if type(self._rfile) is Reader:
                 chunk = self._rfile.readchunk()
@@ -1200,16 +1191,36 @@ class ChunkedBody:
             raise
         return chunk
 
-    def readchunk(self):
+    def read(self):
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
         self._state = BODY_STARTED
-        return self._readchunk()
+        try:
+            total = 0
+            accum = []
+            while total <= MAX_IO_SIZE:
+                (ext, data) = self.readchunk()
+                total += len(data)
+                if len(data) == 0:
+                    break
+                accum.append(data)
+            if total > MAX_IO_SIZE:
+                raise ValueError(
+                    'chunks exceed MAX_IO_SIZE: {} > {}'.format(
+                        total, MAX_IO_SIZE
+                    )
+                )
+            ret =  b''.join(accum)
+        except:
+            self._state = BODY_ERROR
+            raise
+        self._state = BODY_CONSUMED
+        return ret
 
     def __iter__(self):
         _check_body_state('ChunkedBody', self._state, BODY_READY)
         self._state = BODY_STARTED
         while self._state != BODY_CONSUMED:
-            yield self._readchunk()
+            yield self.readchunk()
 
 
 class BodyIter:

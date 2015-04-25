@@ -38,6 +38,7 @@ from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 
 
+MAX_IO_SIZE = 16777216  # 16 MiB
 random = SystemRandom()
 
 
@@ -77,7 +78,7 @@ def random_chunk_ext():
 def random_chunk(size=None):
     if size is None:
         size = random.randint(1, 34969)
-    assert type(size) is int and 0 <= size <= 34969
+    assert type(size) is int and 0 <= size <= MAX_IO_SIZE
     ext = random_chunk_ext()
     data = os.urandom(size)
     return (ext, data)

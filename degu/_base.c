@@ -461,6 +461,9 @@ static DeguDst
 _dst_slice(DeguDst dst, const size_t start, const size_t stop)
 {
     if (_dst_isempty(dst) || start > stop || stop > dst.len) {
+        printf("\ndst.buf=%p, dst.len=%zu, start=%zu, stop=%zu\n",
+            dst.buf, dst.len, start, stop
+        );
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (DeguDst){dst.buf + start, stop - start};
@@ -484,13 +487,14 @@ _move(DeguDst dst, DeguSrc src)
     memmove(dst.buf, src.buf, src.len);
 }
 
-static void
+static size_t
 _copy(DeguDst dst, DeguSrc src)
 {
     if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
         Py_FatalError("_copy(): bad internal call");
     }
     memcpy(dst.buf, src.buf, src.len);
+    return src.len;
 }
 
 static DeguDst
@@ -959,6 +963,7 @@ _clear_degu_chunk(DeguChunk *dc)
     Py_CLEAR(dc->key);
     Py_CLEAR(dc->val);
     Py_CLEAR(dc->data);
+    dc->size = 0;
 }
 
 
@@ -3604,12 +3609,6 @@ _check_body_state(const char *name, const uint8_t state, const uint8_t max_state
             "%s.state == BODY_STARTED, cannot start another operation", name
         );
     }
-    else if (state == BODY_READMODE) {
-        PyErr_Format(PyExc_ValueError,
-            "%s.state == BODY_READMODE, cannot mix read() with readchunk()",
-            name
-        );
-    }
     else if (state == BODY_CONSUMED) {
         PyErr_Format(PyExc_ValueError,
             "%s.state == BODY_CONSUMED, already consumed", name
@@ -3940,6 +3939,35 @@ error:
     return -1;
 }
 
+static bool
+_ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
+{
+    if (! _check_body_state("ChunkedBody", self->state, BODY_STARTED)) {
+        return false;
+    }
+    self->state = BODY_STARTED;
+    if (Py_TYPE(self->rfile) == &ReaderType) {
+        if (self->readline != NULL || self->read != NULL) {
+            Py_FatalError("ChunkedBody_readchunk(): bad internal state");
+        }
+        if (!_Reader_readchunk((Reader *)self->rfile, dc)) {
+            return false;
+        }
+    }
+    else {
+        if (self->readline == NULL || self->read == NULL) {
+            Py_FatalError("ChunkedBody_readchunk(): also bad internal state");
+        }
+        if (! _readchunk(self->readline, self->read, dc)) {
+            return false;
+        }
+    }
+    if (dc->size == 0) {
+        self->state = BODY_CONSUMED;
+    }
+    return true;
+}
+
 static PyObject *
 ChunkedBody_readchunk(ChunkedBody *self)
 {
@@ -3950,23 +3978,10 @@ ChunkedBody_readchunk(ChunkedBody *self)
         return NULL;
     }
     self->state = BODY_STARTED;
-    if (Py_TYPE(self->rfile) == &ReaderType) {
-        if (!_Reader_readchunk((Reader *)self->rfile, &dc)) {
-            goto error;
-        }
-    }
-    else {
-        if (self->readline == NULL || self->read == NULL) {
-            Py_FatalError("ChunkedBody_readchunk(): bad internal state");
-        }
-        if (! _readchunk(self->readline, self->read, &dc)) {
-            goto error;
-        }
+    if (! _ChunkedBody_readchunk(self, &dc)) {
+        goto error;
     }
     _SET(ret, _pack_chunk(&dc))
-    if (dc.size == 0) {
-        self->state = BODY_CONSUMED;
-    }
     goto cleanup;
 
 error:
@@ -3978,20 +3993,67 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-ChunkedBody_read(ChunkedBody *self, PyObject *args, PyObject *kw)
+static DeguSrc
+_shrink_chunk_data(PyObject *data)
 {
-    static char *keys[] = {"size", NULL};
-    PyObject *pysize = Py_None;
+    DeguSrc src = _frombytes(data);
+    return _slice(src, 0, src.len - 2);
+}
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "|O", keys, &pysize)) {
+static PyObject *
+ChunkedBody_read(ChunkedBody *self)
+{
+    PyObject *list = NULL;
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    size_t total = 0, start = 0;
+    PyObject *ret = NULL;
+    ssize_t i;
+
+    if (! _check_body_state("ChunkedBody", self->state, BODY_STARTED)) {
         return NULL;
     }
-    const ssize_t size = _validate_read_size("size", pysize, MAX_IO_SIZE);
-    if (size < 0) {
-        return NULL;
+    self->state = BODY_STARTED;
+    _SET(list, PyList_New(0))
+    while (total <= MAX_IO_SIZE) {
+        if (! _ChunkedBody_readchunk(self, &dc)) {
+            goto error; 
+        }
+        total += dc.size;
+        if (dc.size == 0) {
+            break;
+        }
+        if (PyList_Append(list, dc.data) != 0) {
+            goto error;
+        }
+        _clear_degu_chunk(&dc);
     }
-    Py_RETURN_NONE;
+    if (total > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "chunks exceed MAX_IO_SIZE: %zu > %zu", total, MAX_IO_SIZE
+        );
+        goto error;
+    }
+
+    _SET(ret, PyBytes_FromStringAndSize(NULL, (ssize_t)total))
+    DeguDst dst = _dst_frombytes(ret);
+    const ssize_t count = PyList_GET_SIZE(list);
+    for (i = 0; i < count; i++) {
+        start += _copy(
+            _dst_slice(dst, start, dst.len),
+            _shrink_chunk_data(PyList_GetItem(list, i))
+        );
+    }
+    self->state = BODY_CONSUMED;
+    goto cleanup;
+    
+error:
+    self->state = BODY_ERROR;
+    Py_CLEAR(ret);
+    
+cleanup:
+    Py_CLEAR(list);
+    _clear_degu_chunk(&dc);
+    return ret;
 }
 
 static PyObject *
@@ -4383,7 +4445,6 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_IO_SIZE);
     PyModule_AddIntMacro(module, BODY_READY);
     PyModule_AddIntMacro(module, BODY_STARTED);
-    PyModule_AddIntMacro(module, BODY_READMODE);
     PyModule_AddIntMacro(module, BODY_CONSUMED);
     PyModule_AddIntMacro(module, BODY_ERROR);
     return module;
