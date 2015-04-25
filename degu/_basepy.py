@@ -1066,20 +1066,20 @@ class Body:
         self._state = BODY_CONSUMED
 
     def read(self, size=None):
-        size = _validate_read_size('size', size, self._remaining)
+        rsize = _validate_read_size('size', size, self._remaining)
         _check_body_state('Body', self._state, BODY_STARTED)
         self._state = BODY_STARTED
         if self._remaining == 0:
             self._state = BODY_CONSUMED
             return b''
         try:
-            rsize = min(self._remaining, size)
+            rsize = min(self._remaining, rsize)
             data = self._rfile.read(rsize)
             if len(data) != rsize:
                 raise ValueError(
                     'underflow: {} < {}'.format(len(data), rsize)
                 )
-            self._remaining -= read
+            self._remaining -= rsize
             assert self._remaining >= 0
             if size is None:
                 self._state = BODY_CONSUMED

@@ -34,8 +34,8 @@ try:
         Reader,
         Writer,
         Body,
-        ChunkedBody,
         BodyIter,
+        ChunkedBody,
         ChunkedBodyIter,
         BODY_CONSUMED,
     )
@@ -50,8 +50,8 @@ except ImportError:
         Reader,
         Writer,
         Body,
-        ChunkedBody,
         BodyIter,
+        ChunkedBody,
         ChunkedBodyIter,
         BODY_CONSUMED,
     )

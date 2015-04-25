@@ -2613,20 +2613,19 @@ class TestBody_Py(BodyBackendTestCase):
         # All good:
         for good in (0, 1, 17, 34969, max_length):
             body = Body(rfile, good)
-            self.assertIs(body.chunked, False)
+            self.assertEqual(body.state, self.BODY_READY)
             self.assertIs(body.rfile, rfile)
             self.assertEqual(body.content_length, good)
-            self.assertIs(body.closed, False)
             self.assertEqual(repr(body), 'Body(<rfile>, {!r})'.format(good))
 
         # Body.closed should be read-only:
         with self.assertRaises(AttributeError) as cm:
-            body.closed = True
+            body.state = 1
         if self.backend is _basepy:
             self.assertEqual(str(cm.exception), "can't set attribute")
         else:
             self.assertEqual(str(cm.exception), 'readonly attribute')
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_READY)
 
     def test_read(self):
         Body = self.Body
@@ -2641,7 +2640,7 @@ class TestBody_Py(BodyBackendTestCase):
             base._TYPE_ERROR.format('size', int, float, 18.0)
         )
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
         with self.assertRaises(TypeError) as cm:
@@ -2650,7 +2649,7 @@ class TestBody_Py(BodyBackendTestCase):
             base._TYPE_ERROR.format('size', int, str, '18')
         )
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
 
@@ -2664,7 +2663,7 @@ class TestBody_Py(BodyBackendTestCase):
                 'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
             )
             self.assertIs(body.chunked, False)
-            self.assertIs(body.closed, False)
+            self.assertEqual(body.state, self.BODY_READY)
             self.assertEqual(rfile.tell(), 0)
             self.assertEqual(body.content_length, 1776)
 
@@ -2675,7 +2674,7 @@ class TestBody_Py(BodyBackendTestCase):
                 'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
             )
             self.assertIs(body.chunked, False)
-            self.assertIs(body.closed, False)
+            self.assertEqual(body.state, self.BODY_READY)
             self.assertEqual(rfile.tell(), 0)
             self.assertEqual(body.content_length, toobig)
 
@@ -2701,43 +2700,47 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, len(data))
         self.assertEqual(body.read(), data)
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
 
         # Read it again, this time in parts:
         rfile = io.BytesIO(data)
         body = Body(rfile, 1776)
         self.assertEqual(body.read(17), data[0:17])
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(rfile.tell(), 17)
         self.assertEqual(body.content_length, 1776)
 
         self.assertEqual(body.read(18), data[17:35])
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(rfile.tell(), 35)
         self.assertEqual(body.content_length, 1776)
 
         self.assertEqual(body.read(1741), data[35:])
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
 
         self.assertEqual(body.read(1776), b'')
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(body.content_length, 1776)
 
         with self.assertRaises(ValueError) as cm:
             body.read(17)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
 
         # ValueError (underflow) when trying to read all:
         rfile = io.BytesIO(data)
@@ -2745,14 +2748,14 @@ class TestBody_Py(BodyBackendTestCase):
         with self.assertRaises(ValueError) as cm:
             body.read()
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1800')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
 
         # ValueError (underflow) error when read in parts:
@@ -2761,20 +2764,20 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, 37)
         self.assertEqual(body.read(18), data[:18])
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_STARTED)
         self.assertEqual(rfile.tell(), 18)
         self.assertEqual(body.content_length, 37)
         with self.assertRaises(ValueError) as cm:
             body.read(19)
         self.assertEqual(str(cm.exception), 'underflow: 17 < 19')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
 
         # Test with empty body:
@@ -2782,12 +2785,14 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, 0)
         self.assertEqual(body.read(17), b'')
         self.assertIs(body.chunked, False)
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 0)
         with self.assertRaises(ValueError) as cm:
             body.read(17)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
 
         # Test with random chunks:
         for i in range(25):
@@ -2800,12 +2805,14 @@ class TestBody_Py(BodyBackendTestCase):
             for chunk in chunks:
                 self.assertEqual(body.read(len(chunk)), chunk)
             self.assertIs(body.chunked, False)
-            self.assertIs(body.closed, True)
+            self.assertEqual(body.state, self.BODY_CONSUMED)
             self.assertEqual(rfile.tell(), len(data))
             self.assertEqual(body.content_length, len(data))
             with self.assertRaises(ValueError) as cm:
                 body.read(17)
-            self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+            self.assertEqual(str(cm.exception),
+                'Body.state == BODY_CONSUMED, already consumed'
+            )
             self.assertEqual(rfile.read(), trailer)
 
     def test_iter(self):
@@ -2816,10 +2823,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data)
         body = Body(rfile, 0)
         self.assertEqual(list(body), [])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(rfile.read(), data)
 
@@ -2827,10 +2836,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data)
         body = Body(rfile, 69)
         self.assertEqual(list(body), [data[:69]])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), 69)
         self.assertEqual(rfile.read(), data[69:])
 
@@ -2838,10 +2849,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data)
         body = Body(rfile, 1776)
         self.assertEqual(list(body), [data])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), 1776)
         self.assertEqual(rfile.read(), b'')
 
@@ -2851,14 +2864,14 @@ class TestBody_Py(BodyBackendTestCase):
         with self.assertRaises(ValueError) as cm:
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
 
         # Make sure data is read in IO_SIZE chunks:
@@ -2868,10 +2881,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data1 + data2)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), b'')
 
@@ -2880,10 +2895,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data1 + data2 + data)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), b'')
 
@@ -2892,10 +2909,12 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data1 + data2 + data)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1]])
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'Body.closed, already consumed')
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_CONSUMED, already consumed'
+        )
         self.assertEqual(rfile.tell(), length)
         self.assertEqual(rfile.read(), data[-1:])
 
@@ -2906,14 +2925,14 @@ class TestBody_Py(BodyBackendTestCase):
         with self.assertRaises(ValueError) as cm:
             list(body)
         self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'Body.error, cannot be used')
-        self.assertIs(body.closed, False)
-        self.assertIs(body.error, True)
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
 
     def test_write_to(self):
@@ -2923,9 +2942,9 @@ class TestBody_Py(BodyBackendTestCase):
         rfile = io.BytesIO(data1 + data2)
         wfile = io.BytesIO()
         body = Body(rfile, 17)
-        self.assertIs(body.closed, False)
+        self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(body.write_to(wfile), 17)
-        self.assertIs(body.closed, True)
+        self.assertEqual(body.state, self.BODY_CONSUMED)
         self.assertEqual(rfile.tell(), 17)
         self.assertEqual(wfile.tell(), 17)
         self.assertEqual(rfile.read(), data2)

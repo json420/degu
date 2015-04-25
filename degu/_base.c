@@ -30,6 +30,7 @@
 
 /* EmptyPreambleError exception */
 static PyObject *EmptyPreambleError = NULL;
+static PyObject *bodies = NULL;
 
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_readline         = NULL;  //  'readline'
@@ -598,6 +599,20 @@ static PyStructSequence_Desc BodiesDesc = {
     4
 };
 
+
+static PyObject *
+_Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
+{
+    PyObject *ret = PyStructSequence_New(&BodiesType);
+    if (ret != NULL) {
+        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
+        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
+        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
+        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
+    }
+    return ret;
+}
+
 static PyObject *
 Bodies(PyObject *self, PyObject *args)
 {
@@ -609,14 +624,7 @@ Bodies(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
         return NULL;
     }
-    PyObject *ret = PyStructSequence_New(&BodiesType);
-    if (ret != NULL) {
-        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
-        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
-        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
-        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
-    }
-    return ret;
+    return _Bodies(arg0, arg1, arg2, arg3);
 }
 
 
@@ -4467,6 +4475,19 @@ _init_all_types(PyObject *module)
     }
     _ADD_MODULE_ATTR(module, "ChunkedBodyIter", (PyObject *)&ChunkedBodyIterType)
 
+    if (! _init_all_namedtuples(module)) {
+        return NULL;
+    }
+    _SET(bodies,
+        _Bodies(
+            (PyObject *)&BodyType,
+            (PyObject *)&BodyIterType,
+            (PyObject *)&ChunkedBodyType,
+            (PyObject *)&ChunkedBodyIterType
+        )
+    )
+    _ADD_MODULE_ATTR(module, "bodies", bodies)
+
     return true;
 
 error:
@@ -4481,11 +4502,7 @@ PyInit__base(void)
     if (module == NULL) {
         return NULL;
     }
-
     if (! _init_all_globals(module)) {
-        return NULL;
-    }
-    if (! _init_all_namedtuples(module)) {
         return NULL;
     }
     if (! _init_all_types(module)) {

@@ -95,6 +95,14 @@ def _ensure_attr_is(label, obj, name, expected):
         )
 
 
+def _ensure_attr_equals(label, obj, name, expected):
+    (label, value) = _getattr(label, obj, name)
+    if value != expected:
+        raise ValueError(
+            '{} must equal {!r}; got {!r}'.format(label, expected, value)
+        )
+
+
 def _check_dict(label, obj):
     """
     Ensure that *obj* is a `dict` instance and contains only `str` keys.
@@ -377,8 +385,8 @@ def _validate_request(bodies, request):
             TYPE_ERROR.format(label, body_types, type(value), value) 
         )
 
-    # request.body.closed must be False prior to calling the application:
-    _ensure_attr_is(label, value, 'closed', False)
+    # Need request.body.state == 0 prior to calling the application:
+    _ensure_attr_equals(label, value, 'state', 0)
 
 
 def _validate_response(bodies, request, response):
@@ -467,7 +475,7 @@ def _validate_response(bodies, request, response):
             (l, length) = _getattr(label, value, 'content_length')
             _repr = 'body.content_length'
             _ensure_attr_is(label, value, 'chunked', False)
-            _ensure_attr_is(label, value, 'closed', False)
+            _ensure_attr_equals(label, value, 'state', 0)
         if LENGTH in response[2] and response[2][LENGTH] != length:
             raise ValueError(
                 '{}: {} is {}, but {!r} is {}'.format(
@@ -484,7 +492,7 @@ def _validate_response(bodies, request, response):
                 )
             )
         _ensure_attr_is(label, value, 'chunked', True)
-        _ensure_attr_is(label, value, 'closed', False)
+        _ensure_attr_equals(label, value, 'state', 0)
         name = 'content_length'
         if hasattr(value, name):
             raise ValueError(
@@ -521,11 +529,11 @@ class Validator:
         _check_uri_invariant(request)
         response = self.app(session, request, bodies)
         _check_uri_invariant(request)
-        if request.body is not None and request.body.closed is not True:
+        if request.body is not None and request.body.state != 2:
             # request body was not fully consumed:
             raise ValueError(
-                '{} must be True after app() was called; got {!r}'.format(
-                    "request.body.closed", request.body.closed
+                '{} must be 2 after app() was called; got {!r}'.format(
+                    "request.body.state", request.body.state
                 )
             )
         _validate_response(bodies, request, response)
