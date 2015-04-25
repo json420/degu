@@ -1528,42 +1528,26 @@ error:
 
 
 static bool
-_create_body(DeguParse dp, DeguHeaders *dh) 
+_create_body(PyObject *rfile, DeguHeaders *dh) 
 {
-    if (Py_TYPE(dp.rfile) == &ReaderType) {
-        return _Reader_create_body((Reader *)dp.rfile, dh);
-    }
-
-    PyObject *length = NULL;
-    bool ret = true;
-
     const uint8_t bodyflags = (dh->flags & 3);
     if (bodyflags == 0) {
         _SET_AND_INC(dh->body, Py_None)
     }
-    if (bodyflags == 1) {
-        _SET(length, PyLong_FromUnsignedLongLong(dh->content_length))
-        _SET(dh->body,
-            PyObject_CallFunctionObjArgs(dp.Body, dp.rfile, length, NULL)
-        )
+    else if (bodyflags == 1) {
+        _SET(dh->body, Body_New(rfile, dh->content_length))
     }
     else if (bodyflags == 2) {
-        _SET(dh->body,
-            PyObject_CallFunctionObjArgs(dp.ChunkedBody, dp.rfile, NULL)
-        )
+        _SET(dh->body, ChunkedBody_New(rfile))
     }
-    goto cleanup;
+    return true;
 
 error:
-    ret = false;
-
-cleanup:
-    Py_CLEAR(length);
-    return ret;
+    return false;
 }
 
 static PyObject *
-_parse_request(DeguSrc src, DeguParse dp)
+_parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *ret = NULL;
@@ -1582,11 +1566,11 @@ _parse_request(DeguSrc src, DeguParse dp)
     if (!_parse_request_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, dp.scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
         goto error;
     }
     /* Create request body */
-    if (!_create_body(dp, (DeguHeaders *)&dr)) {
+    if (!_create_body(rfile, (DeguHeaders *)&dr)) {
         goto error;
     }
 
@@ -1603,6 +1587,62 @@ error:
 
 cleanup:
     _clear_degu_request(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_request_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (!PyArg_ParseTuple(args, "y#:parse_request_line", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    if (!_parse_request_line(src, &dr)) {
+        goto error;
+    }
+    _SET(ret,
+        PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
+    )
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_request(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_request(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *rfile = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "y#O:parse_request", &buf, &len, &rfile)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    DeguDst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
+        return NULL;
+    }
+    _SET(ret, _parse_request(src, rfile, scratch))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    if (scratch.buf != NULL) {
+        free(scratch.buf);
+    }
     return ret;
 }
 
@@ -1688,7 +1728,7 @@ error:
 }
 
 static PyObject *
-_parse_response(DeguSrc method, DeguSrc src, DeguParse dp)
+_parse_response(DeguSrc method, DeguSrc src, PyObject *rfile, DeguDst scratch)
 {
     DeguResponse dr = NEW_DEGU_RESPONSE;
     PyObject *m = NULL; 
@@ -1707,14 +1747,14 @@ _parse_response(DeguSrc method, DeguSrc src, DeguParse dp)
     if (!_parse_response_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, dp.scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
         goto error;
     }
     /* Create request body */
     if (m == str_HEAD) {
         _SET_AND_INC(dr.body, Py_None);
     }
-    else if (!_create_body(dp, (DeguHeaders *)&dr)) {
+    else if (!_create_body(rfile, (DeguHeaders *)&dr)) {
         goto error;
     }
 
@@ -2228,69 +2268,7 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-parse_request_line(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *ret = NULL;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    if (!PyArg_ParseTuple(args, "y#:parse_request_line", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    if (!_parse_request_line(src, &dr)) {
-        goto error;
-    }
-    _SET(ret,
-        PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
-    )
-    goto cleanup;
 
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    _clear_degu_request(&dr);
-    return ret;
-}
-
-static PyObject *
-parse_request(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *rfile = NULL;
-    PyObject *bodies = NULL;
-    PyObject *Body = NULL;
-    PyObject *ChunkedBody = NULL;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "y#OO:parse_request", &buf, &len, &rfile, &bodies)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    DeguDst scratch = _calloc_dst(MAX_KEY);
-    if (scratch.buf == NULL) {
-        return NULL;
-    }
-    _SET(Body, _getcallable("bodies", bodies, attr_Body))
-    _SET(ChunkedBody, _getcallable("bodies", bodies, attr_ChunkedBody))
-    DeguParse dp = {scratch, rfile, Body, ChunkedBody};
-    _SET(ret, _parse_request(src, dp))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    if (scratch.buf != NULL) {
-        free(scratch.buf);
-    }
-    Py_CLEAR(Body);
-    Py_CLEAR(ChunkedBody);
-    return ret;
-}
 
 
 
@@ -2336,13 +2314,10 @@ parse_response(PyObject *self, PyObject *args)
     const uint8_t *buf = NULL;
     size_t len = 0;
     PyObject *rfile = NULL;
-    PyObject *bodies = NULL;
-    PyObject *Body = NULL;
-    PyObject *ChunkedBody = NULL;
     PyObject *ret = NULL;
 
-    if (!PyArg_ParseTuple(args, "s#y#OO:parse_response",
-        &method_buf, &method_len, &buf, &len, &rfile, &bodies)) {
+    if (! PyArg_ParseTuple(args, "s#y#O:parse_response",
+            &method_buf, &method_len, &buf, &len, &rfile)) {
         return NULL;
     }
     DeguSrc method = {method_buf, method_len};
@@ -2351,10 +2326,7 @@ parse_response(PyObject *self, PyObject *args)
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(Body, _getcallable("bodies", bodies, attr_Body))
-    _SET(ChunkedBody, _getcallable("bodies", bodies, attr_ChunkedBody))
-    DeguParse dp = {scratch, rfile, Body, ChunkedBody};
-    _SET(ret, _parse_response(method, src, dp))
+    _SET(ret, _parse_response(method, src, rfile, scratch))
     goto cleanup;
 
 error:
@@ -2364,8 +2336,6 @@ cleanup:
     if (scratch.buf != NULL) {
         free(scratch.buf);
     }
-    Py_CLEAR(Body);
-    Py_CLEAR(ChunkedBody);
     return ret;
 }
 
@@ -2833,37 +2803,6 @@ error:
     return -1;
 }
 
-static bool
-_Reader_create_body(Reader *self, DeguHeaders *dh) 
-{
-    const uint8_t bodyflags = (dh->flags & 3);
-    if (bodyflags == 0) {
-        _SET_AND_INC(dh->body, Py_None)
-    }
-    if (bodyflags == 1) {
-        _SET(dh->body, Body_New(self, dh->content_length))
-    }
-    else if (bodyflags == 2) {
-        _SET(dh->body, ChunkedBody_New(self))
-    }
-    return true;
-
-error:
-    return false;
-}
-
-static DeguParse
-_Reader_get_parse_helpers(Reader *self)
-{
-    DeguDst scratch = {self->scratch, MAX_KEY};
-    return (DeguParse) {
-        scratch,
-        (PyObject *)self,
-        self->bodies_Body,
-        self->bodies_ChunkedBody,
-    };
-}
-
 /* _Reader_recv_into(): makes a single call to sock.recv_into().
  *
  * Note that a single call to Reader.read(), etc., can result in multiple calls
@@ -3119,8 +3058,8 @@ Reader_read_request(Reader *self) {
     if (src.buf == NULL) {
         goto error;
     }
-    DeguParse dp = _Reader_get_parse_helpers(self);
-    _SET(ret, _parse_request(src, dp))
+    DeguDst scratch = {self->scratch, MAX_KEY};
+    _SET(ret, _parse_request(src, (PyObject *)self, scratch))
     goto cleanup;
 
 error:
@@ -3146,8 +3085,8 @@ Reader_read_response(Reader *self, PyObject *args)
     if (src.buf == NULL) {
         goto error;
     }
-    DeguParse dp = _Reader_get_parse_helpers(self);
-    _SET(ret, _parse_response(method, src, dp))
+    DeguDst scratch = {self->scratch, MAX_KEY};
+    _SET(ret, _parse_response(method, src, (PyObject *)self, scratch))
     goto cleanup;
 
 error:
@@ -3674,28 +3613,46 @@ Body_dealloc(Body *self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject *
-Body_New(Reader *reader, const uint64_t content_length)
+static bool
+_Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 {
-    if (reader == NULL || Py_TYPE((PyObject *)reader) != &ReaderType) {
-        Py_FatalError("Body_New(): bad internal call");
+    if (rfile == NULL || content_length > MAX_LENGTH) {
+        Py_FatalError("_Body_fill_args(): bad internal call");
     }
+    _SET_AND_INC(self->rfile, rfile)
+    if (Py_TYPE(rfile) == &ReaderType) {
+        self->fastpath = true;
+    }
+    else {
+        self->fastpath = false;
+        _SET(self->read, _getcallable("rfile", rfile, attr_read))
+    }
+    self->remaining = self->content_length = content_length;
+    self->state = BODY_READY;
+    self->chunked = false;
+    return true;
+
+error:
+    Py_CLEAR(self->rfile);
+    Py_CLEAR(self->read);
+    return false;
+}
+
+static PyObject *
+Body_New(PyObject *rfile, const uint64_t content_length)
+{
     Body *self = PyObject_New(Body, &BodyType);
     if (self == NULL) {
         return NULL;
     }
     self->rfile = NULL;
     self->read = NULL;
-    self->remaining = self->content_length = content_length;
-    self->state = BODY_READY;
-    self->fastpath = true;
-    self->chunked = false;
-    if (PyObject_Init((PyObject *)self, &BodyType) == NULL) {
+    self->state = BODY_ERROR;
+    if (! _Body_fill_args(self, rfile, content_length)) {
+        PyObject_Del((PyObject *)self);
         return NULL;
     }
-    self->rfile = (PyObject *)reader;
-    Py_INCREF(self->rfile);
-    return (PyObject *)self;
+    return (PyObject *)PyObject_INIT(self, &BodyType);
 }
 
 static int
@@ -3714,20 +3671,13 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
     if (_content_length < 0) {
         goto error;
     }
-    _SET_AND_INC(self->rfile, rfile)
-    if (Py_TYPE(rfile) != &ReaderType) {
-        self->fastpath = false;
-        _SET(self->read, _getcallable("rfile", rfile, attr_read))
+    if (! _Body_fill_args(self, rfile, (uint64_t)_content_length)) {
+        goto error;
     }
-    else {
-        self->fastpath = true;
-    }
-    self->remaining = self->content_length = (uint64_t)_content_length;
-    self->state = BODY_READY;
-    self->chunked = false;
     return 0;
 
 error:
+    self->state = BODY_ERROR;
     return -1;
 }
 
@@ -3926,38 +3876,11 @@ ChunkedBody_dealloc(ChunkedBody *self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject *
-ChunkedBody_New(Reader *reader)
+static bool
+_ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
 {
-    if (reader == NULL || Py_TYPE((PyObject *)reader) != &ReaderType) {
-        Py_FatalError("ChunkedBody_New(): bad internal state");
-    }
-    ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
-    if (self == NULL) {
-        return NULL;
-    }
-    self->rfile = NULL;
-    self->readline = NULL;
-    self->read = NULL;
-    self->state = BODY_READY;
-    self->fastpath = true;
-    self->chunked = true;
-    if (PyObject_Init((PyObject *)self, &ChunkedBodyType) == NULL) {
-        return NULL;
-    }
-    self->rfile = (PyObject *)reader;
-    Py_INCREF(self->rfile);
-    return (PyObject *)self;
-}
-
-static int
-ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
-{
-    static char *keys[] = {"rfile", NULL};
-    PyObject *rfile = NULL;
-
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "O:ChunkedBody", keys, &rfile)) {
-        goto error;
+    if (rfile == NULL) {
+        Py_FatalError("_ChunkedBody_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
     if (Py_TYPE(rfile) == &ReaderType) {
@@ -3970,9 +3893,49 @@ ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
     }
     self->state = BODY_READY;
     self->chunked = true;
+    return true;
+
+error:
+    Py_CLEAR(self->rfile);
+    Py_CLEAR(self->readline);
+    Py_CLEAR(self->read);
+    return false;
+}
+
+static PyObject *
+ChunkedBody_New(PyObject *rfile)
+{
+    ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->rfile = NULL;
+    self->readline = NULL;
+    self->read = NULL;
+    self->state = BODY_ERROR;
+    if (! _ChunkedBody_fill_args(self, rfile)) {
+        PyObject_Del((PyObject *)self);
+        return NULL;
+    }
+    return (PyObject *)PyObject_INIT(self, &ChunkedBodyType);
+}
+
+static int
+ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"rfile", NULL};
+    PyObject *rfile = NULL;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:ChunkedBody", keys, &rfile)) {
+        goto error;
+    }
+    if (! _ChunkedBody_fill_args(self, rfile)) {
+        goto error;
+    }
     return 0;
 
 error:
+    self->state = BODY_ERROR;
     return -1;
 }
 

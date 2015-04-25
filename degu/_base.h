@@ -157,13 +157,6 @@ typedef struct {
 #define NEW_DEGU_CHUNK \
     ((DeguChunk){NULL, NULL, NULL, 0u})
 
-typedef const struct {
-    DeguDst scratch;
-    PyObject *rfile;
-    PyObject *Body;
-    PyObject *ChunkedBody;
-} DeguParse;
-
 
 /******************************************************************************
  * Exported Python functions
@@ -328,8 +321,6 @@ typedef struct {
     size_t stop;
 } Reader;
 
-static bool _Reader_create_body(Reader *, DeguHeaders *);
-
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
 static PyObject * Reader_read_request(Reader *);
@@ -487,7 +478,7 @@ typedef struct {
     bool chunked;
 } Body;
 
-static PyObject * Body_New(Reader *, uint64_t);
+static PyObject * Body_New(PyObject *, uint64_t);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
@@ -566,7 +557,7 @@ typedef struct {
     bool chunked;
 } ChunkedBody;
 
-static PyObject * ChunkedBody_New(Reader *);
+static PyObject * ChunkedBody_New(PyObject *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
