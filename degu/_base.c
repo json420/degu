@@ -33,18 +33,12 @@ static PyObject *EmptyPreambleError = NULL;
 static PyObject *bodies = NULL;
 
 /* Interned `str` for fast attribute lookup */
-static PyObject *attr_readline         = NULL;  //  'readline'
-static PyObject *attr_readinto         = NULL;  //  'readinto'
-static PyObject *attr_read             = NULL;  //  'read'
-static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
 static PyObject *attr_send             = NULL;  //  'send'
-static PyObject *attr_write_to         = NULL;  //  'write_to'
-static PyObject *attr_Body             = NULL;  //  'Body'
-static PyObject *attr_BodyIter         = NULL;  //  'BodyIter'
-static PyObject *attr_ChunkedBody      = NULL;  //  'ChunkedBody'
-static PyObject *attr_ChunkedBodyIter  = NULL;  //  'ChunkedBodyIter'
-static PyObject *attr_content_length   = NULL;  //  'content_length'
+static PyObject *attr_readinto         = NULL;  //  'readinto'
+static PyObject *attr_write            = NULL;  //  'write'
+static PyObject *attr_readline         = NULL;  //  'readline'
+
 
 /* Non-interned `str` used for header keys */
 static PyObject *key_content_length    = NULL;  //  'content-length'
@@ -83,18 +77,11 @@ _init_all_globals(PyObject *module)
     _ADD_MODULE_ATTR(module, "EmptyPreambleError", EmptyPreambleError)
 
     /* Init interned attribute names */
-    _SET(attr_readline,        PyUnicode_InternFromString("readline"))
-    _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
-    _SET(attr_read,            PyUnicode_InternFromString("read"))
-    _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
     _SET(attr_send,            PyUnicode_InternFromString("send"))
-    _SET(attr_write_to,        PyUnicode_InternFromString("write_to"))
-    _SET(attr_Body,            PyUnicode_InternFromString("Body"))
-    _SET(attr_BodyIter,        PyUnicode_InternFromString("BodyIter"))
-    _SET(attr_ChunkedBody,     PyUnicode_InternFromString("ChunkedBody"))
-    _SET(attr_ChunkedBodyIter, PyUnicode_InternFromString("ChunkedBodyIter"))
-    _SET(attr_content_length,  PyUnicode_InternFromString("content_length"))
+    _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
+    _SET(attr_write,           PyUnicode_InternFromString("write"))
+    _SET(attr_readline,        PyUnicode_InternFromString("readline"))
 
     /* Init non-interned header keys */
     _SET(key_content_length,    PyUnicode_FromString("content-length"))
