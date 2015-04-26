@@ -34,6 +34,7 @@ static PyObject *bodies = NULL;
 
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_readline         = NULL;  //  'readline'
+static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_read             = NULL;  //  'read'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
@@ -83,6 +84,7 @@ _init_all_globals(PyObject *module)
 
     /* Init interned attribute names */
     _SET(attr_readline,        PyUnicode_InternFromString("readline"))
+    _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
     _SET(attr_read,            PyUnicode_InternFromString("read"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
@@ -766,7 +768,7 @@ _init_all_namedtuples(PyObject *module)
 /******************************************************************************
  * Python `int` validation and conversion.
  ******************************************************************************/
-static bool
+static inline bool
 _validate_int(const char *name, PyObject *obj)
 {
     if (!PyLong_CheckExact(obj)) {
@@ -803,34 +805,11 @@ _validate_size(const char *name, PyObject *obj, const size_t max_size)
     if (! _validate_int(name, obj)) {
         return -1;
     }
-    if (PyErr_Occurred() || max_size > MAX_IO_SIZE) {
-        Py_FatalError("_validate_size(): bad internal call");
-    }
     const size_t size = PyLong_AsSize_t(obj);
     if (PyErr_Occurred() || size > max_size) {
         PyErr_Clear();
         PyErr_Format(PyExc_ValueError,
             "need 0 <= %s <= %zu; got %R", name, max_size, obj
-        );
-        return -1;
-    }
-    return (ssize_t)size;
-}
-
-static ssize_t
-_validate_exact_size(const char *name, PyObject *obj, const size_t expected)
-{
-    if (! _validate_int(name, obj)) {
-        return -1;
-    }
-    if (PyErr_Occurred() || expected > MAX_IO_SIZE) {
-        Py_FatalError("_validate_size(): bad internal call");
-    }
-    const size_t size = PyLong_AsSize_t(obj);
-    if (PyErr_Occurred() || size != expected) {
-        PyErr_Clear();
-        PyErr_Format(PyExc_ValueError,
-            "need %s == %zu; got %R", name, expected, obj
         );
         return -1;
     }
@@ -850,83 +829,6 @@ _validate_read_size(const char *name, PyObject *obj, const uint64_t remaining)
         return (ssize_t)remaining;
     }
     return _validate_size(name, obj, MAX_IO_SIZE);
-}
-
-/******************************************************************************
- * Helper for calling sock.recv_into(), rfile.readinto().
- ******************************************************************************/
-static ssize_t
-_recv_into(PyObject *method, DeguDst dst, const char *name, const bool exact)
-{
-    PyObject *view = NULL;
-    PyObject *int_size = NULL;
-    ssize_t size = -2;
-
-    if (method == NULL || _dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
-        Py_FatalError("_recv_into(): bad internal call");
-    }
-    _SET(view,
-        PyMemoryView_FromMemory((char *)dst.buf, (ssize_t)dst.len, PyBUF_WRITE)
-    )
-    _SET(int_size,
-        PyObject_CallFunctionObjArgs(method, view, NULL)
-    )
-    if (exact) {
-        size = _validate_exact_size(name, int_size, dst.len);
-    }
-    else {
-        size = _validate_size(name, int_size, dst.len);
-    }
-    if (size < 0) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    size = -1;
-
-cleanup:
-    Py_CLEAR(view);
-    Py_CLEAR(int_size);
-    return size;
-}
-
-
-/******************************************************************************
- * Helper for calling sock.send(), wfile.write().
- ******************************************************************************/
-static ssize_t
-_send(PyObject *method, DeguSrc src, const char *name, const bool exact)
-{
-    PyObject *view = NULL;
-    PyObject *int_size = NULL;
-    ssize_t size = -2;
-
-    if (method == NULL || _isempty(src) || src.len > MAX_IO_SIZE) {
-        Py_FatalError("_send(): bad internal call");
-    }
-    _SET(view,
-        PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
-    )
-    _SET(int_size, PyObject_CallFunctionObjArgs(method, view, NULL))
-    if (exact) {
-        size = _validate_exact_size(name, int_size, src.len);
-    }
-    else {
-        size = _validate_size(name, int_size, src.len);
-    }
-    if (size < 0) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    size = -1;
-
-cleanup:
-    Py_CLEAR(view);
-    Py_CLEAR(int_size);
-    return size;
 }
 
 
@@ -2435,58 +2337,69 @@ _unpack_chunk(DeguChunk *dc, PyObject *chunk)
         Py_FatalError("_unpack_chunk(): bad internal call");
     }
     PyObject *ext = NULL;
+    bool ret = true;
 
     /* chunk itself */
     if (! PyTuple_CheckExact(chunk)) {
         PyErr_Format(PyExc_TypeError,
             "chunk must be a <class 'tuple'>; got a %R", Py_TYPE(chunk)
         );
-        return false;
+        goto error;
     }
     if (PyTuple_GET_SIZE(chunk) != 2) {
         PyErr_Format(PyExc_ValueError,
             "chunk must be a 2-tuple; got a %zd-tuple", PyTuple_GET_SIZE(chunk)
         );
-        return false;
+        goto error;
     }
 
+    printf("chunk %p: unpacking extension\n", (void *)chunk);
     /* chunk[0]: extension */
-    ext = PyTuple_GET_ITEM(chunk, 0);
+    _SET(ext, PyTuple_GET_ITEM(chunk, 0))
     if (ext != Py_None) {
         if (! PyTuple_CheckExact(ext)) {
             PyErr_Format(PyExc_TypeError,
                 "chunk[0] must be a <class 'tuple'>; got a %R",
                 Py_TYPE(ext)
             );
-            return false;
+            goto error;
         }
         if (PyTuple_GET_SIZE(ext) != 2) {
             PyErr_Format(PyExc_ValueError,
                 "chunk[0] must be a 2-tuple; got a %zd-tuple",
                 PyTuple_GET_SIZE(ext)
             );
-            return false;
+            goto error;
         }
-        dc->key = PyTuple_GET_ITEM(ext, 0);
-        dc->val = PyTuple_GET_ITEM(ext, 1);
+        _SET_AND_INC(dc->key, PyTuple_GET_ITEM(ext, 0))
+        _SET_AND_INC(dc->val, PyTuple_GET_ITEM(ext, 1))
     }
 
+    printf("chunk %p: unpacking data\n", (void *)chunk);
     /* chunk[1]: data */
-    dc->data = PyTuple_GET_ITEM(chunk, 1);
+    _SET_AND_INC(dc->data, PyTuple_GET_ITEM(chunk, 1))
     if (! PyBytes_CheckExact(dc->data)) {
         PyErr_Format(PyExc_TypeError,
             "chunk[1] must be a <class 'bytes'>; got a %R", Py_TYPE(dc->data)
         );
-        return false;
+        goto error;
     }
+    printf("chunk %p: past the data\n", (void *)chunk);
     dc->size = (size_t)PyBytes_GET_SIZE(dc->data);
     if (dc->size > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
             "need len(chunk[1]) <= %zu; got %zu", MAX_IO_SIZE, dc->size
         );
-        return false;
+        goto error;
     }
-    return true;
+    goto cleanup;
+
+error:
+    ret = false;
+    _clear_degu_chunk(dc);
+
+cleanup:
+    return ret;
 }
 
 static PyObject *
@@ -2498,9 +2411,10 @@ _pack_chunk(DeguChunk *dc)
     if (dc->data == NULL || ! PyBytes_CheckExact(dc->data)) {
         Py_FatalError("_pack_chunk(): bad internal call");
     }
-    if (_PyBytes_Resize(&(dc->data), (ssize_t)dc->size) != 0) {
-        goto error;
-    }
+    if (PyBytes_GET_SIZE(dc->data) != (ssize_t)dc->size) {
+        printf("not packable: %zd != %zu\n", PyBytes_GET_SIZE(dc->data), dc->size);
+        Py_FatalError("_pack_chunk(): bad internal call");
+    }   
     if (dc->key == NULL && dc->val == NULL) {
         _SET_AND_INC(ext, Py_None)
     }
@@ -2537,18 +2451,144 @@ format_chunk(PyObject *self, PyObject *args)
     return _format_chunk(&dc);
 }
 
-static bool
-_readchunk(PyObject *readline, PyObject *read, DeguChunk *dc)
+/******************************************************************************
+ * Helper for calling sock.recv_into(), rfile.readinto().
+ ******************************************************************************/
+static inline ssize_t
+_recv_into(PyObject *method, DeguDst dst)
 {
-    if (readline == NULL || read == NULL) {
-        Py_FatalError("_readchunk(): bad internal call");
+    PyObject *view = NULL;
+    PyObject *int_size = NULL;
+    ssize_t size = -2;
+
+    if (_dst_isempty(dst) || dst.len > MAX_IO_SIZE) {
+        Py_FatalError("_recv_into(): bad internal call");
+    }
+    _SET(view,
+        PyMemoryView_FromMemory((char *)dst.buf, (ssize_t)dst.len, PyBUF_WRITE)
+    )
+    _SET(int_size, PyObject_CallFunctionObjArgs(method, view, NULL))
+    size = _validate_size("received", int_size, dst.len);
+    goto cleanup;
+
+error:
+    size = -1;
+
+cleanup:
+    Py_CLEAR(view);
+    Py_CLEAR(int_size);
+    return size;
+}
+
+static bool
+_readinto(PyObject *method, DeguDst dst)
+{
+    size_t start = 0;
+    ssize_t received;
+
+    while (start < dst.len) {
+        received = _recv_into(method, _dst_slice(dst, start, dst.len));
+        if (received < 0) {
+            return false;
+        }
+        if (received == 0) {
+            break;
+        }
+        start += (size_t)received;
+    }
+    if (start != dst.len) {
+        PyErr_Format(PyExc_ValueError,
+            "expected to read %zu bytes, but received %zu", dst.len, start
+        );
+        return false;
+    }
+    return true;
+}
+
+static bool
+_readinto_from(PyObject *robj, DeguDst dst)
+{
+    if (Py_TYPE(robj) == &ReaderType) {
+        return _Reader_readinto((Reader *)robj, dst);
+    }
+    return _readinto(robj, dst);
+}
+
+static inline ssize_t
+_send(PyObject *method, DeguSrc src)
+{
+    PyObject *view = NULL;
+    PyObject *int_size = NULL;
+    ssize_t size = -2;
+
+    if (_isempty(src) || src.len > MAX_IO_SIZE) {
+        Py_FatalError("_send(): bad internal call");
+    }
+    _SET(view,
+        PyMemoryView_FromMemory((char *)src.buf, (ssize_t)src.len, PyBUF_READ)
+    )
+    _SET(int_size, PyObject_CallFunctionObjArgs(method, view, NULL))
+    size = _validate_size("sent", int_size, src.len);
+    goto cleanup;
+
+error:
+    size = -1;
+
+cleanup:
+    Py_CLEAR(view);
+    Py_CLEAR(int_size);
+    return size;
+}
+
+static ssize_t
+_write(PyObject *method, DeguSrc src)
+{
+    size_t start = 0;
+    ssize_t sent;
+
+    while (start < src.len) {
+        sent = _send(method, _slice(src, start, src.len));
+        if (sent < 0) {
+            return -1;
+        }
+        if (sent == 0) {
+            break;
+        }
+        start += (size_t)sent;
+    }
+    if (start != src.len) {
+        PyErr_Format(PyExc_ValueError,
+            "expected to write %zu bytes, but sent %zu", src.len, start
+        );
+        return -2;
+    }
+    return (ssize_t)start;
+}
+
+static ssize_t
+_write_to(PyObject *wobj, DeguSrc src)
+{
+    if (src.len == 0) {
+        return 0;
+    }
+    if (Py_TYPE(wobj) == &WriterType) {
+        return _Writer_write((Writer *)wobj, src);
+    }
+    return _write(wobj, src);
+}
+
+
+static bool
+_readchunkline(PyObject *readline, DeguChunk *dc)
+{
+    if (readline == NULL) {
+        Py_FatalError("_readchunkline(): bad internal call");
     }
     if (dc->key != NULL || dc->val != NULL || dc->data != NULL || dc->size != 0) {
-        Py_FatalError("_readchunk(): also bad internal call");
+        Py_FatalError("_readchunkline(): also bad internal call");
     }
 
     PyObject *line = NULL;
-    PyObject *size = NULL;
     bool success = true;
 
     /* Read and parse chunk line */
@@ -2582,27 +2622,6 @@ _readchunk(PyObject *readline, PyObject *read, DeguChunk *dc)
         goto error;
     }
 
-    /* Read the chunk data */
-    _SET(size, PyLong_FromSize_t(dc->size + 2))
-    _SET(dc->data, PyObject_CallFunctionObjArgs(read, size, NULL))
-    if (! PyBytes_CheckExact(dc->data)) {
-        PyErr_Format(PyExc_TypeError,
-            "need a <class 'bytes'>; read() returned a %R", Py_TYPE(dc->data)
-        );
-        goto error;
-    }
-    if ((size_t)PyBytes_GET_SIZE(dc->data) != dc->size + 2) {
-        PyErr_Format(PyExc_ValueError, "read() returned %zd bytes, need %zu",
-            PyBytes_GET_SIZE(dc->data), dc->size + 2
-        );
-        goto error;
-    }
-    DeguSrc data = _frombytes(dc->data);
-    DeguSrc term = _slice(data, data.len - 2, data.len);
-    if (! _equal(term, CRLF)) {
-        _value_error("bad chunk data termination: %R", term);
-        goto error;
-    }
     goto cleanup;
 
 error:
@@ -2610,25 +2629,123 @@ error:
 
 cleanup:
     Py_CLEAR(line);
-    Py_CLEAR(size);
     return success;
+}
+
+static bool
+_readchunk_from(PyObject *robj, PyObject *readline, DeguChunk *dc)
+{
+    PyObject *data = NULL;
+    bool ret = true;
+    
+    printf("readchunk_from %p\n", (void *)dc);
+
+    if (Py_TYPE(robj) == &ReaderType) {
+        if (! _Reader_readchunkline((Reader *)robj, dc)) {
+            goto error;
+        }
+    }
+    else {
+        if (! _readchunkline(readline, dc)) {
+            goto error;
+        }
+    }
+
+    const ssize_t size = (ssize_t)dc->size + 2;
+    _SET(data, PyBytes_FromStringAndSize(NULL, size))
+    DeguDst dst = _dst_frombytes(data);
+    if (! _readinto_from(robj, dst)) {
+        goto error;
+    }
+    DeguSrc end = _slice_src_from_dst(dst, dst.len - 2, dst.len);
+    if (! _equal(end, CRLF)) {
+        _value_error("bad chunk data termination: %R", end);
+        goto error;
+    }
+
+    if (_PyBytes_Resize(&data, (ssize_t)dc->size) != 0) {
+        goto error;
+    }
+    _SET_AND_INC(dc->data, data)
+    goto cleanup;
+
+error:
+    ret = false;
+
+cleanup:
+    Py_CLEAR(data);
+    return ret;
+}
+
+static PyObject *
+_get_robj(PyObject *rfile)
+{
+    PyObject *robj = NULL;
+
+    if (Py_TYPE(rfile) == &ReaderType) {
+        _SET_AND_INC(robj, rfile)
+    }
+    else {
+        _SET(robj, _getcallable("rfile", rfile, attr_readinto))
+    }
+    return robj;
+
+error:
+    Py_CLEAR(robj);
+    return robj;
+}
+
+static PyObject *
+_get_readline(PyObject *rfile)
+{
+    PyObject *robj = NULL;
+
+    if (Py_TYPE(rfile) == &ReaderType) {
+        _SET_AND_INC(robj, rfile)
+    }
+    else {
+        _SET(robj, _getcallable("rfile", rfile, attr_readline))
+    }
+    return robj;
+
+error:
+    Py_CLEAR(robj);
+    return robj;
+}
+
+static PyObject *
+_get_wobj(PyObject *wfile)
+{
+    PyObject *wobj = NULL;
+
+    if (Py_TYPE(wfile) == &WriterType) {
+        _SET_AND_INC(wobj, wfile)
+    }
+    else {
+        _SET(wobj, _getcallable("wfile", wfile, attr_write))
+    }
+    return wobj;
+
+error:
+    Py_CLEAR(wobj);
+    return wobj;
 }
 
 static PyObject *
 readchunk(PyObject *self, PyObject *args)
 {
     PyObject *rfile = NULL;
+    PyObject *robj = NULL;
     PyObject *readline = NULL;
-    PyObject *read = NULL;
     PyObject *ret = NULL;
     DeguChunk dc = NEW_DEGU_CHUNK;
 
     if (!PyArg_ParseTuple(args, "O:readchunk", &rfile)) {
         return NULL;
     }
-    _SET(readline, _getcallable("rfile", rfile, attr_readline))
-    _SET(read, _getcallable("rfile", rfile, attr_read))
-    if (! _readchunk(readline, read, &dc)) {
+    _SET(robj, _get_robj(rfile))
+    _SET(readline, _get_readline(rfile))
+    if (! _readchunk_from(robj, readline, &dc)) {
         goto error;
     }
     _SET(ret, _pack_chunk(&dc))
@@ -2638,69 +2755,44 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(readline);
-    Py_CLEAR(read);
     _clear_degu_chunk(&dc);
+    Py_CLEAR(robj);
+    Py_CLEAR(readline);
     return ret;
 }
 
 static ssize_t
-_wfile_write(PyObject *write, PyObject *arg, const size_t size)
-{
-    PyObject *result = NULL;
-    ssize_t wrote = -2;
-
-    if (write == NULL || arg == NULL || size < 1) {
-        Py_FatalError("_wfile_write(): bad internal call");
-    }
-    _SET(result, PyObject_CallFunctionObjArgs(write, arg, NULL))
-    wrote = _validate_exact_size("wrote", result, size);
-    if (wrote < 0) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    wrote = -1;
-
-cleanup:
-    Py_CLEAR(result);
-    return wrote;
-}
-
-static ssize_t
-_write_chunk(PyObject *write, DeguChunk *dc)
+_writechunk_to(PyObject *wobj, DeguChunk *dc)
 {
     PyObject *line = NULL;
     ssize_t total = 0;
     ssize_t wrote;
 
-    if (write == NULL || dc->data == NULL) {
-        Py_FatalError("_write_chunk(): bad internal call");
-    }
     _SET(line, _format_chunk(dc))
-    DeguSrc line_src = _frombytes(line);
-    DeguSrc data_src = _frombytes(dc->data);
-    wrote = _wfile_write(write, line, line_src.len);
+    DeguSrc src = _frombytes(line);
+    wrote = _write_to(wobj, src);
     if (wrote < 0) {
         goto error;
     }
     total += wrote;
-    if (data_src.len > 0) {
-        wrote = _wfile_write(write, dc->data, data_src.len);
+
+    DeguSrc data = _frombytes(dc->data);
+    if (data.len > 0) {
+        wrote = _write_to(wobj, data);
         if (wrote < 0) {
             goto error;
         }
         total += wrote;
     }
-    if (data_src.len == dc->size) {
-        wrote = _wfile_write(write, bytes_CRLF, CRLF.len);
+
+    if (data.len == dc->size) {
+        wrote = _write_to(wobj, CRLF);
         if (wrote < 0) {
             goto error;
         }
         total += wrote;  
     }
-    else if (data_src.len != dc->size + 2) {
+    else if (data.len != dc->size + 2) {
         Py_FatalError("_write_chunk(): also bad internal call");
     }
     goto cleanup;
@@ -2718,7 +2810,7 @@ write_chunk(PyObject *self, PyObject *args)
 {
     PyObject *wfile = NULL;
     PyObject *chunk = NULL;
-    PyObject *write = NULL;
+    PyObject *wobj = NULL;
     PyObject *ret = NULL;
     ssize_t total;
     DeguChunk dc = NEW_DEGU_CHUNK;
@@ -2726,11 +2818,11 @@ write_chunk(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OO:write_chunk", &wfile, &chunk)) {
         return NULL;
     }
-    _SET(write, _getcallable("wfile", wfile, attr_write))
+    _SET(wobj, _get_wobj(wfile))
     if (! _unpack_chunk(&dc, chunk)) {
         goto error;
     }
-    total = _write_chunk(write, &dc);
+    total = _writechunk_to(wobj, &dc);
     if (total < 0) {
         goto error;
     }
@@ -2741,7 +2833,7 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(write);
+    Py_CLEAR(wobj);
     return ret;
 }
 
@@ -2793,21 +2885,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
 
 error:
     return -1;
-}
-
-/* _Reader_recv_into(): makes a single call to sock.recv_into().
- *
- * Note that a single call to Reader.read(), etc., can result in multiple calls
- * sock.recv_into(), depending on the rcvbuf size and available data.
- */
-static ssize_t
-_Reader_recv_into(Reader *self, DeguDst dst)
-{
-    const ssize_t received = _recv_into(self->recv_into, dst, "received", false);
-    if (received > 0) {
-        self->rawtell += (uint64_t)received;
-    }
-    return received;
 }
 
 static DeguSrc
@@ -2865,9 +2942,6 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
             goto found;
         }
         if (cur.len >= size) {
-            if (cur.len != size) {
-                Py_FatalError("_Reader_read_until(): cur.len >= size");
-            }
             goto not_found;
         }
     }
@@ -2881,7 +2955,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
 
     /* Now read till found */
     while (self->stop < size) {
-        added = _Reader_recv_into(self, _dst_slice(dst, self->stop, dst.len));
+        added = _recv_into(self->recv_into, _dst_slice(dst, self->stop, dst.len));
         if (added < 0) {
             return NULL_DeguSrc;
         }
@@ -2889,6 +2963,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end,
             break;
         }
         self->stop += (size_t)added;
+        self->rawtell += (uint64_t)added;
         index = _find(_Reader_peek(self, size), end);
         if (index >= 0) {
             goto found;
@@ -2922,56 +2997,39 @@ found:
     return _slice(src, 0, src.len - end.len);
 }
 
-static ssize_t
+static bool
 _Reader_readinto(Reader *self, DeguDst dst)
 {
-    size_t start;
-    ssize_t added;
-
-    if (dst.buf == NULL || dst.len > MAX_IO_SIZE) {
-        Py_FatalError("_Reader_readinto(): bad internal call");
+    DeguSrc cur = _Reader_drain(self, dst.len);
+    if (cur.len > 0) {
+        _copy(dst, cur);
     }
-    DeguSrc src = _Reader_drain(self, dst.len);
-    if (src.len > 0) {
-        _copy(dst, src);
+    if (_readinto(self->recv_into, _dst_slice(dst, cur.len, dst.len))) {
+        self->rawtell += dst.len;
+        return true;
     }
-    start = src.len;
-    while (start < dst.len) {
-        added = _Reader_recv_into(self, _dst_slice(dst, start, dst.len));
-        if (added < 0) {
-            return -1;
-        }
-        if (added == 0) {
-            break;
-        }
-        start += (size_t)added;
-    }
-    if (start > dst.len) {
-        Py_FatalError("_Reader_readinto(): start > dst.len");
-    }
-    return (ssize_t)start;  
+    return false;
 }
 
 static PyObject *
 _Reader_read(Reader *self, const ssize_t size)
 {
     PyObject *ret = NULL;
+
     if (size < 0 || size > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
             "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, size
         );
         return NULL;
     }
-    _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = {(uint8_t *)PyBytes_AS_STRING(ret), (size_t)size};
-    const ssize_t total = _Reader_readinto(self, dst);
-    if (total < 0) {
-        goto error;
+    if (size == 0) {
+        _SET_AND_INC(ret, bytes_empty)
+        goto cleanup;
     }
-    if (total < size) {
-        if (_PyBytes_Resize(&ret, total) != 0) {
-            goto error;
-        }
+    _SET(ret, PyBytes_FromStringAndSize(NULL, size))
+    DeguDst dst = _dst_frombytes(ret);
+    if (! _Reader_readinto(self, dst)) {
+        goto error;
     }
     goto cleanup;
 
@@ -3089,30 +3147,12 @@ cleanup:
 }
 
 static bool
-_Reader_readchunk(Reader *self, DeguChunk *dc) {
-    ssize_t size, read;
-
+_Reader_readchunkline(Reader *self, DeguChunk *dc) {
     DeguSrc line = _Reader_read_until(self, 4096, CRLF, false);
     if (line.buf == NULL) {
         goto error;
     }
     if (! _parse_chunk(line, dc)) {
-        goto error;
-    }
-    size = (ssize_t)dc->size + 2;
-    _SET(dc->data, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = _dst_frombytes(dc->data);
-    read = _Reader_readinto(self, dst);
-    if (read < 0) {
-        goto error;
-    }
-    if (read != size) {
-        PyErr_Format(PyExc_ValueError, "underflow: %zd < %zu", read, size);
-        goto error;
-    }
-    DeguSrc end = _slice_src_from_dst(dst, dst.len - 2, dst.len);
-    if (! _equal(end, CRLF)) {
-        _value_error("bad chunk data termination: %R", end);
         goto error;
     }
     return true;
@@ -3125,9 +3165,9 @@ static PyObject *
 Reader_readchunk(Reader *self)
 {
     PyObject *ret = NULL;
-
     DeguChunk dc = NEW_DEGU_CHUNK;
-    if (_Reader_readchunk(self, &dc)) {
+
+    if (_readchunk_from((PyObject *)self, NULL, &dc)) {
         ret =  _pack_chunk(&dc);
     }
     _clear_degu_chunk(&dc);
@@ -3160,11 +3200,10 @@ Reader_readinto(Reader *self, PyObject *args)
         goto error;
     }
     DeguDst dst = _dst_frompybuf(&pybuf);
-    const ssize_t total = _Reader_readinto(self, dst);
-    if (total < 0) {
+    if (! _Reader_readinto(self, dst)) {
         goto error;
     }
-    _SET(ret, PyLong_FromSsize_t(total))
+    _SET(ret, PyLong_FromSize_t(dst.len))
     goto cleanup;
 
 error:
@@ -3224,90 +3263,14 @@ cleanup:
     return ret;
 }
 
-/* _Writer_send(): makes a single call to sock.send().
- *
- * Note that a single call to Writer.write(), etc., can result in multiple calls
- * sock.send(), depending on the sndbuf size and how much has been received
- * by the other endpoint in the meantime.
- */
-static ssize_t
-_Writer_send(Writer *self, DeguSrc src)
-{
-    const ssize_t size = _send(self->send, src, "sent", false);
-    if (size > 0) {
-        self->tell += (uint64_t)size;
-    }
-    return size;
-}
-
 static ssize_t
 _Writer_write(Writer *self, DeguSrc src)
 {
-    size_t total = 0;
-    ssize_t wrote;
-
-    while (total < src.len) {
-        wrote = _Writer_send(self, _slice(src, total, src.len));
-        if (wrote < 0) {
-            return -1;
-        }
-        if (wrote == 0) {
-            break;
-        }
-        total += (size_t)wrote;
+    const ssize_t wrote = _write(self->send, src);
+    if (wrote > 0) {
+        self->tell += (uint64_t)wrote;
     }
-    if (total != src.len) {
-        PyErr_Format(PyExc_OSError,
-            "expected %zu; send() returned %zu", src.len, total
-        );
-        return -1;
-    }
-    return (ssize_t)total;
-}
-
-static ssize_t
-_Writer_write_chunk(Writer *self, DeguChunk *dc)
-{
-    PyObject *line = NULL;
-    ssize_t total = 0;
-    ssize_t wrote;
-
-    if (self == NULL || dc->data == NULL) {
-        Py_FatalError("_Writer_write_chunk(): bad internal call");
-    }
-    _SET(line, _format_chunk(dc))
-    DeguSrc line_src = _frombytes(line);
-    DeguSrc data_src = _frombytes(dc->data);
-    wrote = _Writer_write(self, line_src);
-    if (wrote < 0) {
-        goto error;
-    }
-    total += wrote;
-    if (data_src.len > 0) {
-        wrote = _Writer_write(self, data_src);
-        if (wrote < 0) {
-            goto error;
-        }
-        total += wrote;
-    }
-    if (data_src.len == dc->size) {
-        wrote = _Writer_write(self, CRLF);
-        if (wrote < 0) {
-            goto error;
-        }
-        total += wrote;  
-    }
-    else if (data_src.len != dc->size + 2) {
-        Py_FatalError("_write_chunk(): also bad internal call");
-    }
-    goto cleanup;
-
-error:
-    total = -1;
-
-cleanup:
-    Py_CLEAR(line);
-    return total;
+    return wrote;
 }
 
 static bool
@@ -3354,83 +3317,66 @@ _set_output_headers(PyObject *headers, PyObject *body)
 }
 
 static int64_t
-_Writer_write_combined(Writer *self, DeguSrc src1, DeguSrc src2)
-{
-    const size_t len = src1.len + src2.len;
-    uint8_t *buf = _calloc_buf(len);
-    if (buf == NULL) {
-        return -1;
-    }
-    memcpy(buf, src1.buf, src1.len);
-    memcpy(buf + src1.len, src2.buf, src2.len);
-    DeguSrc src = (DeguSrc){buf, len};
-    int64_t total = _Writer_write(self, src);
-    free(buf);
-    return total;
-}
-
-
-static int64_t
-_Writer_write_generic_body(Writer *self, PyObject *body)
-{
-    PyObject *int_total = NULL;
-    int64_t total = -2;
-
-    _SET(int_total, PyObject_CallMethodObjArgs(body, attr_write_to, self, NULL))
-    total = _validate_length("total_wrote", int_total);
-    if (total < 0) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    total = -1;
-
-cleanup:
-    Py_CLEAR(int_total);
-    return total;
-}
-
-
-static int64_t
 _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
 {
-    if (body == Py_None) {
-        return _Writer_write(self, preamble);
-    }
-    if (PyBytes_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble, _frombytes(body));
-    }
-    if (_Writer_write(self, preamble) < 0) {
-        return -1;
-    }
+    const uint64_t origtell = self->tell;
+    uint64_t total = 0;
+    int64_t wrote;
+    int64_t ret = -2;
+    PyObject *rfile = (PyObject *)self;
 
-    const uint64_t orig_tell = self->tell;
-    int64_t total = -2;
-    if (Py_TYPE(body) == &ChunkedBodyIterType) {
-        total = _ChunkedBodyIter_write_to_writer((ChunkedBodyIter *)body, self);
-    }
-    else {
-        total = _Writer_write_generic_body(self, body);
-    }
-    if (total < 0) {
+    /* Write the preamble */
+    wrote = _Writer_write(self, preamble);
+    if (wrote < 0) {
         goto error;
     }
-    if (orig_tell + (uint64_t)total != self->tell) {
-        PyErr_Format(PyExc_ValueError,
-            "%llu bytes were written, but write_to() returned %llu",
-            (self->tell - orig_tell), total
+    total += (uint64_t)wrote;
+
+    /* Write the body */
+    if (body == Py_None) {
+        wrote = 0;
+    }
+    else if (PyBytes_CheckExact(body)) {
+        wrote = _Writer_write(self, _frombytes(body));
+    }
+    else if (Py_TYPE(body) == &BodyType) {
+        wrote = _Body_write_to((Body *)body, rfile);
+    }
+    else if (Py_TYPE(body) == &ChunkedBodyType) {
+        wrote = _ChunkedBody_write_to((ChunkedBody *)body, rfile);
+    }
+    else if (Py_TYPE(body) == &BodyIterType) {
+        wrote = _BodyIter_write_to((BodyIter *)body, rfile);
+    }
+    else if (Py_TYPE(body) == &ChunkedBodyIterType) {
+        wrote = _ChunkedBodyIter_write_to((ChunkedBodyIter *)body, rfile);
+    }
+    else {
+        PyErr_Format(PyExc_TypeError,
+            "bad body type: %R: %R", Py_TYPE(body), body
         );
         goto error;
     }
-    total += (ssize_t)preamble.len;
+    if (wrote < 0) {
+        goto error;
+    }
+    total += (uint64_t)wrote;
+
+    /* Sanity check */
+    if (origtell + total != self->tell) {
+        PyErr_Format(PyExc_ValueError,
+            "%llu + %llu != %llu", origtell, total, self->tell
+        );
+        goto error;
+    }
+    ret = (int64_t)total;
     goto cleanup;
 
 error:
-    total = -1;
+    ret = -1;
 
 cleanup:
-    return total;
+    return ret;
 }
 
 
@@ -3607,7 +3553,7 @@ static void
 Body_dealloc(Body *self)
 {
     Py_CLEAR(self->rfile);
-    Py_CLEAR(self->read);
+    Py_CLEAR(self->robj);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3618,12 +3564,12 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
         Py_FatalError("_Body_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
+    _SET(self->robj, _get_robj(rfile))
     if (Py_TYPE(rfile) == &ReaderType) {
         self->fastpath = true;
     }
     else {
         self->fastpath = false;
-        _SET(self->read, _getcallable("rfile", rfile, attr_read))
     }
     self->remaining = self->content_length = content_length;
     self->state = BODY_READY;
@@ -3632,7 +3578,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 
 error:
     Py_CLEAR(self->rfile);
-    Py_CLEAR(self->read);
+    Py_CLEAR(self->robj);
     return false;
 }
 
@@ -3644,7 +3590,7 @@ Body_New(PyObject *rfile, const uint64_t content_length)
         return NULL;
     }
     self->rfile = NULL;
-    self->read = NULL;
+    self->robj = NULL;
     self->state = BODY_ERROR;
     if (! _Body_fill_args(self, rfile, content_length)) {
         PyObject_Del((PyObject *)self);
@@ -3679,64 +3625,110 @@ error:
     return -1;
 }
 
+static bool
+_Body_readinto(Body *self, DeguDst dst)
+{
+    if (dst.len > self->remaining) {
+        Py_FatalError("_Body_readinto(): bad internal call");
+    }
+    if (_readinto_from(self->robj, dst)) {
+        self->remaining -= dst.len;
+        return true;
+    }
+    self->state = BODY_ERROR;
+    return false;
+}
+
+static int64_t
+_Body_write_to(Body *self, PyObject *wfile)
+{
+    PyObject *wobj = NULL;
+    size_t iosize, size;
+    ssize_t wrote;
+    uint64_t total = 0;
+    int64_t ret = -2;
+
+    if (! _check_body_state("Body", self->state, BODY_READY)) {
+        goto error;
+    }
+    self->state = BODY_STARTED;
+    _SET(wobj, _get_wobj(wfile))
+    iosize = _min(IO_SIZE, self->remaining);
+    DeguDst dst = _calloc_dst(iosize);
+    if (dst.buf == NULL) {
+        goto error;
+    }
+    while (self->remaining > 0) {
+        size = _min(dst.len, self->remaining);
+        if (! _Body_readinto(self, _dst_slice(dst, 0, size))) {
+            goto error;
+        }
+        wrote = _write_to(wobj, _slice_src_from_dst(dst, 0, size));
+        if (wrote < 0) {
+            goto error;
+        }
+        total += (uint64_t)wrote;
+    }
+    self->state = BODY_CONSUMED;
+    ret = (int64_t)total;
+    goto cleanup;
+
+error:
+    ret = -1;
+    self->state = BODY_ERROR;
+
+cleanup:
+    Py_CLEAR(wobj);
+    if (dst.buf != NULL) {
+        free(dst.buf);
+    }
+    return ret;
+}
+
+static PyObject *
+Body_write_to(Body *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "O", &wfile)) {
+        return NULL;
+    }
+    const int64_t total = _Body_write_to(self, wfile);
+    if (total >= 0) {
+        ret = PyLong_FromLongLong(total);
+    }
+    return ret;
+}
+
 static PyObject *
 _Body_read(Body *self, const size_t max_size)
 {
-    PyObject *pysize = NULL;
+    const size_t size = _min(max_size, self->remaining);
     PyObject *ret = NULL;
 
     if (! _check_body_state("Body", self->state, BODY_STARTED)) {
         return NULL;
     }
-    self->state = BODY_STARTED;
-    if (max_size > MAX_IO_SIZE) {
-        PyErr_Format(PyExc_ValueError,
-            "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, max_size
-        );
-        return NULL;
-    }
     if (self->remaining == 0) {
         self->state = BODY_CONSUMED;
-        Py_INCREF(bytes_empty);
-        return bytes_empty;
-    }
-    const size_t size = _min(max_size, self->remaining);
-
-    /* Call rfile.read() */
-    if (self->read == NULL) {
-        /* Fast-path for when rfile is a Reader instance */
-        _SET(ret, _Reader_read((Reader *)self->rfile, (ssize_t)size))
     }
     else {
-        _SET(pysize, PyLong_FromSize_t(size))
-        _SET(ret, PyObject_CallFunctionObjArgs(self->read, pysize, NULL))
-        if (! PyBytes_CheckExact(ret)) {
-            PyErr_Format(PyExc_TypeError,
-                "need a <class 'bytes'>; rfile.read() returned a %R: %R",
-                Py_TYPE(ret), ret
-            );
-            goto error;
-        }
+        self->state = BODY_STARTED;
     }
-
-    /* Check return value */
-    if ((size_t)PyBytes_GET_SIZE(ret) != size) {
-        PyErr_Format(PyExc_ValueError, "underflow: %zu < %zu",
-            (size_t)PyBytes_GET_SIZE(ret), size
-        );
-        goto error;
+    if (size == 0) {
+        _SET_AND_INC(ret, bytes_empty)
+        return ret;
     }
-
-    /* Update state */
-    self->remaining -= size;
-    goto cleanup;    
+    _SET(ret, PyBytes_FromStringAndSize(NULL, (ssize_t)size))
+    DeguDst dst = _dst_frombytes(ret);
+    if (_Body_readinto(self, dst)) {
+        return ret;
+    }
 
 error:
     Py_CLEAR(ret);
     self->state = BODY_ERROR;
-
-cleanup:
-    Py_CLEAR(pysize);
     return ret;
 }
 
@@ -3758,79 +3750,6 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
         self->state = BODY_CONSUMED;
     }
     return ret;
-}
-
-/* _Body_fast_write_to(): fast-path for when wfile is a Writer instance  */
-static PyObject *
-_Body_fast_write_to(Body *self, Writer *wfile)
-{
-    uint64_t total = 0;
-    ssize_t wrote;
-    PyObject *data = NULL;
-    PyObject *ret = NULL;
-
-    while (self->remaining > 0) {
-        _SET(data, _Body_read(self, IO_SIZE))
-        wrote = _Writer_write(wfile, _frombytes(data));
-        if (wrote < 0) {
-            goto error;
-        }
-        total += (uint64_t)wrote;
-        Py_CLEAR(data);
-    }
-    _SET(ret, PyLong_FromUnsignedLong(total))
-    self->state = BODY_CONSUMED;
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(data);
-    return ret;    
-}
-
-static PyObject *
-_Body_write_to(Body *self, PyObject *wfile)
-{
-    PyObject *wfile_write = NULL;
-    PyObject *data = NULL;
-    PyObject *size = NULL;
-    PyObject *ret = NULL;
-    const uint64_t total = self->remaining;
-
-    _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
-    while (self->remaining > 0) {
-        _SET(data, _Body_read(self, IO_SIZE))
-        _SET(size, PyObject_CallFunctionObjArgs(wfile_write, data, NULL))
-        Py_CLEAR(data);
-        Py_CLEAR(size);
-    }
-    _SET(ret, PyLong_FromUnsignedLong(total))
-    self->state = BODY_CONSUMED;
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(wfile_write);
-    Py_CLEAR(data);
-    Py_CLEAR(size);
-    return ret;    
-}
-
-static PyObject *
-Body_write_to(Body *self, PyObject *args)
-{
-    PyObject *wfile = NULL;
-    if (!PyArg_ParseTuple(args, "O", &wfile)) {
-        return NULL;
-    }
-    if (Py_TYPE(wfile) == &WriterType) {
-        return _Body_fast_write_to(self, (Writer *)wfile);
-    }
-    return _Body_write_to(self, wfile);
 }
 
 static PyObject *
@@ -3869,8 +3788,8 @@ static void
 ChunkedBody_dealloc(ChunkedBody *self)
 {
     Py_CLEAR(self->rfile);
+    Py_CLEAR(self->robj);
     Py_CLEAR(self->readline);
-    Py_CLEAR(self->read);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3881,13 +3800,14 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
         Py_FatalError("_ChunkedBody_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
+    _SET(self->robj, _get_robj(rfile))
+    _SET(self->readline, _get_readline(rfile))
     if (Py_TYPE(rfile) == &ReaderType) {
         self->fastpath = true;
     }
     else {
         self->fastpath = false;
         _SET(self->readline, _getcallable("rfile", rfile, attr_readline))
-        _SET(self->read, _getcallable("rfile", rfile, attr_read))
     }
     self->state = BODY_READY;
     self->chunked = true;
@@ -3895,8 +3815,8 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
 
 error:
     Py_CLEAR(self->rfile);
+    Py_CLEAR(self->robj);
     Py_CLEAR(self->readline);
-    Py_CLEAR(self->read);
     return false;
 }
 
@@ -3908,8 +3828,8 @@ ChunkedBody_New(PyObject *rfile)
         return NULL;
     }
     self->rfile = NULL;
+    self->robj = NULL;
     self->readline = NULL;
-    self->read = NULL;
     self->state = BODY_ERROR;
     if (! _ChunkedBody_fill_args(self, rfile)) {
         PyObject_Del((PyObject *)self);
@@ -3944,26 +3864,17 @@ _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
         return false;
     }
     self->state = BODY_STARTED;
-    if (Py_TYPE(self->rfile) == &ReaderType) {
-        if (self->readline != NULL || self->read != NULL) {
-            Py_FatalError("ChunkedBody_readchunk(): bad internal state");
-        }
-        if (! _Reader_readchunk((Reader *)self->rfile, dc)) {
-            return false;
-        }
-    }
-    else {
-        if (self->readline == NULL || self->read == NULL) {
-            Py_FatalError("ChunkedBody_readchunk(): also bad internal state");
-        }
-        if (! _readchunk(self->readline, self->read, dc)) {
-            return false;
-        }
+    if (! _readchunk_from(self->robj, self->readline, dc)) {
+        goto error;
     }
     if (dc->size == 0) {
         self->state = BODY_CONSUMED;
     }
     return true;
+
+error:
+    self->state = BODY_ERROR;
+    return false;
 }
 
 static PyObject *
@@ -4054,45 +3965,59 @@ cleanup:
     return ret;
 }
 
-static PyObject *
-ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
+static int64_t
+_ChunkedBody_write_to(ChunkedBody *self, PyObject *wfile)
 {
-    PyObject *wfile = NULL;
-    PyObject *wfile_write = NULL;
+    if (! _check_body_state("ChunkedBody", self->state, BODY_READY)) {
+        return -3;
+    }
+    self->state = BODY_STARTED;
+
+    PyObject *wobj = NULL;
     DeguChunk dc = NEW_DEGU_CHUNK;
     ssize_t wrote;
     uint64_t total = 0;
-    PyObject *ret = NULL;
+    int64_t ret = -2;    
 
-    if (!PyArg_ParseTuple(args, "O", &wfile)) {
-        return NULL;
-    }
-    if (! _check_body_state("ChunkedBody", self->state, BODY_READY)) {
-        return NULL;
-    }
-    self->state = BODY_STARTED;
-    _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
+    _SET(wobj, _get_wobj(wfile))
     while (self->state < BODY_CONSUMED) {
         if (! _ChunkedBody_readchunk(self, &dc)) {
             goto error; 
         }
-        wrote = _write_chunk(wfile_write, &dc);
+        wrote = _writechunk_to(wobj, &dc);
         if (wrote < 0) {
             goto error;
         }
         total += (uint64_t)wrote;
         _clear_degu_chunk(&dc);
     }
-    _SET(ret, PyLong_FromUnsignedLongLong(total))
     self->state = BODY_CONSUMED;
+    ret = (int64_t)total;
     goto cleanup;
 
 error:
-    Py_CLEAR(ret);
+    ret = -1;
     self->state = BODY_ERROR;
-    
+
 cleanup:
-    Py_CLEAR(wfile_write);
+    Py_CLEAR(wobj);
+    _clear_degu_chunk(&dc);
+    return ret;
+}
+
+static PyObject *
+ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:write_to", &wfile)) {
+        return NULL;
+    }
+    const int64_t total = _ChunkedBody_write_to(self, wfile);
+    if (total >= 0) {
+        ret = PyLong_FromLongLong(total);
+    }
     return ret;
 }
 
@@ -4162,37 +4087,40 @@ error:
 static PyObject *
 BodyIter_repr(BodyIter *self)
 {
-    return PyUnicode_FromFormat("BodyIter(<source>, %llu)", self->content_length);
+    return PyUnicode_FromFormat(
+        "BodyIter(<source>, %llu)", self->content_length
+    );
 }
 
-static PyObject *
-BodyIter_write_to(BodyIter *self, PyObject *args)
+static int64_t
+_BodyIter_write_to(BodyIter *self, PyObject *wfile)
 {
-    PyObject *wfile = NULL;
-    PyObject *wfile_write = NULL;
-    PyObject *iterator = NULL;
-    PyObject *item;
-    PyObject *obj = NULL;
-    Py_buffer pybuf;
-    ssize_t wrote;
-    uint64_t total = 0;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "O", &wfile)) {
-        return NULL;
-    }
     if (! _check_body_state("BodyIter", self->state, BODY_READY)) {
-        return NULL;
+        return -3;
     }
     self->state = BODY_STARTED;
-    _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
+
+    PyObject *wobj = NULL;
+    PyObject *iterator = NULL;
+    PyObject *part = NULL;
+    ssize_t wrote;
+    uint64_t total = 0;
+    int64_t ret = -2;
+
+    _SET(wobj, _get_wobj(wfile))
     _SET(iterator, PyObject_GetIter(self->source))
-    while ((item = PyIter_Next(iterator))) {
-        _SET(obj, item)
-        if (PyObject_GetBuffer(obj, &pybuf, PyBUF_SIMPLE|PyBUF_C_CONTIGUOUS|PyBUF_CONTIG_RO) != 0) {
+    while ((part = PyIter_Next(iterator))) {
+        if (! PyBytes_CheckExact(part)) {
+            PyErr_Format(PyExc_TypeError,
+                "need a <class 'bytes'>; source contains a %R", Py_TYPE(part)
+            );
             goto error;
         }
-        total += (uint64_t)pybuf.len;
+        wrote = _write_to(wobj, _frombytes(part));
+        if (wrote < 0) {
+            goto error;
+        }
+        total += (uint64_t)wrote;
         if (total > self->content_length) {
              PyErr_Format(PyExc_ValueError,
                 "exceeds content_length: %llu > %llu",
@@ -4200,17 +4128,7 @@ BodyIter_write_to(BodyIter *self, PyObject *args)
             );
             goto error;
         }
-        if (pybuf.len > 0) {
-            wrote = _send(wfile_write, _frompybuf(&pybuf), "wrote", true);
-        }
-        else {
-            wrote = 0;
-        }
-        PyBuffer_Release(&pybuf);
-        if (wrote < 0) {
-            goto error;
-        }
-        Py_CLEAR(obj);
+        Py_CLEAR(part);
     }
     if (total != self->content_length) {
          PyErr_Format(PyExc_ValueError,
@@ -4218,18 +4136,34 @@ BodyIter_write_to(BodyIter *self, PyObject *args)
         );
         goto error;
     }
-    _SET(ret, PyLong_FromUnsignedLongLong(total))
     self->state = BODY_CONSUMED;
+    ret = (int64_t)total;
     goto cleanup;
 
 error:
+    ret = -1;
     self->state = BODY_ERROR;
-    Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(obj);
+    Py_CLEAR(wobj);
     Py_CLEAR(iterator);
-    Py_CLEAR(wfile_write);
+    Py_CLEAR(part);
+    return ret;
+}
+
+static PyObject *
+BodyIter_write_to(BodyIter *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:write_to", &wfile)) {
+        return NULL;
+    }
+    const int64_t total = _BodyIter_write_to(self, wfile);
+    if (total >= 0) {
+        ret = PyLong_FromLongLong(total);
+    }
     return ret;
 }
 
@@ -4255,129 +4189,11 @@ ChunkedBodyIter_init(ChunkedBodyIter *self, PyObject *args, PyObject *kw)
     }
     _SET_AND_INC(self->source, source)
     self->state = BODY_READY;
+    printf("finished init\n");
     return 0;
 
 error:
     return -1;
-}
-
-static int64_t
-_ChunkedBodyIter_write_to_writer(ChunkedBodyIter *self, Writer *writer)
-{
-    PyObject *iterator = NULL;
-    PyObject *item;
-    PyObject *chunk = NULL;
-    DeguChunk dc = NEW_DEGU_CHUNK;
-    bool empty = false;
-    ssize_t wrote;
-    int64_t total = 0;
-
-    if (! _check_body_state("ChunkedBodyIter", self->state, BODY_READY)) {
-        goto error;
-    }
-    self->state = BODY_STARTED;
-    _SET(iterator, PyObject_GetIter(self->source))
-    while ((item = PyIter_Next(iterator))) {
-        _SET(chunk, item)
-        if (empty) {
-            PyErr_SetString(PyExc_ValueError,
-                "additional chunk after empty chunk data"
-            );
-            goto error;
-        }
-        dc = NEW_DEGU_CHUNK;
-        if (! _unpack_chunk(&dc, chunk)) {
-            goto error;
-        }
-        if (dc.size == 0) {
-            empty = true;
-        }
-        wrote = _Writer_write_chunk(writer, &dc);
-        if (wrote < 0) {
-            goto error;
-        }
-        total += wrote;
-        Py_CLEAR(chunk);
-    }
-    if (! empty) {
-        PyErr_SetString(PyExc_ValueError, "final chunk data was not empty");
-        goto error;
-    }
-    self->state = BODY_CONSUMED;
-    goto cleanup;
-
-error:
-    total = -1;
-    self->state = BODY_ERROR;
-    
-cleanup:
-    Py_CLEAR(iterator);
-    Py_CLEAR(chunk);
-    return total;
-}
-
-static PyObject *
-ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
-{
-    PyObject *wfile = NULL;
-    PyObject *wfile_write = NULL;
-    PyObject *iterator = NULL;
-    PyObject *item;
-    PyObject *chunk = NULL;
-    DeguChunk dc = NEW_DEGU_CHUNK;
-    bool empty = false;
-    ssize_t wrote;
-    uint64_t total = 0;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "O", &wfile)) {
-        return NULL;
-    }
-    if (! _check_body_state("ChunkedBodyIter", self->state, BODY_READY)) {
-        return NULL;
-    }
-    self->state = BODY_STARTED;
-    _SET(wfile_write, _getcallable("wfile", wfile, attr_write))
-    _SET(iterator, PyObject_GetIter(self->source))
-    while ((item = PyIter_Next(iterator))) {
-        _SET(chunk, item)
-        if (empty) {
-            PyErr_SetString(PyExc_ValueError,
-                "additional chunk after empty chunk data"
-            );
-            goto error;
-        }
-        dc = NEW_DEGU_CHUNK;
-        if (! _unpack_chunk(&dc, chunk)) {
-            goto error;
-        }
-        if (dc.size == 0) {
-            empty = true;
-        }
-        wrote = _write_chunk(wfile_write, &dc);
-        if (wrote < 0) {
-            goto error;
-        }
-        total += (uint64_t)wrote;
-        Py_CLEAR(chunk);
-    }
-    if (! empty) {
-        PyErr_SetString(PyExc_ValueError, "final chunk data was not empty");
-        goto error;
-    }
-    _SET(ret, PyLong_FromUnsignedLongLong(total))
-    self->state = BODY_CONSUMED;
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-    self->state = BODY_ERROR;
-    
-cleanup:
-    Py_CLEAR(wfile_write);
-    Py_CLEAR(iterator);
-    Py_CLEAR(chunk);
-    return ret;
 }
 
 static PyObject *
@@ -4385,6 +4201,85 @@ ChunkedBodyIter_repr(ChunkedBodyIter *self)
 {
     return PyUnicode_FromString("ChunkedBodyIter(<source>)");
 }
+
+static int64_t
+_ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *wfile)
+{
+    if (! _check_body_state("ChunkedBodyIter", self->state, BODY_READY)) {
+        return -3;
+    }
+    self->state = BODY_STARTED;
+
+    PyObject *wobj = NULL;
+    PyObject *iterator = NULL;
+    PyObject *chunk = NULL;
+    DeguChunk dc = NEW_DEGU_CHUNK;
+    bool empty = false;
+    ssize_t wrote;
+    uint64_t total = 0;
+    int64_t ret = -2;    
+
+    _SET(wobj, _get_wobj(wfile))
+    _SET(iterator, PyObject_GetIter(self->source))
+    while ((chunk = PyIter_Next(iterator))) {
+        printf("chunks = %p\n", (void *)chunk);
+        if (empty) {
+            PyErr_SetString(PyExc_ValueError,
+                "additional chunk after empty chunk data"
+            );
+            goto error;
+        }
+        if (! _unpack_chunk(&dc, chunk)) {
+            goto error;
+        }
+        if (dc.size == 0) {
+            empty = true;
+        }
+        wrote = _writechunk_to(wobj, &dc);
+        if (wrote < 0) {
+            goto error;
+        }
+        total += (uint64_t)wrote;
+        Py_CLEAR(chunk);
+        _clear_degu_chunk(&dc);
+    }
+    if (! empty) {
+        PyErr_SetString(PyExc_ValueError, "final chunk data was not empty");
+        goto error;
+    }
+    self->state = BODY_CONSUMED;
+    ret = (int64_t)total;
+    goto cleanup;
+
+error:
+    ret = -1;
+    self->state = BODY_ERROR;
+
+cleanup:
+    Py_CLEAR(wobj);
+    Py_CLEAR(iterator);
+    Py_CLEAR(chunk);
+    _clear_degu_chunk(&dc);
+    return ret;
+}
+
+static PyObject *
+ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
+{
+    PyObject *wfile = NULL;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:write_to", &wfile)) {
+        return NULL;
+    }
+    const int64_t total = _ChunkedBodyIter_write_to(self, wfile);
+    if (total >= 0) {
+        ret = PyLong_FromLongLong(total);
+    }
+    return ret;
+}
+
+
 
 
 /*******************************************************************************

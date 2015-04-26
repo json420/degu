@@ -155,7 +155,7 @@ typedef struct {
 } DeguChunk;
 
 #define NEW_DEGU_CHUNK \
-    ((DeguChunk){NULL, NULL, NULL, 0u})
+    ((DeguChunk){NULL, NULL, NULL, 0})
 
 
 /******************************************************************************
@@ -319,6 +319,9 @@ typedef struct {
     size_t stop;
 } Reader;
 
+static bool _Reader_readinto(Reader *, DeguDst);
+static bool _Reader_readchunkline(Reader *, DeguChunk *);
+
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
 static PyObject * Reader_read_request(Reader *);
@@ -400,6 +403,8 @@ typedef struct {
     uint64_t tell;
 } Writer;
 
+static ssize_t _Writer_write(Writer *, DeguSrc);
+
 static PyObject * Writer_tell(Writer *);
 static PyObject * Writer_flush(Writer *);
 static PyObject * Writer_write(Writer *, PyObject *);
@@ -468,7 +473,7 @@ static PyTypeObject WriterType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *read;
+    PyObject *robj;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -477,6 +482,7 @@ typedef struct {
 } Body;
 
 static PyObject * Body_New(PyObject *, uint64_t);
+static int64_t _Body_write_to(Body *, PyObject *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
@@ -548,14 +554,15 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
+    PyObject *robj;
     PyObject *readline;
-    PyObject *read;
     uint8_t state;
     bool fastpath;
     bool chunked;
 } ChunkedBody;
 
 static PyObject * ChunkedBody_New(PyObject *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -632,7 +639,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-//static int64_t _BodyIter_write_to_writer(BodyIter *, Writer *);
+static int64_t _BodyIter_write_to(BodyIter *, PyObject *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
@@ -701,7 +708,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to_writer(ChunkedBodyIter *, Writer *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, PyObject *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},

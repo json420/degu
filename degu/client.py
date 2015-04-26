@@ -207,7 +207,7 @@ class Connection:
                 headers.update(self.base_headers)
             tell = self._wfile.tell()
             wrote = self._wfile.write_request(method, uri, headers, body)
-            assert self._wfile.tell() == tell + wrote
+            #assert self._wfile.tell() == tell + wrote
             response = self._rfile.read_response(method)
             self._response_body = response.body
             return response
