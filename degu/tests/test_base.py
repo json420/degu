@@ -1675,7 +1675,7 @@ class TestNamedTuples_C(TestNamedTuples_Py):
 
 MiB = 1024 * 1024
 
-class TestConstants(TestCase):
+class TestConstants_Py(BackendTestCase):
     def check_power_of_two(self, name, size):
         self.assertIsInstance(size, int, name)
         self.assertGreaterEqual(size, 1024, name)
@@ -1715,22 +1715,33 @@ class TestConstants(TestCase):
         self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
-        self.assertIsInstance(base.bodies, tuple)
-        self.assertIsInstance(base.bodies, base.BodiesType)
+        bodies = self.getattr('bodies')
+        BodiesType = self.getattr('BodiesType')
 
-        self.assertIs(base.bodies.Body, base.Body)
-        self.assertIs(base.bodies.BodyIter, base.BodyIter)
-        self.assertIs(base.bodies.ChunkedBody, base.ChunkedBody)
-        self.assertIs(base.bodies.ChunkedBodyIter, base.ChunkedBodyIter)
+        self.assertIsInstance(bodies, tuple)
+        self.assertIsInstance(bodies, BodiesType)
 
-        self.assertIs(base.bodies[0], base.Body)
-        self.assertIs(base.bodies[1], base.BodyIter)
-        self.assertIs(base.bodies[2], base.ChunkedBody)
-        self.assertIs(base.bodies[3], base.ChunkedBodyIter)
+        self.assertIs(bodies.Body, bodies.Body)
+        self.assertIs(bodies.BodyIter, bodies.BodyIter)
+        self.assertIs(bodies.ChunkedBody, bodies.ChunkedBody)
+        self.assertIs(bodies.ChunkedBodyIter, bodies.ChunkedBodyIter)
 
-        self.assertEqual(base.bodies,
-            (base.Body, base.BodyIter, base.ChunkedBody, base.ChunkedBodyIter)
+        self.assertIs(bodies[0], bodies.Body)
+        self.assertIs(bodies[1], bodies.BodyIter)
+        self.assertIs(bodies[2], bodies.ChunkedBody)
+        self.assertIs(bodies[3], bodies.ChunkedBodyIter)
+
+        self.assertEqual(bodies,
+            (
+                bodies.Body,
+                bodies.BodyIter,
+                bodies.ChunkedBody,
+                bodies.ChunkedBodyIter,
+            )
         )
+
+class TestConstants_C(TestConstants_Py):
+    backend = _base
 
 
 class TestEmptyPreambleError(TestCase):

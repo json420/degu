@@ -33,10 +33,6 @@ try:
         Range,
         Reader,
         Writer,
-        Body,
-        BodyIter,
-        ChunkedBody,
-        ChunkedBodyIter,
         BODY_CONSUMED,
         bodies,
     )
@@ -50,10 +46,6 @@ except ImportError:
         Range,
         Reader,
         Writer,
-        Body,
-        BodyIter,
-        ChunkedBody,
-        ChunkedBodyIter,
         BODY_CONSUMED,
         bodies,
     )
@@ -69,10 +61,6 @@ __all__ = (
     'Reader',
     'Writer',
     'bodies',
-    'Body',
-    'ChunkedBody',
-    'BodyIter',
-    'ChunkedBodyIter',
 )
 
 
