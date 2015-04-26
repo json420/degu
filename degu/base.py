@@ -77,7 +77,7 @@ def _makefiles(sock, bodies):
     """
     Create (rfile, wfile) from a socket connection.
     """
-    return (Reader(sock), Writer(sock, bodies))
+    return (Reader(sock), Writer(sock))
 
 
 def _isconsumed(body, state=BODY_CONSUMED):

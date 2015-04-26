@@ -3215,9 +3215,7 @@ static void
 Writer_dealloc(Writer *self)
 {
     Py_CLEAR(self->send);
-    Py_CLEAR(self->length_types);
-    Py_CLEAR(self->chunked_types);
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int
@@ -3225,34 +3223,18 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
 {
     int ret = 0;
     PyObject *sock = NULL;
-    PyObject *bodies = NULL;
-    PyObject *Body = NULL;
-    PyObject *BodyIter = NULL;
-    PyObject *ChunkedBody = NULL;
-    PyObject *ChunkedBodyIter = NULL;
-    static char *keys[] = {"sock", "bodies", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Writer", keys,
-            &sock, &bodies)) {
+    static char *keys[] = {"sock", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "O:Writer", keys, &sock)) {
         goto error;
     }
     self->tell = 0;
     _SET(self->send,      _getcallable("sock", sock, attr_send))
-    _SET(Body,            PyObject_GetAttr(bodies, attr_Body))
-    _SET(BodyIter,        PyObject_GetAttr(bodies, attr_BodyIter))
-    _SET(ChunkedBody,     PyObject_GetAttr(bodies, attr_ChunkedBody))
-    _SET(ChunkedBodyIter, PyObject_GetAttr(bodies, attr_ChunkedBodyIter))
-    _SET(self->length_types, PyTuple_Pack(2, Body, BodyIter))
-    _SET(self->chunked_types, PyTuple_Pack(2, ChunkedBody, ChunkedBodyIter))
     goto cleanup;
 
 error:
     ret = -1;
 
 cleanup:
-    Py_CLEAR(Body);
-    Py_CLEAR(BodyIter);
-    Py_CLEAR(ChunkedBody);
-    Py_CLEAR(ChunkedBodyIter);
     return ret;
 }
 

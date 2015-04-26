@@ -4905,25 +4905,16 @@ class TestWriter_Py(BackendTestCase):
     def test_init(self):
         sock = WSocket()
         self.assertEqual(sys.getrefcount(sock), 2)
-        bodies = base.bodies
-        bcount = sys.getrefcount(bodies)
-        counts = tuple(sys.getrefcount(b) for b in bodies)
 
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(sys.getrefcount(sock), 3)
-        self.assertEqual(sys.getrefcount(bodies), bcount)
-        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies),
-            tuple(c + 1 for c in counts)
-        )
 
         del writer
         self.assertEqual(sys.getrefcount(sock), 2)
-        self.assertEqual(sys.getrefcount(bodies), bcount)
-        self.assertEqual(tuple(sys.getrefcount(b) for b in bodies), counts)
 
     def test_tell(self):
         sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
+        writer = self.Writer(sock)
         tell = writer.tell()
         self.assertIsInstance(tell, int)
         self.assertEqual(tell, 0)
@@ -4931,7 +4922,7 @@ class TestWriter_Py(BackendTestCase):
 
     def test_write(self):
         sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
+        writer = self.Writer(sock)
 
         data1 = os.urandom(17)
         self.assertEqual(writer.write(data1), 17)
@@ -4948,7 +4939,7 @@ class TestWriter_Py(BackendTestCase):
         marker = random_id()
         exc = ValueError(marker)
         sock = WSocket(send=exc)
-        writer = self.Writer(sock, base.bodies)
+        writer = self.Writer(sock)
         with self.assertRaises(ValueError) as cm:
             writer.write(data1)
         self.assertIs(cm.exception, exc)
@@ -4961,7 +4952,7 @@ class TestWriter_Py(BackendTestCase):
         for bad in (17.0, int_subclass(17)):
             self.assertEqual(bad, 17)
             sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
+            writer = self.Writer(sock)
             with self.assertRaises(TypeError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
@@ -4976,7 +4967,7 @@ class TestWriter_Py(BackendTestCase):
         smax = sys.maxsize * 2 + 1
         for bad in (smin - 1, smin, -17, -1, 18, 19, smax, smax + 1):
             sock = WSocket(send=bad)
-            writer = self.Writer(sock, base.bodies)
+            writer = self.Writer(sock)
             with self.assertRaises(ValueError) as cm:
                 writer.write(data1)
             self.assertEqual(str(cm.exception),
@@ -4987,7 +4978,7 @@ class TestWriter_Py(BackendTestCase):
             self.assertEqual(sock._calls, [('send', data1)])
 
         sock = WSocket(send=0)
-        writer = self.Writer(sock, base.bodies)
+        writer = self.Writer(sock)
         with self.assertRaises(ValueError) as cm:
             writer.write(data1)
         self.assertEqual(str(cm.exception),
@@ -4999,23 +4990,21 @@ class TestWriter_Py(BackendTestCase):
 
     def test_flush(self):
         sock = WSocket()
-        writer = self.Writer(sock, base.bodies)
+        writer = self.Writer(sock)
         self.assertIsNone(writer.flush())
         self.assertEqual(sock._calls, [])
 
     def test_write_output(self):
-        bodies = self.getattr('bodies')
-
         # Empty preamble and empty body:
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(b'', None), 0)
         self.assertEqual(writer.tell(), 0)
         self.assertEqual(sock._calls, [])
         self.assertEqual(sock._fp.getvalue(), b'')
 
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(b'', b''), 0)
         self.assertEqual(writer.tell(), 0)
         self.assertEqual(sock._calls, [])
@@ -5024,14 +5013,14 @@ class TestWriter_Py(BackendTestCase):
         # Preamble plus empty body:
         preamble = os.urandom(34)
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(preamble, None), 34)
         self.assertEqual(writer.tell(), 34)
         self.assertEqual(sock._calls, [('send', preamble)])
         self.assertEqual(sock._fp.getvalue(), preamble)
 
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(preamble, b''), 34)
         self.assertEqual(writer.tell(), 34)
         self.assertEqual(sock._calls, [('send', preamble)])
@@ -5040,7 +5029,7 @@ class TestWriter_Py(BackendTestCase):
         # body plus empty preamble:
         body = os.urandom(969)
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(b'', body), 969)
         self.assertEqual(writer.tell(), 969)
         self.assertEqual(sock._calls, [('send', body)])
@@ -5049,15 +5038,15 @@ class TestWriter_Py(BackendTestCase):
         # Body preamble and body are non-empty:
         body = os.urandom(969)
         sock = WSocket()
-        writer = self.Writer(sock, bodies)
+        writer = self.Writer(sock)
         self.assertEqual(writer.write_output(preamble, body), 1003)
         self.assertEqual(writer.tell(), 1003)
         self.assertEqual(sock._calls, [('send', preamble + body)])
         self.assertEqual(sock._fp.getvalue(), preamble + body)
 
     def test_set_default_headers(self):
-        bodies = base.bodies
-        writer = self.Writer(WSocket(), bodies)
+        bodies = self.bodies
+        writer = self.Writer(WSocket())
 
         # body is None:
         headers = {}
@@ -5140,7 +5129,7 @@ class TestWriter_Py(BackendTestCase):
 
     def test_write_request(self):
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         for method in BAD_METHODS:
             with self.assertRaises(ValueError) as cm:
                 writer.write_request(method, '/', {}, None)
@@ -5150,7 +5139,7 @@ class TestWriter_Py(BackendTestCase):
 
         # Empty headers, no body:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         self.assertEqual(
             writer.write_request('GET', '/', headers, None),
@@ -5163,7 +5152,7 @@ class TestWriter_Py(BackendTestCase):
         # One header:
         headers = {'foo': 17}  # Make sure to test with int header value
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         self.assertEqual(
             writer.write_request('GET', '/', headers, None),
             27
@@ -5177,7 +5166,7 @@ class TestWriter_Py(BackendTestCase):
         # Two headers:
         headers = {'foo': 17, 'bar': 'baz'}
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         self.assertEqual(
             writer.write_request('GET', '/', headers, None),
             37
@@ -5190,7 +5179,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is bytes:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         self.assertEqual(
             writer.write_request('GET', '/', headers, b'hello'),
@@ -5207,7 +5196,7 @@ class TestWriter_Py(BackendTestCase):
         rfile = io.BytesIO(b'hello')
         body = self.bodies.Body(rfile, 5)
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         self.assertEqual(
             writer.write_request('GET', '/', headers, body),
             42
@@ -5239,7 +5228,7 @@ class TestWriter_Py(BackendTestCase):
         body = self.bodies.ChunkedBody(rfile)
         headers = {}
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         self.assertEqual(
             writer.write_request('GET', '/', headers, body),
             61
@@ -5257,7 +5246,7 @@ class TestWriter_Py(BackendTestCase):
             ((None, b'hello'), (None, b''))
         )
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         self.assertEqual(
             writer.write_request('GET', '/', headers, body),
             61
@@ -5271,7 +5260,7 @@ class TestWriter_Py(BackendTestCase):
     def test_write_response(self):
         # Empty headers, no body:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         self.assertEqual(
             writer.write_response(200, 'OK', headers, None),
@@ -5284,7 +5273,7 @@ class TestWriter_Py(BackendTestCase):
 
         # One header:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {'foo': 17}  # Make sure to test with int header value
         self.assertEqual(
             writer.write_response(200, 'OK', headers, None),
@@ -5299,7 +5288,7 @@ class TestWriter_Py(BackendTestCase):
 
         # Two headers:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {'foo': 17, 'bar': 'baz'}
         self.assertEqual(writer.write_response(200, 'OK', headers, None), 38)
         self.assertEqual(headers, {'foo': 17, 'bar': 'baz'})
@@ -5311,7 +5300,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is bytes:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         self.assertEqual(
             writer.write_response(200, 'OK', headers, b'hello'),
@@ -5326,7 +5315,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.BodyIter:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         body = self.bodies.BodyIter((b'hell', b'o'), 5)
         self.assertEqual(
@@ -5342,7 +5331,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.ChunkedBodyIter:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         body = self.bodies.ChunkedBodyIter(
             ((None, b'hello'), (None, b''))
@@ -5360,7 +5349,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.Body:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         rfile = io.BytesIO(b'hello')
         body = self.bodies.Body(rfile, 5)
@@ -5378,7 +5367,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.ChunkedBody:
         sock = WSocket()
-        writer = self.Writer(sock, self.bodies)
+        writer = self.Writer(sock)
         headers = {}
         rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
         body = self.bodies.ChunkedBody(rfile)

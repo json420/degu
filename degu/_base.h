@@ -400,8 +400,6 @@ static PyTypeObject ReaderType = {
 typedef struct {
     PyObject_HEAD
     PyObject *send;
-    PyObject *length_types;
-    PyObject *chunked_types;
     uint64_t tell;
 } Writer;
 

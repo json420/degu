@@ -965,15 +965,11 @@ def set_output_headers(headers, body):
 class Writer:
     __slots__ = (
         '_sock_send',
-        '_length_types',
-        '_chunked_types',
         '_tell',
     )
 
-    def __init__(self, sock, bodies):
+    def __init__(self, sock):
         self._sock_send = _getcallable('sock', sock, 'send')
-        self._length_types = (bodies.Body, bodies.BodyIter)
-        self._chunked_types = (bodies.ChunkedBody, bodies.ChunkedBodyIter)
         self._tell = 0
 
     def tell(self):
@@ -989,16 +985,7 @@ class Writer:
 
     def set_default_headers(self, headers, body):
         assert isinstance(headers, dict)
-        if type(body) is bytes:
-            set_default_header(headers, 'content-length', len(body))
-        elif isinstance(body, self._length_types):
-            set_default_header(headers, 'content-length', body.content_length)
-        elif isinstance(body, self._chunked_types):
-            set_default_header(headers, 'transfer-encoding', 'chunked')
-        elif body is not None:
-            raise TypeError(
-                'bad body type: {!r}: {!r}'.format(type(body), body)
-            )
+        set_output_headers(headers, body)
 
     def write_output(self, preamble, body):
         if body is None:
