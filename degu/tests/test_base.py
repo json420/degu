@@ -1070,7 +1070,7 @@ class TestMiscFunctions_Py(BackendTestCase):
  
         # rfile.readline missing:
         class MissingReadline:
-            def read(self, size):
+            def readinto(self, buf):
                 assert False
         rfile = MissingReadline()
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -1084,7 +1084,7 @@ class TestMiscFunctions_Py(BackendTestCase):
         # rfile.readline() not callable:
         class BadReadline:
             readline = 'hello'
-            def read(self):
+            def readinto(self, buf):
                 assert False
         rfile = BadReadline()
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -1093,7 +1093,7 @@ class TestMiscFunctions_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), 'rfile.readline() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # rfile.read missing:
+        # rfile.readinto missing:
         class MissingRead:
             def readline(self, size):
                 assert False
@@ -1102,20 +1102,20 @@ class TestMiscFunctions_Py(BackendTestCase):
         with self.assertRaises(AttributeError) as cm:
             readchunk(rfile)
         self.assertEqual(str(cm.exception),
-            "'MissingRead' object has no attribute 'read'"
+            "'MissingRead' object has no attribute 'readinto'"
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # rfile.read() not callable:
+        # rfile.readinto() not callable:
         class BadRead:
-            read = 'hello'
+            readinto = 'hello'
             def readline(self, size):
                 assert False
         rfile = BadRead()
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(TypeError) as cm:
             readchunk(rfile)
-        self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
+        self.assertEqual(str(cm.exception), 'rfile.readinto() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
         rfile = io.BytesIO(b'0\r\n\r\n')
@@ -1137,7 +1137,7 @@ class TestMiscFunctions_Py(BackendTestCase):
             def readline(self, size):
                 assert type(size) is int and size == 4096
                 return bytearray(b'c\r\n')
-            def read(self, size):
+            def readinto(self, buf):
                 assert False
         rfile = Bad1()
         with self.assertRaises(TypeError) as cm:
@@ -1154,7 +1154,7 @@ class TestMiscFunctions_Py(BackendTestCase):
             def readline(self, size):
                 assert type(size) is int and size == 4096
                 return self.__line
-            def read(self, size):
+            def readinto(self, buf):
                 assert False
         for bad in (b'', b'\n', b'c', b'c\rhello, world', b'c\nhello, world'):
             rfile = Bad2(bad)
@@ -1172,9 +1172,9 @@ class TestMiscFunctions_Py(BackendTestCase):
             def readline(self, size):
                 assert type(size) is int and size == 4096
                 return b'c\r\n'
-            def read(self, size):
-                assert type(size) is int and size == 14
-                return self.__data
+            def readinto(self, buf):
+                assert type(buf) is memoryview and len(buf) == 14
+                return 14
 
         ret = bytearray(b'hello, world\r\n')
         self.assertEqual(len(ret), 14)
@@ -2747,7 +2747,9 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, 1800)
         with self.assertRaises(ValueError) as cm:
             body.read()
-        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1800')
+        self.assertEqual(str(cm.exception),
+            'expected to read 1800 bytes, but received 1776'
+        )
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
@@ -2769,7 +2771,9 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(body.content_length, 37)
         with self.assertRaises(ValueError) as cm:
             body.read(19)
-        self.assertEqual(str(cm.exception), 'underflow: 17 < 19')
+        self.assertEqual(str(cm.exception),
+            'expected to read 19 bytes, but received 17'
+        )
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
@@ -2863,7 +2867,9 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, 1777)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
+        self.assertEqual(str(cm.exception),
+            'expected to read 1777 bytes, but received 1776'
+        )
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
@@ -2924,7 +2930,9 @@ class TestBody_Py(BodyBackendTestCase):
         body = Body(rfile, length)
         with self.assertRaises(ValueError) as cm:
             list(body)
-        self.assertEqual(str(cm.exception), 'underflow: 1776 < 1777')
+        self.assertEqual(str(cm.exception),
+            'expected to read 1777 bytes, but received 1776'
+        )
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
         with self.assertRaises(ValueError) as cm:
@@ -3010,10 +3018,10 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         rfile = self.Reader(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
-        self.assertEqual(sys.getrefcount(rfile), 3)
+        self.assertEqual(sys.getrefcount(rfile), 5)
         self.assertIs(body.fastpath, True)
         self.check_common(body, rfile)
-        self.assertEqual(sys.getrefcount(rfile), 3)
+        self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3030,7 +3038,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
         # Not a backend.Reader, rfile.readline missing:
         class MissingReadline:
-            def read(self, size=None):
+            def readinto(self, dst):
                 assert False
         rfile = MissingReadline()
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3044,7 +3052,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         # Not a backend.Reader, rfile.readline() not callable:
         class BadReadline:
             readline = 'hello'
-            def read(self, size=None):
+            def readinto(self, dst):
                 assert False
         rfile = BadReadline()
         self.assertEqual(sys.getrefcount(rfile), 2)
@@ -3053,7 +3061,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(str(cm.exception), 'rfile.readline() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.read missing:
+        # Not a backend.Reader, rfile.readline missing:
         class MissingRead:
             def readline(self, size):
                 assert False
@@ -3062,20 +3070,20 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         with self.assertRaises(AttributeError) as cm:
             self.ChunkedBody(rfile)
         self.assertEqual(str(cm.exception),
-            "'MissingRead' object has no attribute 'read'"
+            "'MissingRead' object has no attribute 'readinto'"
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.read() not callable:
+        # Not a backend.Reader, rfile.readinto() not callable:
         class BadRead:
-            read = 'hello'
+            readinto = 'hello'
             def readline(self, size):
                 assert False
         rfile = BadRead()
         self.assertEqual(sys.getrefcount(rfile), 2)
         with self.assertRaises(TypeError) as cm:
             self.ChunkedBody(rfile)
-        self.assertEqual(str(cm.exception), 'rfile.read() is not callable')
+        self.assertEqual(str(cm.exception), 'rfile.readinto() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_repr(self):
@@ -3083,10 +3091,9 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         for rfile in self.iter_rfiles(data):
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
-            refcount = (3 if type(rfile) is self.Reader else 5)
-            self.assertEqual(sys.getrefcount(rfile), refcount)
+            self.assertEqual(sys.getrefcount(rfile), 5)
             self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
-            self.assertEqual(sys.getrefcount(rfile), refcount)
+            self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3167,8 +3174,8 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                 assert type(size) is int and size == 4096
                 return self.__ret1
 
-            def read(self, size):
-                assert type(size) is int and size == 14
+            def readinto(self, buf):
+                assert type(buf) is memoryview and len(buf) == 14
                 return self.__ret2
 
         # readline() dosen't return bytes:
@@ -3233,14 +3240,14 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # read() dosen't return bytes:
+        # readinto() dosen't return bytes:
         rfile = MockFile(good1, bytearray(good2))
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(TypeError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
-            'need a {!r}; read() returned a {!r}'.format(bytes, bytearray)
+            TYPE_ERROR.format('received', int, bytearray, bytearray(good2))
         )
         self.assertEqual(body.state, self.BODY_ERROR)
         with self.assertRaises(ValueError) as cm:
@@ -3858,7 +3865,9 @@ class TestBodyIter_Py(BodyBackendTestCase):
                 body = self.BodyIter(badsource, total)
                 with self.assertRaises(TypeError) as cm:
                     body.write_to(wfile)
-                self.assertEqual(str(cm.exception), msg)
+                self.assertEqual(str(cm.exception),
+                    'need a {!r}; source contains a {!r}'.format(bytes, type(None))
+                )
                 self.assertEqual(body.state, self.BODY_ERROR)
                 wfile = io.BytesIO()
                 with self.assertRaises(ValueError) as cm:
@@ -4649,7 +4658,11 @@ class TestReader_Py(BackendTestCase):
 
         (sock, reader) = self.new(data)
         buf = bytearray(16777216)
-        self.assertEqual(reader.readinto(buf), len(data))
+        with self.assertRaises(ValueError) as cm:
+            reader.readinto(buf)
+        self.assertEqual(str(cm.exception),
+            'expected to read 16777216 bytes, but received 38'
+        )
         self.assertEqual(buf, data + (b'\x00' * (len(buf) - len(data))))
 
         dst = memoryview(bytearray(12345))
@@ -4713,7 +4726,7 @@ class WSocket:
         assert isinstance(buf, memoryview)
         self._calls.append(('send', buf.tobytes()))
         size = self._fp.write(buf)
-        return  self._return_or_raise('send', size)
+        return self._return_or_raise('send', size)
 
 
 class TestWriter_Py(BackendTestCase):
@@ -4811,9 +4824,11 @@ class TestWriter_Py(BackendTestCase):
 
         sock = WSocket(send=0)
         writer = self.Writer(sock, base.bodies)
-        with self.assertRaises(OSError) as cm:
+        with self.assertRaises(ValueError) as cm:
             writer.write(data1)
-        self.assertEqual(str(cm.exception), 'expected 17; send() returned 0')
+        self.assertEqual(str(cm.exception),
+            'expected to write 17 bytes, but sent 0'
+        )
         self.assertEqual(writer.tell(), 0)
         self.assertEqual(sock._fp.getvalue(), data1)
         self.assertEqual(sock._calls, [('send', data1)])

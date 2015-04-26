@@ -154,14 +154,82 @@ def _validate_read_size(name, size, remaining):
     return _validate_size(name, size, MAX_IO_SIZE)
 
 
-def _send(method, src, name, exact=False):
-    assert exact in (True, False)
+def _recv_into(method, dst):
+    max_size = len(dst)
+    size = method(dst)
+    return _validate_size('received', size, max_size)
+
+
+def _readinto(method, dst):
+    dst = memoryview(dst)
+    start = 0
+    stop = len(dst)
+    while start < stop:
+        received = _recv_into(method, dst[start:])
+        if received == 0:
+            break
+        start += received
+    if start != stop:
+        raise ValueError(
+            'expected to read {} bytes, but received {}'.format(stop, start)
+        )
+    return start
+
+def _readinto_from(robj, dst):
+    if type(robj) is Reader:
+        return robj.readinto(dst)
+    return _readinto(robj, dst)
+
+
+def _send(method, src):
+    assert len(src) > 0, src
+    max_size = len(src)
+    size = method(src)
+    return _validate_size('sent', size, max_size)
+
+
+def _write(method, src):
+    src = memoryview(src)
+    start = 0
+    stop = len(src)
+    while start < stop:
+        sent = _send(method, src[start:])
+        if sent == 0:
+            break
+        start += sent
+    if start != stop:
+        raise ValueError(
+            'expected to write {} bytes, but sent {}'.format(stop, start)
+        )
+    return start
+
+
+def _write_to(wobj, src):
     if len(src) == 0:
         return 0
-    size = method(src)
-    if exact:
-        return _validate_exact_size(name, size, len(src))
-    return _validate_size(name, size, len(src))
+    if type(wobj) is Writer:
+        return wobj.write(src)
+    return _write(wobj, src)
+
+
+def _get_robj(rfile):
+    if type(rfile) is Reader:
+        return rfile
+    return _getcallable('rfile', rfile, 'readinto')
+
+
+def _get_readline(rfile):
+    if type(rfile) is Reader:
+        return rfile
+    return _getcallable('rfile', rfile, 'readline')
+
+
+def _get_wobj(wfile):
+    if type(wfile) is Writer:
+        return wfile
+    return _getcallable('wfile', wfile, 'write')
+
+
 
 
 class Range:
@@ -614,6 +682,13 @@ def _validate_chunk(chunk):
     return chunk
 
 
+def _format_chunk(size, ext):
+    if ext is None:
+        return '{:x}\r\n'.format(size).encode()
+    (key, value) = ext
+    return '{:x};{}={}\r\n'.format(size, key, value).encode()
+
+
 def format_chunk(chunk):
     (ext, data) = _validate_chunk(chunk)
     if ext is None:
@@ -812,6 +887,10 @@ class Reader:
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
         return parse_response(method, preamble, self)
 
+    def readchunkline(self):
+        line = self.read_until(4096, b'\r\n')
+        return parse_chunk(line)
+
     def readchunk(self):
         line = self.read_until(4096, b'\r\n')
         (size, ext) = parse_chunk(line)
@@ -823,31 +902,6 @@ class Reader:
             raise ValueError('bad chunk data termination: {!r}'.format(end))
         return (ext, data[:-2])
 
-    def read(self, size):
-        assert isinstance(size, int)
-        if not (0 <= size <= MAX_IO_SIZE):
-            raise ValueError(
-                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
-            )
-        if size == 0:
-            return b''
-        src = self._drain(size)
-        src_len = len(src)
-        if src_len == size:
-            return src
-        assert src_len < size
-        dst = memoryview(bytearray(size))
-        dst[0:src_len] = src
-        stop = src_len
-        while stop < size:
-            added = self._recv_into(dst[stop:])
-            if added <= 0:
-                assert added == 0
-                break
-            assert stop + added <= size
-            stop += added
-        return dst[:stop].tobytes()
-
     def readinto(self, dst):
         dst = memoryview(dst)
         dst_len = len(dst)
@@ -858,14 +912,24 @@ class Reader:
         src = self._drain(dst_len)
         src_len = len(src)
         dst[0:src_len] = src
-        start = src_len
-        while start < dst_len:
-            added = self._recv_into(dst[start:])
-            if added <= 0:
-                assert added == 0
-                break
-            start += added
-        return start
+        added = _readinto(self._sock_recv_into, dst[src_len:])
+        assert added is not None
+        self._rawtell += added
+        assert dst_len == src_len + added
+        return dst_len
+
+    def read(self, size):
+        assert isinstance(size, int)
+        if not (0 <= size <= MAX_IO_SIZE):
+            raise ValueError(
+                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
+            )
+        if size == 0:
+            return b''
+        dst = memoryview(bytearray(size))
+        self.readinto(dst)
+        return dst.tobytes()
+
 
 
 ################################################################################
@@ -880,6 +944,22 @@ def set_default_header(headers, key, val):
         raise ValueError(
             '{!r} mismatch: {!r} != {!r}'.format(key, val, cur)
         )
+
+
+def set_output_headers(headers, body):
+    if body is None:
+        return
+    if type(body) is bytes:
+        set_default_header(headers, 'content-length', len(body))
+    elif type(body) in (Body, BodyIter):
+        set_default_header(headers, 'content-length', body.content_length)
+    elif type(body) in (ChunkedBody, ChunkedBodyIter):
+        set_default_header(headers, 'transfer-encoding', 'chunked')
+    else:
+        raise TypeError(
+            'bad body type: {!r}: {!r}'.format(type(body), body)
+        )
+    
 
 
 class Writer:
@@ -902,23 +982,8 @@ class Writer:
     def flush(self):
         pass
 
-    def _send(self, buf):
-        size = self._sock_send(buf)
-        _validate_size('sent', size, len(buf))
-        return size
-
     def write(self, buf):
-        buf = memoryview(buf)
-        size = 0
-        while size < len(buf):
-            added = self._send(buf[size:])
-            if added == 0:
-                break
-            size += added
-        if size != len(buf):
-            raise OSError(
-                'expected {!r}; send() returned {!r}'.format(len(buf), size)
-            )
+        size = _write(self._sock_send, buf)
         self._tell += size
         return size
 
@@ -990,7 +1055,7 @@ class Body:
 
     __slots__ = (
         '_rfile',
-        '_rfile_read',
+        '_robj',
         '_content_length',
         '_remaining',
         '_state',
@@ -1001,8 +1066,10 @@ class Body:
         self._rfile = rfile
         self._remaining = self._content_length = content_length
         self._state = BODY_READY
-        if type(rfile) is not Reader:
-            self._rfile_read = _getcallable('rfile', rfile, 'read')
+        if type(rfile) is Reader:
+            self._robj = rfile
+        else:
+            self._robj = _getcallable('rfile', rfile, 'readinto')
 
     @property
     def rfile(self):
@@ -1021,27 +1088,23 @@ class Body:
         return self._state
 
     def __repr__(self):
-        return '{}(<rfile>, {!r})'.format(
-            self.__class__.__name__, self.content_length
-        )
+        return 'Body(<rfile>, {!r})'.format(self._content_length)
 
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)
         self._state = BODY_STARTED
         try:
             remaining = self._remaining
-            io_size = IO_SIZE
-            read = self._rfile.read
+            iosize = min(remaining, IO_SIZE)
+            dst = memoryview(bytearray(iosize))
+            robj = self._robj
             while remaining > 0:
-                readsize = min(remaining, io_size)
-                remaining -= readsize
+                size = min(remaining, iosize)
+                remaining -= size
                 assert remaining >= 0
-                data = read(readsize)
-                if len(data) != readsize:
-                    raise ValueError(
-                        'underflow: {} < {}'.format(len(data), readsize)
-                    )
-                yield data
+                sub = dst[:size]
+                _readinto_from(robj, sub)
+                yield sub.tobytes()
         except:
             self._state = BODY_ERROR
             raise
@@ -1058,23 +1121,20 @@ class Body:
             return b''
         try:
             rsize = min(self._remaining, rsize)
-            data = self._rfile.read(rsize)
-            if len(data) != rsize:
-                raise ValueError(
-                    'underflow: {} < {}'.format(len(data), rsize)
-                )
+            dst = memoryview(bytearray(rsize))
+            _readinto_from(self._robj, dst)
             self._remaining -= rsize
             assert self._remaining >= 0
             if size is None:
                 self._state = BODY_CONSUMED
-            return data
+            return dst.tobytes()
         except:
             self._state = BODY_ERROR
             raise
 
     def write_to(self, wfile):
         total = sum(wfile.write(data) for data in self)
-        assert total == self.content_length
+        assert total == self._content_length
         wfile.flush()
         return total
 
@@ -1116,13 +1176,45 @@ def _readchunk(readline, read):
     if end != b'\r\n':
         raise ValueError('bad chunk data termination: {!r}'.format(end))
     return (ext, data)
+    
+
+def _readchunkline(readline):
+    line = readline(4096)
+    if type(line) is not bytes:
+        raise TypeError(
+            'need a {!r}; readline() returned a {!r}'.format(bytes, type(line))
+        )
+    if len(line) > 4096:
+        raise ValueError(
+            'readline() returned too many bytes: {} > {}'.format(len(line), 4096)
+        )
+    if line[-2:] != b'\r\n':
+        raise ValueError(
+            '{!r} not found in {!r}...'.format(b'\r\n', line[:32])
+        )
+    return parse_chunk(line[:-2])
+
+
+def _readchunk_from(robj, readline, nopack=False):
+    if type(robj) is Reader:
+        (size, ext) = robj.readchunkline()
+    else:
+        (size, ext) = _readchunkline(readline)
+    dst = memoryview(bytearray(size + 2))
+    _readinto_from(robj, dst)
+    if dst[-2:] != b'\r\n':
+        raise ValueError(
+            'bad chunk data termination: {!r}'.format(dst[-2:].tobytes())
+        )
+    if nopack:
+        return (size, ext, dst)
+    return (ext, dst[:-2].tobytes())
 
 
 def readchunk(rfile):
-    readline = _getcallable('rfile', rfile, 'readline')
-    read = _getcallable('rfile', rfile, 'read')
-    (ext, data) = _readchunk(readline, read)
-    return (ext, data[:-2])
+    robj = _get_robj(rfile)
+    readline = _get_readline(rfile)
+    return _readchunk_from(robj, readline)
 
 
 class ChunkedBody:
@@ -1130,6 +1222,7 @@ class ChunkedBody:
 
     __slots__ = (
         '_rfile',
+        '_robj',
         '_readline',
         '_read',
         '_state',
@@ -1137,9 +1230,8 @@ class ChunkedBody:
 
     def __init__(self, rfile):
         self._rfile = rfile
-        if type(rfile) is not Reader:
-            self._read = _getcallable('rfile', rfile, 'read')
-            self._readline = _getcallable('rfile', rfile, 'readline')
+        self._robj = _get_robj(rfile)
+        self._readline = _get_readline(rfile)
         self._state = BODY_READY
 
     def __repr__(self):
@@ -1161,10 +1253,7 @@ class ChunkedBody:
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
         self._state = BODY_STARTED
         try:
-            if type(self._rfile) is Reader:
-                chunk = self._rfile.readchunk()
-            else:
-                chunk = readchunk(self._rfile)
+            chunk = _readchunk_from(self._robj, self._readline)
             if len(chunk[1]) == 0:
                 self._state = BODY_CONSUMED
         except:
@@ -1204,7 +1293,29 @@ class ChunkedBody:
             yield self.readchunk()
 
     def write_to(self, wfile):
-        return sum(write_chunk(wfile, chunk) for chunk in self)
+        _check_body_state('ChunkedBody', self._state, BODY_READY)
+        self._state = BODY_STARTED
+        robj = self._robj
+        readline = self._readline
+        wobj = _get_wobj(wfile)
+        readchunk_from = _readchunk_from
+        format_chunk = _format_chunk
+        write_to = _write_to
+        total = 0
+        try:
+            while True:
+                (size, ext, data) = readchunk_from(robj, readline, nopack=True)
+                assert len(data) == size + 2 and data[-2:] == b'\r\n'
+                line = format_chunk(size, ext)
+                total += write_to(wobj, line)
+                total += write_to(wobj, data)
+                if size == 0:
+                    break
+        except:
+            self._state = BODY_ERROR
+            raise
+        self._state = BODY_CONSUMED
+        return total
 
 
 class BodyIter:
@@ -1233,18 +1344,22 @@ class BodyIter:
     def write_to(self, wfile):
         _check_body_state('BodyIter', self._state, BODY_READY)
         self._state = BODY_STARTED
-        wfile_write = _getcallable('wfile', wfile, 'write')
+        wobj = _get_wobj(wfile)
         length = self._content_length
         total = 0
         try:
-            for obj in self._source:
-                obj = memoryview(obj)
-                total += len(obj)
+            for part in self._source:
+                if type(part) is not bytes:
+                    raise TypeError(
+                        'need a {!r}; source contains a {!r}'.format(
+                            bytes, type(part)
+                        )
+                    )
+                total += _write_to(wobj, part)
                 if total > length:
                     raise ValueError(
                         'exceeds content_length: {} > {}'.format(total, length)
                     )
-                _send(wfile_write, obj, 'wrote', exact=True)
             if total != length:
                 raise ValueError(
                     'deceeds content_length: {} < {}'.format(total, length)

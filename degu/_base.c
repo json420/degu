@@ -487,7 +487,7 @@ _move(DeguDst dst, DeguSrc src)
 static size_t
 _copy(DeguDst dst, DeguSrc src)
 {
-    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
+    if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
         Py_FatalError("_copy(): bad internal call");
     }
     memcpy(dst.buf, src.buf, src.len);
@@ -2353,7 +2353,6 @@ _unpack_chunk(DeguChunk *dc, PyObject *chunk)
         goto error;
     }
 
-    printf("chunk %p: unpacking extension\n", (void *)chunk);
     /* chunk[0]: extension */
     _SET(ext, PyTuple_GET_ITEM(chunk, 0))
     if (ext != Py_None) {
@@ -2375,7 +2374,6 @@ _unpack_chunk(DeguChunk *dc, PyObject *chunk)
         _SET_AND_INC(dc->val, PyTuple_GET_ITEM(ext, 1))
     }
 
-    printf("chunk %p: unpacking data\n", (void *)chunk);
     /* chunk[1]: data */
     _SET_AND_INC(dc->data, PyTuple_GET_ITEM(chunk, 1))
     if (! PyBytes_CheckExact(dc->data)) {
@@ -2384,7 +2382,6 @@ _unpack_chunk(DeguChunk *dc, PyObject *chunk)
         );
         goto error;
     }
-    printf("chunk %p: past the data\n", (void *)chunk);
     dc->size = (size_t)PyBytes_GET_SIZE(dc->data);
     if (dc->size > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
@@ -2411,8 +2408,12 @@ _pack_chunk(DeguChunk *dc)
     if (dc->data == NULL || ! PyBytes_CheckExact(dc->data)) {
         Py_FatalError("_pack_chunk(): bad internal call");
     }
+    if (PyBytes_GET_SIZE(dc->data) == (ssize_t)dc->size + 2) {
+        if (_PyBytes_Resize(&(dc->data), (ssize_t)dc->size) != 0) {
+            goto error;
+        }
+    }
     if (PyBytes_GET_SIZE(dc->data) != (ssize_t)dc->size) {
-        printf("not packable: %zd != %zu\n", PyBytes_GET_SIZE(dc->data), dc->size);
         Py_FatalError("_pack_chunk(): bad internal call");
     }   
     if (dc->key == NULL && dc->val == NULL) {
@@ -2568,9 +2569,6 @@ _write(PyObject *method, DeguSrc src)
 static ssize_t
 _write_to(PyObject *wobj, DeguSrc src)
 {
-    if (src.len == 0) {
-        return 0;
-    }
     if (Py_TYPE(wobj) == &WriterType) {
         return _Writer_write((Writer *)wobj, src);
     }
@@ -2635,10 +2633,6 @@ cleanup:
 static bool
 _readchunk_from(PyObject *robj, PyObject *readline, DeguChunk *dc)
 {
-    PyObject *data = NULL;
-    bool ret = true;
-    
-    printf("readchunk_from %p\n", (void *)dc);
 
     if (Py_TYPE(robj) == &ReaderType) {
         if (! _Reader_readchunkline((Reader *)robj, dc)) {
@@ -2652,8 +2646,8 @@ _readchunk_from(PyObject *robj, PyObject *readline, DeguChunk *dc)
     }
 
     const ssize_t size = (ssize_t)dc->size + 2;
-    _SET(data, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = _dst_frombytes(data);
+    _SET(dc->data, PyBytes_FromStringAndSize(NULL, size))
+    DeguDst dst = _dst_frombytes(dc->data);
     if (! _readinto_from(robj, dst)) {
         goto error;
     }
@@ -2662,19 +2656,11 @@ _readchunk_from(PyObject *robj, PyObject *readline, DeguChunk *dc)
         _value_error("bad chunk data termination: %R", end);
         goto error;
     }
-
-    if (_PyBytes_Resize(&data, (ssize_t)dc->size) != 0) {
-        goto error;
-    }
-    _SET_AND_INC(dc->data, data)
-    goto cleanup;
+    return true;
 
 error:
-    ret = false;
-
-cleanup:
-    Py_CLEAR(data);
-    return ret;
+    _clear_degu_chunk(dc);
+    return false;
 }
 
 static PyObject *
@@ -3317,8 +3303,31 @@ _set_output_headers(PyObject *headers, PyObject *body)
 }
 
 static int64_t
+_Writer_write_combined(Writer *self, DeguSrc src1, DeguSrc src2)
+{
+    const size_t len = src1.len + src2.len;
+    if (len == 0) {
+        return 0;
+    }
+    DeguDst dst = _calloc_dst(len);
+    if (dst.buf == NULL) {
+        return -1;
+    }
+    _copy(dst, src1);
+    _copy(_dst_slice(dst, src1.len, dst.len), src2);
+    const int64_t wrote = _Writer_write(self, (DeguSrc){dst.buf, dst.len});
+    free(dst.buf);
+    return wrote;
+}
+
+
+static int64_t
 _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
 {
+    if (PyBytes_CheckExact(body)) {
+        return _Writer_write_combined(self, preamble, _frombytes(body));
+    }
+
     const uint64_t origtell = self->tell;
     uint64_t total = 0;
     int64_t wrote;
@@ -3332,7 +3341,6 @@ _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
     }
     total += (uint64_t)wrote;
 
-    /* Write the body */
     if (body == Py_None) {
         wrote = 0;
     }
@@ -3807,7 +3815,6 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
     }
     else {
         self->fastpath = false;
-        _SET(self->readline, _getcallable("rfile", rfile, attr_readline))
     }
     self->state = BODY_READY;
     self->chunked = true;
@@ -4189,7 +4196,6 @@ ChunkedBodyIter_init(ChunkedBodyIter *self, PyObject *args, PyObject *kw)
     }
     _SET_AND_INC(self->source, source)
     self->state = BODY_READY;
-    printf("finished init\n");
     return 0;
 
 error:
@@ -4222,7 +4228,6 @@ _ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *wfile)
     _SET(wobj, _get_wobj(wfile))
     _SET(iterator, PyObject_GetIter(self->source))
     while ((chunk = PyIter_Next(iterator))) {
-        printf("chunks = %p\n", (void *)chunk);
         if (empty) {
             PyErr_SetString(PyExc_ValueError,
                 "additional chunk after empty chunk data"

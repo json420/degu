@@ -281,6 +281,7 @@ def _build_host(default_port, host, port, *extra):
         return host
     return '{}:{}'.format(host, port)
 
+#setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 class Client:
     """
