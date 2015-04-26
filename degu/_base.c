@@ -497,6 +497,9 @@ _copy(DeguDst dst, DeguSrc src)
 static DeguDst
 _calloc_dst(const size_t len)
 {
+    if (len == 0) {
+        Py_FatalError("_call_dst(): bad internal call");
+    }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
@@ -539,6 +542,9 @@ _min(const size_t a, const size_t b)
 static uint8_t *
 _calloc_buf(const size_t len)
 {
+    if (len == 0) {
+        Py_FatalError("_call_buf(): bad internal call");
+    }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
@@ -3671,14 +3677,21 @@ _Body_write_to(Body *self, PyObject *wfile)
     ssize_t wrote;
     uint64_t total = 0;
     int64_t ret = -2;
+    uint8_t *dst_buf = NULL;
 
     if (! _check_body_state("Body", self->state, BODY_READY)) {
         goto error;
     }
     self->state = BODY_STARTED;
+    if (self->remaining == 0) {
+        self->state = BODY_CONSUMED;
+        return 0;
+    }
+
     _SET(wobj, _get_wobj(wfile))
     iosize = _min(IO_SIZE, self->remaining);
-    DeguDst dst = _calloc_dst(iosize);
+    dst_buf = _calloc_buf(iosize);
+    DeguDst dst = {dst_buf, iosize};
     if (dst.buf == NULL) {
         goto error;
     }
@@ -3703,8 +3716,8 @@ error:
 
 cleanup:
     Py_CLEAR(wobj);
-    if (dst.buf != NULL) {
-        free(dst.buf);
+    if (dst_buf != NULL) {
+        free(dst_buf);
     }
     return ret;
 }
