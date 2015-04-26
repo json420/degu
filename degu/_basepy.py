@@ -1005,6 +1005,10 @@ class Writer:
             return self.write(preamble)
         if type(body) is bytes:
             return self.write(preamble + body)
+        if type(body) not in bodies:
+            raise TypeError(
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
         self.write(preamble)
         orig_tell = self.tell()
         total = _validate_length("total_wrote", body.write_to(self))
