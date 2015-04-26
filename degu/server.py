@@ -168,7 +168,9 @@ def _handle_requests(app, sock, max_requests, session, bodies):
                     )
 
         # Write response:
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
         writer.write_response(status, reason, headers, body)
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
 
         # Update session counter:
         session['requests'] = count

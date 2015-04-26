@@ -205,9 +205,9 @@ class Connection:
                 raise UnconsumedResponseError(self._response_body)
             if self.base_headers:
                 headers.update(self.base_headers)
-            tell = self._wfile.tell()
-            wrote = self._wfile.write_request(method, uri, headers, body)
-            #assert self._wfile.tell() == tell + wrote
+            #self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
+            self._wfile.write_request(method, uri, headers, body)
+            #self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
             response = self._rfile.read_response(method)
             self._response_body = response.body
             return response
@@ -282,6 +282,7 @@ def _build_host(default_port, host, port, *extra):
     return '{}:{}'.format(host, port)
 
 #setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+#setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
 
 class Client:
     """
