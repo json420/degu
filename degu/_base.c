@@ -2820,6 +2820,7 @@ error:
 
 cleanup:
     Py_CLEAR(wobj);
+    _clear_degu_chunk(&dc);
     return ret;
 }
 
