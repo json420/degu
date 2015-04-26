@@ -236,14 +236,14 @@ Constants
     size matches the claimed *content_length*.  For example:
 
     >>> import io
-    >>> from degu.base import BodyIter
+    >>> from degu.base import bodies
     >>> def generate_body():
     ...     yield b''
     ...     yield b'hello'
     ...     yield b', '
     ...     yield b'world'
     ...
-    >>> body = BodyIter(generate_body(), 12)
+    >>> body = bodies.BodyIter(generate_body(), 12)
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)
     12
@@ -256,27 +256,27 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: BodyIter.closed, already consumed
+    ValueError: BodyIter.state == BODY_CONSUMED, already consumed
 
     A ``ValueError`` will be raised in the total produced by *source* is less
     than *content_length*:
 
-    >>> body = BodyIter(generate_body(), 13)
+    >>> body = bodies.BodyIter(generate_body(), 13)
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: underflow: 12 < 13
+    ValueError: deceeds content_length: 12 < 13
 
     Likewise, a ``ValueError`` will be raised if the total produced by *source*
     is greater than *content_length*:
 
-    >>> body = BodyIter(generate_body(), 11)
+    >>> body = bodies.BodyIter(generate_body(), 11)
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: overflow: 12 > 11
+    ValueError: exceeds content_length: 12 > 11
 
 
     .. attribute:: source
@@ -329,9 +329,9 @@ Constants
     example:
 
     >>> from io import BytesIO
-    >>> from degu.base import ChunkedBody
+    >>> from degu.base import bodies
     >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
-    >>> body = ChunkedBody(rfile)
+    >>> body = bodies.ChunkedBody(rfile)
     >>> list(body)
     [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
 
@@ -340,7 +340,7 @@ Constants
     >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: ChunkedBody.closed, already consumed
+    ValueError: ChunkedBody.state == BODY_CONSUMED, already consumed
 
     .. attribute:: chunked
 
@@ -417,13 +417,13 @@ Constants
     For example:
 
     >>> import io
-    >>> from degu.base import ChunkedBodyIter
+    >>> from degu.base import bodies
     >>> def generate_chunked_body():
     ...     yield (None,            b'hello')
     ...     yield (('foo', 'bar'),  b'world')
     ...     yield (None,            b'')
     ...
-    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> body = bodies.ChunkedBodyIter(generate_chunked_body())
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)
     33
@@ -436,7 +436,7 @@ Constants
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: ChunkedBodyIter.closed, already consumed
+    ValueError: ChunkedBodyIter.state == BODY_CONSUMED, already consumed
 
     A ``ValueError`` will be raised if the *data* in the final chunk isn't
     empty:
@@ -445,7 +445,7 @@ Constants
     ...     yield (None,            b'hello')
     ...     yield (('foo', 'bar'),  b'world')
     ...
-    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> body = bodies.ChunkedBodyIter(generate_chunked_body())
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
@@ -460,12 +460,12 @@ Constants
     ...     yield (None,  b'')
     ...     yield (None,  b'world')
     ...
-    >>> body = ChunkedBodyIter(generate_chunked_body())
+    >>> body = bodies.ChunkedBodyIter(generate_chunked_body())
     >>> wfile = io.BytesIO()
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...
-    ValueError: non-empty chunk data after empty
+    ValueError: additional chunk after empty chunk data
 
     .. attribute:: source
 

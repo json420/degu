@@ -298,7 +298,7 @@ class TestConnection(TestCase):
 
         # Test when the previous response body wasn't consumed:
         class DummyBody:
-            closed = False
+            state = 0
 
         sock = DummySocket()
         conn = client.Connection(sock, None, base.bodies)

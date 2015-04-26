@@ -535,8 +535,8 @@ client-side request body using chunked trasfer-encoding:
 To use this generator as our request body, we need to wrap it in a
 :class:`degu.base.ChunkedBodyIter`, like this:
 
->>> from degu.base import ChunkedBodyIter
->>> body = ChunkedBodyIter(chunked_request_body())
+>>> from degu.base import bodies
+>>> body = bodies.ChunkedBodyIter(chunked_request_body())
 
 And then if we ``POST /chunked``:
 
@@ -546,7 +546,7 @@ b'All your *something else* are belong to us'
 
 Or if we ``POST /length``:
 
->>> body = ChunkedBodyIter(chunked_request_body())
+>>> body = bodies.ChunkedBodyIter(chunked_request_body())
 >>> response = conn.request('POST', '/length', {}, body)
 >>> response.body.read()
 b'All your *something else* are belong to us'

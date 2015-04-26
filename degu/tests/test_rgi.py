@@ -755,7 +755,7 @@ class TestFunctions(TestCase):
 
         # Body is missing 'chunked' attribute:
         bad = deepcopy(good)
-        bad['body'] = Body(content_length=17, closed=False)
+        bad['body'] = Body(content_length=17, state=0)
         bad['headers']['content-length'] = 17
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
@@ -816,7 +816,7 @@ class TestFunctions(TestCase):
             "request.body.content_length != request.headers['content-length']: 17 != 16"
         )
 
-        # Body missing 'closed' attribute:
+        # Body missing 'state' attribute:
         bad = deepcopy(good)
         bad['body'] = Body(chunked=False, content_length=17)
         bad['headers']['content-length'] = 17
@@ -824,25 +824,25 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.body: 'Body' object has no attribute 'closed'"
+            "request.body: 'Body' object has no attribute 'state'"
         )
 
-        # Body.closed must be False prior to calling the application:
+        # Body.states must be False prior to calling the application:
         bad = deepcopy(good)
-        bad['body'] = Body(chunked=False, content_length=17, closed=True)
+        bad['body'] = Body(chunked=False, content_length=17, state=2)
         bad['headers']['content-length'] = 17
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.body.closed must be False; got True"
+            "request.body.state must equal 0; got 2"
         )
 
         # Methods that should work when request.body is a Body instance:
         for method in ('PUT', 'POST'):
             also_good = deepcopy(good)
             also_good['method'] = method
-            also_good['body'] = Body(closed=False, chunked=False, content_length=17)
+            also_good['body'] = Body(state=0, chunked=False, content_length=17)
             also_good['headers']['content-length'] = 17
             request = MockObject(**also_good)
             self.assertIsNone(rgi._validate_request(default_bodies, request))
@@ -851,7 +851,7 @@ class TestFunctions(TestCase):
         for method in ('GET', 'HEAD', 'DELETE'):
             bad = deepcopy(good)
             bad['method'] = method
-            bad['body'] = Body(closed=False, chunked=False, content_length=17)
+            bad['body'] = Body(state=0, chunked=False, content_length=17)
             bad['headers']['content-length'] = 17
             request = MockObject(**bad)
             with self.assertRaises(ValueError) as cm:
@@ -865,7 +865,7 @@ class TestFunctions(TestCase):
 
         # ChunkedBody is missing 'chunked' attribute:
         bad = deepcopy(good)
-        bad['body'] = ChunkedBody(closed=False)
+        bad['body'] = ChunkedBody(state=0)
         bad['headers']['transfer-encoding'] = 'chunked'
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
@@ -876,7 +876,7 @@ class TestFunctions(TestCase):
 
         # ChunkedBody.chunked is False:
         bad = deepcopy(good)
-        bad['body'] = ChunkedBody(closed=False, chunked=False)
+        bad['body'] = ChunkedBody(state=0, chunked=False)
         bad['headers']['transfer-encoding'] = 'chunked'
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
@@ -887,7 +887,7 @@ class TestFunctions(TestCase):
 
         # ChunkedBody with 'content-length' header:
         bad = deepcopy(good)
-        bad['body'] = ChunkedBody(chunked=True, closed=False)
+        bad['body'] = ChunkedBody(chunked=True, state=0)
         bad['headers']['content-length'] = 17
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
@@ -898,7 +898,7 @@ class TestFunctions(TestCase):
 
         # ChunkedBody without 'transfer-encoding' header:
         bad = deepcopy(good)
-        bad['body'] = ChunkedBody(chunked=True, closed=False)
+        bad['body'] = ChunkedBody(chunked=True, state=0)
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, request)
@@ -906,7 +906,7 @@ class TestFunctions(TestCase):
             "request.body: bodies.ChunkedBody, but missing 'transfer-encoding' header"
         )
 
-        # ChunkedBody is missing 'closed' attribute:
+        # ChunkedBody is missing 'state' attribute:
         bad = deepcopy(good)
         bad['body'] = ChunkedBody(chunked=True)
         bad['headers']['transfer-encoding'] = 'chunked'
@@ -914,25 +914,25 @@ class TestFunctions(TestCase):
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.body: 'ChunkedBody' object has no attribute 'closed'"
+            "request.body: 'ChunkedBody' object has no attribute 'state'"
         )
 
-        # ChunkedBody.closed must be False prior to calling the application:
+        # ChunkedBody.state must be 0 prior to calling the application:
         bad = deepcopy(good)
-        bad['body'] = ChunkedBody(chunked=True, closed=True)
+        bad['body'] = ChunkedBody(chunked=True, state=2)
         bad['headers']['transfer-encoding'] = 'chunked'
         request = MockObject(**bad)
         with self.assertRaises(ValueError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.body.closed must be False; got True"
+            'request.body.state must equal 0; got 2'
         )
 
         # Methods that should work when request.body is a ChunkedBody instance:
         for method in ('PUT', 'POST'):
             bad = deepcopy(good)
             bad['method'] = method
-            bad['body'] = ChunkedBody(closed=False, chunked=True)
+            bad['body'] = ChunkedBody(state=0, chunked=True)
             bad['headers']['transfer-encoding'] = 'chunked'
             request = MockObject(**bad)
             self.assertIsNone(rgi._validate_request(default_bodies, request))
@@ -941,7 +941,7 @@ class TestFunctions(TestCase):
         for method in ('GET', 'HEAD', 'DELETE'):
             bad = deepcopy(good)
             bad['method'] = method
-            bad['body'] = ChunkedBody(closed=False, chunked=True)
+            bad['body'] = ChunkedBody(state=0, chunked=True)
             bad['headers']['transfer-encoding'] = 'chunked'
             request = MockObject(**bad)
             with self.assertRaises(ValueError) as cm:
@@ -1060,10 +1060,10 @@ class TestFunctions(TestCase):
         bad_bodies = (
             b'D' * 17,
             bytearray(b'D' * 17),
-            Body(closed=False, chunked=False, content_length=17),
-            BodyIter(closed=False, chunked=False, content_length=17),
-            ChunkedBody(closed=False, chunked=False),
-            ChunkedBodyIter(closed=False, chunked=False),
+            Body(state=0, chunked=False, content_length=17),
+            BodyIter(state=0, chunked=False, content_length=17),
+            ChunkedBody(state=0, chunked=False),
+            ChunkedBodyIter(state=0, chunked=False),
         )
         for body in bad_bodies:
             r = MockObject(method='HEAD')
@@ -1101,8 +1101,8 @@ class TestFunctions(TestCase):
         bad_bodies = (
             b'hello',
             bytearray(b'hello'),
-            Body(content_length=5, chunked=False, closed=True),
-            BodyIter(content_length=5, chunked=False, closed=True),
+            Body(content_length=5, chunked=False, state=2),
+            BodyIter(content_length=5, chunked=False, state=2),
         )
         for body in bad_bodies:
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
@@ -1134,7 +1134,7 @@ class TestFunctions(TestCase):
         # response body is (Body, BodyIter), but missing 'content_length'
         # attribute:
         for klass in (Body, BodyIter):
-            body = klass(chunked=False, closed=False)
+            body = klass(chunked=False, state=0)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1146,7 +1146,7 @@ class TestFunctions(TestCase):
 
         # length mismatch when body is (Body, BodyIter):
         for klass in (Body, BodyIter):
-            body = klass(chunked=False, closed=False, content_length=18)
+            body = klass(chunked=False, state=0, content_length=18)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1157,7 +1157,7 @@ class TestFunctions(TestCase):
         # response body is (Body, BodyIter), but 'content-length' header is 
         # missing (should be filled in by server before writing response):
         for klass in (Body, BodyIter):
-            body = klass(chunked=False, closed=False, content_length=18)
+            body = klass(chunked=False, state=0, content_length=18)
             good = (200, 'OK', {}, body)
             self.assertIsNone(
                 rgi._validate_response(default_bodies, deepcopy(request), good)
@@ -1165,7 +1165,7 @@ class TestFunctions(TestCase):
 
         # response body is (Body, BodyIter), but missing 'chunked' attribute:
         for klass in (Body, BodyIter):
-            body = klass(closed=False, content_length=17)
+            body = klass(state=0, content_length=17)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1177,7 +1177,7 @@ class TestFunctions(TestCase):
 
         # response body is (Body, BodyIter), but body.chunked is True:
         for klass in (Body, BodyIter):
-            body = klass(chunked=True, closed=False, content_length=17)
+            body = klass(chunked=True, state=0, content_length=17)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1188,7 +1188,7 @@ class TestFunctions(TestCase):
         # response body is (ChunkedBody, ChunkedBodyIter), but 'content-length'
         # header is included:
         for klass in (ChunkedBody, ChunkedBodyIter):
-            body = klass(closed=False, chunked=True)
+            body = klass(state=0, chunked=True)
             bad = (200, 'OK', {'content-length': 17}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1202,7 +1202,7 @@ class TestFunctions(TestCase):
         # 'transfer-encoding' header is missing (should be filled in by server
         # before writing response):
         for klass in (ChunkedBody, ChunkedBodyIter):
-            body = klass(chunked=True, closed=False)
+            body = klass(chunked=True, state=0)
             good = (200, 'OK', {}, body)
             self.assertIsNone(
                 rgi._validate_response(default_bodies, deepcopy(request), good)
@@ -1211,7 +1211,7 @@ class TestFunctions(TestCase):
         # response body is (ChunkedBody, ChunkedBodyIter), but missing 'chunked'
         # attribute:
         for klass in (ChunkedBody, ChunkedBodyIter):
-            body = klass(closed=False)
+            body = klass(state=0)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1224,7 +1224,7 @@ class TestFunctions(TestCase):
         # response body is (ChunkedBody, ChunkedBodyIter), but body.chunked is
         # False:
         for klass in (ChunkedBody, ChunkedBodyIter):
-            body = klass(chunked=False, closed=False)
+            body = klass(chunked=False, state=0)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1235,7 +1235,7 @@ class TestFunctions(TestCase):
         # When response body is (ChunkedBody, ChunkedBodyIter), should not have
         # a 'content_length' attribute:
         for klass in (ChunkedBody, ChunkedBodyIter):
-            body = klass(chunked=True, closed=False, content_length=17)
+            body = klass(chunked=True, state=0, content_length=17)
             bad = (200, 'OK', {'transfer-encoding': 'chunked'}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
@@ -1246,7 +1246,7 @@ class TestFunctions(TestCase):
             )
 
         # response body is (Body, BodyIter, ChunkedBody, ChunkedBodyIter),
-        # but missing 'closed' attribute:
+        # but missing 'state' attribute:
         bad_bodies = (
             Body(chunked=False, content_length=17),
             BodyIter(chunked=False, content_length=17),
@@ -1258,25 +1258,25 @@ class TestFunctions(TestCase):
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
-                "response[3]: {!r} object has no attribute 'closed'".format(
+                "response[3]: {!r} object has no attribute 'state'".format(
                     type(body).__name__
                 )
             )
 
         # response body is (Body, BodyIter, ChunkedBody, ChunkedBodyIter),
-        # but body.closed is True:
+        # but body.state != 0:
         bad_bodies = (
-            Body(closed=True, chunked=False, content_length=17),
-            BodyIter(closed=True, chunked=False, content_length=17),
-            ChunkedBody(closed=True, chunked=True),
-            ChunkedBodyIter(closed=True, chunked=True),
+            Body(state=1, chunked=False, content_length=17),
+            BodyIter(state=1, chunked=False, content_length=17),
+            ChunkedBody(state=1, chunked=True),
+            ChunkedBodyIter(state=1, chunked=True),
         )
         for body in bad_bodies:
             bad = (200, 'OK', {}, body)
             with self.assertRaises(ValueError) as cm:
                 rgi._validate_response(default_bodies, deepcopy(request), bad)
             self.assertEqual(str(cm.exception),
-                "response[3].closed must be False; got True"
+                'response[3].state must equal 0; got 1'
             )
 
 
@@ -1356,31 +1356,31 @@ class TestValidator(TestCase):
         self.assertEqual(repr(inst), 'Example({!r})'.format(my_app))
 
     def test_call(self):
-        # request.body.closed is not True after app() was called:
+        # request.body.state != 2 after app() was called:
         def my_app(session, request, bodies):
             return (200, 'OK', {}, None)
 
         inst = rgi.Validator(my_app)
         session = build_session()
         request = build_request(
-            body=Body(closed=False, chunked=False, content_length=17),
+            body=Body(state=0, chunked=False, content_length=17),
             headers={'content-length': 17},
         )
         with self.assertRaises(ValueError) as cm:
             inst(session, request, default_bodies)
         self.assertEqual(str(cm.exception),
-            "request.body.closed must be True after app() was called; got False"
+            'request.body.state must be 2 after app() was called; got 0'
         )
 
-        # request.body.closed is True after app() is called:
+        # request.body.state == 2 after app() is called:
         def my_app(session, request, bodies):
-            request.body.closed = True
+            request.body.state = 2
             return (200, 'OK', {}, None)
 
         inst = rgi.Validator(my_app)
         session = build_session()
         request = build_request(
-            body=Body(closed=False, chunked=False, content_length=17),
+            body=Body(state=0, chunked=False, content_length=17),
             headers={'content-length': 17},
         )
         self.assertEqual(inst(session, request, default_bodies),

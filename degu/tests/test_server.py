@@ -564,7 +564,7 @@ def chunked_request_app(session, request, bodies):
     assert request.method == 'POST'
     assert request.script == []
     assert request.path == []
-    assert isinstance(request.body, base.ChunkedBody)
+    assert isinstance(request.body, bodies.ChunkedBody)
     assert request.headers['transfer-encoding'] == 'chunked'
     result = []
     for (extension, data) in request.body:
@@ -702,26 +702,26 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(chunked_request_app)
         conn = client.connect()
 
-        body = base.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
+        body = base.bodies.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 352, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.Body)
+        self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
 
-        body = base.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+        body = base.bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 44, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.Body)
+        self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(b'').hexdigest()]
         )
@@ -736,7 +736,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedBody)
+        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
         self.assertEqual(tuple(response.body),
             tuple((None, data) for data in CHUNKS)
         )
@@ -745,7 +745,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedBody)
+        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
         self.assertEqual(list(response.body), [(None, b'')])
 
         response = conn.request('GET', '/baz', {}, None)
@@ -758,7 +758,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.ChunkedBody)
+        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
         self.assertEqual(tuple(response.body),
             tuple((None, data) for data in CHUNKS)
         )
@@ -772,14 +772,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.Body)
+        self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(response.body.read(), DATA)
 
         response = conn.request('GET', '/bar', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': 0})
-        self.assertIsInstance(response.body, base.Body)
+        self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(response.body.read(), b'')
 
         response = conn.request('GET', '/baz', {}, None)
@@ -792,7 +792,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.Body)
+        self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(response.body.read(), DATA)
         httpd.terminate()
 
@@ -807,7 +807,7 @@ class TestLiveServer(TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
                 self.assertEqual(response.headers, {'content-length': 16})
-                self.assertIsInstance(response.body, base.Body)
+                self.assertIsInstance(response.body, base.bodies.Body)
                 self.assertEqual(response.body.read(), marker)
             conn.close()
         httpd.terminate()

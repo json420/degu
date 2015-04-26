@@ -38,6 +38,7 @@ from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
 
 
+MAX_IO_SIZE = 16777216  # 16 MiB
 random = SystemRandom()
 
 
@@ -67,6 +68,37 @@ def random_chunks():
 
 def random_identifier():
     return ''.join(random.choice(string.ascii_lowercase) for i in range(17))
+
+
+def random_chunk_ext():
+    if random.randrange(3) == 0:
+        return None
+    return (random_identifier(), random_identifier())
+
+def random_chunk(size=None):
+    if size is None:
+        size = random.randint(1, 34969)
+    assert type(size) is int and 0 <= size <= MAX_IO_SIZE
+    ext = random_chunk_ext()
+    data = os.urandom(size)
+    return (ext, data)
+
+def random_chunks2(count=None):
+    """
+    Return between 0 and 10 random chunks (inclusive).
+
+    There will always be 1 additional, final chunk, an empty ``b''``, as per the
+    HTTP/1.1 specification.
+    """
+    if count is None:
+        count = random.randrange(10) + 1
+    assert type(count) is int and count > 0
+    chunks = [
+        random_chunk() for i in range(count - 1)
+    ]
+    chunks.append(random_chunk(0))
+    assert len(chunks) == count
+    return tuple(chunks)
 
 
 def iter_good(good, allowed):
@@ -163,10 +195,6 @@ class MockSocket:
         self._recv_into_calls = 0
         self._calls = []
 
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-        return None
-
     def recv_into(self, buf):
         assert isinstance(buf, memoryview)
         self._calls.append(('recv_into', len(buf)))
@@ -177,6 +205,21 @@ class MockSocket:
 
     def send(self, data):
         return self._wfile.write(data)
+
+
+class MockSocket2:
+    __slots__ = ('__rfile', '__rcvbuf')
+
+    def __init__(self, rfile, rcvbuf=None):
+        assert rcvbuf is None or (type(rcvbuf) is int and rcvbuf > 0)
+        self.__rfile = rfile
+        self.__rcvbuf = rcvbuf
+
+    def recv_into(self, buf):
+        assert isinstance(buf, memoryview)
+        if self.__rcvbuf is not None:
+            buf = buf[0:self.__rcvbuf]
+        return self.__rfile.readinto(buf)
 
 
 class FuzzTestCase(TestCase):

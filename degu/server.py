@@ -32,6 +32,7 @@ from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
+    _isconsumed,
 )
 
 
@@ -146,7 +147,7 @@ def _handle_requests(app, sock, max_requests, session, bodies):
         (status, reason, headers, body) = app(session, request, bodies)
 
         # Make sure application fully consumed request body:
-        if request.body and not request.body.closed:
+        if not _isconsumed(request.body):
             raise UnconsumedRequestError(request.body)
 
         # Make sure HEAD requests are properly handled:
@@ -167,7 +168,9 @@ def _handle_requests(app, sock, max_requests, session, bodies):
                     )
 
         # Write response:
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
         writer.write_response(status, reason, headers, body)
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
 
         # Update session counter:
         session['requests'] = count

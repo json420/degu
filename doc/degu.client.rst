@@ -591,12 +591,12 @@ Also see the server :ref:`server-options`.
         slice ``[1700:1776]``:
 
         >>> from degu.client import Client
-        >>> from degu.base import Body
+        >>> from degu.base import bodies
         >>> client = Client(('127.0.0.1', 56789))
         >>> conn = client.connect()  #doctest: +SKIP
         >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
         >>> fp.seek(1700)  #doctest: +SKIP
-        >>> body = Body(fp, 76)  #doctest: +SKIP
+        >>> body = bodies.Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
     .. method:: put(uri, headers, body)
