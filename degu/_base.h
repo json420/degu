@@ -193,6 +193,7 @@ static PyObject * format_chunk(PyObject *, PyObject *);
 /* Misc */
 static PyObject * readchunk(PyObject *, PyObject *);
 static PyObject * write_chunk(PyObject *, PyObject *);
+static PyObject * set_output_headers(PyObject *, PyObject *);
 
 /* namedtuples */
 static PyObject * Bodies(PyObject *, PyObject *);
@@ -231,6 +232,7 @@ static struct PyMethodDef degu_functions[] = {
     /* Misc */
     {"readchunk", readchunk, METH_VARARGS, NULL},
     {"write_chunk", write_chunk, METH_VARARGS, NULL},
+    {"set_output_headers", set_output_headers, METH_VARARGS, NULL},
 
     /* namedtuples */
     {"Bodies", Bodies, METH_VARARGS, NULL},

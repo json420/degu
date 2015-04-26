@@ -3303,6 +3303,21 @@ _set_output_headers(PyObject *headers, PyObject *body)
     return false;
 }
 
+static PyObject *
+set_output_headers(PyObject *self, PyObject *args)
+{
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+
+    if (!PyArg_ParseTuple(args, "OO:set_output_headers", &headers, &body)) {
+        return NULL;
+    }
+    if (! _set_output_headers(headers, body)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 static int64_t
 _Writer_write_combined(Writer *self, DeguSrc src1, DeguSrc src2)
 {

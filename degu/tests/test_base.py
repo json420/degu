@@ -1253,6 +1253,142 @@ class TestMiscFunctions_Py(BackendTestCase):
         self.assertEqual(wfile.getvalue(), b'c;k=v\r\nhello, world\r\n')
         self.assertEqual(getrefcounts(wfile, chunk), counts)
 
+    def test_set_output_headers(self):
+        set_output_headers = self.getattr('set_output_headers')
+        bodies = self.getattr('bodies')
+
+        # None:
+        h = {}
+        self.assertIsNone(set_output_headers(h, None))
+        self.assertEqual(h, {})
+
+        # bytes:
+        h = {}
+        self.assertIsNone(set_output_headers(h, b''))
+        self.assertEqual(h, {'content-length': 0})
+        h = {}
+        self.assertIsNone(set_output_headers(h, os.urandom(17)))
+        self.assertEqual(h, {'content-length': 17})
+
+        # bodies.Body:
+        h = {}
+        body = bodies.Body(io.BytesIO(), 0)
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'content-length': 0})
+        h = {}
+        body = bodies.Body(io.BytesIO(), 17)
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'content-length': 17})
+
+        # bodies.ChunkedBody:
+        h = {}
+        body = bodies.ChunkedBody(io.BytesIO())
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'transfer-encoding': 'chunked'})
+
+        # bodies.BodyIter:
+        h = {}
+        body = bodies.BodyIter([], 0)
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'content-length': 0})
+        h = {}
+        body = bodies.BodyIter([], 17)
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'content-length': 17})
+
+        # bodies.ChunkedBodyIter:
+        h = {}
+        body = bodies.ChunkedBodyIter([])
+        self.assertIsNone(set_output_headers(h, body))
+        self.assertEqual(h, {'transfer-encoding': 'chunked'})
+
+        # Test some bad body types:
+        for bad in ('hello', bytearray(b'hello')):
+            h = {}
+            with self.assertRaises(TypeError) as cm:
+                set_output_headers(h, bad)
+            self.assertEqual(str(cm.exception),
+                'bad body type: {!r}: {!r}'.format(type(bad), bad)
+            )
+            self.assertEqual(h, {})
+
+        # Test when header is already set and matches:
+        def iter_matching():
+            yield ({'content-length': 0}, b'')
+            yield ({'content-length': 17}, os.urandom(17))
+
+            yield ({'content-length': 0}, bodies.Body(io.BytesIO(), 0))
+            yield ({'content-length': 17}, bodies.Body(io.BytesIO(), 17))
+    
+            yield ({'content-length': 0}, bodies.BodyIter([], 0))
+            yield ({'content-length': 17}, bodies.BodyIter([], 17))
+
+            yield (
+                {'transfer-encoding': 'chunked'},
+                bodies.ChunkedBody(io.BytesIO())
+            )
+
+            yield ({'transfer-encoding': 'chunked'}, bodies.ChunkedBodyIter([]))
+
+        for (h, body) in iter_matching():
+            hcopy = h.copy()
+            self.assertIsNone(set_output_headers(hcopy, body))
+            self.assertEqual(hcopy, h)
+
+        # Test when header is already set and and does *not* match:
+        def iter_not_matching():
+            yield ({'content-length': 1}, b'')
+            yield ({'content-length': 0}, os.urandom(1))
+            yield ({'content-length': 16}, os.urandom(17))
+            yield ({'content-length': 18}, os.urandom(17))
+
+            yield ({'content-length': 1}, bodies.Body(io.BytesIO(), 0))
+            yield ({'content-length': 0}, bodies.Body(io.BytesIO(), 1))
+            yield ({'content-length': 16}, bodies.Body(io.BytesIO(), 17))
+            yield ({'content-length': 18}, bodies.Body(io.BytesIO(), 17))
+    
+            yield ({'content-length': 1}, bodies.BodyIter([], 0))
+            yield ({'content-length': 0}, bodies.BodyIter([], 1))
+            yield ({'content-length': 16}, bodies.BodyIter([], 17))
+            yield ({'content-length': 18}, bodies.BodyIter([], 17))
+
+            yield (
+                {'transfer-encoding': 'clumped'},
+                bodies.ChunkedBody(io.BytesIO())
+            )
+            yield (
+                {'transfer-encoding': 'chunke'},
+                bodies.ChunkedBody(io.BytesIO())
+            )
+            yield (
+                {'transfer-encoding': 'chunkedy'},
+                bodies.ChunkedBody(io.BytesIO())
+            )
+
+            yield ({'transfer-encoding': 'clumped'}, bodies.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'chunke'}, bodies.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'chunkedy'}, bodies.ChunkedBodyIter([]))
+
+        for (h, body) in iter_not_matching():
+            hcopy = h.copy()
+            items = tuple(h.items())
+            self.assertEqual(len(items), 1)
+            (key, val) = items[0]
+            if type(body) is bytes:
+                newval = len(body)
+            elif type(body) in (bodies.Body, bodies.BodyIter):
+                newval = body.content_length
+            elif type(body) in (bodies.ChunkedBody, bodies.ChunkedBodyIter):
+                newval = 'chunked'
+            else:
+                raise Exception('should not be reached')
+            with self.assertRaises(ValueError) as cm:
+                set_output_headers(hcopy, body)
+            self.assertEqual(str(cm.exception),
+                '{!r} mismatch: {!r} != {!r}'.format(key, newval, val)
+            )
+            self.assertEqual(hcopy, h)
+
 
 class TestMiscFunctions_C(TestMiscFunctions_Py):
     backend = _base
