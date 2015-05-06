@@ -4496,14 +4496,6 @@ class TestReader_Py(BackendTestCase):
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), 333)
 
-    def test_readline(self):
-        size = self.DEFAULT_PREAMBLE
-        (sock, reader) = self.new()
-        self.assertEqual(reader.readline(size), b'')
-        data = b'D' * size
-        (sock, reader) = self.new(data)
-        self.assertEqual(reader.readline(size), data)
-
     def test_readchunk(self):
         (sock, reader) = self.new(b'0\r\n\r\n')
         self.assertEqual(reader.readchunk(),

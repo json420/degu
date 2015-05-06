@@ -875,9 +875,6 @@ class Reader:
         # Didn't find it:
         return self._not_found(cur, end, readline)
 
-    def readline(self, size):
-        return self.read_until(size, b'\n', readline=True)
-
     def read_request(self):
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
         return parse_request(preamble, self)

@@ -3071,16 +3071,6 @@ Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
 }
 
 static PyObject *
-Reader_readline(Reader *self, PyObject *args)
-{
-    size_t size = 0;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_read_until(self, size, LF, true));
-}
-
-static PyObject *
 Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
 
