@@ -2897,8 +2897,7 @@ _Reader_drain(Reader *self, const size_t size)
 }
 
 static DeguSrc
-_Reader_read_until(Reader *self, const size_t size, DeguSrc end,
-                   const bool readline)
+_Reader_read_until(Reader *self, const size_t size, DeguSrc end)
 {
     ssize_t index = -1;
     ssize_t added;
@@ -2954,9 +2953,6 @@ not_found:
     if (index >= 0) {
         Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
     }
-    if (readline) {
-        return _Reader_drain(self, size);
-    }
     DeguSrc tmp = _Reader_peek(self, size);
     if (tmp.len == 0) {
         return tmp;
@@ -2971,9 +2967,6 @@ found:
         Py_FatalError("_Reader_read_until(): found, but index < 0");
     }
     DeguSrc src = _Reader_drain(self, (size_t)index + end.len);
-    if (readline) {
-        return src;
-    }
     return _slice(src, 0, src.len - end.len);
 }
 
@@ -3050,16 +3043,13 @@ Reader_peek(Reader *self, PyObject *args) {
 }
 
 static PyObject *
-Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
+Reader_read_until(Reader *self, PyObject *args)
 {
-    static char *keys[] = {"size", "end", "readline", NULL};
     size_t size = 0;
     uint8_t *buf = NULL;
     size_t len = 0;
-    int readline = false;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "ny#|p:read_until", keys,
-            &size, &buf, &len, &readline)) {
+    if (!PyArg_ParseTuple(args, "ny#:read_until", &size, &buf, &len)) {
         return NULL;
     }
     DeguSrc end = {buf, len};
@@ -3067,14 +3057,14 @@ Reader_read_until(Reader *self, PyObject *args, PyObject *kw)
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL;
     }
-    return _tobytes(_Reader_read_until(self, size, end, readline));
+    return _tobytes(_Reader_read_until(self, size, end));
 }
 
 static PyObject *
 Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
 
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false);
+    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
     if (src.buf == NULL) {
         goto error;
     }
@@ -3101,7 +3091,7 @@ Reader_read_response(Reader *self, PyObject *args)
         return NULL;
     }
     DeguSrc method = {method_buf, method_len};
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF, false);
+    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
     if (src.buf == NULL) {
         goto error;
     }
@@ -3118,7 +3108,7 @@ cleanup:
 
 static bool
 _Reader_readchunkline(Reader *self, DeguChunk *dc) {
-    DeguSrc line = _Reader_read_until(self, 4096, CRLF, false);
+    DeguSrc line = _Reader_read_until(self, 4096, CRLF);
     if (line.buf == NULL) {
         goto error;
     }

@@ -815,25 +815,20 @@ class Reader:
             self._update(self._start + len(src), avail - len(src))
         return src
 
-    def _found(self, index, end, readline):
+    def _found(self, index, end):
         src = self._drain(index + len(end))
-        if readline:
-            return src
         return src[0:-len(end)]
 
-    def _not_found(self, cur, end, readline):
-        if readline:
-            return self._drain(len(cur))
+    def _not_found(self, cur, end):
         if len(cur) == 0:
             return cur
         raise ValueError(
             '{!r} not found in {!r}...'.format(end, cur[:32])
         )
 
-    def read_until(self, size, end, readline=False):
+    def read_until(self, size, end):
         end = memoryview(end).tobytes()
         assert type(size) is int
-        assert type(readline) is bool
 
         if not end:
             raise ValueError('end cannot be empty')
@@ -848,9 +843,9 @@ class Reader:
         cur = self.peek(size)
         index = cur.find(end)
         if index >= 0:
-            return self._found(index, end, readline)
+            return self._found(index, end)
         if len(cur) == size:
-            return self._not_found(cur, end, readline)
+            return self._not_found(cur, end)
 
         # Shift buffer if needed:
         if self._start > 0:
@@ -870,10 +865,10 @@ class Reader:
             cur = self.peek(size)
             index = cur.find(end)
             if index >= 0:
-                return self._found(index, end, readline)
+                return self._found(index, end)
 
         # Didn't find it:
-        return self._not_found(cur, end, readline)
+        return self._not_found(cur, end)
 
     def read_request(self):
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
