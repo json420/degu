@@ -307,6 +307,71 @@ static PyTypeObject RangeType = {
 
 
 /******************************************************************************
+ * ContentRange object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    uint64_t start;
+    uint64_t stop;
+    uint64_t total;
+} ContentRange;
+
+//static PyObject * ContentRange_New(uint64_t, uint64_t, uint64_t);
+
+static PyMemberDef ContentRange_members[] = {
+    {"start", T_ULONGLONG, offsetof(ContentRange, start), READONLY, NULL},
+    {"stop",  T_ULONGLONG, offsetof(ContentRange, stop),  READONLY, NULL},
+    {"total", T_ULONGLONG, offsetof(ContentRange, total), READONLY, NULL},
+    {NULL}
+};
+
+static void ContentRange_dealloc(ContentRange *);
+static int ContentRange_init(ContentRange *, PyObject *, PyObject *);
+static PyObject * ContentRange_repr(ContentRange *);
+static PyObject * ContentRange_str(ContentRange *);
+static PyObject * ContentRange_richcompare(ContentRange *, PyObject *, int);
+
+static PyTypeObject ContentRangeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.ContentRange",                 /* tp_name */
+    sizeof(ContentRange),                      /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)ContentRange_dealloc,          /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)ContentRange_repr,               /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    (reprfunc)ContentRange_str,                /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "ContentRange(start, stop, total)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    (richcmpfunc)ContentRange_richcompare,     /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    ContentRange_members,                      /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)ContentRange_init,               /* tp_init */
+};
+
+
+/******************************************************************************
  * Reader object.
  ******************************************************************************/
 typedef struct {

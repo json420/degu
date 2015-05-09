@@ -973,6 +973,129 @@ cleanup:
 }
 
 
+/******************************************************************************
+ * ContentRange object.
+ ******************************************************************************/
+/*static PyObject **/
+/*ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)*/
+/*{*/
+/*    ContentRange *self = PyObject_New(ContentRange, &ContentRangeType);*/
+/*    if (self == NULL) {*/
+/*        return NULL;*/
+/*    }*/
+/*    self->start = start;*/
+/*    self->stop = stop;*/
+/*    self->total = total;*/
+/*    return (PyObject *)PyObject_INIT(self, &ContentRangeType);*/
+/*}*/
+ 
+static void
+ContentRange_dealloc(ContentRange *self)
+{
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+ContentRange_init(ContentRange *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"start", "stop", "total", NULL};
+    PyObject *arg0 = NULL;
+    PyObject *arg1 = NULL;
+    PyObject *arg2 = NULL;
+    int64_t start, stop, total;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO:ContentRange", keys,
+            &arg0, &arg1, &arg2)) {
+        return -1;
+    }
+    start = _validate_length("start", arg0);
+    if (start < 0) {
+        return -1;
+    }
+    stop = _validate_length("stop", arg1);
+    if (stop < 0) {
+        return -1;
+    }
+    total = _validate_length("total", arg2);
+    if (total < 0) {
+        return -1;
+    }
+    if (start >= stop || stop > total) {
+        PyErr_Format(PyExc_ValueError,
+            "need start < stop <= total; got (%lld, %lld, %lld)",
+            start, stop, total
+        );
+        return -1;
+    }
+    self->start = (uint64_t)start;
+    self->stop = (uint64_t)stop;
+    self->total = (uint64_t)total;
+    return 0;
+}
+
+static PyObject *
+ContentRange_repr(ContentRange *self)
+{
+    return PyUnicode_FromFormat("ContentRange(%llu, %llu, %llu)",
+        self->start, self->stop, self->total
+    );
+}
+
+static PyObject *
+ContentRange_str(ContentRange *self)
+{
+    return PyUnicode_FromFormat("bytes %llu-%llu/%llu",
+        self->start, self->stop - 1, self->total
+    );
+}
+
+static PyObject *
+_ContentRange_as_tuple(ContentRange *self)
+{
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    PyObject *total = NULL;
+    PyObject *ret = NULL;
+
+    _SET(start, PyLong_FromUnsignedLongLong(self->start))
+    _SET(stop, PyLong_FromUnsignedLongLong(self->stop))
+    _SET(total, PyLong_FromUnsignedLongLong(self->total))
+    _SET(ret, PyTuple_Pack(3, start, stop, total))
+
+error:
+    Py_CLEAR(start);  // Always cleared, whether or not there was an error
+    Py_CLEAR(stop);   // Same as above
+    Py_CLEAR(total);  // Same as above
+    return ret;
+}
+
+static PyObject *
+ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
+    PyObject *ret = NULL;
+
+    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &ContentRangeType) {
+        _SET(this, _ContentRange_as_tuple(self))
+    }
+    else if (PyUnicode_CheckExact(other)) {
+        _SET(this, ContentRange_str(self))
+    }
+    else {
+        return Py_NotImplemented;
+    }
+    _SET(ret, PyObject_RichCompare(this, other, op))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(this);
+    return ret;  
+}
+
+
 /*******************************************************************************
  * Internal API: Parsing: Headers:
  *     _parse_key()
@@ -4276,6 +4399,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Range", (PyObject *)&RangeType)
+
+    ContentRangeType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ContentRangeType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "ContentRange", (PyObject *)&ContentRangeType)
 
     ReaderType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ReaderType) != 0) {
