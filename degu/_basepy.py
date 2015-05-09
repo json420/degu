@@ -302,6 +302,88 @@ class Range:
         return this >= other
 
 
+class ContentRange:
+    __slots__ = ('_start', '_stop', '_total')
+
+    def __init__(self, start, stop, total):
+        _validate_length('start', start)
+        _validate_length('stop', stop)
+        _validate_length('total', total)
+        if not (start < stop <= total):
+            raise ValueError(
+                'need start < stop <= total; got ({}, {}, {})'.format(
+                    start, stop, total
+                )
+            )
+        self._start = start
+        self._stop = stop
+        self._total = total
+
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def stop(self):
+        return self._stop
+
+    @property
+    def total(self):
+        return self._total
+
+    def __repr__(self):
+        return 'ContentRange({}, {}, {})'.format(
+            self._start, self._stop, self._total
+        )
+
+    def __str__(self):
+        return 'bytes {}-{}/{}'.format(
+            self._start, self._stop - 1, self._total
+        )
+
+    def _get_this(self, other):
+        if type(other) is tuple or type(other) is ContentRange:
+            return (self._start, self._stop, self._total)
+        if type(other) is str:
+            return str(self)
+
+    def __lt__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this < other
+
+    def __le__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this <= other
+
+    def __eq__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this == other
+
+    def __ne__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this != other
+
+    def __gt__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this > other
+
+    def __ge__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this >= other
+
+
 def _parse_key(src):
     if len(src) < 1:
         raise ValueError('header name is empty')

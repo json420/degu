@@ -502,6 +502,275 @@ class TestRange_C(TestRange_Py):
     backend = _base
 
 
+class TestContentRange_Py(BackendTestCase):
+    @property
+    def ContentRange(self):
+        return self.getattr('ContentRange')
+
+    def test_init(self):
+        # start isn't an int:
+        for bad in ['16', 16.0, UserInt(16), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(bad, 21, 23)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('start', int, type(bad), bad)
+            )
+
+        # stop isn't an int:
+        for bad in ['21', 21.0, UserInt(21), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('stop', int, type(bad), bad)
+            )
+
+        # total isn't an int:
+        for bad in ['23', 23.0, UserInt(23), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(16, 21, bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('total', int, type(bad), bad)
+            )
+
+        # start < 0, stop < 0, total < 0:
+        for bad in [-1, -2, -MAX_LENGTH, -MAX_UINT64]:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(bad, 21, 32)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, 31, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= total <= 9999999999999999; got {!r}'.format(bad)
+            )
+
+        # start > MAX_LENGTH, stop > MAX_LENGTH, total > MAX_LENGTH:
+        for bad in [MAX_LENGTH + 1, MAX_UINT64, MAX_UINT64 + 1]:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(bad, 21, 32)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, 31, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= total <= 9999999999999999; got {!r}'.format(bad)
+            )
+
+        # start >= stop or stop > total:
+        bad_triplets = (
+            (0, 0, 23),
+            (1, 0, 23),
+            (17, 17, 23),
+            (18, 17, 23),
+            (MAX_LENGTH - 1, MAX_LENGTH - 1, MAX_LENGTH),
+            (MAX_LENGTH, MAX_LENGTH, MAX_LENGTH),
+            (0, 18, 17),
+            (0, 18, 15),
+        )
+        for (start, stop, total) in bad_triplets:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(start, stop, total)
+            self.assertEqual(str(cm.exception),
+                'need start < stop <= total; got ({}, {}, {})'.format(
+                    start, stop, total
+                )
+            )
+
+        # All good:
+        cr = self.ContentRange(0, 1, 1)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, 0)
+        self.assertEqual(cr.stop, 1)
+        self.assertEqual(cr.total, 1)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 1)')
+        self.assertEqual(str(cr), 'bytes 0-0/1')
+
+        cr = self.ContentRange(16, 21, 23)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, 16)
+        self.assertEqual(cr.stop, 21)
+        self.assertEqual(cr.total, 23)
+        self.assertEqual(repr(cr), 'ContentRange(16, 21, 23)')
+        self.assertEqual(str(cr), 'bytes 16-20/23')
+
+        cr = self.ContentRange(MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, MAX_LENGTH - 1)
+        self.assertEqual(cr.stop, MAX_LENGTH)
+        self.assertEqual(cr.total, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(9999999999999998, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),
+            'bytes 9999999999999998-9999999999999998/9999999999999999'
+        )
+
+        # Check reference counting:
+        if self.backend is _base:
+            delmsg = 'readonly attribute'
+        else:
+            delmsg = "can't delete attribute"
+        for i in range(1000):
+            stop = random.randrange(1, MAX_LENGTH + 1)
+            start = random.randrange(0, stop)
+            total = random.randrange(stop, MAX_LENGTH + 1)
+            start_cnt = sys.getrefcount(start)
+            stop_cnt = sys.getrefcount(stop)
+            total_cnt = sys.getrefcount(total)
+
+            cr = self.ContentRange(start, stop, total)
+            self.assertIs(type(cr.start), int)
+            self.assertIs(type(cr.stop), int)
+            self.assertIs(type(cr.total), int)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(repr(cr),
+                'ContentRange({}, {}, {})'.format(start, stop, total)
+            )
+            self.assertEqual(str(cr),
+                'bytes {}-{}/{}'.format(start, stop - 1, total)
+            )
+            del cr
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+            self.assertEqual(sys.getrefcount(total), total_cnt)
+
+            # start, stop, total should be read-only:
+            r = self.ContentRange(start, stop, total)
+            for name in ('start', 'stop', 'total'):
+                with self.assertRaises(AttributeError) as cm:
+                    delattr(r, name)
+                self.assertEqual(str(cm.exception), delmsg)
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+            self.assertEqual(sys.getrefcount(total), total_cnt)
+
+    def test_repr_and_str(self):
+        cr = self.ContentRange(0, 1, 1)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 1)')
+        self.assertEqual(str(cr),  'bytes 0-0/1')
+
+        cr = self.ContentRange(0, 1, MAX_LENGTH)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 9999999999999999)')
+        self.assertEqual(str(cr),  'bytes 0-0/9999999999999999')
+
+        cr = self.ContentRange(0, MAX_LENGTH, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(0, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),  'bytes 0-9999999999999998/9999999999999999')
+
+        cr = self.ContentRange(MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(9999999999999998, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),
+            'bytes 9999999999999998-9999999999999998/9999999999999999'
+        )
+
+    def test_cmp(self):
+        def iter_types(triplets):
+            for (start, stop, total) in triplets:
+                yield (start, stop, total)
+                yield self.ContentRange(start, stop, total)
+                yield 'bytes {}-{}/{}'.format(start, stop - 1, total)
+
+        cr = self.ContentRange(16, 21, 23)
+        equals   = tuple(iter_types([(16, 21, 23)]))
+        lessers  = tuple(iter_types([(15, 21, 23), (16, 20, 23)]))
+        greaters = tuple(iter_types([(17, 21, 23), (16, 22, 23)]))
+
+        # __lt__():
+        for o in lessers:
+            self.assertIs(cr < o, False)
+            self.assertIs(o < cr, True)
+        for o in equals:
+            self.assertIs(cr < o, False)
+            self.assertIs(o < cr, False)
+        for o in greaters:
+            self.assertIs(cr < o, True)
+            self.assertIs(o < cr, False)
+
+        # __le__():
+        for o in lessers:
+            self.assertIs(cr <= o, False)
+            self.assertIs(o <= cr, True)
+        for o in equals:
+            self.assertIs(cr <= o, True)
+            self.assertIs(o <= cr, True)
+        for o in greaters:
+            self.assertIs(cr <= o, True)
+            self.assertIs(o <= cr, False)
+
+        # __eq__():
+        for o in lessers:
+            self.assertIs(cr == o, False)
+            self.assertIs(o == cr, False)
+        for o in equals:
+            self.assertIs(cr == o, True)
+            self.assertIs(o == cr, True)
+        for o in greaters:
+            self.assertIs(cr == o, False)
+            self.assertIs(o == cr, False)
+
+        # __ne__():
+        for o in lessers:
+            self.assertIs(cr != o, True)
+            self.assertIs(o != cr, True)
+        for o in equals:
+            self.assertIs(cr != o, False)
+            self.assertIs(o != cr, False)
+        for o in greaters:
+            self.assertIs(cr != o, True)
+            self.assertIs(o != cr, True)
+
+        # __gt__():
+        for o in lessers:
+            self.assertIs(cr > o, True)
+            self.assertIs(o > cr, False)
+        for o in equals:
+            self.assertIs(cr > o, False)
+            self.assertIs(o > cr, False)
+        for o in greaters:
+            self.assertIs(cr > o, False)
+            self.assertIs(o > cr, True)
+
+        # __ge__():
+        for o in lessers:
+            self.assertIs(cr >= o, True)
+            self.assertIs(o >= cr, False)
+        for o in equals:
+            self.assertIs(cr >= o, True)
+            self.assertIs(o >= cr, True)
+        for o in greaters:
+            self.assertIs(cr >= o, False)
+            self.assertIs(o >= cr, True)
+
+
+class TestContentRange_C(TestContentRange_Py):
+    backend = _base
+
+
 def _iter_sep_permutations(good=b': '):
     (g0, g1) = good
     yield bytes([g0])
