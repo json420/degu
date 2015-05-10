@@ -1231,22 +1231,45 @@ static PyObject *
 _parse_range(DeguSrc src)
 {
     ssize_t index;
-    int64_t start, end;
+    size_t offset;
+    int64_t decimal;
+    uint64_t start, stop;
 
-    if (src.len < 9 || src.len > 39 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
+    if (src.len > 39) {
+        _value_error("range too long: %R...", _slice(src, 0, 39));
+        return NULL;
+    }
+    if (src.len < 9 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
         goto bad_range;
     }
     DeguSrc inner = _slice(src, 6, src.len);
-    index = _find(inner, MINUS);
-    if (index < 1) {
+
+    /* Find the '-' separator */
+    index = _find_in_slice(inner, 1, inner.len - 1, MINUS);
+    if (index < 0) {
         goto bad_range;
     }
-    start = _parse_decimal(_slice(inner, 0, (size_t)index));
-    end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
-    if (start < 0 || end < start || (uint64_t)end >= MAX_LENGTH) {
+    offset = (size_t)index;
+
+    /* start */
+    decimal = _parse_decimal(_slice(inner, 0, offset));
+    if (decimal < 0) {
         goto bad_range;
     }
-    return Range_New((uint64_t)start, (uint64_t)end + 1);
+    start = (uint64_t)decimal;
+
+    /* stop */
+    decimal = _parse_decimal(_slice(inner, offset + 1, inner.len));
+    if (decimal < 0) {
+        goto bad_range;
+    }
+    stop = (uint64_t)decimal + 1;
+
+    /* Ensure (start < stop <= MAX_LENGTH) */
+    if (start >= stop || stop > MAX_LENGTH) {
+        goto bad_range;
+    }
+    return Range_New(start, stop);
 
 bad_range:
     _value_error("bad range: %R", src);
@@ -1262,7 +1285,8 @@ parse_range(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
         return NULL;
     }
-    return _parse_range((DeguSrc){buf, len});
+    DeguSrc src = {buf, len};
+    return _parse_range(src);
 }
 
 static PyObject *
@@ -1280,43 +1304,43 @@ _parse_content_range(DeguSrc src)
     if (src.len < 11 || !_equal(_slice(src, 0, 6), BYTES_SP)) {
         goto bad_content_range;
     }
-    DeguSrc left = _slice(src, 6, src.len);
+    DeguSrc inner = _slice(src, 6, src.len);
 
     /* Find the '-' and '/' separators */
-    index = _find_in_slice(left, 1, left.len - 3, MINUS);
-    if (index < 1) {
+    index = _find_in_slice(inner, 1, inner.len - 3, MINUS);
+    if (index < 0) {
         goto bad_content_range;
     }
     offset1 = (size_t)index;
-    index = _find_in_slice(left, offset1 + 2, left.len - 1, SLASH);
-    if (index < 1) {
+    index = _find_in_slice(inner, offset1 + 2, inner.len - 1, SLASH);
+    if (index < 0) {
         goto bad_content_range;
     }
     offset2 = (size_t)index;
 
     /* start */
-    decimal = _parse_decimal(_slice(left, 0, offset1));
+    decimal = _parse_decimal(_slice(inner, 0, offset1));
     if (decimal < 0) {
         goto bad_content_range;
     }
     start = (uint64_t)decimal;
 
     /* stop */
-    decimal = _parse_decimal(_slice(left, offset1 + 1, offset2));
+    decimal = _parse_decimal(_slice(inner, offset1 + 1, offset2));
     if (decimal < 0) {
         goto bad_content_range;
     }
     stop = (uint64_t)decimal + 1;
 
     /* total */
-    decimal = _parse_decimal(_slice(left, offset2 + 1, left.len));
+    decimal = _parse_decimal(_slice(inner, offset2 + 1, inner.len));
     if (decimal < 0) {
         goto bad_content_range;
     }
     total = (uint64_t)decimal;
 
-    /* Ensure start < stop <= total */
-    if (start >= stop || stop > total ) {
+    /* Ensure (start < stop <= total <= MAX_LENGTH) */
+    if (start >= stop || stop > total || total > MAX_LENGTH) {
         goto bad_content_range;
     }
     return ContentRange_New(start, stop, total);
