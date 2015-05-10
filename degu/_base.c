@@ -57,7 +57,6 @@ static PyObject *str_POST              = NULL;  //  'POST'
 static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
-static PyObject *str_crlf              = NULL;  //  '\r\n'
 static PyObject *str_empty             = NULL;  //  ''
 
 /* Other misc PyObject */
@@ -101,7 +100,6 @@ _init_all_globals(PyObject *module)
     _SET(str_HEAD,   PyUnicode_FromString("HEAD"))
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
-    _SET(str_crlf,   PyUnicode_FromString("\r\n"))
     _SET(str_empty,  PyUnicode_FromString(""))
 
     /* Init misc objects */
