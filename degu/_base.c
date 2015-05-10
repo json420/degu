@@ -141,6 +141,7 @@ _DEGU_SRC_CONSTANT(RANGE, "range")
 _DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
 _DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_SRC_CONSTANT(BYTES_SP, "bytes ")
 _DEGU_SRC_CONSTANT(MINUS, "-")
 _DEGU_SRC_CONSTANT(SEMICOLON, ";")
 _DEGU_SRC_CONSTANT(EQUALS, "=")
@@ -301,13 +302,23 @@ _equal(DeguSrc a, DeguSrc b) {
 }
 
 static inline ssize_t
-_find(DeguSrc haystack, DeguSrc needle)
+_find(DeguSrc src, DeguSrc end)
 {
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    const uint8_t *ptr = memmem(src.buf, src.len, end.buf, end.len);
     if (ptr == NULL) {
         return -1;
     }
-    return ptr - haystack.buf;
+    return ptr - src.buf;
+}
+
+static ssize_t
+_find_in_slice(DeguSrc src, const size_t start, const size_t stop, DeguSrc end)
+{
+    ssize_t index = _find(_slice(src, start, stop), end);
+    if (index < 0) {
+        return -1;
+    }
+    return index + (ssize_t)start;
 }
 
 static inline size_t
@@ -976,19 +987,19 @@ cleanup:
 /******************************************************************************
  * ContentRange object.
  ******************************************************************************/
-/*static PyObject **/
-/*ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)*/
-/*{*/
-/*    ContentRange *self = PyObject_New(ContentRange, &ContentRangeType);*/
-/*    if (self == NULL) {*/
-/*        return NULL;*/
-/*    }*/
-/*    self->start = start;*/
-/*    self->stop = stop;*/
-/*    self->total = total;*/
-/*    return (PyObject *)PyObject_INIT(self, &ContentRangeType);*/
-/*}*/
- 
+static PyObject *
+ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)
+{
+    ContentRange *self = PyObject_New(ContentRange, &ContentRangeType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->start = start;
+    self->stop = stop;
+    self->total = total;
+    return (PyObject *)PyObject_INIT(self, &ContentRangeType);
+}
+
 static void
 ContentRange_dealloc(ContentRange *self)
 {
@@ -1240,6 +1251,92 @@ _parse_range(DeguSrc src)
 bad_range:
     _value_error("bad range: %R", src);
     return NULL;
+}
+
+static PyObject *
+parse_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_range((DeguSrc){buf, len});
+}
+
+static PyObject *
+_parse_content_range(DeguSrc src)
+{
+    ssize_t index;
+    size_t offset1, offset2;
+    int64_t decimal;
+    uint64_t start, stop, total;
+
+    if (src.len > 56) {
+        _value_error("content-range too long: %R...", _slice(src, 0, 56));
+        return NULL;
+    }
+    if (src.len < 11 || !_equal(_slice(src, 0, 6), BYTES_SP)) {
+        goto bad_content_range;
+    }
+    DeguSrc left = _slice(src, 6, src.len);
+
+    /* Find the '-' and '/' separators */
+    index = _find_in_slice(left, 1, left.len - 3, MINUS);
+    if (index < 1) {
+        goto bad_content_range;
+    }
+    offset1 = (size_t)index;
+    index = _find_in_slice(left, offset1 + 2, left.len - 1, SLASH);
+    if (index < 1) {
+        goto bad_content_range;
+    }
+    offset2 = (size_t)index;
+
+    /* start */
+    decimal = _parse_decimal(_slice(left, 0, offset1));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    start = (uint64_t)decimal;
+
+    /* stop */
+    decimal = _parse_decimal(_slice(left, offset1 + 1, offset2));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    stop = (uint64_t)decimal + 1;
+
+    /* total */
+    decimal = _parse_decimal(_slice(left, offset2 + 1, left.len));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    total = (uint64_t)decimal;
+
+    /* Ensure start < stop <= total */
+    if (start >= stop || stop > total ) {
+        goto bad_content_range;
+    }
+    return ContentRange_New(start, stop, total);
+
+bad_content_range:
+    _value_error("bad content-range: %R", src);
+    return NULL;
+}
+
+static PyObject *
+parse_content_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_content_range", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    return _parse_content_range(src);
 }
 
 static bool
@@ -2196,18 +2293,6 @@ error:
 
 done:
     return ret;
-}
-
-static PyObject *
-parse_range(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_range((DeguSrc){buf, len});
 }
 
 static PyObject *

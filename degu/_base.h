@@ -166,6 +166,7 @@ typedef struct {
 static PyObject * parse_header_name(PyObject *, PyObject *);
 static PyObject * parse_content_length(PyObject *, PyObject *);
 static PyObject * parse_range(PyObject *, PyObject *);
+static PyObject * parse_content_range(PyObject *, PyObject *);
 static PyObject * parse_headers(PyObject *, PyObject *);
 
 /* Request parsing */
@@ -205,6 +206,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_header_name", parse_header_name, METH_VARARGS, NULL},
     {"parse_content_length", parse_content_length, METH_VARARGS, NULL},
     {"parse_range", parse_range, METH_VARARGS, NULL},
+    {"parse_content_range", parse_content_range, METH_VARARGS, NULL},
     {"parse_headers", parse_headers, METH_VARARGS, NULL},
 
     /* Request parsing */
@@ -316,7 +318,7 @@ typedef struct {
     uint64_t total;
 } ContentRange;
 
-//static PyObject * ContentRange_New(uint64_t, uint64_t, uint64_t);
+static PyObject * ContentRange_New(uint64_t, uint64_t, uint64_t);
 
 static PyMemberDef ContentRange_members[] = {
     {"start", T_ULONGLONG, offsetof(ContentRange, start), READONLY, NULL},
