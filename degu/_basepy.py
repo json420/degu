@@ -555,6 +555,8 @@ def _parse_header_lines(header_lines):
         elif key == 'range':
             flags |= 4
             val = parse_range(val)
+        elif key == 'content-range':
+            val = parse_content_range(val)
         else:
             val = _parse_val(val)
         if headers.setdefault(key, val) is not val:

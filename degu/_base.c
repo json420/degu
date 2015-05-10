@@ -39,12 +39,12 @@ static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_readline         = NULL;  //  'readline'
 
-
 /* Non-interned `str` used for header keys */
 static PyObject *key_content_length    = NULL;  //  'content-length'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *key_content_type      = NULL;  //  'content-type'
 static PyObject *key_range             = NULL;  //  'range'
+static PyObject *key_content_range     = NULL;  //  'content-range'
 
 /* Non-interned `str` used for header values */
 static PyObject *val_chunked           = NULL;  //  'chunked'
@@ -88,6 +88,7 @@ _init_all_globals(PyObject *module)
     _SET(key_transfer_encoding, PyUnicode_FromString("transfer-encoding"))
     _SET(key_content_type,      PyUnicode_FromString("content-type"))
     _SET(key_range,             PyUnicode_FromString("range"))
+    _SET(key_content_range,     PyUnicode_FromString("content-range"))
 
     /* Init non-interned header values */
     _SET(val_chunked,          PyUnicode_FromString("chunked"))
@@ -138,6 +139,7 @@ _DEGU_SRC_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_SRC_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_SRC_CONSTANT(CHUNKED, "chunked")
 _DEGU_SRC_CONSTANT(RANGE, "range")
+_DEGU_SRC_CONSTANT(CONTENT_RANGE, "content-range")
 _DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
 _DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
@@ -1415,6 +1417,10 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_range(valsrc))
         dh->flags |= 4;
+    }
+    else if (_equal(keysrc, CONTENT_RANGE)) {
+        _SET_AND_INC(key, key_content_range)
+        _SET(val, _parse_content_range(valsrc))
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)

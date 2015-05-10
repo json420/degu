@@ -1169,6 +1169,8 @@ class TestParsingFunctions_Py(BackendTestCase):
 
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
+        Range = self.getattr('Range')
+        ContentRange = self.getattr('ContentRange')
 
         self.assertEqual(parse_headers(b''), {})
         self.assertEqual(parse_headers(b'K: V'), {'k': 'V'})
@@ -1204,14 +1206,27 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(parse_headers(b'\r\n'.join([_type, encoding])),
             {'content-type': 'text/plain', 'transfer-encoding': 'chunked'}
         )
+
         h = parse_headers(_range)
         self.assertEqual(h, {'range': (16, 17)})
         self.assertEqual(h, {'range': 'bytes=16-16'})
-        self.assertIsInstance(h['range'], self.getattr('Range'))
+        self.assertIs(type(h['range']), Range)
         self.assertEqual(h['range'].start, 16)
         self.assertEqual(h['range'].stop, 17)
         self.assertEqual(repr(h['range']), 'Range(16, 17)')
         self.assertEqual(str(h['range']), 'bytes=16-16')
+
+        h = parse_headers(b'Content-Range: bytes 16-16/23')
+        self.assertEqual(set(h), {'content-range'})
+        cr = h['content-range']
+        self.assertIs(type(cr), ContentRange)
+        self.assertEqual(cr, (16, 17, 23))
+        self.assertEqual(cr, 'bytes 16-16/23')
+        self.assertEqual(cr.start, 16)
+        self.assertEqual(cr.stop, 17)
+        self.assertEqual(cr.total, 23)
+        self.assertEqual(repr(cr), 'ContentRange(16, 17, 23)')
+        self.assertEqual(str(cr), 'bytes 16-16/23')
 
         badsrc = b'\r\n'.join([length, encoding])
         with self.assertRaises(ValueError) as cm:
