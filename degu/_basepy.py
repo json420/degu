@@ -808,7 +808,6 @@ def write_chunk(wfile, chunk):
     total = wfile.write(line)
     total += wfile.write(chunk[1])
     total += wfile.write(b'\r\n')
-    wfile.flush()
     return total
 
 
@@ -1073,9 +1072,6 @@ class Writer:
     def tell(self):
         return self._tell
 
-    def flush(self):
-        pass
-
     def write(self, buf):
         size = _write(self._sock_send, buf)
         self._tell += size
@@ -1220,7 +1216,6 @@ class Body:
     def write_to(self, wfile):
         total = sum(wfile.write(data) for data in self)
         assert total == self._content_length
-        wfile.flush()
         return total
 
 def _not_found(self, cur, end, readline):

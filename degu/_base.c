@@ -3602,7 +3602,6 @@ cleanup:
  *     Writer.close()
  *     Writer.tell()
  *     Writer.write()
- *     Writer.flush()
  */
 static PyObject *
 Writer_tell(Writer *self) {
@@ -3624,12 +3623,6 @@ Writer_write(Writer *self, PyObject *args)
         return PyLong_FromSsize_t(total);
     }
     return NULL;
-}
-
-static PyObject *
-Writer_flush(Writer *self)
-{
-    Py_RETURN_NONE;
 }
 
 static PyObject *

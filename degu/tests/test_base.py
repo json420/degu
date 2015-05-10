@@ -5329,12 +5329,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(), data1)
         self.assertEqual(sock._calls, [('send', data1)])
 
-    def test_flush(self):
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertIsNone(writer.flush())
-        self.assertEqual(sock._calls, [])
-
     def test_write_output(self):
         # Empty preamble and empty body:
         sock = WSocket()
