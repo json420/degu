@@ -1054,6 +1054,119 @@ class TestParsingFunctions_Py(BackendTestCase):
             parse_range(bad)
         self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
 
+    def test_parse_content_range(self):
+        parse_content_range = self.getattr('parse_content_range')
+        ContentRange = self.getattr('ContentRange')
+
+        prefix = b'bytes '
+        triplets = (
+            (0, 1, 1),
+            (0, 1, 2),
+            (17, 18, 19),
+            (0, 1, MAX_LENGTH),
+            (0, MAX_LENGTH, MAX_LENGTH),
+            (MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH),
+        )
+        for (start, stop, total) in triplets:
+            suffix = '{}-{}/{}'.format(start, stop - 1, total).encode()
+            src = prefix + suffix
+            cr = parse_content_range(src)
+            self.assertIs(type(cr), ContentRange)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(cr, (start, stop, total))
+            for i in range(len(prefix)):
+                g = prefix[i]
+                bad = bytearray(prefix)
+                for b in range(256):
+                    bad[i] = b
+                    src = bytes(bad) + suffix
+                    if g == b:
+                        cr = parse_content_range(src)
+                        self.assertIs(type(cr), ContentRange)
+                        self.assertEqual(cr.start, start)
+                        self.assertEqual(cr.stop, stop)
+                        self.assertEqual(cr.total, total)
+                        self.assertEqual(cr, (start, stop, total))
+                    else:
+                        with self.assertRaises(ValueError) as cm:
+                            parse_content_range(src)
+                        self.assertEqual(str(cm.exception),
+                            'bad content-range: {!r}'.format(src)
+                        )
+
+            l1 = str(start).encode()
+            l2 = str(stop - 1).encode()
+            l3 = str(total).encode()
+            for b in range(256):
+                sep = bytes([b])
+
+                src = prefix + l1 + sep + l2 + b'/' + l3
+                if sep == b'-':
+                    cr = parse_content_range(src)
+                    self.assertIs(type(cr), ContentRange)
+                    self.assertEqual(cr.start, start)
+                    self.assertEqual(cr.stop, stop)
+                    self.assertEqual(cr.total, total)
+                    self.assertEqual(cr, (start, stop, total))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_content_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad content-range: {!r}'.format(src)
+                    )
+
+                src = prefix + l1 + b'-' + l2 + sep + l3
+                if sep == b'/':
+                    cr = parse_content_range(src)
+                    self.assertIs(type(cr), ContentRange)
+                    self.assertEqual(cr.start, start)
+                    self.assertEqual(cr.stop, stop)
+                    self.assertEqual(cr.total, total)
+                    self.assertEqual(cr, (start, stop, total))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_content_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad content-range: {!r}'.format(src)
+                    )
+
+        # end < start
+        for i in range(2000):
+            total = stop = random.randrange(1, MAX_LENGTH + 1)
+            start = stop - 1
+            good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
+            cr = parse_content_range(good)
+            self.assertIs(type(cr), ContentRange)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(cr, (start, stop, total))
+            bad = 'bytes {}-{}/{}'.format(start, stop - 2, total).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_content_range(bad)
+            self.assertEqual(str(cm.exception),
+                'bad content-range: {!r}'.format(bad)
+            )
+
+        # end > (MAX_LENGTH - 1)
+        total = stop = MAX_LENGTH
+        start = stop - 1
+        good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
+        cr = parse_content_range(good)
+        self.assertIs(type(cr), ContentRange)
+        self.assertEqual(cr.start, start)
+        self.assertEqual(cr.stop, stop)
+        self.assertEqual(cr.total, total)
+        self.assertEqual(cr, (start, stop, total))
+        bad = 'bytes {}-{}/{}'.format(start, stop, total).encode()
+        with self.assertRaises(ValueError) as cm:
+            parse_content_range(bad)
+        self.assertEqual(str(cm.exception),
+            'bad content-range: {!r}'.format(bad)
+        )
+
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
 

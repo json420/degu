@@ -509,6 +509,28 @@ def parse_range(src):
     return Range(start, end + 1)
 
 
+def _bad_content_range(src):
+    raise ValueError('bad content-range: {!r}'.format(src))
+
+def parse_content_range(src):
+    assert isinstance(src, bytes)
+    if len(src) < 11 or len(src) > 56 or src[0:6] != b'bytes ':
+        _bad_content_range(src)
+    inner = src[6:]
+    a = inner.split(b'-', 1)
+    if len(a) != 2:
+        _bad_content_range(src)
+    b = a[1].split(b'/', 1)
+    if len(b) != 2:
+        _bad_content_range(src)
+    start = _parse_decimal(a[0])
+    end = _parse_decimal(b[0])
+    total = _parse_decimal(b[1])
+    if start < 0 or end < start or end >= total or total > MAX_LENGTH:
+        _bad_content_range(src)
+    return ContentRange(start, end + 1, total)
+
+
 def _parse_header_lines(header_lines):
     headers = {}
     flags = 0
