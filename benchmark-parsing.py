@@ -11,6 +11,7 @@ from degu._base import (
     parse_headers,
     parse_content_length,
     parse_range,
+    parse_content_range,
 
     parse_request,
     parse_request_line,
@@ -74,6 +75,8 @@ run("parse_content_length(b'0')")
 run("parse_content_length(b'9999999999999999')")
 run("parse_range(b'bytes=0-0')")
 run("parse_range(b'bytes=9999999999999998-9999999999999998')")
+run("parse_content_range(b'bytes 0-0/1')")
+run("parse_content_range(b'bytes 9999999999999998-9999999999999998/9999999999999999')")
 
 print('\nRequest parsing:')
 run('parse_request(request, BytesIO())')
