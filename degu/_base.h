@@ -474,7 +474,6 @@ static PyObject * Writer_tell(Writer *);
 static PyObject * Writer_flush(Writer *);
 static PyObject * Writer_write(Writer *, PyObject *);
 static PyObject * Writer_write_output(Writer *, PyObject *);
-static PyObject * Writer_set_default_headers(Writer *, PyObject *);
 static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
@@ -483,7 +482,6 @@ static PyMethodDef Writer_methods[] = {
     {"flush", (PyCFunction)Writer_flush, METH_NOARGS, NULL},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},
     {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
-    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
     {NULL}

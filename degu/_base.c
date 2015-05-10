@@ -3652,20 +3652,6 @@ Writer_write_output(Writer *self, PyObject *args)
 }
 
 static PyObject *
-Writer_set_default_headers(Writer *self, PyObject *args) {
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "OO", &headers, &body)) {
-        return NULL;
-    }
-    if (! _set_output_headers(headers, body)) {
-        return NULL;
-    }
-    Py_RETURN_NONE;
-}
-
-
-static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
 {
     const uint8_t *buf = NULL;

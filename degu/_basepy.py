@@ -1081,10 +1081,6 @@ class Writer:
         self._tell += size
         return size
 
-    def set_default_headers(self, headers, body):
-        assert isinstance(headers, dict)
-        set_output_headers(headers, body)
-
     def write_output(self, preamble, body):
         if body is None:
             return self.write(preamble)
@@ -1108,12 +1104,12 @@ class Writer:
 
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
-        self.set_default_headers(headers, body)
+        set_output_headers(headers, body)
         preamble = format_request(method, uri, headers)
         return self.write_output(preamble, body)
 
     def write_response(self, status, reason, headers, body):
-        self.set_default_headers(headers, body)
+        set_output_headers(headers, body)
         preamble = format_response(status, reason, headers)
         return self.write_output(preamble, body)
 
