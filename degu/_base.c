@@ -550,14 +550,19 @@ _calloc_buf(const size_t len)
     return buf;
 }
 
+static void
+_type_error(const char *name, PyTypeObject *need, PyObject *got)
+{
+    PyErr_Format(PyExc_TypeError, "%s: need a %R; got a %R: %R",
+        name, (PyObject *)need, Py_TYPE(got), got
+    );
+}
+
 static bool
 _check_headers(PyObject *headers)
 {
     if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers: need a <class 'dict'>; got a %R: %R",
-            Py_TYPE(headers), headers
-        );
+        _type_error("headers", &PyDict_Type, headers);
         return false;
     }
     return true;
@@ -575,14 +580,6 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
         PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", label, name);
     }
     return attr;
-}
-
-static void
-_type_error(const char *name, PyTypeObject *need, PyObject *got)
-{
-    PyErr_Format(PyExc_TypeError, "%s: need a %R; got a %R: %R",
-        name, (PyObject *)need, Py_TYPE(got), got
-    );
 }
 
 
@@ -782,10 +779,8 @@ _init_all_namedtuples(PyObject *module)
 static inline bool
 _validate_int(const char *name, PyObject *obj)
 {
-    if (!PyLong_CheckExact(obj)) {
-        PyErr_Format(PyExc_TypeError,
-            "%s: need a <class 'int'>; got a %R: %R", name, Py_TYPE(obj), obj
-        );
+    if (! PyLong_CheckExact(obj)) {
+        _type_error(name, &PyLong_Type, obj);
         return false;
     }
     return true;
@@ -2166,9 +2161,7 @@ _validate_key(PyObject *key)
     uint8_t bits;
 
     if (!PyUnicode_CheckExact(key)) {
-        PyErr_Format(PyExc_TypeError,
-            "key: need a <class 'str'>; got a %R: %R", Py_TYPE(key), key
-        );
+        _type_error("key", &PyUnicode_Type, key);
         return false;
     }
     if (PyUnicode_READY(key) != 0) {
