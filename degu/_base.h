@@ -254,7 +254,7 @@ typedef struct {
     uint64_t stop;
 } Range;
 
-static PyObject * Range_New(uint64_t, uint64_t);
+static PyObject * _Range_New(uint64_t, uint64_t);
 
 static PyMemberDef Range_members[] = {
     {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
@@ -318,7 +318,7 @@ typedef struct {
     uint64_t total;
 } ContentRange;
 
-static PyObject * ContentRange_New(uint64_t, uint64_t, uint64_t);
+static PyObject * _ContentRange_New(uint64_t, uint64_t, uint64_t);
 
 static PyMemberDef ContentRange_members[] = {
     {"start", T_ULONGLONG, offsetof(ContentRange, start), READONLY, NULL},
@@ -541,7 +541,7 @@ typedef struct {
     bool chunked;
 } Body;
 
-static PyObject * Body_New(PyObject *, uint64_t);
+static PyObject * _Body_New(PyObject *, uint64_t);
 static int64_t _Body_write_to(Body *, PyObject *);
 
 static PyMemberDef Body_members[] = {
@@ -619,7 +619,7 @@ typedef struct {
     bool chunked;
 } ChunkedBody;
 
-static PyObject * ChunkedBody_New(PyObject *);
+static PyObject * _ChunkedBody_New(PyObject *);
 static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
 
 static PyMemberDef ChunkedBody_members[] = {

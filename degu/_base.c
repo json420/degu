@@ -879,7 +879,7 @@ _clear_degu_chunk(DeguChunk *dc)
  * Range object
  ******************************************************************************/
 static PyObject *
-Range_New(uint64_t start, uint64_t stop)
+_Range_New(uint64_t start, uint64_t stop)
 {
     Range *self = PyObject_New(Range, &RangeType);
     if (self == NULL) {
@@ -988,7 +988,7 @@ cleanup:
  * ContentRange object.
  ******************************************************************************/
 static PyObject *
-ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)
+_ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)
 {
     ContentRange *self = PyObject_New(ContentRange, &ContentRangeType);
     if (self == NULL) {
@@ -1269,7 +1269,7 @@ _parse_range(DeguSrc src)
     if (start >= stop || stop > MAX_LENGTH) {
         goto bad_range;
     }
-    return Range_New(start, stop);
+    return _Range_New(start, stop);
 
 bad_range:
     _value_error("bad range: %R", src);
@@ -1343,7 +1343,7 @@ _parse_content_range(DeguSrc src)
     if (start >= stop || stop > total || total > MAX_LENGTH) {
         goto bad_content_range;
     }
-    return ContentRange_New(start, stop, total);
+    return _ContentRange_New(start, stop, total);
 
 bad_content_range:
     _value_error("bad content-range: %R", src);
@@ -1678,10 +1678,10 @@ _create_body(PyObject *rfile, DeguHeaders *dh)
         _SET_AND_INC(dh->body, Py_None)
     }
     else if (bodyflags == 1) {
-        _SET(dh->body, Body_New(rfile, dh->content_length))
+        _SET(dh->body, _Body_New(rfile, dh->content_length))
     }
     else if (bodyflags == 2) {
-        _SET(dh->body, ChunkedBody_New(rfile))
+        _SET(dh->body, _ChunkedBody_New(rfile))
     }
     return true;
 
@@ -3786,7 +3786,7 @@ error:
 }
 
 static PyObject *
-Body_New(PyObject *rfile, const uint64_t content_length)
+_Body_New(PyObject *rfile, const uint64_t content_length)
 {
     Body *self = PyObject_New(Body, &BodyType);
     if (self == NULL) {
@@ -4025,7 +4025,7 @@ error:
 }
 
 static PyObject *
-ChunkedBody_New(PyObject *rfile)
+_ChunkedBody_New(PyObject *rfile)
 {
     ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
     if (self == NULL) {
