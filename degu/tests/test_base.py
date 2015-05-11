@@ -28,6 +28,7 @@ import os
 import io
 import sys
 from random import SystemRandom
+import types
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -240,6 +241,43 @@ def encode_preamble(first_line, header_lines):
 def random_body():
     size = random.randint(1, 34969)
     return os.urandom(size)
+
+
+def get_module_attr(mod, name):
+    assert type(mod) is types.ModuleType
+    if not hasattr(mod, name):
+        raise AttributeError(
+            '{!r} module has no attribute {!r}'.format(mod.__name__, name)
+        )
+    return getattr(mod, name)
+
+
+class TestAliases(TestCase):
+    """
+    Ensure alias objects in `degu.base` are from the expected backend module.
+    """
+
+    def check(self, name):
+        got = get_module_attr(base, name)
+        backend = (_base if C_EXT_AVAIL else _basepy)
+        expected = get_module_attr(backend, name)
+        self.assertIs(got, expected, name)
+
+    def test_all(self):
+        all_names = (
+            'BODY_CONSUMED',
+            'EmptyPreambleError',
+            'Bodies',   'BodiesType',
+            'Request',  'RequestType',
+            'Response', 'ResponseType',
+            'Range',
+            'ContentRange',
+            'Reader',
+            'Writer',
+            'bodies',
+        )
+        for name in all_names:
+            self.check(name)
 
 
 class AlternatesTestCase(FuzzTestCase):
