@@ -4,38 +4,7 @@ Road to Degu 1.0 (or something like that)
 Definite
 --------
 
-    *   The Degu client and server and should provide high-level support for
-        HTTP range requests.
-
-        HTTP range requests are extremely import, in no small part because
-        the driving Degu consumer at this point is Dmedia, a distributed object
-        store.
-
-        However, range requests are also a bit tricky to get right as arguably
-        the "Range" request header is rather poorly designed.
-
-
-    *   `ChunkedBody.read()` should take a size argument and should have the
-        same semantics as `Body.read()`; likewise, `ChunkedBody.read()` should
-        return bytes instead of a bytearray (in order to match standard Python
-        file-like API expectations)
-
-
-    *   `Body.read()` and `ChunkedBody.read()` need to enforce a sane max read
-        size when size=None, as the current implementation allows for unbounded
-        resource usage; maybe a max of 16 MiB or thereabouts; but this change
-        would introduce a bit of ambiguity about size=None: if you call read()
-        with no size argument, are you done reading after that, or did you hit
-        an internal sanity limit and still need to make additional calls to
-        body.read() to fully read it?
-
-        I don't particularly like the semantics of size=None in the standard
-        Python file-like API.  It would be better for consumers to be expected
-        to always make successive calls to body.read() till an empty b'' is
-        returned; in other words, size=None would no longer mean "read it all",
-        but instead would mean "read up to a generously large but still sane
-        internal limit, and I'll keep calling body.read() till I get an empty
-        b'', after which I know the entire stream has been read."
+    *   Drop *bodies* option from Client and Server.
 
 
 

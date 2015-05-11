@@ -40,6 +40,12 @@
 #define BODY_CONSUMED 2u
 #define BODY_ERROR 3u
 
+#define BIT_CONTENT_LENGTH 1u
+#define BIT_TRANSFER_ENCODING 2u
+#define BIT_RANGE 4u
+#define BIT_CONTENT_RANGE 8u
+#define FRAMING_MASK (BIT_CONTENT_LENGTH | BIT_TRANSFER_ENCODING)
+
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
@@ -166,7 +172,8 @@ typedef struct {
 static PyObject * parse_header_name(PyObject *, PyObject *);
 static PyObject * parse_content_length(PyObject *, PyObject *);
 static PyObject * parse_range(PyObject *, PyObject *);
-static PyObject * parse_headers(PyObject *, PyObject *);
+static PyObject * parse_content_range(PyObject *, PyObject *);
+static PyObject * parse_headers(PyObject *, PyObject *, PyObject *);
 
 /* Request parsing */
 static PyObject * parse_method(PyObject *, PyObject *);
@@ -205,7 +212,8 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_header_name", parse_header_name, METH_VARARGS, NULL},
     {"parse_content_length", parse_content_length, METH_VARARGS, NULL},
     {"parse_range", parse_range, METH_VARARGS, NULL},
-    {"parse_headers", parse_headers, METH_VARARGS, NULL},
+    {"parse_content_range", parse_content_range, METH_VARARGS, NULL},
+    {"parse_headers", (PyCFunction)parse_headers, METH_VARARGS|METH_KEYWORDS, NULL},
 
     /* Request parsing */
     {"parse_method", parse_method, METH_VARARGS, NULL},
@@ -252,7 +260,7 @@ typedef struct {
     uint64_t stop;
 } Range;
 
-static PyObject * Range_New(uint64_t, uint64_t);
+static PyObject * _Range_New(uint64_t, uint64_t);
 
 static PyMemberDef Range_members[] = {
     {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
@@ -303,6 +311,71 @@ static PyTypeObject RangeType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)Range_init,               /* tp_init */
+};
+
+
+/******************************************************************************
+ * ContentRange object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    uint64_t start;
+    uint64_t stop;
+    uint64_t total;
+} ContentRange;
+
+static PyObject * _ContentRange_New(uint64_t, uint64_t, uint64_t);
+
+static PyMemberDef ContentRange_members[] = {
+    {"start", T_ULONGLONG, offsetof(ContentRange, start), READONLY, NULL},
+    {"stop",  T_ULONGLONG, offsetof(ContentRange, stop),  READONLY, NULL},
+    {"total", T_ULONGLONG, offsetof(ContentRange, total), READONLY, NULL},
+    {NULL}
+};
+
+static void ContentRange_dealloc(ContentRange *);
+static int ContentRange_init(ContentRange *, PyObject *, PyObject *);
+static PyObject * ContentRange_repr(ContentRange *);
+static PyObject * ContentRange_str(ContentRange *);
+static PyObject * ContentRange_richcompare(ContentRange *, PyObject *, int);
+
+static PyTypeObject ContentRangeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.ContentRange",                 /* tp_name */
+    sizeof(ContentRange),                      /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)ContentRange_dealloc,          /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)ContentRange_repr,               /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    (reprfunc)ContentRange_str,                /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "ContentRange(start, stop, total)",               /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    (richcmpfunc)ContentRange_richcompare,     /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    ContentRange_members,                      /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)ContentRange_init,               /* tp_init */
 };
 
 
@@ -404,19 +477,15 @@ typedef struct {
 static ssize_t _Writer_write(Writer *, DeguSrc);
 
 static PyObject * Writer_tell(Writer *);
-static PyObject * Writer_flush(Writer *);
 static PyObject * Writer_write(Writer *, PyObject *);
 static PyObject * Writer_write_output(Writer *, PyObject *);
-static PyObject * Writer_set_default_headers(Writer *, PyObject *);
 static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
 static PyMethodDef Writer_methods[] = {
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
-    {"flush", (PyCFunction)Writer_flush, METH_NOARGS, NULL},
     {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},
     {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
-    {"set_default_headers", (PyCFunction)Writer_set_default_headers, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
     {NULL}
@@ -475,18 +544,16 @@ typedef struct {
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
-    bool fastpath;
     bool chunked;
 } Body;
 
-static PyObject * Body_New(PyObject *, uint64_t);
+static PyObject * _Body_New(PyObject *, uint64_t);
 static int64_t _Body_write_to(Body *, PyObject *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
     {"state",          T_UBYTE,     offsetof(Body, state),          READONLY, NULL},
-    {"fastpath",       T_BOOL,      offsetof(Body, fastpath),       READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
     {NULL}
 };
@@ -555,17 +622,15 @@ typedef struct {
     PyObject *robj;
     PyObject *readline;
     uint8_t state;
-    bool fastpath;
     bool chunked;
 } ChunkedBody;
 
-static PyObject * ChunkedBody_New(PyObject *);
+static PyObject * _ChunkedBody_New(PyObject *);
 static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
     {"state",    T_UBYTE,     offsetof(ChunkedBody, state),    READONLY, NULL},
-    {"fastpath", T_BOOL,      offsetof(ChunkedBody, fastpath), READONLY, NULL},
     {"chunked",  T_BOOL,      offsetof(ChunkedBody, chunked),  READONLY, NULL},
     {NULL}
 };

@@ -28,6 +28,7 @@ import os
 import io
 import sys
 from random import SystemRandom
+import types
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -240,6 +241,43 @@ def encode_preamble(first_line, header_lines):
 def random_body():
     size = random.randint(1, 34969)
     return os.urandom(size)
+
+
+def get_module_attr(mod, name):
+    assert type(mod) is types.ModuleType
+    if not hasattr(mod, name):
+        raise AttributeError(
+            '{!r} module has no attribute {!r}'.format(mod.__name__, name)
+        )
+    return getattr(mod, name)
+
+
+class TestAliases(TestCase):
+    """
+    Ensure alias objects in `degu.base` are from the expected backend module.
+    """
+
+    def check(self, name):
+        got = get_module_attr(base, name)
+        backend = (_base if C_EXT_AVAIL else _basepy)
+        expected = get_module_attr(backend, name)
+        self.assertIs(got, expected, name)
+
+    def test_all(self):
+        all_names = (
+            'BODY_CONSUMED',
+            'EmptyPreambleError',
+            'Bodies',   'BodiesType',
+            'Request',  'RequestType',
+            'Response', 'ResponseType',
+            'Range',
+            'ContentRange',
+            'Reader',
+            'Writer',
+            'bodies',
+        )
+        for name in all_names:
+            self.check(name)
 
 
 class AlternatesTestCase(FuzzTestCase):
@@ -499,6 +537,275 @@ class TestRange_Py(BackendTestCase):
 
 
 class TestRange_C(TestRange_Py):
+    backend = _base
+
+
+class TestContentRange_Py(BackendTestCase):
+    @property
+    def ContentRange(self):
+        return self.getattr('ContentRange')
+
+    def test_init(self):
+        # start isn't an int:
+        for bad in ['16', 16.0, UserInt(16), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(bad, 21, 23)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('start', int, type(bad), bad)
+            )
+
+        # stop isn't an int:
+        for bad in ['21', 21.0, UserInt(21), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('stop', int, type(bad), bad)
+            )
+
+        # total isn't an int:
+        for bad in ['23', 23.0, UserInt(23), None]:
+            with self.assertRaises(TypeError) as cm:
+                self.ContentRange(16, 21, bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('total', int, type(bad), bad)
+            )
+
+        # start < 0, stop < 0, total < 0:
+        for bad in [-1, -2, -MAX_LENGTH, -MAX_UINT64]:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(bad, 21, 32)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, 31, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= total <= 9999999999999999; got {!r}'.format(bad)
+            )
+
+        # start > MAX_LENGTH, stop > MAX_LENGTH, total > MAX_LENGTH:
+        for bad in [MAX_LENGTH + 1, MAX_UINT64, MAX_UINT64 + 1]:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(bad, 21, 32)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= start <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, bad, 23)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
+            )
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(16, 31, bad)
+            self.assertEqual(str(cm.exception),
+                'need 0 <= total <= 9999999999999999; got {!r}'.format(bad)
+            )
+
+        # start >= stop or stop > total:
+        bad_triplets = (
+            (0, 0, 23),
+            (1, 0, 23),
+            (17, 17, 23),
+            (18, 17, 23),
+            (MAX_LENGTH - 1, MAX_LENGTH - 1, MAX_LENGTH),
+            (MAX_LENGTH, MAX_LENGTH, MAX_LENGTH),
+            (0, 18, 17),
+            (0, 18, 15),
+        )
+        for (start, stop, total) in bad_triplets:
+            with self.assertRaises(ValueError) as cm:
+                self.ContentRange(start, stop, total)
+            self.assertEqual(str(cm.exception),
+                'need start < stop <= total; got ({}, {}, {})'.format(
+                    start, stop, total
+                )
+            )
+
+        # All good:
+        cr = self.ContentRange(0, 1, 1)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, 0)
+        self.assertEqual(cr.stop, 1)
+        self.assertEqual(cr.total, 1)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 1)')
+        self.assertEqual(str(cr), 'bytes 0-0/1')
+
+        cr = self.ContentRange(16, 21, 23)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, 16)
+        self.assertEqual(cr.stop, 21)
+        self.assertEqual(cr.total, 23)
+        self.assertEqual(repr(cr), 'ContentRange(16, 21, 23)')
+        self.assertEqual(str(cr), 'bytes 16-20/23')
+
+        cr = self.ContentRange(MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH)
+        self.assertIs(type(cr.start), int)
+        self.assertIs(type(cr.stop), int)
+        self.assertIs(type(cr.total), int)
+        self.assertEqual(cr.start, MAX_LENGTH - 1)
+        self.assertEqual(cr.stop, MAX_LENGTH)
+        self.assertEqual(cr.total, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(9999999999999998, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),
+            'bytes 9999999999999998-9999999999999998/9999999999999999'
+        )
+
+        # Check reference counting:
+        if self.backend is _base:
+            delmsg = 'readonly attribute'
+        else:
+            delmsg = "can't delete attribute"
+        for i in range(1000):
+            stop = random.randrange(1, MAX_LENGTH + 1)
+            start = random.randrange(0, stop)
+            total = random.randrange(stop, MAX_LENGTH + 1)
+            start_cnt = sys.getrefcount(start)
+            stop_cnt = sys.getrefcount(stop)
+            total_cnt = sys.getrefcount(total)
+
+            cr = self.ContentRange(start, stop, total)
+            self.assertIs(type(cr.start), int)
+            self.assertIs(type(cr.stop), int)
+            self.assertIs(type(cr.total), int)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(repr(cr),
+                'ContentRange({}, {}, {})'.format(start, stop, total)
+            )
+            self.assertEqual(str(cr),
+                'bytes {}-{}/{}'.format(start, stop - 1, total)
+            )
+            del cr
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+            self.assertEqual(sys.getrefcount(total), total_cnt)
+
+            # start, stop, total should be read-only:
+            r = self.ContentRange(start, stop, total)
+            for name in ('start', 'stop', 'total'):
+                with self.assertRaises(AttributeError) as cm:
+                    delattr(r, name)
+                self.assertEqual(str(cm.exception), delmsg)
+            del r
+            self.assertEqual(sys.getrefcount(start), start_cnt)
+            self.assertEqual(sys.getrefcount(stop), stop_cnt)
+            self.assertEqual(sys.getrefcount(total), total_cnt)
+
+    def test_repr_and_str(self):
+        cr = self.ContentRange(0, 1, 1)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 1)')
+        self.assertEqual(str(cr),  'bytes 0-0/1')
+
+        cr = self.ContentRange(0, 1, MAX_LENGTH)
+        self.assertEqual(repr(cr), 'ContentRange(0, 1, 9999999999999999)')
+        self.assertEqual(str(cr),  'bytes 0-0/9999999999999999')
+
+        cr = self.ContentRange(0, MAX_LENGTH, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(0, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),  'bytes 0-9999999999999998/9999999999999999')
+
+        cr = self.ContentRange(MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH)
+        self.assertEqual(repr(cr),
+            'ContentRange(9999999999999998, 9999999999999999, 9999999999999999)'
+        )
+        self.assertEqual(str(cr),
+            'bytes 9999999999999998-9999999999999998/9999999999999999'
+        )
+
+    def test_cmp(self):
+        def iter_types(triplets):
+            for (start, stop, total) in triplets:
+                yield (start, stop, total)
+                yield self.ContentRange(start, stop, total)
+                yield 'bytes {}-{}/{}'.format(start, stop - 1, total)
+
+        cr = self.ContentRange(16, 21, 23)
+        equals   = tuple(iter_types([(16, 21, 23)]))
+        lessers  = tuple(iter_types([(15, 21, 23), (16, 20, 23)]))
+        greaters = tuple(iter_types([(17, 21, 23), (16, 22, 23)]))
+
+        # __lt__():
+        for o in lessers:
+            self.assertIs(cr < o, False)
+            self.assertIs(o < cr, True)
+        for o in equals:
+            self.assertIs(cr < o, False)
+            self.assertIs(o < cr, False)
+        for o in greaters:
+            self.assertIs(cr < o, True)
+            self.assertIs(o < cr, False)
+
+        # __le__():
+        for o in lessers:
+            self.assertIs(cr <= o, False)
+            self.assertIs(o <= cr, True)
+        for o in equals:
+            self.assertIs(cr <= o, True)
+            self.assertIs(o <= cr, True)
+        for o in greaters:
+            self.assertIs(cr <= o, True)
+            self.assertIs(o <= cr, False)
+
+        # __eq__():
+        for o in lessers:
+            self.assertIs(cr == o, False)
+            self.assertIs(o == cr, False)
+        for o in equals:
+            self.assertIs(cr == o, True)
+            self.assertIs(o == cr, True)
+        for o in greaters:
+            self.assertIs(cr == o, False)
+            self.assertIs(o == cr, False)
+
+        # __ne__():
+        for o in lessers:
+            self.assertIs(cr != o, True)
+            self.assertIs(o != cr, True)
+        for o in equals:
+            self.assertIs(cr != o, False)
+            self.assertIs(o != cr, False)
+        for o in greaters:
+            self.assertIs(cr != o, True)
+            self.assertIs(o != cr, True)
+
+        # __gt__():
+        for o in lessers:
+            self.assertIs(cr > o, True)
+            self.assertIs(o > cr, False)
+        for o in equals:
+            self.assertIs(cr > o, False)
+            self.assertIs(o > cr, False)
+        for o in greaters:
+            self.assertIs(cr > o, False)
+            self.assertIs(o > cr, True)
+
+        # __ge__():
+        for o in lessers:
+            self.assertIs(cr >= o, True)
+            self.assertIs(o >= cr, False)
+        for o in equals:
+            self.assertIs(cr >= o, True)
+            self.assertIs(o >= cr, True)
+        for o in greaters:
+            self.assertIs(cr >= o, False)
+            self.assertIs(o >= cr, True)
+
+
+class TestContentRange_C(TestContentRange_Py):
     backend = _base
 
 
@@ -785,8 +1092,131 @@ class TestParsingFunctions_Py(BackendTestCase):
             parse_range(bad)
         self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
 
+    def test_parse_content_range(self):
+        parse_content_range = self.getattr('parse_content_range')
+        ContentRange = self.getattr('ContentRange')
+
+        prefix = b'bytes '
+        triplets = (
+            (0, 1, 1),
+            (0, 1, 2),
+            (17, 18, 19),
+            (0, 1, MAX_LENGTH),
+            (0, MAX_LENGTH, MAX_LENGTH),
+            (MAX_LENGTH - 1, MAX_LENGTH, MAX_LENGTH),
+        )
+        for (start, stop, total) in triplets:
+            suffix = '{}-{}/{}'.format(start, stop - 1, total).encode()
+            src = prefix + suffix
+            cr = parse_content_range(src)
+            self.assertIs(type(cr), ContentRange)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(cr, (start, stop, total))
+            for i in range(len(prefix)):
+                g = prefix[i]
+                bad = bytearray(prefix)
+                for b in range(256):
+                    bad[i] = b
+                    src = bytes(bad) + suffix
+                    if g == b:
+                        cr = parse_content_range(src)
+                        self.assertIs(type(cr), ContentRange)
+                        self.assertEqual(cr.start, start)
+                        self.assertEqual(cr.stop, stop)
+                        self.assertEqual(cr.total, total)
+                        self.assertEqual(cr, (start, stop, total))
+                    else:
+                        with self.assertRaises(ValueError) as cm:
+                            parse_content_range(src)
+                        self.assertEqual(str(cm.exception),
+                            'bad content-range: {!r}'.format(src)
+                        )
+
+            l1 = str(start).encode()
+            l2 = str(stop - 1).encode()
+            l3 = str(total).encode()
+            for b in range(256):
+                sep = bytes([b])
+
+                src = prefix + l1 + sep + l2 + b'/' + l3
+                if sep == b'-':
+                    cr = parse_content_range(src)
+                    self.assertIs(type(cr), ContentRange)
+                    self.assertEqual(cr.start, start)
+                    self.assertEqual(cr.stop, stop)
+                    self.assertEqual(cr.total, total)
+                    self.assertEqual(cr, (start, stop, total))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_content_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad content-range: {!r}'.format(src)
+                    )
+
+                src = prefix + l1 + b'-' + l2 + sep + l3
+                if sep == b'/':
+                    cr = parse_content_range(src)
+                    self.assertIs(type(cr), ContentRange)
+                    self.assertEqual(cr.start, start)
+                    self.assertEqual(cr.stop, stop)
+                    self.assertEqual(cr.total, total)
+                    self.assertEqual(cr, (start, stop, total))
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        parse_content_range(src)
+                    self.assertEqual(str(cm.exception),
+                        'bad content-range: {!r}'.format(src)
+                    )
+
+        # end < start
+        for i in range(2000):
+            total = stop = random.randrange(1, MAX_LENGTH + 1)
+            start = stop - 1
+            good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
+            cr = parse_content_range(good)
+            self.assertIs(type(cr), ContentRange)
+            self.assertEqual(cr.start, start)
+            self.assertEqual(cr.stop, stop)
+            self.assertEqual(cr.total, total)
+            self.assertEqual(cr, (start, stop, total))
+            bad = 'bytes {}-{}/{}'.format(start, stop - 2, total).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_content_range(bad)
+            self.assertEqual(str(cm.exception),
+                'bad content-range: {!r}'.format(bad)
+            )
+
+        # end > (MAX_LENGTH - 1)
+        total = stop = MAX_LENGTH
+        start = stop - 1
+        good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
+        cr = parse_content_range(good)
+        self.assertIs(type(cr), ContentRange)
+        self.assertEqual(cr.start, start)
+        self.assertEqual(cr.stop, stop)
+        self.assertEqual(cr.total, total)
+        self.assertEqual(cr, (start, stop, total))
+        bad = 'bytes {}-{}/{}'.format(start, stop, total).encode()
+        with self.assertRaises(ValueError) as cm:
+            parse_content_range(bad)
+        self.assertEqual(str(cm.exception),
+            'bad content-range: {!r}'.format(bad)
+        )
+
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
+        Range = self.getattr('Range')
+        ContentRange = self.getattr('ContentRange')
+
+        # bad *isresponse* type:
+        for bad in (-1, 0, 1, None):
+            with self.assertRaises(TypeError) as cm:
+                parse_headers(b'Foo: bar\r\n', bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('isresponse', bool, type(bad), bad)
+            )
 
         self.assertEqual(parse_headers(b''), {})
         self.assertEqual(parse_headers(b'K: V'), {'k': 'V'})
@@ -822,14 +1252,38 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(parse_headers(b'\r\n'.join([_type, encoding])),
             {'content-type': 'text/plain', 'transfer-encoding': 'chunked'}
         )
+
         h = parse_headers(_range)
         self.assertEqual(h, {'range': (16, 17)})
         self.assertEqual(h, {'range': 'bytes=16-16'})
-        self.assertIsInstance(h['range'], self.getattr('Range'))
+        self.assertIs(type(h['range']), Range)
         self.assertEqual(h['range'].start, 16)
         self.assertEqual(h['range'].stop, 17)
         self.assertEqual(repr(h['range']), 'Range(16, 17)')
         self.assertEqual(str(h['range']), 'bytes=16-16')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(_range, isresponse=True)
+        self.assertEqual(str(cm.exception),
+            "response cannot include a 'range' header"
+        )
+
+        _content_range = b'Content-Range: bytes 16-16/23'
+        h = parse_headers(_content_range, isresponse=True)
+        self.assertEqual(set(h), {'content-range'})
+        cr = h['content-range']
+        self.assertIs(type(cr), ContentRange)
+        self.assertEqual(cr, (16, 17, 23))
+        self.assertEqual(cr, 'bytes 16-16/23')
+        self.assertEqual(cr.start, 16)
+        self.assertEqual(cr.stop, 17)
+        self.assertEqual(cr.total, 23)
+        self.assertEqual(repr(cr), 'ContentRange(16, 17, 23)')
+        self.assertEqual(str(cr), 'bytes 16-16/23')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(_content_range)
+        self.assertEqual(str(cm.exception),
+            "request cannot include a 'content-range' header"
+        )
 
         badsrc = b'\r\n'.join([length, encoding])
         with self.assertRaises(ValueError) as cm:
@@ -2738,6 +3192,31 @@ class BodyBackendTestCase(BackendTestCase):
     def Writer(self):
         return self.getattr('Writer')
 
+    def iter_rfiles(self, data):
+        yield io.BytesIO(data)
+        yield self.Reader(MockSocket(data, None))
+        yield self.Reader(MockSocket(data, 1))
+        yield self.Reader(MockSocket(data, 2))
+
+    def check_readonly_attrs(self, body, *members):
+        """
+        Check body instance attributes that should be read-only.
+        """
+        assert len(members) >= 2
+        if self.backend is _basepy:
+            setmsg = "can't set attribute"
+            delmsg = "can't delete attribute"
+        else:
+            setmsg = 'readonly attribute'
+            delmsg = 'readonly attribute'
+        for name in members:
+            value = getattr(body, name)
+            with self.assertRaises(AttributeError) as cm:
+                setattr(body, name, value)
+            self.assertEqual(str(cm.exception), setmsg)
+            with self.assertRaises(AttributeError) as cm:
+                delattr(body, name)
+            self.assertEqual(str(cm.exception), delmsg)
 
 
 class TestBody_Py(BodyBackendTestCase):
@@ -2747,46 +3226,53 @@ class TestBody_Py(BodyBackendTestCase):
 
     def test_init(self):
         Body = self.Body
-        rfile = io.BytesIO()
-
-        # Bad content_length type:
-        with self.assertRaises(TypeError) as cm:
-            Body(rfile, 17.0)
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('content_length', int, float, 17.0)
-        )
-        with self.assertRaises(TypeError) as cm:
-            Body(rfile, '17')
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('content_length', int, str, '17')
-        )
-
         # Bad content_length value:
         max_uint64 = 2**64 - 1
         max_length = 9999999999999999
-        for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
-            with self.assertRaises(ValueError) as cm:
-                Body(rfile, bad)
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            # Bad content_length type:
+            with self.assertRaises(TypeError) as cm:
+                Body(rfile, 17.0)
             self.assertEqual(str(cm.exception),
-                'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
+                base._TYPE_ERROR.format('content_length', int, float, 17.0)
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            with self.assertRaises(TypeError) as cm:
+                Body(rfile, '17')
+            self.assertEqual(str(cm.exception),
+                base._TYPE_ERROR.format('content_length', int, str, '17')
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
+                with self.assertRaises(ValueError) as cm:
+                    Body(rfile, bad)
+                self.assertEqual(str(cm.exception),
+                    'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
+                )
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            name = ('reader' if type(rfile) is self.Reader else 'rfile')
+
+            # All good:
+            for good in (0, 1, 17, 34969, max_length):
+                body = Body(rfile, good)
+                self.assertEqual(sys.getrefcount(rfile), 4)
+                self.assertEqual(body.state, self.BODY_READY)
+                self.assertIs(body.rfile, rfile)
+                self.assertEqual(body.content_length, good)
+                self.assertEqual(repr(body),
+                    'Body(<{}>, {!r})'.format(name, good)
+                )
+            self.check_readonly_attrs(body,
+                'rfile', 'content_length', 'state', 'chunked'
             )
 
-        # All good:
-        for good in (0, 1, 17, 34969, max_length):
-            body = Body(rfile, good)
-            self.assertEqual(body.state, self.BODY_READY)
-            self.assertIs(body.rfile, rfile)
-            self.assertEqual(body.content_length, good)
-            self.assertEqual(repr(body), 'Body(<rfile>, {!r})'.format(good))
-
-        # Body.closed should be read-only:
-        with self.assertRaises(AttributeError) as cm:
-            body.state = 1
-        if self.backend is _basepy:
-            self.assertEqual(str(cm.exception), "can't set attribute")
-        else:
-            self.assertEqual(str(cm.exception), 'readonly attribute')
-        self.assertEqual(body.state, self.BODY_READY)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_read(self):
         Body = self.Body
@@ -3133,45 +3619,14 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         return self.getattr('Reader')
 
     def check_common(self, body, rfile):
-        if self.backend is _basepy:
-            setmsg = "can't set attribute"
-            delmsg = "can't delete attribute"
-            setmsg2 = "'ChunkedBody' object attribute 'chunked' is read-only"
-            delmsg2 = setmsg2
-        else:
-            setmsg = 'readonly attribute'
-            delmsg =  setmsg
-            setmsg2 = setmsg
-            delmsg2 = delmsg
-        members = ('rfile', 'fastpath', 'state')
+        name = ('reader' if type(rfile) is self.Reader else 'rfile')
+        self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
 
-        # Test everything except body.chunked:
-        for name in members:  
-            with self.assertRaises(AttributeError) as cm:
-                setattr(body, name, True)
-            self.assertEqual(str(cm.exception), setmsg)
-            with self.assertRaises(AttributeError) as cm:
-                delattr(body, name)
-            self.assertEqual(str(cm.exception), delmsg)
-
-        # Test body.chunked:
-        with self.assertRaises(AttributeError) as cm:
-            body.chunked = False
-        self.assertEqual(str(cm.exception), setmsg2)
-        with self.assertRaises(AttributeError) as cm:
-            del body.chunked
-        self.assertEqual(str(cm.exception), delmsg2)
+        self.check_readonly_attrs(body, 'rfile', 'state', 'chunked')
 
         self.assertIs(body.rfile, rfile)
         self.assertIs(body.chunked, True)
         self.assertEqual(body.state, self.BODY_READY)
-        self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
-
-    def iter_rfiles(self, data):
-        yield io.BytesIO(data)
-        yield self.Reader(MockSocket(data, None))
-        yield self.Reader(MockSocket(data, 1))
-        yield self.Reader(MockSocket(data, 2))
 
     def test_init(self):
         # Test with backend.Reader:
@@ -3180,7 +3635,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
-        self.assertIs(body.fastpath, True)
         self.check_common(body, rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
@@ -3191,7 +3645,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
-        self.assertIs(body.fastpath, False)
         self.check_common(body, rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
@@ -3250,10 +3703,11 @@ class TestChunkedBody_Py(BodyBackendTestCase):
     def test_repr(self):
         data = b'c\r\nhello, world\r\n0;k=v\r\n\r\n'
         for rfile in self.iter_rfiles(data):
+            name = ('reader' if type(rfile) is self.Reader else 'rfile')
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 5)
-            self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
+            self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
             self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
@@ -4932,12 +5386,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(), data1)
         self.assertEqual(sock._calls, [('send', data1)])
 
-    def test_flush(self):
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertIsNone(writer.flush())
-        self.assertEqual(sock._calls, [])
-
     def test_write_output(self):
         # Empty preamble and empty body:
         sock = WSocket()
@@ -4987,89 +5435,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(writer.tell(), 1003)
         self.assertEqual(sock._calls, [('send', preamble + body)])
         self.assertEqual(sock._fp.getvalue(), preamble + body)
-
-    def test_set_default_headers(self):
-        bodies = self.bodies
-        writer = self.Writer(WSocket())
-
-        # body is None:
-        headers = {}
-        self.assertIsNone(writer.set_default_headers(headers, None))
-        self.assertEqual(headers, {})
-
-        headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
-        self.assertIsNone(writer.set_default_headers(headers, None))
-        self.assertEqual(headers,
-            {'content-length': 17, 'transfer-encoding': 'chunked'}
-        )
-
-        # bodies with a content-length:
-        length_bodies = (
-            os.urandom(17),
-            bodies.Body(io.BytesIO(), 17),
-            bodies.BodyIter([], 17),
-        )
-        for body in length_bodies:
-            headers = {}
-            self.assertIsNone(writer.set_default_headers(headers, body))
-            self.assertEqual(headers, {'content-length': 17})
-
-            headers = {'content-length': 17}
-            self.assertIsNone(writer.set_default_headers(headers, body))
-            self.assertEqual(headers, {'content-length': 17})
-
-            headers = {'content-length': 16}
-            with self.assertRaises(ValueError) as cm:
-                writer.set_default_headers(headers, body)
-            self.assertEqual(str(cm.exception),
-                "'content-length' mismatch: 17 != 16"
-            )
-            self.assertEqual(headers, {'content-length': 16})
-
-        # chunk-encoded bodies:
-        chunked_bodies = (
-            bodies.ChunkedBody(io.BytesIO()),
-            bodies.ChunkedBodyIter([]),
-        )
-        for body in chunked_bodies:
-            headers = {}
-            self.assertIsNone(writer.set_default_headers(headers, body))
-            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
-    
-            headers = {'transfer-encoding': 'chunked'}
-            self.assertIsNone(writer.set_default_headers(headers, body))
-            self.assertEqual(headers, {'transfer-encoding': 'chunked'})
-
-            headers = {'transfer-encoding': 'clumped'}
-            with self.assertRaises(ValueError) as cm:
-                writer.set_default_headers(headers, body)
-            self.assertEqual(str(cm.exception),
-                "'transfer-encoding' mismatch: 'chunked' != 'clumped'"
-            )
-
-        # bad body types:
-        bad_bodies = (
-            random_id()[:17],
-            io.BytesIO(os.urandom(17)),
-        )
-        for body in bad_bodies:
-            headers = {}
-            with self.assertRaises(TypeError) as cm:
-                writer.set_default_headers(headers, body)
-            self.assertEqual(str(cm.exception),
-                'bad body type: {!r}: {!r}'.format(type(body), body)
-            )
-            self.assertEqual(headers, {})
-
-            headers = {'content-length': 17, 'transfer-encoding': 'chunked'}
-            with self.assertRaises(TypeError) as cm:
-                writer.set_default_headers(headers, body)
-            self.assertEqual(str(cm.exception),
-                'bad body type: {!r}: {!r}'.format(type(body), body)
-            )
-            self.assertEqual(headers,
-                {'content-length': 17, 'transfer-encoding': 'chunked'}
-            )
 
     def test_write_request(self):
         sock = WSocket()

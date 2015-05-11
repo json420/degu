@@ -39,12 +39,12 @@ static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_readline         = NULL;  //  'readline'
 
-
 /* Non-interned `str` used for header keys */
 static PyObject *key_content_length    = NULL;  //  'content-length'
 static PyObject *key_transfer_encoding = NULL;  //  'transfer-encoding'
 static PyObject *key_content_type      = NULL;  //  'content-type'
 static PyObject *key_range             = NULL;  //  'range'
+static PyObject *key_content_range     = NULL;  //  'content-range'
 
 /* Non-interned `str` used for header values */
 static PyObject *val_chunked           = NULL;  //  'chunked'
@@ -57,7 +57,6 @@ static PyObject *str_POST              = NULL;  //  'POST'
 static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
-static PyObject *str_crlf              = NULL;  //  '\r\n'
 static PyObject *str_empty             = NULL;  //  ''
 
 /* Other misc PyObject */
@@ -88,6 +87,7 @@ _init_all_globals(PyObject *module)
     _SET(key_transfer_encoding, PyUnicode_FromString("transfer-encoding"))
     _SET(key_content_type,      PyUnicode_FromString("content-type"))
     _SET(key_range,             PyUnicode_FromString("range"))
+    _SET(key_content_range,     PyUnicode_FromString("content-range"))
 
     /* Init non-interned header values */
     _SET(val_chunked,          PyUnicode_FromString("chunked"))
@@ -100,7 +100,6 @@ _init_all_globals(PyObject *module)
     _SET(str_HEAD,   PyUnicode_FromString("HEAD"))
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
-    _SET(str_crlf,   PyUnicode_FromString("\r\n"))
     _SET(str_empty,  PyUnicode_FromString(""))
 
     /* Init misc objects */
@@ -138,9 +137,11 @@ _DEGU_SRC_CONSTANT(CONTENT_LENGTH, "content-length")
 _DEGU_SRC_CONSTANT(TRANSFER_ENCODING, "transfer-encoding")
 _DEGU_SRC_CONSTANT(CHUNKED, "chunked")
 _DEGU_SRC_CONSTANT(RANGE, "range")
+_DEGU_SRC_CONSTANT(CONTENT_RANGE, "content-range")
 _DEGU_SRC_CONSTANT(CONTENT_TYPE, "content-type")
 _DEGU_SRC_CONSTANT(APPLICATION_JSON, "application/json")
 _DEGU_SRC_CONSTANT(BYTES_EQ, "bytes=")
+_DEGU_SRC_CONSTANT(BYTES_SP, "bytes ")
 _DEGU_SRC_CONSTANT(MINUS, "-")
 _DEGU_SRC_CONSTANT(SEMICOLON, ";")
 _DEGU_SRC_CONSTANT(EQUALS, "=")
@@ -301,13 +302,23 @@ _equal(DeguSrc a, DeguSrc b) {
 }
 
 static inline ssize_t
-_find(DeguSrc haystack, DeguSrc needle)
+_find(DeguSrc src, DeguSrc end)
 {
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    const uint8_t *ptr = memmem(src.buf, src.len, end.buf, end.len);
     if (ptr == NULL) {
         return -1;
     }
-    return ptr - haystack.buf;
+    return ptr - src.buf;
+}
+
+static ssize_t
+_find_in_slice(DeguSrc src, const size_t start, const size_t stop, DeguSrc end)
+{
+    ssize_t index = _find(_slice(src, start, stop), end);
+    if (index < 0) {
+        return -1;
+    }
+    return index + (ssize_t)start;
 }
 
 static inline size_t
@@ -539,14 +550,19 @@ _calloc_buf(const size_t len)
     return buf;
 }
 
+static void
+_type_error(const char *name, PyTypeObject *need, PyObject *got)
+{
+    PyErr_Format(PyExc_TypeError, "%s: need a %R; got a %R: %R",
+        name, (PyObject *)need, Py_TYPE(got), got
+    );
+}
+
 static bool
 _check_headers(PyObject *headers)
 {
     if (!PyDict_CheckExact(headers)) {
-        PyErr_Format(PyExc_TypeError,
-            "headers: need a <class 'dict'>; got a %R: %R",
-            Py_TYPE(headers), headers
-        );
+        _type_error("headers", &PyDict_Type, headers);
         return false;
     }
     return true;
@@ -565,7 +581,6 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
     }
     return attr;
 }
-
 
 
 /******************************************************************************
@@ -764,10 +779,8 @@ _init_all_namedtuples(PyObject *module)
 static inline bool
 _validate_int(const char *name, PyObject *obj)
 {
-    if (!PyLong_CheckExact(obj)) {
-        PyErr_Format(PyExc_TypeError,
-            "%s: need a <class 'int'>; got a %R: %R", name, Py_TYPE(obj), obj
-        );
+    if (! PyLong_CheckExact(obj)) {
+        _type_error(name, &PyLong_Type, obj);
         return false;
     }
     return true;
@@ -868,7 +881,7 @@ _clear_degu_chunk(DeguChunk *dc)
  * Range object
  ******************************************************************************/
 static PyObject *
-Range_New(uint64_t start, uint64_t stop)
+_Range_New(uint64_t start, uint64_t stop)
 {
     Range *self = PyObject_New(Range, &RangeType);
     if (self == NULL) {
@@ -957,6 +970,129 @@ Range_richcompare(Range *self, PyObject *other, int op)
     }
     else if (PyUnicode_CheckExact(other)) {
         _SET(this, Range_str(self))
+    }
+    else {
+        return Py_NotImplemented;
+    }
+    _SET(ret, PyObject_RichCompare(this, other, op))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(this);
+    return ret;  
+}
+
+
+/******************************************************************************
+ * ContentRange object.
+ ******************************************************************************/
+static PyObject *
+_ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)
+{
+    ContentRange *self = PyObject_New(ContentRange, &ContentRangeType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->start = start;
+    self->stop = stop;
+    self->total = total;
+    return (PyObject *)PyObject_INIT(self, &ContentRangeType);
+}
+
+static void
+ContentRange_dealloc(ContentRange *self)
+{
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+ContentRange_init(ContentRange *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"start", "stop", "total", NULL};
+    PyObject *arg0 = NULL;
+    PyObject *arg1 = NULL;
+    PyObject *arg2 = NULL;
+    int64_t start, stop, total;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO:ContentRange", keys,
+            &arg0, &arg1, &arg2)) {
+        return -1;
+    }
+    start = _validate_length("start", arg0);
+    if (start < 0) {
+        return -1;
+    }
+    stop = _validate_length("stop", arg1);
+    if (stop < 0) {
+        return -1;
+    }
+    total = _validate_length("total", arg2);
+    if (total < 0) {
+        return -1;
+    }
+    if (start >= stop || stop > total) {
+        PyErr_Format(PyExc_ValueError,
+            "need start < stop <= total; got (%lld, %lld, %lld)",
+            start, stop, total
+        );
+        return -1;
+    }
+    self->start = (uint64_t)start;
+    self->stop = (uint64_t)stop;
+    self->total = (uint64_t)total;
+    return 0;
+}
+
+static PyObject *
+ContentRange_repr(ContentRange *self)
+{
+    return PyUnicode_FromFormat("ContentRange(%llu, %llu, %llu)",
+        self->start, self->stop, self->total
+    );
+}
+
+static PyObject *
+ContentRange_str(ContentRange *self)
+{
+    return PyUnicode_FromFormat("bytes %llu-%llu/%llu",
+        self->start, self->stop - 1, self->total
+    );
+}
+
+static PyObject *
+_ContentRange_as_tuple(ContentRange *self)
+{
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    PyObject *total = NULL;
+    PyObject *ret = NULL;
+
+    _SET(start, PyLong_FromUnsignedLongLong(self->start))
+    _SET(stop, PyLong_FromUnsignedLongLong(self->stop))
+    _SET(total, PyLong_FromUnsignedLongLong(self->total))
+    _SET(ret, PyTuple_Pack(3, start, stop, total))
+
+error:
+    Py_CLEAR(start);  // Always cleared, whether or not there was an error
+    Py_CLEAR(stop);   // Same as above
+    Py_CLEAR(total);  // Same as above
+    return ret;
+}
+
+static PyObject *
+ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
+    PyObject *ret = NULL;
+
+    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &ContentRangeType) {
+        _SET(this, _ContentRange_as_tuple(self))
+    }
+    else if (PyUnicode_CheckExact(other)) {
+        _SET(this, ContentRange_str(self))
     }
     else {
         return Py_NotImplemented;
@@ -1097,26 +1233,136 @@ static PyObject *
 _parse_range(DeguSrc src)
 {
     ssize_t index;
-    int64_t start, end;
+    size_t offset;
+    int64_t decimal;
+    uint64_t start, stop;
 
-    if (src.len < 9 || src.len > 39 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
+    if (src.len > 39) {
+        _value_error("range too long: %R...", _slice(src, 0, 39));
+        return NULL;
+    }
+    if (src.len < 9 || !_equal(_slice(src, 0, 6), BYTES_EQ)) {
         goto bad_range;
     }
     DeguSrc inner = _slice(src, 6, src.len);
-    index = _find(inner, MINUS);
-    if (index < 1) {
+
+    /* Find the '-' separator */
+    index = _find_in_slice(inner, 1, inner.len - 1, MINUS);
+    if (index < 0) {
         goto bad_range;
     }
-    start = _parse_decimal(_slice(inner, 0, (size_t)index));
-    end = _parse_decimal(_slice(inner, (size_t)index + 1, inner.len));
-    if (start < 0 || end < start || (uint64_t)end >= MAX_LENGTH) {
+    offset = (size_t)index;
+
+    /* start */
+    decimal = _parse_decimal(_slice(inner, 0, offset));
+    if (decimal < 0) {
         goto bad_range;
     }
-    return Range_New((uint64_t)start, (uint64_t)end + 1);
+    start = (uint64_t)decimal;
+
+    /* stop */
+    decimal = _parse_decimal(_slice(inner, offset + 1, inner.len));
+    if (decimal < 0) {
+        goto bad_range;
+    }
+    stop = (uint64_t)decimal + 1;
+
+    /* Ensure (start < stop <= MAX_LENGTH) */
+    if (start >= stop || stop > MAX_LENGTH) {
+        goto bad_range;
+    }
+    return _Range_New(start, stop);
 
 bad_range:
     _value_error("bad range: %R", src);
     return NULL;
+}
+
+static PyObject *
+parse_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    return _parse_range(src);
+}
+
+static PyObject *
+_parse_content_range(DeguSrc src)
+{
+    ssize_t index;
+    size_t offset1, offset2;
+    int64_t decimal;
+    uint64_t start, stop, total;
+
+    if (src.len > 56) {
+        _value_error("content-range too long: %R...", _slice(src, 0, 56));
+        return NULL;
+    }
+    if (src.len < 11 || !_equal(_slice(src, 0, 6), BYTES_SP)) {
+        goto bad_content_range;
+    }
+    DeguSrc inner = _slice(src, 6, src.len);
+
+    /* Find the '-' and '/' separators */
+    index = _find_in_slice(inner, 1, inner.len - 3, MINUS);
+    if (index < 0) {
+        goto bad_content_range;
+    }
+    offset1 = (size_t)index;
+    index = _find_in_slice(inner, offset1 + 2, inner.len - 1, SLASH);
+    if (index < 0) {
+        goto bad_content_range;
+    }
+    offset2 = (size_t)index;
+
+    /* start */
+    decimal = _parse_decimal(_slice(inner, 0, offset1));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    start = (uint64_t)decimal;
+
+    /* stop */
+    decimal = _parse_decimal(_slice(inner, offset1 + 1, offset2));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    stop = (uint64_t)decimal + 1;
+
+    /* total */
+    decimal = _parse_decimal(_slice(inner, offset2 + 1, inner.len));
+    if (decimal < 0) {
+        goto bad_content_range;
+    }
+    total = (uint64_t)decimal;
+
+    /* Ensure (start < stop <= total <= MAX_LENGTH) */
+    if (start >= stop || stop > total || total > MAX_LENGTH) {
+        goto bad_content_range;
+    }
+    return _ContentRange_New(start, stop, total);
+
+bad_content_range:
+    _value_error("bad content-range: %R", src);
+    return NULL;
+}
+
+static PyObject *
+parse_content_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_content_range", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    return _parse_content_range(src);
 }
 
 static bool
@@ -1154,7 +1400,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
             goto error;
         }
         dh->content_length = (uint64_t)length;
-        dh->flags |= 1;
+        dh->flags |= BIT_CONTENT_LENGTH;
         _SET_AND_INC(key, key_content_length)
         _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
     }
@@ -1165,12 +1411,17 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, val_chunked)
-        dh->flags |= 2;
+        dh->flags |= BIT_TRANSFER_ENCODING;
     }
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_range(valsrc))
-        dh->flags |= 4;
+        dh->flags |= BIT_RANGE;
+    }
+    else if (_equal(keysrc, CONTENT_RANGE)) {
+        _SET_AND_INC(key, key_content_range)
+        _SET(val, _parse_content_range(valsrc))
+        dh->flags |= BIT_CONTENT_RANGE;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
@@ -1203,7 +1454,8 @@ cleanup:
 }
 
 static bool
-_parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
+_parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
+               const bool isresponse)
 {
     size_t start, stop;
 
@@ -1216,15 +1468,30 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         start = stop + CRLF.len;
     }
-    if ((dh->flags & 3) == 3) {
+    const uint8_t framing = dh->flags & FRAMING_MASK;
+    if (framing == FRAMING_MASK) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
     }
-    if ((dh->flags & 4) && (dh->flags & 3)) {
+    if (dh->flags & BIT_RANGE) {
+        if (framing) {
+            PyErr_SetString(PyExc_ValueError, 
+                "cannot include range header and content-length/transfer-encoding"
+            );
+            goto error; 
+        }
+        if (isresponse) {
+            PyErr_SetString(PyExc_ValueError, 
+                "response cannot include a 'range' header"
+            );
+            goto error; 
+        }
+    }
+    if ((dh->flags & BIT_CONTENT_RANGE) && !isresponse) {
         PyErr_SetString(PyExc_ValueError, 
-            "cannot include range header and content-length/transfer-encoding"
+            "request cannot include a 'content-range' header"
         );
         goto error; 
     }
@@ -1430,10 +1697,10 @@ _create_body(PyObject *rfile, DeguHeaders *dh)
         _SET_AND_INC(dh->body, Py_None)
     }
     else if (bodyflags == 1) {
-        _SET(dh->body, Body_New(rfile, dh->content_length))
+        _SET(dh->body, _Body_New(rfile, dh->content_length))
     }
     else if (bodyflags == 2) {
-        _SET(dh->body, ChunkedBody_New(rfile))
+        _SET(dh->body, _ChunkedBody_New(rfile))
     }
     return true;
 
@@ -1461,7 +1728,7 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch)
     if (!_parse_request_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, false)) {
         goto error;
     }
     /* Create request body */
@@ -1642,7 +1909,7 @@ _parse_response(DeguSrc method, DeguSrc src, PyObject *rfile, DeguDst scratch)
     if (!_parse_response_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, true)) {
         goto error;
     }
     /* Create request body */
@@ -1894,9 +2161,7 @@ _validate_key(PyObject *key)
     uint8_t bits;
 
     if (!PyUnicode_CheckExact(key)) {
-        PyErr_Format(PyExc_TypeError,
-            "key: need a <class 'str'>; got a %R: %R", Py_TYPE(key), key
-        );
+        _type_error("key", &PyUnicode_Type, key);
         return false;
     }
     if (PyUnicode_READY(key) != 0) {
@@ -2076,33 +2341,35 @@ done:
 }
 
 static PyObject *
-parse_range(PyObject *self, PyObject *args)
+parse_headers(PyObject *self, PyObject *args, PyObject *kw)
 {
+    static char *keys[] = {"src", "isresponse", NULL};
     const uint8_t *buf = NULL;
     size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_range((DeguSrc){buf, len});
-}
-
-static PyObject *
-parse_headers(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    PyObject *isresponse = Py_False;
+    bool _isresponse;
     DeguHeaders dh = NEW_DEGU_HEADERS;
 
-    if (!PyArg_ParseTuple(args, "y#:parse_headers", &buf, &len)) {
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "y#|O:parse_headers", keys,
+            &buf, &len, &isresponse)) {
+        return NULL;
+    }
+    if (isresponse == Py_False) {
+        _isresponse = false;
+    }
+    else if (isresponse == Py_True) {
+        _isresponse = true;
+    }
+    else {
+        _type_error("isresponse", &PyBool_Type, isresponse);
         return NULL;
     }
     DeguSrc src = {buf, len};
-    DeguDst dst = _calloc_dst(MAX_KEY);
-    if (dst.buf == NULL) {
+    DeguDst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
         return NULL;
     }
-    if (!_parse_headers(src, dst, &dh)) {
+    if (!_parse_headers(src, scratch, &dh, _isresponse)) {
         goto error;
     }
     goto cleanup;
@@ -2111,9 +2378,7 @@ error:
     Py_CLEAR(dh.headers);
 
 cleanup:
-    if (dst.buf != NULL) {
-        free(dst.buf);
-    }
+    free(scratch.buf);
     return dh.headers;
 }
 
@@ -3364,7 +3629,6 @@ cleanup:
  *     Writer.close()
  *     Writer.tell()
  *     Writer.write()
- *     Writer.flush()
  */
 static PyObject *
 Writer_tell(Writer *self) {
@@ -3389,12 +3653,6 @@ Writer_write(Writer *self, PyObject *args)
 }
 
 static PyObject *
-Writer_flush(Writer *self)
-{
-    Py_RETURN_NONE;
-}
-
-static PyObject *
 Writer_write_output(Writer *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
@@ -3412,20 +3670,6 @@ Writer_write_output(Writer *self, PyObject *args)
     }
     return PyLong_FromLongLong(total);
 }
-
-static PyObject *
-Writer_set_default_headers(Writer *self, PyObject *args) {
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    if (!PyArg_ParseTuple(args, "OO", &headers, &body)) {
-        return NULL;
-    }
-    if (! _set_output_headers(headers, body)) {
-        return NULL;
-    }
-    Py_RETURN_NONE;
-}
-
 
 static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
@@ -3524,6 +3768,21 @@ _check_body_state(const char *name, const uint8_t state, const uint8_t max_state
     return false;
 }
 
+static const char *
+_rfile_repr(PyObject *rfile)
+{
+    static const char *repr_null =   "<NULL>";
+    static const char *repr_reader = "<reader>";
+    static const char *repr_rfile =  "<rfile>";
+    if (rfile == NULL) {
+        return repr_null;
+    }
+    if (Py_TYPE(rfile) == &ReaderType) {
+        return repr_reader;
+    }
+    return repr_rfile;
+}
+
 
 /******************************************************************************
  * Body object.
@@ -3544,12 +3803,6 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
     }
     _SET_AND_INC(self->rfile, rfile)
     _SET(self->robj, _get_robj(rfile))
-    if (Py_TYPE(rfile) == &ReaderType) {
-        self->fastpath = true;
-    }
-    else {
-        self->fastpath = false;
-    }
     self->remaining = self->content_length = content_length;
     self->state = BODY_READY;
     self->chunked = false;
@@ -3562,7 +3815,7 @@ error:
 }
 
 static PyObject *
-Body_New(PyObject *rfile, const uint64_t content_length)
+_Body_New(PyObject *rfile, const uint64_t content_length)
 {
     Body *self = PyObject_New(Body, &BodyType);
     if (self == NULL) {
@@ -3602,6 +3855,13 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
 error:
     self->state = BODY_ERROR;
     return -1;
+}
+
+static PyObject *
+Body_repr(Body *self) {
+    return PyUnicode_FromFormat("Body(%s, %llu)",
+        _rfile_repr(self->rfile), self->content_length
+    );
 }
 
 static bool
@@ -3739,12 +3999,6 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
 }
 
 static PyObject *
-Body_repr(Body *self)
-{
-    return PyUnicode_FromFormat("Body(<rfile>, %llu)", self->content_length);
-}
-
-static PyObject *
 Body_iter(Body *self)
 {
     if (! _check_body_state("Body", self->state, BODY_READY)) {
@@ -3788,12 +4042,6 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
     _SET_AND_INC(self->rfile, rfile)
     _SET(self->robj, _get_robj(rfile))
     _SET(self->readline, _get_readline(rfile))
-    if (Py_TYPE(rfile) == &ReaderType) {
-        self->fastpath = true;
-    }
-    else {
-        self->fastpath = false;
-    }
     self->state = BODY_READY;
     self->chunked = true;
     return true;
@@ -3806,7 +4054,7 @@ error:
 }
 
 static PyObject *
-ChunkedBody_New(PyObject *rfile)
+_ChunkedBody_New(PyObject *rfile)
 {
     ChunkedBody *self = PyObject_New(ChunkedBody, &ChunkedBodyType);
     if (self == NULL) {
@@ -3840,6 +4088,12 @@ ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
 error:
     self->state = BODY_ERROR;
     return -1;
+}
+
+static PyObject *
+ChunkedBody_repr(ChunkedBody *self) {
+    return PyUnicode_FromFormat("ChunkedBody(%s)", _rfile_repr(self->rfile));
+
 }
 
 static bool
@@ -4004,12 +4258,6 @@ ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
         ret = PyLong_FromLongLong(total);
     }
     return ret;
-}
-
-static PyObject *
-ChunkedBody_repr(ChunkedBody *self)
-{
-    return PyUnicode_FromString("ChunkedBody(<rfile>)");
 }
 
 static PyObject *
@@ -4276,6 +4524,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Range", (PyObject *)&RangeType)
+
+    ContentRangeType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ContentRangeType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "ContentRange", (PyObject *)&ContentRangeType)
 
     ReaderType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ReaderType) != 0) {

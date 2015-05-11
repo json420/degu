@@ -25,41 +25,42 @@ Common HTTP parser and IO abstractions used by server and client.
 
 try:
     from ._base import (
-        _MAX_LINE_SIZE,
-        Bodies, BodiesType,
-        Request, RequestType,
-        Response, ResponseType,
+        _MAX_LINE_SIZE,  # FIXME: No need to import this
+        BODY_CONSUMED,
         EmptyPreambleError,
+        Bodies,   BodiesType,
+        Request,  RequestType,
+        Response, ResponseType,
         Range,
+        ContentRange,
         Reader,
         Writer,
-        BODY_CONSUMED,
         bodies,
     )
 except ImportError:
     from ._basepy import (
-        _MAX_LINE_SIZE,
-        Bodies, BodiesType,
-        Request, RequestType,
-        Response, ResponseType,
+        _MAX_LINE_SIZE,  # FIXME: No need to import this
+        BODY_CONSUMED,
         EmptyPreambleError,
+        Bodies,   BodiesType,
+        Request,  RequestType,
+        Response, ResponseType,
         Range,
+        ContentRange,
         Reader,
         Writer,
-        BODY_CONSUMED,
         bodies,
     )
 
 
 __all__ = (
     '_MAX_LINE_SIZE',
+    'EmptyPreambleError',
     'Bodies', 'BodiesType',
     'Request', 'RequestType',
     'Response', 'ResponseType',
-    'EmptyPreambleError',
     'Range',
-    'Reader',
-    'Writer',
+    'ContentRange',
     'bodies',
 )
 

@@ -302,6 +302,88 @@ class Range:
         return this >= other
 
 
+class ContentRange:
+    __slots__ = ('_start', '_stop', '_total')
+
+    def __init__(self, start, stop, total):
+        _validate_length('start', start)
+        _validate_length('stop', stop)
+        _validate_length('total', total)
+        if not (start < stop <= total):
+            raise ValueError(
+                'need start < stop <= total; got ({}, {}, {})'.format(
+                    start, stop, total
+                )
+            )
+        self._start = start
+        self._stop = stop
+        self._total = total
+
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def stop(self):
+        return self._stop
+
+    @property
+    def total(self):
+        return self._total
+
+    def __repr__(self):
+        return 'ContentRange({}, {}, {})'.format(
+            self._start, self._stop, self._total
+        )
+
+    def __str__(self):
+        return 'bytes {}-{}/{}'.format(
+            self._start, self._stop - 1, self._total
+        )
+
+    def _get_this(self, other):
+        if type(other) is tuple or type(other) is ContentRange:
+            return (self._start, self._stop, self._total)
+        if type(other) is str:
+            return str(self)
+
+    def __lt__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this < other
+
+    def __le__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this <= other
+
+    def __eq__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this == other
+
+    def __ne__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this != other
+
+    def __gt__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this > other
+
+    def __ge__(self, other):
+        this = self._get_this(other)
+        if this is None:
+            return NotImplemented 
+        return this >= other
+
+
 def _parse_key(src):
     if len(src) < 1:
         raise ValueError('header name is empty')
@@ -427,7 +509,33 @@ def parse_range(src):
     return Range(start, end + 1)
 
 
-def _parse_header_lines(header_lines):
+def _bad_content_range(src):
+    raise ValueError('bad content-range: {!r}'.format(src))
+
+def parse_content_range(src):
+    assert isinstance(src, bytes)
+    if len(src) < 11 or len(src) > 56 or src[0:6] != b'bytes ':
+        _bad_content_range(src)
+    inner = src[6:]
+    a = inner.split(b'-', 1)
+    if len(a) != 2:
+        _bad_content_range(src)
+    b = a[1].split(b'/', 1)
+    if len(b) != 2:
+        _bad_content_range(src)
+    start = _parse_decimal(a[0])
+    end = _parse_decimal(b[0])
+    total = _parse_decimal(b[1])
+    if start < 0 or end < start or end >= total or total > MAX_LENGTH:
+        _bad_content_range(src)
+    return ContentRange(start, end + 1, total)
+
+
+def _parse_header_lines(header_lines, isresponse=False):
+    if type(isresponse) is not bool:
+        raise TypeError(
+            TYPE_ERROR.format('isresponse', bool, type(isresponse), isresponse)
+        )
     headers = {}
     flags = 0
     for line in header_lines:
@@ -451,6 +559,9 @@ def _parse_header_lines(header_lines):
         elif key == 'range':
             flags |= 4
             val = parse_range(val)
+        elif key == 'content-range':
+            flags |= 8
+            val = parse_content_range(val)
         else:
             val = _parse_val(val)
         if headers.setdefault(key, val) is not val:
@@ -461,17 +572,26 @@ def _parse_header_lines(header_lines):
         raise ValueError(
             'cannot have both content-length and transfer-encoding headers'
         )
-    if (flags & 4) and (flags & 3):
+    if (flags & 4):
+        if (flags & 3):
+            raise ValueError(
+                'cannot include range header and content-length/transfer-encoding'
+            )
+        if isresponse:
+            raise ValueError(
+                "response cannot include a 'range' header"
+            )
+    if (flags & 8) and not isresponse:
         raise ValueError(
-            'cannot include range header and content-length/transfer-encoding'
+            "request cannot include a 'content-range' header"
         )
     return headers
 
 
-def parse_headers(src):
+def parse_headers(src, isresponse=False):
     if src == b'':
         return {}
-    return _parse_header_lines(src.split(b'\r\n'))
+    return _parse_header_lines(src.split(b'\r\n'), isresponse)
 
 
 
@@ -598,7 +718,7 @@ def parse_response(method, preamble, rfile):
         raise EmptyPreambleError('response preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
     (status, reason) = parse_response_line(first_line)
-    headers = _parse_header_lines(header_lines)
+    headers = _parse_header_lines(header_lines, isresponse=True)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:
@@ -702,7 +822,6 @@ def write_chunk(wfile, chunk):
     total = wfile.write(line)
     total += wfile.write(chunk[1])
     total += wfile.write(b'\r\n')
-    wfile.flush()
     return total
 
 
@@ -967,17 +1086,10 @@ class Writer:
     def tell(self):
         return self._tell
 
-    def flush(self):
-        pass
-
     def write(self, buf):
         size = _write(self._sock_send, buf)
         self._tell += size
         return size
-
-    def set_default_headers(self, headers, body):
-        assert isinstance(headers, dict)
-        set_output_headers(headers, body)
 
     def write_output(self, preamble, body):
         if body is None:
@@ -1002,12 +1114,12 @@ class Writer:
 
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
-        self.set_default_headers(headers, body)
+        set_output_headers(headers, body)
         preamble = format_request(method, uri, headers)
         return self.write_output(preamble, body)
 
     def write_response(self, status, reason, headers, body):
-        self.set_default_headers(headers, body)
+        set_output_headers(headers, body)
         preamble = format_response(status, reason, headers)
         return self.write_output(preamble, body)
 
@@ -1033,15 +1145,20 @@ def _check_body_state(name, state, max_state):
     raise Exception('bad state: {!r}'.format(state))
 
 
-class Body:
-    chunked = False
+def _rfile_repr(rfile):
+    if type(rfile) is Reader:
+        return '<reader>'
+    return '<rfile>'
 
+
+class Body:
     __slots__ = (
         '_rfile',
         '_robj',
         '_content_length',
         '_remaining',
         '_state',
+        '_chunked',
     )
 
     def __init__(self, rfile, content_length):
@@ -1053,14 +1170,11 @@ class Body:
             self._robj = rfile
         else:
             self._robj = _getcallable('rfile', rfile, 'readinto')
+        self._chunked = False
 
     @property
     def rfile(self):
         return self._rfile
-
-    @property
-    def fastpath(self):
-        return type(self._rfile) is Reader
 
     @property
     def content_length(self):
@@ -1070,8 +1184,14 @@ class Body:
     def state(self):
         return self._state
 
+    @property
+    def chunked(self):
+        return self._chunked
+
     def __repr__(self):
-        return 'Body(<rfile>, {!r})'.format(self._content_length)
+        return 'Body({}, {!r})'.format(
+            _rfile_repr(self._rfile), self._content_length
+        )
 
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)
@@ -1118,7 +1238,6 @@ class Body:
     def write_to(self, wfile):
         total = sum(wfile.write(data) for data in self)
         assert total == self._content_length
-        wfile.flush()
         return total
 
 def _not_found(self, cur, end, readline):
@@ -1201,36 +1320,29 @@ def readchunk(rfile):
 
 
 class ChunkedBody:
-    chunked = True
-
-    __slots__ = (
-        '_rfile',
-        '_robj',
-        '_readline',
-        '_read',
-        '_state',
-    )
+    __slots__ = ('_rfile', '_robj', '_readline', '_state', '_chunked')
 
     def __init__(self, rfile):
         self._rfile = rfile
         self._robj = _get_robj(rfile)
         self._readline = _get_readline(rfile)
         self._state = BODY_READY
+        self._chunked = True
 
     def __repr__(self):
-        return 'ChunkedBody(<rfile>)'
+        return 'ChunkedBody({})'.format(_rfile_repr(self._rfile))
 
     @property
     def rfile(self):
         return self._rfile
 
     @property
-    def fastpath(self):
-        return type(self._rfile) is Reader
-
-    @property
     def state(self):
         return self._state
+
+    @property
+    def chunked(self):
+        return self._chunked
 
     def readchunk(self):
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
