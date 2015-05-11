@@ -3739,6 +3739,21 @@ _check_body_state(const char *name, const uint8_t state, const uint8_t max_state
     return false;
 }
 
+static const char *
+_rfile_repr(PyObject *rfile)
+{
+    static const char *repr_null =   "<NULL>";
+    static const char *repr_reader = "<reader>";
+    static const char *repr_rfile =  "<rfile>";
+    if (rfile == NULL) {
+        return repr_null;
+    }
+    if (Py_TYPE(rfile) == &ReaderType) {
+        return repr_reader;
+    }
+    return repr_rfile;
+}
+
 
 /******************************************************************************
  * Body object.
@@ -3811,6 +3826,13 @@ Body_init(Body *self, PyObject *args, PyObject *kw)
 error:
     self->state = BODY_ERROR;
     return -1;
+}
+
+static PyObject *
+Body_repr(Body *self) {
+    return PyUnicode_FromFormat("Body(%s, %llu)",
+        _rfile_repr(self->rfile), self->content_length
+    );
 }
 
 static bool
@@ -3948,23 +3970,6 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
 }
 
 static PyObject *
-_Body_repr(Body *self, const char *name) {
-    return PyUnicode_FromFormat("Body(<%s>, %llu)", name, self->content_length);
-}
-
-static PyObject *
-Body_repr(Body *self)
-{
-    if (self->rfile == NULL) {
-        return _Body_repr(self, "NULL");
-    }
-    if (Py_TYPE(self->rfile) == &ReaderType) {
-        return _Body_repr(self, "reader");
-    }
-    return _Body_repr(self, "rfile");
-}
-
-static PyObject *
 Body_iter(Body *self)
 {
     if (! _check_body_state("Body", self->state, BODY_READY)) {
@@ -4008,12 +4013,6 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
     _SET_AND_INC(self->rfile, rfile)
     _SET(self->robj, _get_robj(rfile))
     _SET(self->readline, _get_readline(rfile))
-    if (Py_TYPE(rfile) == &ReaderType) {
-        self->fastpath = true;
-    }
-    else {
-        self->fastpath = false;
-    }
     self->state = BODY_READY;
     self->chunked = true;
     return true;
@@ -4060,6 +4059,12 @@ ChunkedBody_init(ChunkedBody *self, PyObject *args, PyObject *kw)
 error:
     self->state = BODY_ERROR;
     return -1;
+}
+
+static PyObject *
+ChunkedBody_repr(ChunkedBody *self) {
+    return PyUnicode_FromFormat("ChunkedBody(%s)", _rfile_repr(self->rfile));
+
 }
 
 static bool
@@ -4224,12 +4229,6 @@ ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
         ret = PyLong_FromLongLong(total);
     }
     return ret;
-}
-
-static PyObject *
-ChunkedBody_repr(ChunkedBody *self)
-{
-    return PyUnicode_FromString("ChunkedBody(<rfile>)");
 }
 
 static PyObject *

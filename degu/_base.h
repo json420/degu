@@ -616,7 +616,6 @@ typedef struct {
     PyObject *robj;
     PyObject *readline;
     uint8_t state;
-    bool fastpath;
     bool chunked;
 } ChunkedBody;
 
@@ -626,7 +625,6 @@ static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
     {"state",    T_UBYTE,     offsetof(ChunkedBody, state),    READONLY, NULL},
-    {"fastpath", T_BOOL,      offsetof(ChunkedBody, fastpath), READONLY, NULL},
     {"chunked",  T_BOOL,      offsetof(ChunkedBody, chunked),  READONLY, NULL},
     {NULL}
 };

@@ -457,7 +457,7 @@ Notice that a :class:`degu.base.ChunkedBody` is returned:
 >>> response.body.chunked
 True
 >>> response.body
-ChunkedBody(<rfile>)
+ChunkedBody(<reader>)
 >>> response.headers
 {'transfer-encoding': 'chunked'}
 

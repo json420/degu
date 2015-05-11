@@ -3562,39 +3562,14 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         return self.getattr('Reader')
 
     def check_common(self, body, rfile):
-        if self.backend is _basepy:
-            setmsg = "can't set attribute"
-            delmsg = "can't delete attribute"
-            setmsg2 = "'ChunkedBody' object attribute 'chunked' is read-only"
-            delmsg2 = setmsg2
-        else:
-            setmsg = 'readonly attribute'
-            delmsg =  setmsg
-            setmsg2 = setmsg
-            delmsg2 = delmsg
-        members = ('rfile', 'fastpath', 'state')
+        name = ('reader' if type(rfile) is self.Reader else 'rfile')
+        self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
 
-        # Test everything except body.chunked:
-        for name in members:  
-            with self.assertRaises(AttributeError) as cm:
-                setattr(body, name, True)
-            self.assertEqual(str(cm.exception), setmsg)
-            with self.assertRaises(AttributeError) as cm:
-                delattr(body, name)
-            self.assertEqual(str(cm.exception), delmsg)
-
-        # Test body.chunked:
-        with self.assertRaises(AttributeError) as cm:
-            body.chunked = False
-        self.assertEqual(str(cm.exception), setmsg2)
-        with self.assertRaises(AttributeError) as cm:
-            del body.chunked
-        self.assertEqual(str(cm.exception), delmsg2)
+        self.check_readonly_attrs(body, 'rfile', 'state', 'chunked')
 
         self.assertIs(body.rfile, rfile)
         self.assertIs(body.chunked, True)
         self.assertEqual(body.state, self.BODY_READY)
-        self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
 
     def test_init(self):
         # Test with backend.Reader:
@@ -3603,7 +3578,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
-        self.assertIs(body.fastpath, True)
         self.check_common(body, rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
@@ -3614,7 +3588,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
-        self.assertIs(body.fastpath, False)
         self.check_common(body, rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
         del body
@@ -3673,10 +3646,11 @@ class TestChunkedBody_Py(BodyBackendTestCase):
     def test_repr(self):
         data = b'c\r\nhello, world\r\n0;k=v\r\n\r\n'
         for rfile in self.iter_rfiles(data):
+            name = ('reader' if type(rfile) is self.Reader else 'rfile')
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
             self.assertEqual(sys.getrefcount(rfile), 5)
-            self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
+            self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
             self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)

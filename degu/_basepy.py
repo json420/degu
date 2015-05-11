@@ -1131,6 +1131,12 @@ def _check_body_state(name, state, max_state):
     raise Exception('bad state: {!r}'.format(state))
 
 
+def _rfile_repr(rfile):
+    if type(rfile) is Reader:
+        return '<reader>'
+    return '<rfile>'
+
+
 class Body:
     __slots__ = (
         '_rfile',
@@ -1169,8 +1175,9 @@ class Body:
         return self._chunked
 
     def __repr__(self):
-        name = ('reader' if type(self._rfile) is Reader else 'rfile')
-        return 'Body(<{}>, {!r})'.format(name, self._content_length)
+        return 'Body({}, {!r})'.format(
+            _rfile_repr(self._rfile), self._content_length
+        )
 
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)
@@ -1299,36 +1306,29 @@ def readchunk(rfile):
 
 
 class ChunkedBody:
-    chunked = True
-
-    __slots__ = (
-        '_rfile',
-        '_robj',
-        '_readline',
-        '_read',
-        '_state',
-    )
+    __slots__ = ('_rfile', '_robj', '_readline', '_state', '_chunked')
 
     def __init__(self, rfile):
         self._rfile = rfile
         self._robj = _get_robj(rfile)
         self._readline = _get_readline(rfile)
         self._state = BODY_READY
+        self._chunked = True
 
     def __repr__(self):
-        return 'ChunkedBody(<rfile>)'
+        return 'ChunkedBody({})'.format(_rfile_repr(self._rfile))
 
     @property
     def rfile(self):
         return self._rfile
 
     @property
-    def fastpath(self):
-        return type(self._rfile) is Reader
-
-    @property
     def state(self):
         return self._state
+
+    @property
+    def chunked(self):
+        return self._chunked
 
     def readchunk(self):
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
