@@ -168,14 +168,11 @@ class Connection:
     A `Connection` is stateful and is *not* thread-safe.
     """
 
-    __slots__ = (
-        'sock', 'base_headers', 'bodies', '_rfile', '_wfile', '_response_body'
-    )
+    __slots__ = ('sock', 'base_headers', '_rfile', '_wfile', '_response_body')
 
-    def __init__(self, sock, base_headers, bodies):
+    def __init__(self, sock, base_headers):
         self.sock = sock
         self.base_headers = base_headers
-        self.bodies = bodies
         (self._rfile, self._wfile) = _makefiles(sock)
         self._response_body = None  # Previous Body(), ChunkedBody(), or None
 
@@ -359,10 +356,8 @@ class Client:
         sock.connect(self.address)
         return sock
 
-    def connect(self, bodies=None):
-        if bodies is None:
-            bodies = self.bodies
-        conn = Connection(self.create_socket(), self._base_headers, bodies)
+    def connect(self):
+        conn = Connection(self.create_socket(), self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
         conn.close()

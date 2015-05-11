@@ -233,12 +233,11 @@ class TestConnection(TestCase):
     def test_init(self):
         sock = DummySocket()
         base_headers = {'host': 'www.example.com:80'}
-        inst = client.Connection(sock, base_headers, base.bodies)
+        inst = client.Connection(sock, base_headers)
         self.assertIsInstance(inst, client.Connection)
         self.assertIs(inst.sock, sock)
         self.assertIs(inst.base_headers, base_headers)
         self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
-        self.assertIs(inst.bodies, base.bodies)
         self.assertIsInstance(inst._rfile, base.Reader)
         self.assertIsInstance(inst._wfile, base.Writer)
         self.assertIsNone(inst._response_body)
@@ -262,7 +261,7 @@ class TestConnection(TestCase):
 
     def test_close(self):
         sock = DummySocket()
-        inst = client.Connection(sock, None, base.bodies)
+        inst = client.Connection(sock, None)
         sock._calls.clear()
 
         # When Connection.closed is False:
@@ -282,7 +281,7 @@ class TestConnection(TestCase):
     def test_request(self):
         # Test when the connection has already been closed:
         sock = DummySocket()
-        conn = client.Connection(sock, None, base.bodies)
+        conn = client.Connection(sock, None)
         sock._calls.clear()
         conn.sock = None
         with self.assertRaises(client.ClosedConnectionError) as cm:
@@ -301,7 +300,7 @@ class TestConnection(TestCase):
             state = 0
 
         sock = DummySocket()
-        conn = client.Connection(sock, None, base.bodies)
+        conn = client.Connection(sock, None)
         sock._calls.clear()
         conn._response_body = DummyBody
         with self.assertRaises(client.UnconsumedResponseError) as cm:
@@ -529,7 +528,6 @@ class TestClient(TestCase):
             def __init__(self, sock, host, on_connect=None):
                 self.__sock = sock
                 self._base_headers = {'host': host}
-                self.bodies = base.bodies
                 self.on_connect = on_connect
 
             def create_socket(self):
@@ -543,7 +541,6 @@ class TestClient(TestCase):
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
         self.assertIsInstance(conn._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
@@ -554,7 +551,6 @@ class TestClient(TestCase):
         self.assertIsInstance(conn2, client.Connection)
         self.assertIs(conn2.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn2._rfile, base.Reader)
         self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
@@ -570,7 +566,6 @@ class TestClient(TestCase):
         self.assertIsInstance(conn, client.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
         self.assertIsInstance(conn._rfile, base.Reader)
         self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
