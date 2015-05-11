@@ -26,7 +26,6 @@ HTTP client.
 import socket
 import os
 
-from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
@@ -294,7 +293,7 @@ class Client:
     """
 
     _default_port = 80  # Needed to contruct the default host header
-    _allowed_options = ('host', 'timeout', 'bodies', 'on_connect')
+    _allowed_options = ('host', 'timeout', 'on_connect')
 
     def __init__(self, address, **options):
         # address:
@@ -331,7 +330,6 @@ class Client:
                 )
             )
         self.options = options
-        self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
         self.timeout = options.get('timeout', 60)
         self.on_connect = options.get('on_connect')
