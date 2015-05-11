@@ -40,6 +40,12 @@
 #define BODY_CONSUMED 2u
 #define BODY_ERROR 3u
 
+#define BIT_CONTENT_LENGTH 1u
+#define BIT_TRANSFER_ENCODING 2u
+#define BIT_RANGE 4u
+#define BIT_CONTENT_RANGE 8u
+#define FRAMING_MASK (BIT_CONTENT_LENGTH | BIT_TRANSFER_ENCODING)
+
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
@@ -167,7 +173,7 @@ static PyObject * parse_header_name(PyObject *, PyObject *);
 static PyObject * parse_content_length(PyObject *, PyObject *);
 static PyObject * parse_range(PyObject *, PyObject *);
 static PyObject * parse_content_range(PyObject *, PyObject *);
-static PyObject * parse_headers(PyObject *, PyObject *);
+static PyObject * parse_headers(PyObject *, PyObject *, PyObject *);
 
 /* Request parsing */
 static PyObject * parse_method(PyObject *, PyObject *);
@@ -207,7 +213,7 @@ static struct PyMethodDef degu_functions[] = {
     {"parse_content_length", parse_content_length, METH_VARARGS, NULL},
     {"parse_range", parse_range, METH_VARARGS, NULL},
     {"parse_content_range", parse_content_range, METH_VARARGS, NULL},
-    {"parse_headers", parse_headers, METH_VARARGS, NULL},
+    {"parse_headers", (PyCFunction)parse_headers, METH_VARARGS|METH_KEYWORDS, NULL},
 
     /* Request parsing */
     {"parse_method", parse_method, METH_VARARGS, NULL},

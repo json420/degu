@@ -531,7 +531,11 @@ def parse_content_range(src):
     return ContentRange(start, end + 1, total)
 
 
-def _parse_header_lines(header_lines):
+def _parse_header_lines(header_lines, isresponse=False):
+    if type(isresponse) is not bool:
+        raise TypeError(
+            TYPE_ERROR.format('isresponse', bool, type(isresponse), isresponse)
+        )
     headers = {}
     flags = 0
     for line in header_lines:
@@ -556,6 +560,7 @@ def _parse_header_lines(header_lines):
             flags |= 4
             val = parse_range(val)
         elif key == 'content-range':
+            flags |= 8
             val = parse_content_range(val)
         else:
             val = _parse_val(val)
@@ -567,17 +572,26 @@ def _parse_header_lines(header_lines):
         raise ValueError(
             'cannot have both content-length and transfer-encoding headers'
         )
-    if (flags & 4) and (flags & 3):
+    if (flags & 4):
+        if (flags & 3):
+            raise ValueError(
+                'cannot include range header and content-length/transfer-encoding'
+            )
+        if isresponse:
+            raise ValueError(
+                "response cannot include a 'range' header"
+            )
+    if (flags & 8) and not isresponse:
         raise ValueError(
-            'cannot include range header and content-length/transfer-encoding'
+            "request cannot include a 'content-range' header"
         )
     return headers
 
 
-def parse_headers(src):
+def parse_headers(src, isresponse=False):
     if src == b'':
         return {}
-    return _parse_header_lines(src.split(b'\r\n'))
+    return _parse_header_lines(src.split(b'\r\n'), isresponse)
 
 
 
@@ -704,7 +718,7 @@ def parse_response(method, preamble, rfile):
         raise EmptyPreambleError('response preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
     (status, reason) = parse_response_line(first_line)
-    headers = _parse_header_lines(header_lines)
+    headers = _parse_header_lines(header_lines, isresponse=True)
     if method == 'HEAD':
         body = None
     elif 'content-length' in headers:

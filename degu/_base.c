@@ -577,6 +577,13 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
     return attr;
 }
 
+static void
+_type_error(const char *name, PyTypeObject *need, PyObject *got)
+{
+    PyErr_Format(PyExc_TypeError, "%s: need a %R; got a %R: %R",
+        name, (PyObject *)need, Py_TYPE(got), got
+    );
+}
 
 
 /******************************************************************************
@@ -1398,7 +1405,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
             goto error;
         }
         dh->content_length = (uint64_t)length;
-        dh->flags |= 1;
+        dh->flags |= BIT_CONTENT_LENGTH;
         _SET_AND_INC(key, key_content_length)
         _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
     }
@@ -1409,16 +1416,17 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, val_chunked)
-        dh->flags |= 2;
+        dh->flags |= BIT_TRANSFER_ENCODING;
     }
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_range(valsrc))
-        dh->flags |= 4;
+        dh->flags |= BIT_RANGE;
     }
     else if (_equal(keysrc, CONTENT_RANGE)) {
         _SET_AND_INC(key, key_content_range)
         _SET(val, _parse_content_range(valsrc))
+        dh->flags |= BIT_CONTENT_RANGE;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
@@ -1451,7 +1459,8 @@ cleanup:
 }
 
 static bool
-_parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
+_parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
+               const bool isresponse)
 {
     size_t start, stop;
 
@@ -1464,15 +1473,30 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         start = stop + CRLF.len;
     }
-    if ((dh->flags & 3) == 3) {
+    const uint8_t framing = dh->flags & FRAMING_MASK;
+    if (framing == FRAMING_MASK) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
     }
-    if ((dh->flags & 4) && (dh->flags & 3)) {
+    if (dh->flags & BIT_RANGE) {
+        if (framing) {
+            PyErr_SetString(PyExc_ValueError, 
+                "cannot include range header and content-length/transfer-encoding"
+            );
+            goto error; 
+        }
+        if (isresponse) {
+            PyErr_SetString(PyExc_ValueError, 
+                "response cannot include a 'range' header"
+            );
+            goto error; 
+        }
+    }
+    if ((dh->flags & BIT_CONTENT_RANGE) && !isresponse) {
         PyErr_SetString(PyExc_ValueError, 
-            "cannot include range header and content-length/transfer-encoding"
+            "request cannot include a 'content-range' header"
         );
         goto error; 
     }
@@ -1709,7 +1733,7 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch)
     if (!_parse_request_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, false)) {
         goto error;
     }
     /* Create request body */
@@ -1890,7 +1914,7 @@ _parse_response(DeguSrc method, DeguSrc src, PyObject *rfile, DeguDst scratch)
     if (!_parse_response_line(line_src, &dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr)) {
+    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, true)) {
         goto error;
     }
     /* Create request body */
@@ -2324,21 +2348,35 @@ done:
 }
 
 static PyObject *
-parse_headers(PyObject *self, PyObject *args)
+parse_headers(PyObject *self, PyObject *args, PyObject *kw)
 {
+    static char *keys[] = {"src", "isresponse", NULL};
     const uint8_t *buf = NULL;
     size_t len = 0;
+    PyObject *isresponse = Py_False;
+    bool _isresponse;
     DeguHeaders dh = NEW_DEGU_HEADERS;
 
-    if (!PyArg_ParseTuple(args, "y#:parse_headers", &buf, &len)) {
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "y#|O:parse_headers", keys,
+            &buf, &len, &isresponse)) {
+        return NULL;
+    }
+    if (isresponse == Py_False) {
+        _isresponse = false;
+    }
+    else if (isresponse == Py_True) {
+        _isresponse = true;
+    }
+    else {
+        _type_error("isresponse", &PyBool_Type, isresponse);
         return NULL;
     }
     DeguSrc src = {buf, len};
-    DeguDst dst = _calloc_dst(MAX_KEY);
-    if (dst.buf == NULL) {
+    DeguDst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
         return NULL;
     }
-    if (!_parse_headers(src, dst, &dh)) {
+    if (!_parse_headers(src, scratch, &dh, _isresponse)) {
         goto error;
     }
     goto cleanup;
@@ -2347,9 +2385,7 @@ error:
     Py_CLEAR(dh.headers);
 
 cleanup:
-    if (dst.buf != NULL) {
-        free(dst.buf);
-    }
+    free(scratch.buf);
     return dh.headers;
 }
 

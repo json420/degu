@@ -1172,6 +1172,14 @@ class TestParsingFunctions_Py(BackendTestCase):
         Range = self.getattr('Range')
         ContentRange = self.getattr('ContentRange')
 
+        # bad *isresponse* type:
+        for bad in (-1, 0, 1, None):
+            with self.assertRaises(TypeError) as cm:
+                parse_headers(b'Foo: bar\r\n', bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('isresponse', bool, type(bad), bad)
+            )
+
         self.assertEqual(parse_headers(b''), {})
         self.assertEqual(parse_headers(b'K: V'), {'k': 'V'})
         with self.assertRaises(ValueError) as cm:
@@ -1215,8 +1223,14 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(h['range'].stop, 17)
         self.assertEqual(repr(h['range']), 'Range(16, 17)')
         self.assertEqual(str(h['range']), 'bytes=16-16')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(_range, isresponse=True)
+        self.assertEqual(str(cm.exception),
+            "response cannot include a 'range' header"
+        )
 
-        h = parse_headers(b'Content-Range: bytes 16-16/23')
+        _content_range = b'Content-Range: bytes 16-16/23'
+        h = parse_headers(_content_range, isresponse=True)
         self.assertEqual(set(h), {'content-range'})
         cr = h['content-range']
         self.assertIs(type(cr), ContentRange)
@@ -1227,6 +1241,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(cr.total, 23)
         self.assertEqual(repr(cr), 'ContentRange(16, 17, 23)')
         self.assertEqual(str(cr), 'bytes 16-16/23')
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(_content_range)
+        self.assertEqual(str(cm.exception),
+            "request cannot include a 'content-range' header"
+        )
 
         badsrc = b'\r\n'.join([length, encoding])
         with self.assertRaises(ValueError) as cm:

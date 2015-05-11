@@ -4,11 +4,6 @@ Road to Degu 1.0 (or something like that)
 Definite
 --------
 
-    *   parse_headers() should take a isresponse=False kwarg to select between
-        two modes: request header parsing (the default) and response header
-        parsing; the only diffence is that 'content-range' is not allowed in
-        request headers, and that 'range' is not allowed in response headers.
-
     *   Drop *bodies* option from Client and Server.
 
 
