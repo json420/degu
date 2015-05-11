@@ -74,7 +74,7 @@ IO_SIZE = 1048576  # 1 MiB
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-def _makefiles(sock, bodies):
+def _makefiles(sock):
     """
     Create (rfile, wfile) from a socket connection.
     """

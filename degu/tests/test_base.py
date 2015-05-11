@@ -2243,7 +2243,7 @@ class TestFunctions(AlternatesTestCase):
     def test_makefiles(self):
         sock = DummySocket()
         self.assertEqual(sys.getrefcount(sock), 2)
-        (reader, writer) = base._makefiles(sock, base.bodies)
+        (reader, writer) = base._makefiles(sock)
         self.assertIsInstance(reader, base.Reader)
         self.assertIsInstance(writer, base.Writer)
         self.assertEqual(sock._calls, [])

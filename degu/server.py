@@ -140,7 +140,7 @@ def _validate_server_sslctx(sslctx):
 
 
 def _handle_requests(app, sock, max_requests, session, bodies):
-    (reader, writer) = _makefiles(sock, bodies)
+    (reader, writer) = _makefiles(sock)
     assert session['requests'] == 0
     for count in range(1, max_requests + 1):
         request = reader.read_request()
