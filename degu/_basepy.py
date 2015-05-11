@@ -1132,14 +1132,13 @@ def _check_body_state(name, state, max_state):
 
 
 class Body:
-    chunked = False
-
     __slots__ = (
         '_rfile',
         '_robj',
         '_content_length',
         '_remaining',
         '_state',
+        '_chunked',
     )
 
     def __init__(self, rfile, content_length):
@@ -1151,14 +1150,11 @@ class Body:
             self._robj = rfile
         else:
             self._robj = _getcallable('rfile', rfile, 'readinto')
+        self._chunked = False
 
     @property
     def rfile(self):
         return self._rfile
-
-    @property
-    def fastpath(self):
-        return type(self._rfile) is Reader
 
     @property
     def content_length(self):
@@ -1168,8 +1164,13 @@ class Body:
     def state(self):
         return self._state
 
+    @property
+    def chunked(self):
+        return self._chunked
+
     def __repr__(self):
-        return 'Body(<rfile>, {!r})'.format(self._content_length)
+        name = ('reader' if type(self._rfile) is Reader else 'rfile')
+        return 'Body(<{}>, {!r})'.format(name, self._content_length)
 
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)

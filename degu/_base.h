@@ -538,7 +538,6 @@ typedef struct {
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
-    bool fastpath;
     bool chunked;
 } Body;
 
@@ -549,7 +548,6 @@ static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
     {"state",          T_UBYTE,     offsetof(Body, state),          READONLY, NULL},
-    {"fastpath",       T_BOOL,      offsetof(Body, fastpath),       READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
     {NULL}
 };

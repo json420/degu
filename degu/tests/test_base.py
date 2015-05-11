@@ -3135,6 +3135,31 @@ class BodyBackendTestCase(BackendTestCase):
     def Writer(self):
         return self.getattr('Writer')
 
+    def iter_rfiles(self, data):
+        yield io.BytesIO(data)
+        yield self.Reader(MockSocket(data, None))
+        yield self.Reader(MockSocket(data, 1))
+        yield self.Reader(MockSocket(data, 2))
+
+    def check_readonly_attrs(self, body, *members):
+        """
+        Check body instance attributes that should be read-only.
+        """
+        assert len(members) >= 2
+        if self.backend is _basepy:
+            setmsg = "can't set attribute"
+            delmsg = "can't delete attribute"
+        else:
+            setmsg = 'readonly attribute'
+            delmsg = 'readonly attribute'
+        for name in members:
+            value = getattr(body, name)
+            with self.assertRaises(AttributeError) as cm:
+                setattr(body, name, value)
+            self.assertEqual(str(cm.exception), setmsg)
+            with self.assertRaises(AttributeError) as cm:
+                delattr(body, name)
+            self.assertEqual(str(cm.exception), delmsg)
 
 
 class TestBody_Py(BodyBackendTestCase):
@@ -3144,46 +3169,53 @@ class TestBody_Py(BodyBackendTestCase):
 
     def test_init(self):
         Body = self.Body
-        rfile = io.BytesIO()
-
-        # Bad content_length type:
-        with self.assertRaises(TypeError) as cm:
-            Body(rfile, 17.0)
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('content_length', int, float, 17.0)
-        )
-        with self.assertRaises(TypeError) as cm:
-            Body(rfile, '17')
-        self.assertEqual(str(cm.exception),
-            base._TYPE_ERROR.format('content_length', int, str, '17')
-        )
-
         # Bad content_length value:
         max_uint64 = 2**64 - 1
         max_length = 9999999999999999
-        for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
-            with self.assertRaises(ValueError) as cm:
-                Body(rfile, bad)
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            # Bad content_length type:
+            with self.assertRaises(TypeError) as cm:
+                Body(rfile, 17.0)
             self.assertEqual(str(cm.exception),
-                'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
+                base._TYPE_ERROR.format('content_length', int, float, 17.0)
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+            with self.assertRaises(TypeError) as cm:
+                Body(rfile, '17')
+            self.assertEqual(str(cm.exception),
+                base._TYPE_ERROR.format('content_length', int, str, '17')
+            )
+            self.assertEqual(sys.getrefcount(rfile), 2)
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
+                with self.assertRaises(ValueError) as cm:
+                    Body(rfile, bad)
+                self.assertEqual(str(cm.exception),
+                    'need 0 <= content_length <= 9999999999999999; got {!r}'.format(bad)
+                )
+
+        for rfile in self.iter_rfiles(os.urandom(16)):
+            name = ('reader' if type(rfile) is self.Reader else 'rfile')
+
+            # All good:
+            for good in (0, 1, 17, 34969, max_length):
+                body = Body(rfile, good)
+                self.assertEqual(sys.getrefcount(rfile), 4)
+                self.assertEqual(body.state, self.BODY_READY)
+                self.assertIs(body.rfile, rfile)
+                self.assertEqual(body.content_length, good)
+                self.assertEqual(repr(body),
+                    'Body(<{}>, {!r})'.format(name, good)
+                )
+            self.check_readonly_attrs(body,
+                'rfile', 'content_length', 'state', 'chunked'
             )
 
-        # All good:
-        for good in (0, 1, 17, 34969, max_length):
-            body = Body(rfile, good)
-            self.assertEqual(body.state, self.BODY_READY)
-            self.assertIs(body.rfile, rfile)
-            self.assertEqual(body.content_length, good)
-            self.assertEqual(repr(body), 'Body(<rfile>, {!r})'.format(good))
-
-        # Body.closed should be read-only:
-        with self.assertRaises(AttributeError) as cm:
-            body.state = 1
-        if self.backend is _basepy:
-            self.assertEqual(str(cm.exception), "can't set attribute")
-        else:
-            self.assertEqual(str(cm.exception), 'readonly attribute')
-        self.assertEqual(body.state, self.BODY_READY)
+            del body
+            self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_read(self):
         Body = self.Body
@@ -3563,12 +3595,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertIs(body.chunked, True)
         self.assertEqual(body.state, self.BODY_READY)
         self.assertEqual(repr(body), 'ChunkedBody(<rfile>)')
-
-    def iter_rfiles(self, data):
-        yield io.BytesIO(data)
-        yield self.Reader(MockSocket(data, None))
-        yield self.Reader(MockSocket(data, 1))
-        yield self.Reader(MockSocket(data, 2))
 
     def test_init(self):
         # Test with backend.Reader:

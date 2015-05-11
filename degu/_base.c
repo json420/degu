@@ -3759,12 +3759,6 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
     }
     _SET_AND_INC(self->rfile, rfile)
     _SET(self->robj, _get_robj(rfile))
-    if (Py_TYPE(rfile) == &ReaderType) {
-        self->fastpath = true;
-    }
-    else {
-        self->fastpath = false;
-    }
     self->remaining = self->content_length = content_length;
     self->state = BODY_READY;
     self->chunked = false;
@@ -3954,9 +3948,20 @@ Body_read(Body *self, PyObject *args, PyObject *kw)
 }
 
 static PyObject *
+_Body_repr(Body *self, const char *name) {
+    return PyUnicode_FromFormat("Body(<%s>, %llu)", name, self->content_length);
+}
+
+static PyObject *
 Body_repr(Body *self)
 {
-    return PyUnicode_FromFormat("Body(<rfile>, %llu)", self->content_length);
+    if (self->rfile == NULL) {
+        return _Body_repr(self, "NULL");
+    }
+    if (Py_TYPE(self->rfile) == &ReaderType) {
+        return _Body_repr(self, "reader");
+    }
+    return _Body_repr(self, "rfile");
 }
 
 static PyObject *

@@ -506,7 +506,7 @@ Notice that the response body is a :class:`degu.base.Body` instance:
 >>> response.body.chunked
 False
 >>> response.body
-Body(<rfile>, 30)
+Body(<reader>, 30)
 >>> response.headers
 {'content-length': 30}
 
