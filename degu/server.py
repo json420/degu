@@ -139,7 +139,7 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def _handle_requests(app, sock, max_requests, session, bodies):
+def _handle_requests(app, sock, max_requests, session, bodies=default_bodies):
     (reader, writer) = _makefiles(sock)
     assert session['requests'] == 0
     for count in range(1, max_requests + 1):
@@ -255,7 +255,6 @@ class Server:
         semaphore = threading.BoundedSemaphore(self.max_connections)
         max_requests = self.max_requests
         timeout = self.timeout
-        bodies = self.bodies
         listensock = self.sock
         worker = self._worker
         while True:
@@ -267,7 +266,7 @@ class Server:
                 sock.settimeout(timeout)
                 thread = threading.Thread(
                     target=worker,
-                    args=(semaphore, max_requests, bodies, sock, address),
+                    args=(semaphore, max_requests, sock, address),
                     daemon=True
                 )
                 thread.start()
@@ -278,11 +277,11 @@ class Server:
                 except OSError:
                     pass
 
-    def _worker(self, semaphore, max_requests, bodies, sock, address):
+    def _worker(self, semaphore, max_requests, sock, address):
         session = {'client': address, 'requests': 0}
         log.info('Connection from %r', address)
         try:
-            self._handler(sock, max_requests, session, bodies)
+            self._handler(sock, max_requests, session)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
                 session.get('requests'), address, e
@@ -296,9 +295,9 @@ class Server:
                 pass
             semaphore.release()
 
-    def _handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            _handle_requests(self.app, sock, max_requests, session, bodies)
+            _handle_requests(self.app, sock, max_requests, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
@@ -313,11 +312,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def _handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super()._handler(sock, max_requests, session, bodies)
+        super()._handler(sock, max_requests, session)
 
