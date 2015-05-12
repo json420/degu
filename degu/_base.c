@@ -2189,14 +2189,12 @@ cleanup:
 
 
 static PyObject *
-_format_request(DeguSrc method_src, PyObject *uri, PyObject *headers)
+_format_request(PyObject *method, PyObject *uri, PyObject *headers)
 {
-    PyObject *method = NULL;
     PyObject *hstr = NULL;  /* str containing header lines */
     PyObject *str = NULL;  /* str version of request preamble */
     PyObject *ret = NULL;  /* bytes version of request preamble */
 
-    _SET(method, _parse_method(method_src))
     _SET(hstr, _format_headers(headers))
     _SET(str,
         PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S\r\n", method, uri, hstr)
@@ -2208,7 +2206,6 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(method);
     Py_CLEAR(hstr);
     Py_CLEAR(str);
     return  ret;
@@ -2478,12 +2475,18 @@ format_request(PyObject *self, PyObject *args)
     size_t len = 0;
     PyObject *uri = NULL;
     PyObject *headers = NULL;
+    PyObject *method = NULL;
+    PyObject *ret = NULL;
 
     if (!PyArg_ParseTuple(args, "s#UO:format_request", &buf, &len, &uri, &headers)) {
         return NULL;
     }
-    DeguSrc method_src = {buf, len};
-    return _format_request(method_src, uri, headers);
+    _SET(method, _parse_method((DeguSrc){buf, len}))
+    _SET(ret, _format_request(method, uri, headers))
+
+error:
+    Py_CLEAR(method);
+    return ret;
 }
 
 static PyObject *
@@ -3599,6 +3602,29 @@ Writer_write_output(Writer *self, PyObject *args)
     return PyLong_FromLongLong(total);
 }
 
+
+static int64_t
+_Writer_write_request(Writer *self,
+        PyObject *method, PyObject *uri, PyObject *headers, PyObject *body)
+{
+    PyObject *preamble = NULL;
+    int64_t wrote = -2;
+
+    if (! _set_output_headers(headers, body)) {
+        goto error;
+    }
+    _SET(preamble, _format_request(method, uri, headers))
+    wrote = _Writer_write_output(self, _frombytes(preamble), body);
+    goto cleanup;
+
+error:
+    wrote = -1;
+
+cleanup:
+    Py_CLEAR(preamble);
+    return wrote;
+}
+
 static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
 {
@@ -3607,28 +3633,25 @@ Writer_write_request(Writer *self, PyObject *args)
     PyObject *uri = NULL;
     PyObject *headers = NULL;
     PyObject *body = NULL;
-    PyObject *preamble = NULL;
-    int64_t total = -1;
+    PyObject *method = NULL;
+    int64_t wrote = -2;
 
     if (!PyArg_ParseTuple(args, "s#UOO:", &buf, &len, &uri, &headers, &body)) {
         return NULL;
     }
-    if (! _set_output_headers(headers, body)) {
-        return NULL;
-    }
-    DeguSrc method_src = {buf, len};
-    _SET(preamble, _format_request(method_src, uri, headers))
-    total = _Writer_write_output(self, _frombytes(preamble), body);
+    _SET(method, _parse_method((DeguSrc){buf, len}))
+    wrote = _Writer_write_request(self, method, uri, headers, body);
     goto cleanup;
 
 error:
+    wrote = -1;
 
 cleanup:
-    Py_CLEAR(preamble);
-    if (total <= 0) {
+    Py_CLEAR(method);
+    if (wrote < 0) {
         return NULL;
     }
-    return PyLong_FromLongLong(total);
+    return PyLong_FromLongLong(wrote);
 }
 
 static int64_t
@@ -4459,16 +4482,16 @@ _unpack_response(PyObject *obj, DeguResponse *dr)
             );
             goto error;
         }
-        _SET_AND_INC(dr->status,  PyTuple_GET_ITEM(obj, 0))
-        _SET_AND_INC(dr->reason,  PyTuple_GET_ITEM(obj, 1))
-        _SET_AND_INC(dr->headers, PyTuple_GET_ITEM(obj, 2))
-        _SET_AND_INC(dr->body,    PyTuple_GET_ITEM(obj, 3))
+        _SET(dr->status,  PyTuple_GET_ITEM(obj, 0))
+        _SET(dr->reason,  PyTuple_GET_ITEM(obj, 1))
+        _SET(dr->headers, PyTuple_GET_ITEM(obj, 2))
+        _SET(dr->body,    PyTuple_GET_ITEM(obj, 3))
     }
     else if (Py_TYPE(obj) == &ResponseType) {
-        _SET_AND_INC(dr->status,  PyStructSequence_GET_ITEM(obj, 0))
-        _SET_AND_INC(dr->reason,  PyStructSequence_GET_ITEM(obj, 1))
-        _SET_AND_INC(dr->headers, PyStructSequence_GET_ITEM(obj, 2))
-        _SET_AND_INC(dr->body,    PyStructSequence_GET_ITEM(obj, 3))
+        _SET(dr->status,  PyStructSequence_GET_ITEM(obj, 0))
+        _SET(dr->reason,  PyStructSequence_GET_ITEM(obj, 1))
+        _SET(dr->headers, PyStructSequence_GET_ITEM(obj, 2))
+        _SET(dr->body,    PyStructSequence_GET_ITEM(obj, 3))
     }
     else {
         PyErr_Format(PyExc_TypeError, "bad response type: %R", Py_TYPE(obj));
@@ -4507,8 +4530,8 @@ handle_requests(PyObject *self, PyObject *args)
         return NULL;
     }
     const size_t count = (size_t)_max_requests;
-    _SET(reader, PyObject_CallFunctionObjArgs(READER, sock, NULL))
-    _SET(writer, PyObject_CallFunctionObjArgs(WRITER, sock, NULL))
+    _SET(reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
+    _SET(writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
 
     for (i = 0; i < count; i++) {
         if (! _Reader_read_request((Reader *)reader, &req)) {
@@ -4527,7 +4550,7 @@ handle_requests(PyObject *self, PyObject *args)
         Py_CLEAR(request);
         Py_CLEAR(response);
         _clear_degu_request(&req);
-        _clear_degu_response(&rsp);
+        rsp = NEW_DEGU_RESPONSE;
     }
     _SET(ret, PyLong_FromSize_t(i))
     goto cleanup;
@@ -4541,14 +4564,90 @@ cleanup:
     Py_CLEAR(request);
     Py_CLEAR(response);
     _clear_degu_request(&req);
-    _clear_degu_response(&rsp);
     return ret;
 }
 
 
-/*******************************************************************************
- * Module Init:
- */
+/******************************************************************************
+ * Connection object.
+ ******************************************************************************/
+static void
+Connection_dealloc(Connection *self)
+{
+    Py_CLEAR(self->sock);
+    Py_CLEAR(self->base_headers);
+    Py_CLEAR(self->reader);
+    Py_CLEAR(self->writer);
+    Py_CLEAR(self->response_body);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Connection_init(Connection *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"sock", "base_headers", NULL};
+    PyObject *sock = NULL;
+    PyObject *base_headers = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Connection", keys,
+                &sock, &base_headers)) {
+        goto error;
+    }
+    _SET_AND_INC(self->sock, sock)
+    _SET_AND_INC(self->base_headers, base_headers)
+    _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
+    _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
+    self->response_body = NULL;
+    self->closed = false;
+    return 0;
+
+error:
+    self->closed = true;
+    return -1;
+}
+
+static PyObject *
+Connection_close(Connection *self)
+{
+    self->closed = true;
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+Connection_request(Connection *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *uri = NULL;
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+    PyObject *method = NULL;
+    int64_t total;
+
+    if (! PyArg_ParseTuple(args, "s#UOO:request",
+            &buf, &len, &uri, &headers, &body)) {
+        goto error;
+    }
+    _SET(method, _parse_method((DeguSrc){buf, len}))
+    total = _Writer_write_request(
+        WRITER(self->writer), method, uri, headers, body
+    );
+    if (total < 0) {
+        goto error;
+    }
+    goto cleanup;
+
+error:
+
+cleanup:
+    Py_CLEAR(method);
+    Py_RETURN_NONE;
+}
+
+
+/******************************************************************************
+ * Module init.
+ ******************************************************************************/
 static bool
 _init_all_types(PyObject *module)
 {
@@ -4599,6 +4698,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "ChunkedBodyIter", (PyObject *)&ChunkedBodyIterType)
+
+    ConnectionType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ConnectionType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Connection", (PyObject *)&ConnectionType)
 
     if (! _init_all_namedtuples(module)) {
         goto error;

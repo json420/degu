@@ -46,6 +46,19 @@
 #define BIT_CONTENT_RANGE 8u
 #define FRAMING_MASK (BIT_CONTENT_LENGTH | BIT_TRANSFER_ENCODING)
 
+#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
+#define READER(obj) ((Reader *)(obj))
+
+#define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
+#define WRITER(obj) ((Writer *)(obj))
+
+#define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
+#define BODY(obj) ((Body *)(obj))
+
+#define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
+#define CHUNKED_BODY(obj) ((ChunkedBody *)(obj))
+
+
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
  ******************************************************************************/
@@ -470,7 +483,7 @@ static PyTypeObject ReaderType = {
     (initproc)Reader_init,        /* tp_init */
 };
 
-#define READER ((PyObject *)&ReaderType)
+#define READER_CLASS ((PyObject *)&ReaderType)
 
 
 /******************************************************************************
@@ -539,7 +552,7 @@ static PyTypeObject WriterType = {
     (initproc)Writer_init,        /* tp_init */
 };
 
-#define WRITER ((PyObject *)&WriterType)
+#define WRITER_CLASS ((PyObject *)&WriterType)
 
 
 /******************************************************************************
@@ -835,5 +848,77 @@ static PyTypeObject ChunkedBodyIterType = {
     0,                                      /* tp_descr_set */
     0,                                      /* tp_dictoffset */
     (initproc)ChunkedBodyIter_init,         /* tp_init */
+};
+
+
+/******************************************************************************
+ * Connection object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *sock;
+    PyObject *base_headers;
+    PyObject *reader;
+    PyObject *writer;
+    PyObject *response_body;
+    bool closed;
+} Connection;
+
+static PyMemberDef Connection_members[] = {
+    {"sock",         T_OBJECT_EX, offsetof(Connection, sock),         READONLY, NULL},
+    {"base_headers", T_OBJECT_EX, offsetof(Connection, base_headers), READONLY, NULL},
+    {"closed",       T_BOOL,      offsetof(Connection, closed),       READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * Connection_close(Connection *);
+static PyObject * Connection_request(Connection *, PyObject *);
+
+static PyMethodDef Connection_methods[] = {
+    {"close",   (PyCFunction)Connection_close,   METH_NOARGS,  NULL},
+    {"request", (PyCFunction)Connection_request, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void Connection_dealloc(Connection *);
+static int Connection_init(Connection *, PyObject *, PyObject *);
+
+static PyTypeObject ConnectionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Connection",            /* tp_name */
+    sizeof(Connection),                 /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Connection_dealloc,     /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    0,                                  /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Connection(sock, base_headers)",   /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    Connection_methods,                 /* tp_methods */
+    Connection_members,                 /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Connection_init,          /* tp_init */
 };
 
