@@ -208,7 +208,7 @@ def _write_to(wobj, src):
     if len(src) == 0:
         return 0
     if type(wobj) is Writer:
-        return wobj.write(src)
+        return wobj._write(src)
     return _write(wobj, src)
 
 
@@ -228,8 +228,6 @@ def _get_wobj(wfile):
     if type(wfile) is Writer:
         return wfile
     return _getcallable('wfile', wfile, 'write')
-
-
 
 
 class Range:
@@ -817,12 +815,16 @@ def format_chunk(chunk):
     return '{:x};{}={}\r\n'.format(len(data), key, value).encode()
 
 
-def write_chunk(wfile, chunk):
+def _write_chunk(wobj, chunk):
     line = format_chunk(chunk)
-    total = wfile.write(line)
-    total += wfile.write(chunk[1])
-    total += wfile.write(b'\r\n')
+    total =  _write_to(wobj, line)
+    total += _write_to(wobj, chunk[1])
+    total += _write_to(wobj, b'\r\n')
     return total
+
+
+def write_chunk(wfile, chunk):
+    return _write_chunk(_get_wobj(wfile), chunk)
 
 
 ################################################################################
@@ -1086,21 +1088,21 @@ class Writer:
     def tell(self):
         return self._tell
 
-    def write(self, buf):
+    def _write(self, buf):
         size = _write(self._sock_send, buf)
         self._tell += size
         return size
 
     def write_output(self, preamble, body):
         if body is None:
-            return self.write(preamble)
+            return self._write(preamble)
         if type(body) is bytes:
-            return self.write(preamble + body)
+            return self._write(preamble + body)
         if type(body) not in bodies:
             raise TypeError(
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
-        self.write(preamble)
+        self._write(preamble)
         orig_tell = self.tell()
         total = _validate_length("total_wrote", body.write_to(self))
         delta = self.tell() - orig_tell
@@ -1236,7 +1238,8 @@ class Body:
             raise
 
     def write_to(self, wfile):
-        total = sum(wfile.write(data) for data in self)
+        wobj = _get_wobj(wfile)
+        total = sum(_write_to(wobj, data) for data in self)
         assert total == self._content_length
         return total
 
@@ -1487,13 +1490,14 @@ class ChunkedBodyIter:
     def write_to(self, wfile):
         _check_body_state('ChunkedBodyIter', self._state, BODY_READY)
         self._state = BODY_STARTED
+        wobj = _get_wobj(wfile)
         empty = False
         total = 0
         try:
             for chunk in self._source:
                 if empty:
                     raise ValueError('additional chunk after empty chunk data')
-                total += write_chunk(wfile, chunk)
+                total += _write_chunk(wobj, chunk)
                 if not chunk[1]:  # Is chunk data empty?
                     empty = True
             if not empty:

@@ -363,18 +363,6 @@ _frombytes(PyObject *bytes)
     };
 }
 
-static DeguSrc
-_frompybuf(Py_buffer *pybuf)
-{
-    if (pybuf->buf == NULL || pybuf->len < 1) {
-        Py_FatalError("_frompybuf(): bad internal call");
-    }
-    if (PyBuffer_IsContiguous(pybuf, 'C') != 1) {
-        Py_FatalError("_frompybuf(): buffer is not C-contiguous");
-    }
-    return (DeguSrc){pybuf->buf, (size_t)pybuf->len};
-}
-
 static DeguDst
 _dst_frombytes(PyObject *bytes)
 {
@@ -3590,23 +3578,6 @@ cleanup:
 static PyObject *
 Writer_tell(Writer *self) {
     return PyLong_FromUnsignedLongLong(self->tell);
-}
-
-static PyObject *
-Writer_write(Writer *self, PyObject *args)
-{
-    Py_buffer pybuf;
-
-    if (!PyArg_ParseTuple(args, "y*:write", &pybuf)) {
-        return NULL;
-    }
-    DeguSrc src = _frompybuf(&pybuf);
-    const ssize_t total = _Writer_write(self, src);
-    PyBuffer_Release(&pybuf);
-    if (total >= 0) {
-        return PyLong_FromSsize_t(total);
-    }
-    return NULL;
 }
 
 static PyObject *
