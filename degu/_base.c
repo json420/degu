@@ -584,8 +584,50 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
 
 
 /******************************************************************************
+ * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk.
+ ******************************************************************************/
+static void
+_clear_degu_headers(DeguHeaders *dh)
+{
+    Py_CLEAR(dh->headers);
+    Py_CLEAR(dh->body);
+}
+
+static void
+_clear_degu_request(DeguRequest *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->method);
+    Py_CLEAR(dr->uri);
+    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->path);
+    Py_CLEAR(dr->query);
+}
+
+static void
+_clear_degu_response(DeguResponse *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+}
+
+static void
+_clear_degu_chunk(DeguChunk *dc)
+{
+    Py_CLEAR(dc->key);
+    Py_CLEAR(dc->val);
+    Py_CLEAR(dc->data);
+    dc->size = 0;
+}
+
+
+/******************************************************************************
  * C equivalent of Python namedtuple (PyStructSequence).
  ******************************************************************************/
+#define _SET_NAMEDTUPLE_ITEM(tup, index, value) \
+    Py_XINCREF(value); \
+    PyStructSequence_SET_ITEM(tup, index, value);
 
 /* Bodies namedtuple */
 static PyTypeObject BodiesType;
@@ -602,7 +644,6 @@ static PyStructSequence_Desc BodiesDesc = {
     BodiesFields,  
     4
 };
-
 
 static PyObject *
 _Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
@@ -644,35 +685,20 @@ static PyStructSequence_Field RequestFields[] = {
     {"query", NULL},
     {NULL},
 };
-static PyStructSequence_Desc RequestDesc = {
-    "Request",
-    NULL,
-    RequestFields,  
-    7
-};
+static PyStructSequence_Desc RequestDesc = {"Request", NULL, RequestFields, 7};
 
 static PyObject *
-_Request(PyObject *arg0,  // method
-         PyObject *arg1,  // uri
-         PyObject *arg2,  // headers
-         PyObject *arg3,  // body
-         PyObject *arg4,  // script
-         PyObject *arg5,  // path
-         PyObject *arg6)  // query
+_Request(DeguRequest *dr)
 {
-    PyObject *request = PyStructSequence_New(&RequestType);
-    if (request == NULL) {
-        return NULL;
-    }
     PyObject *ret = PyStructSequence_New(&RequestType);
     if (ret != NULL) {
-        Py_INCREF(arg0);  PyStructSequence_SET_ITEM(ret, 0, arg0);
-        Py_INCREF(arg1);  PyStructSequence_SET_ITEM(ret, 1, arg1);
-        Py_INCREF(arg2);  PyStructSequence_SET_ITEM(ret, 2, arg2);
-        Py_INCREF(arg3);  PyStructSequence_SET_ITEM(ret, 3, arg3);
-        Py_INCREF(arg4);  PyStructSequence_SET_ITEM(ret, 4, arg4);
-        Py_INCREF(arg5);  PyStructSequence_SET_ITEM(ret, 5, arg5);
-        Py_INCREF(arg6);  PyStructSequence_SET_ITEM(ret, 6, arg6);
+        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->method)
+        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->uri)
+        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
+        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
+        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->script)
+        _SET_NAMEDTUPLE_ITEM(ret, 5, dr->path)
+        _SET_NAMEDTUPLE_ITEM(ret, 6, dr->query)
     }
     return ret;
 }
@@ -680,19 +706,18 @@ _Request(PyObject *arg0,  // method
 static PyObject *
 Request(PyObject *self, PyObject *args)
 {
-    PyObject *arg0 = NULL;  // method
-    PyObject *arg1 = NULL;  // uri
-    PyObject *arg2 = NULL;  // headers
-    PyObject *arg3 = NULL;  // body
-    PyObject *arg4 = NULL;  // script
-    PyObject *arg5 = NULL;  // path
-    PyObject *arg6 = NULL;  // query
-
-    if (!PyArg_ParseTuple(args, "OOOOOOO:Request",
-            &arg0, &arg1, &arg2, &arg3,  &arg4, &arg5, &arg6)) {
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OOOOOOO:Request",
+            &dr.method,
+            &dr.uri,
+            &dr.headers,
+            &dr.body,
+            &dr.script,
+            &dr.path,
+            &dr.query)) {
         return NULL;
     }
-    return _Request(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+    return _Request(&dr);
 }
 
 
@@ -835,45 +860,6 @@ _validate_read_size(const char *name, PyObject *obj, const uint64_t remaining)
         return (ssize_t)remaining;
     }
     return _validate_size(name, obj, MAX_IO_SIZE);
-}
-
-
-/******************************************************************************
- * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk.
- ******************************************************************************/
-static void
-_clear_degu_headers(DeguHeaders *dh)
-{
-    Py_CLEAR(dh->headers);
-    Py_CLEAR(dh->body);
-}
-
-static void
-_clear_degu_request(DeguRequest *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->method);
-    Py_CLEAR(dr->uri);
-    Py_CLEAR(dr->script);
-    Py_CLEAR(dr->path);
-    Py_CLEAR(dr->query);
-}
-
-static void
-_clear_degu_response(DeguResponse *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->status);
-    Py_CLEAR(dr->reason);
-}
-
-static void
-_clear_degu_chunk(DeguChunk *dc)
-{
-    Py_CLEAR(dc->key);
-    Py_CLEAR(dc->val);
-    Py_CLEAR(dc->data);
-    dc->size = 0;
 }
 
 
@@ -1708,16 +1694,13 @@ error:
     return false;
 }
 
-static PyObject *
-_parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch)
+static bool
+_parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 {
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *ret = NULL;
-
     /* Check for empty premable */
     if (src.len == 0) {
         PyErr_SetString(EmptyPreambleError, "request preamble is empty");
-        goto error;
+        return false;
     }
 
     /* Parse request preamble */
@@ -1725,31 +1708,15 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch)
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
     DeguSrc line_src = _slice(src, 0, stop);
     DeguSrc headers_src = _slice(src, start, src.len);
-    if (!_parse_request_line(line_src, &dr)) {
-        goto error;
+    if (! _parse_request_line(line_src, dr)) {
+        return false;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, false)) {
-        goto error;
+    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, false)) {
+        return false;
     }
+
     /* Create request body */
-    if (!_create_body(rfile, (DeguHeaders *)&dr)) {
-        goto error;
-    }
-
-    /* Create Response namedtuple */
-    _SET(ret,
-        _Request(
-            dr.method, dr.uri, dr.headers, dr.body, dr.script, dr.path, dr.query
-        )
-    )
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    _clear_degu_request(&dr);
-    return ret;
+    return _create_body(rfile, (DeguHeaders *)dr);
 }
 
 static PyObject *
@@ -1795,16 +1762,13 @@ parse_request(PyObject *self, PyObject *args)
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(ret, _parse_request(src, rfile, scratch))
-    goto cleanup;
 
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    if (scratch.buf != NULL) {
-        free(scratch.buf);
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (_parse_request(src, rfile, scratch, &dr)) {
+        ret = _Request(&dr);
     }
+    free(scratch.buf);
+    _clear_degu_request(&dr);
     return ret;
 }
 
@@ -3325,22 +3289,28 @@ Reader_read_until(Reader *self, PyObject *args)
     return _tobytes(_Reader_read_until(self, size, end));
 }
 
-static PyObject *
-Reader_read_request(Reader *self) {
-    PyObject *ret = NULL;
 
+static bool
+_Reader_read_request(Reader *self, DeguRequest *dr) {
     DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
     if (src.buf == NULL) {
-        goto error;
+        return false;
     }
+    PyObject *rfile = (PyObject *)self;
     DeguDst scratch = {self->scratch, MAX_KEY};
-    _SET(ret, _parse_request(src, (PyObject *)self, scratch))
-    goto cleanup;
+    return _parse_request(src, rfile, scratch, dr);
+}
 
-error:
-    Py_CLEAR(ret);
 
-cleanup:
+static PyObject *
+Reader_read_request(Reader *self) {
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *ret = NULL;
+
+    if (_Reader_read_request(self, &dr)) {
+        ret = _Request(&dr);
+    }
+    _clear_degu_request(&dr);
     return ret;
 }
 
@@ -3703,32 +3673,38 @@ cleanup:
     return PyLong_FromLongLong(total);
 }
 
-static PyObject *
-Writer_write_response(Writer *self, PyObject *args)
+static int64_t
+_Writer_write_response(Writer *self, DeguResponse *dr)
 {
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
     PyObject *preamble = NULL;
-    int64_t total = -1;
+    int64_t total = -2;
 
-    if (!PyArg_ParseTuple(args, "OUOO:", &status, &reason, &headers, &body)) {
-        return NULL;
+    if (! _set_output_headers(dr->headers, dr->body)) {
+        goto error;
     }
-    if (! _set_output_headers(headers, body)) {
-        return NULL;
-    }
-    total = 0;
-    _SET(preamble, _format_response(status, reason, headers))
-    total = _Writer_write_output(self, _frombytes(preamble), body);
+    _SET(preamble, _format_response(dr->status, dr->reason, dr->headers))
+    total = _Writer_write_output(self, _frombytes(preamble), dr->body);
     goto cleanup;
 
 error:
+    total = -1;
 
 cleanup:
     Py_CLEAR(preamble);
-    if (total <= 0) {
+    return total;
+}
+
+static PyObject *
+Writer_write_response(Writer *self, PyObject *args)
+{
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (! PyArg_ParseTuple(args, "OUOO:",
+            &dr.status, &dr.reason, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    const int64_t total = _Writer_write_response(self, &dr);
+    if (total < 0) {
         return NULL;
     }
     return PyLong_FromLongLong(total);
@@ -4514,6 +4490,38 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
 /******************************************************************************
  * Server-side helpers
  ******************************************************************************/
+static bool
+_unpack_response(PyObject *obj, DeguResponse *dr)
+{
+    if (Py_TYPE(obj) == &PyTuple_Type) {
+        if (PyTuple_GET_SIZE(obj) != 4) {
+            PyErr_Format(PyExc_ValueError,
+                "response must be a 4-tuple; got a %zd-tuple",
+                PyTuple_GET_SIZE(obj)
+            );
+            goto error;
+        }
+        _SET_AND_INC(dr->status,  PyTuple_GET_ITEM(obj, 0))
+        _SET_AND_INC(dr->reason,  PyTuple_GET_ITEM(obj, 1))
+        _SET_AND_INC(dr->headers, PyTuple_GET_ITEM(obj, 2))
+        _SET_AND_INC(dr->body,    PyTuple_GET_ITEM(obj, 3))
+    }
+    else if (Py_TYPE(obj) == &ResponseType) {
+        _SET_AND_INC(dr->status,  PyStructSequence_GET_ITEM(obj, 0))
+        _SET_AND_INC(dr->reason,  PyStructSequence_GET_ITEM(obj, 1))
+        _SET_AND_INC(dr->headers, PyStructSequence_GET_ITEM(obj, 2))
+        _SET_AND_INC(dr->body,    PyStructSequence_GET_ITEM(obj, 3))
+    }
+    else {
+        PyErr_Format(PyExc_TypeError, "bad response type: %R", Py_TYPE(obj));
+        goto error;
+    }
+    return true;
+
+error:
+    return false;
+}
+
 static PyObject *
 handle_requests(PyObject *self, PyObject *args)
 {
@@ -4521,12 +4529,18 @@ handle_requests(PyObject *self, PyObject *args)
     PyObject *max_requests = NULL;
     PyObject *sock = NULL;
     PyObject *session = NULL;
+    PyObject *ret = NULL;
     ssize_t _max_requests;
-/*    Reader *reader = NULL;*/
-/*    Writer *writer = NULL;*/
     size_t i;
 
-    if (!PyArg_ParseTuple(args, "OOOO:handle_requests",
+    PyObject *reader = NULL;
+    PyObject *writer = NULL;
+    PyObject *request = NULL;
+    PyObject *response = NULL;
+    DeguRequest req = NEW_DEGU_REQUEST;
+    DeguResponse rsp = NEW_DEGU_RESPONSE;
+
+    if (! PyArg_ParseTuple(args, "OOOO:handle_requests",
             &app, &max_requests, &sock, &session)) {
         return NULL;
     }
@@ -4535,12 +4549,43 @@ handle_requests(PyObject *self, PyObject *args)
         return NULL;
     }
     const size_t count = (size_t)_max_requests;
-    for (i = 0; i < count; i++) {
-         
-    }
-    Py_RETURN_NONE;
-}
+    _SET(reader, PyObject_CallFunctionObjArgs(READER, sock, NULL))
+    _SET(writer, PyObject_CallFunctionObjArgs(WRITER, sock, NULL))
 
+    for (i = 0; i < count; i++) {
+        if (! _Reader_read_request((Reader *)reader, &req)) {
+            goto error;
+        }
+        _SET(request, _Request(&req))
+        _SET(response,
+            PyObject_CallFunctionObjArgs(app, session, request, bodies, NULL)
+        )
+        if (! _unpack_response(response, &rsp)) {
+            goto error;
+        }
+        if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
+            goto error;
+        }       
+        Py_CLEAR(request);
+        Py_CLEAR(response);
+        _clear_degu_request(&req);
+        _clear_degu_response(&rsp);
+    }
+    _SET(ret, PyLong_FromSize_t(i))
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    Py_CLEAR(reader);
+    Py_CLEAR(writer);
+    Py_CLEAR(request);
+    Py_CLEAR(response);
+    _clear_degu_request(&req);
+    _clear_degu_response(&rsp);
+    return ret;
+}
 
 
 /*******************************************************************************

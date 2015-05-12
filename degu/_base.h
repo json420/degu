@@ -470,6 +470,8 @@ static PyTypeObject ReaderType = {
     (initproc)Reader_init,        /* tp_init */
 };
 
+#define READER ((PyObject *)&ReaderType)
+
 
 /******************************************************************************
  * Writer object.
@@ -538,6 +540,8 @@ static PyTypeObject WriterType = {
     0,                            /* tp_dictoffset */
     (initproc)Writer_init,        /* tp_init */
 };
+
+#define WRITER ((PyObject *)&WriterType)
 
 
 /******************************************************************************
