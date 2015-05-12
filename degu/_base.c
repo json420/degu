@@ -4511,6 +4511,36 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
 }
 
 
+/******************************************************************************
+ * Server-side helpers
+ ******************************************************************************/
+static PyObject *
+handle_requests(PyObject *self, PyObject *args)
+{
+    PyObject *app = NULL;
+    PyObject *max_requests = NULL;
+    PyObject *sock = NULL;
+    PyObject *session = NULL;
+    ssize_t _max_requests;
+/*    Reader *reader = NULL;*/
+/*    Writer *writer = NULL;*/
+    size_t i;
+
+    if (!PyArg_ParseTuple(args, "OOOO:handle_requests",
+            &app, &max_requests, &sock, &session)) {
+        return NULL;
+    }
+    _max_requests = _validate_size("max_requests", max_requests, 75000u);
+    if (_max_requests < 0) {
+        return NULL;
+    }
+    const size_t count = (size_t)_max_requests;
+    for (i = 0; i < count; i++) {
+         
+    }
+    Py_RETURN_NONE;
+}
+
 
 
 /*******************************************************************************

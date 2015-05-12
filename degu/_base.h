@@ -207,6 +207,9 @@ static PyObject * Bodies(PyObject *, PyObject *);
 static PyObject * Request(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
+/* Server and client entry points */
+static PyObject * handle_requests(PyObject *, PyObject *);
+
 static struct PyMethodDef degu_functions[] = {
     /* Header parsing */
     {"parse_header_name", parse_header_name, METH_VARARGS, NULL},
@@ -246,6 +249,9 @@ static struct PyMethodDef degu_functions[] = {
     {"Bodies", Bodies, METH_VARARGS, NULL},
     {"Request", Request, METH_VARARGS, NULL},
     {"Response", Response, METH_VARARGS, NULL},
+
+    /* Server and client entry points */
+    {"handle_requests", handle_requests, METH_VARARGS, NULL},
 
     {NULL, NULL, 0, NULL}
 };
