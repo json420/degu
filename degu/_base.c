@@ -1828,49 +1828,35 @@ error:
     return false;
 }
 
-static PyObject *
-_parse_response(DeguSrc method, DeguSrc src, PyObject *rfile, DeguDst scratch)
+static bool
+_parse_response(PyObject *method, DeguSrc src, PyObject *rfile, DeguDst scratch,
+                DeguResponse *dr)
 {
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-    PyObject *m = NULL; 
-    PyObject *ret = NULL;
-
-    _SET(m, _parse_method(method))
     if (src.len == 0) {
         PyErr_SetString(EmptyPreambleError, "response preamble is empty");
         goto error;
     }
-
     const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
     DeguSrc line_src = _slice(src, 0, stop);
     DeguSrc headers_src = _slice(src, start, src.len);
-    if (!_parse_response_line(line_src, &dr)) {
+    if (! _parse_response_line(line_src, dr)) {
         goto error;
     }
-    if (!_parse_headers(headers_src, scratch, (DeguHeaders *)&dr, true)) {
+    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, true)) {
         goto error;
     }
     /* Create request body */
-    if (m == str_HEAD) {
-        _SET_AND_INC(dr.body, Py_None);
+    if (method == str_HEAD) {
+        _SET_AND_INC(dr->body, Py_None);
     }
-    else if (!_create_body(rfile, (DeguHeaders *)&dr)) {
+    else if (! _create_body(rfile, (DeguHeaders *)dr)) {
         goto error;
     }
-
-    /* Create namedtuple */
-    _SET(ret, _Response(&dr))
-    goto cleanup;
+    return true;
 
 error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(m);
-    _clear_degu_response(&dr);
-    return ret;
-    
+    return false;
 }
 
 
@@ -2410,28 +2396,28 @@ parse_response(PyObject *self, PyObject *args)
     const uint8_t *buf = NULL;
     size_t len = 0;
     PyObject *rfile = NULL;
+    PyObject *method = NULL;
     PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
 
     if (! PyArg_ParseTuple(args, "s#y#O:parse_response",
             &method_buf, &method_len, &buf, &len, &rfile)) {
         return NULL;
     }
-    DeguSrc method = {method_buf, method_len};
-    DeguSrc src = {buf, len};
     DeguDst scratch = _calloc_dst(MAX_KEY);
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(ret, _parse_response(method, src, rfile, scratch))
-    goto cleanup;
+    _SET(method, _parse_method((DeguSrc){method_buf, method_len}))
+    DeguSrc src = {buf, len};
+    if (_parse_response(method, src, rfile, scratch, &dr)) {
+        _SET(ret, _Response(&dr))
+    }
 
 error:
-    Py_CLEAR(ret);
-
-cleanup:
-    if (scratch.buf != NULL) {
-        free(scratch.buf);
-    }
+    free(scratch.buf);
+    Py_CLEAR(method);
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -3292,30 +3278,38 @@ Reader_read_request(Reader *self) {
     return ret;
 }
 
+static bool
+_Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
+{
+    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
+    if (src.buf == NULL) {
+        return false;
+    }
+    PyObject *rfile = (PyObject *)self;
+    DeguDst scratch = {self->scratch, MAX_KEY};
+    return _parse_response(method, src, rfile, scratch, dr);
+}
 
 static PyObject *
 Reader_read_response(Reader *self, PyObject *args)
 {
-    const uint8_t *method_buf = NULL;
-    size_t method_len = 0;
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *method = NULL;
     PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
 
-    if (!PyArg_ParseTuple(args, "s#:read_response", &method_buf, &method_len)) {
+    if (!PyArg_ParseTuple(args, "s#:read_response", &buf, &len)) {
         return NULL;
     }
-    DeguSrc method = {method_buf, method_len};
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
-    if (src.buf == NULL) {
-        goto error;
+    _SET(method, _parse_method((DeguSrc){buf, len}))
+    if (_Reader_read_response(self, method, &dr)) {
+        _SET(ret, _Response(&dr))
     }
-    DeguDst scratch = {self->scratch, MAX_KEY};
-    _SET(ret, _parse_response(method, src, (PyObject *)self, scratch))
-    goto cleanup;
 
 error:
-    Py_CLEAR(ret);
-
-cleanup:
+    Py_CLEAR(method);
+    _clear_degu_response(&dr);
     return ret;
 }
 
@@ -4541,13 +4535,13 @@ handle_requests(PyObject *self, PyObject *args)
         _SET(response,
             PyObject_CallFunctionObjArgs(app, session, request, bodies, NULL)
         )
+        Py_CLEAR(request);
         if (! _unpack_response(response, &rsp)) {
             goto error;
         }
         if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
             goto error;
-        }       
-        Py_CLEAR(request);
+        }
         Py_CLEAR(response);
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
@@ -4613,6 +4607,25 @@ Connection_close(Connection *self)
     Py_RETURN_NONE;
 }
 
+/*static PyObject **/
+/*_Connection_request(Connection *self,*/
+/*            PyObject *method, PyObject *uri, PyObject *headers, PyObject *body)*/
+/*{*/
+/*    PyObject *ret = NULL;*/
+/*    DeguResponse dr = NEW_DEGU_RESPONSE;*/
+/*    if (_Writer_write_request(WRITER(self->writer),*/
+/*            method, uri, headers, body) < 0) {*/
+/*        goto error;*/
+/*    }*/
+/*    if (_Reader_read_response(READER(self->reader), method, &dr)) {*/
+/*        _SET(ret, _Response(&dr))*/
+/*    }*/
+
+/*error:*/
+/*    _clear_degu_response(&dr);*/
+/*    return ret;*/
+/*}*/
+
 static PyObject *
 Connection_request(Connection *self, PyObject *args)
 {
@@ -4622,26 +4635,25 @@ Connection_request(Connection *self, PyObject *args)
     PyObject *headers = NULL;
     PyObject *body = NULL;
     PyObject *method = NULL;
-    int64_t total;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
 
     if (! PyArg_ParseTuple(args, "s#UOO:request",
             &buf, &len, &uri, &headers, &body)) {
         goto error;
     }
     _SET(method, _parse_method((DeguSrc){buf, len}))
-    total = _Writer_write_request(
-        WRITER(self->writer), method, uri, headers, body
-    );
-    if (total < 0) {
+    if (_Writer_write_request(WRITER(self->writer), method, uri, headers, body) < 0) {
         goto error;
     }
-    goto cleanup;
+    if (_Reader_read_response(READER(self->reader), method, &dr)) {
+        _SET(ret, _Response(&dr))
+    }
 
 error:
-
-cleanup:
     Py_CLEAR(method);
-    Py_RETURN_NONE;
+    _clear_degu_response(&dr);
+    return ret;
 }
 
 

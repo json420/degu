@@ -259,6 +259,7 @@ class Server:
         worker = self._worker
         while True:
             (sock, address) = listensock.accept()
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             # Denial of Service note: when we already have max_connections, we
             # should aggressively rate-limit the handling of new connections, so
             # that's why we use `timeout=2` rather than `blocking=False`:
