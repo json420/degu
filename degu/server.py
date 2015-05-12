@@ -28,11 +28,11 @@ import logging
 import threading
 import os
 
-from .base import bodies as default_bodies
 from .base import (
     _TYPE_ERROR,
     _makefiles,
     _isconsumed,
+    bodies,
 )
 
 
@@ -139,7 +139,7 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def _handle_requests(app, sock, max_requests, session, bodies=default_bodies):
+def _handle_requests(app, sock, max_requests, session, bodies=bodies):
     (reader, writer) = _makefiles(sock)
     assert session['requests'] == 0
     for count in range(1, max_requests + 1):
@@ -187,7 +187,7 @@ def _handle_requests(app, sock, max_requests, session, bodies=default_bodies):
 
 
 class Server:
-    _allowed_options = ('max_connections', 'max_requests', 'timeout', 'bodies')
+    _allowed_options = ('max_connections', 'max_requests', 'timeout')
 
     def __init__(self, address, app, **options):
         # address:
@@ -235,7 +235,6 @@ class Server:
         self.max_connections = options.get('max_connections', 25)
         self.max_requests = options.get('max_requests', 500)
         self.timeout = options.get('timeout', 30)
-        self.bodies = options.get('bodies', default_bodies)
         assert isinstance(self.max_connections, int) and self.max_connections > 0
         assert isinstance(self.max_requests, int) and self.max_requests > 0 
         assert isinstance(self.timeout, (int, float)) and self.timeout > 0
