@@ -357,7 +357,7 @@ class Client:
 
     def connect(self):
         sock = self.create_socket()
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         conn = _base.Connection(sock, self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn

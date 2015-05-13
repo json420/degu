@@ -546,14 +546,37 @@ _type_error(const char *name, PyTypeObject *need, PyObject *got)
     );
 }
 
+/*
 static bool
-_check_headers(PyObject *headers)
+_check_int(const char *name, PyObject *obj)
 {
-    if (!PyDict_CheckExact(headers)) {
-        _type_error("headers", &PyDict_Type, headers);
+    if (! PyLong_CheckExact(obj)) {
+        _type_error(name, &PyLong_Type, obj);
         return false;
     }
     return true;
+}
+*/
+
+static bool
+_check_type(const char *name, PyObject *obj, PyTypeObject *type) {
+    if (Py_TYPE(obj) != type) {
+        _type_error(name, type, obj);
+        return false;
+    }
+    return true;
+}
+
+static bool
+_check_dict(const char *name, PyObject *obj)
+{
+    return _check_type(name, obj, &PyDict_Type);
+}
+
+static bool
+_check_headers(PyObject *headers)
+{
+    return _check_dict("headers", headers);
 }
 
 static PyObject *
@@ -2175,15 +2198,15 @@ cleanup:
 
 
 static PyObject *
-_format_request(PyObject *method, PyObject *uri, PyObject *headers)
+_format_request(DeguRequest *dr)
 {
-    PyObject *hstr = NULL;  /* str containing header lines */
+    PyObject *h = NULL;  /* str containing header lines */
     PyObject *str = NULL;  /* str version of request preamble */
     PyObject *ret = NULL;  /* bytes version of request preamble */
 
-    _SET(hstr, _format_headers(headers))
+    _SET(h, _format_headers(dr->headers))
     _SET(str,
-        PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S\r\n", method, uri, hstr)
+        PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S\r\n", dr->method, dr->uri, h)
     )
     _SET(ret, PyUnicode_AsASCIIString(str))
     goto cleanup;
@@ -2192,7 +2215,7 @@ error:
     Py_CLEAR(ret);
 
 cleanup:
-    Py_CLEAR(hstr);
+    Py_CLEAR(h);
     Py_CLEAR(str);
     return  ret;
 }
@@ -2459,19 +2482,18 @@ format_request(PyObject *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-    PyObject *method = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *ret = NULL;
 
-    if (!PyArg_ParseTuple(args, "s#UO:format_request", &buf, &len, &uri, &headers)) {
+    if (!PyArg_ParseTuple(args, "s#UO:format_request",
+            &buf, &len, &dr.uri, &dr.headers)) {
         return NULL;
     }
-    _SET(method, _parse_method((DeguSrc){buf, len}))
-    _SET(ret, _format_request(method, uri, headers))
+    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
+    _SET(ret, _format_request(&dr))
 
 error:
-    Py_CLEAR(method);
+    Py_CLEAR(dr.method);
     return ret;
 }
 
@@ -3598,17 +3620,16 @@ Writer_write_output(Writer *self, PyObject *args)
 
 
 static int64_t
-_Writer_write_request(Writer *self,
-        PyObject *method, PyObject *uri, PyObject *headers, PyObject *body)
+_Writer_write_request(Writer *self, DeguRequest *dr)
 {
     PyObject *preamble = NULL;
     int64_t wrote = -2;
 
-    if (! _set_output_headers(headers, body)) {
+    if (! _set_output_headers(dr->headers, dr->body)) {
         goto error;
     }
-    _SET(preamble, _format_request(method, uri, headers))
-    wrote = _Writer_write_output(self, _frombytes(preamble), body);
+    _SET(preamble, _format_request(dr))
+    wrote = _Writer_write_output(self, _frombytes(preamble), dr->body);
     goto cleanup;
 
 error:
@@ -3624,24 +3645,22 @@ Writer_write_request(Writer *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    PyObject *method = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
     int64_t wrote = -2;
 
-    if (!PyArg_ParseTuple(args, "s#UOO:", &buf, &len, &uri, &headers, &body)) {
+    if (! PyArg_ParseTuple(args, "s#UOO:",
+            &buf, &len, &dr.uri, &dr.headers, &dr.body)) {
         return NULL;
     }
-    _SET(method, _parse_method((DeguSrc){buf, len}))
-    wrote = _Writer_write_request(self, method, uri, headers, body);
+    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
+    wrote = _Writer_write_request(self, &dr);
     goto cleanup;
 
 error:
     wrote = -1;
 
 cleanup:
-    Py_CLEAR(method);
+    Py_CLEAR(dr.method);
     if (wrote < 0) {
         return NULL;
     }
@@ -4466,6 +4485,22 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
  * Server-side helpers
  ******************************************************************************/
 static bool
+_body_is_consumed(PyObject *obj)
+{
+    if (obj == NULL || obj == Py_None) {
+        return true;
+    }
+    if (IS_BODY(obj)) {
+        return BODY(obj)->state == BODY_CONSUMED;
+    }
+    if (IS_CHUNKED_BODY(obj)) {
+        return CHUNKED_BODY(obj)->state == BODY_CONSUMED;
+    }
+    Py_FatalError("_body_is_consumed(): bad body type");
+    return false;
+}
+
+static bool
 _unpack_response(PyObject *obj, DeguResponse *dr)
 {
     if (Py_TYPE(obj) == &PyTuple_Type) {
@@ -4584,7 +4619,10 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
     PyObject *base_headers = NULL;
 
     if (!PyArg_ParseTupleAndKeywords(args, kw, "OO:Connection", keys,
-                &sock, &base_headers)) {
+            &sock, &base_headers)) {
+        goto error;
+    }
+    if (base_headers != Py_None && !_check_dict("base_headers", base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
@@ -4600,60 +4638,101 @@ error:
     return -1;
 }
 
+static bool
+_Connection_close(Connection *self)
+{
+    if (self->closed) {
+        return true;
+    }
+    self->closed = true;
+    PyObject *r = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
+    Py_CLEAR(self->sock);
+    if (r == NULL) {
+        return false;
+    }
+    Py_CLEAR(r);
+    return true;
+}
+
 static PyObject *
 Connection_close(Connection *self)
 {
-    self->closed = true;
-    Py_RETURN_NONE;
+    if (_Connection_close(self)) {
+        Py_RETURN_NONE;
+    }
+    return NULL;
 }
 
-/*static PyObject **/
-/*_Connection_request(Connection *self,*/
-/*            PyObject *method, PyObject *uri, PyObject *headers, PyObject *body)*/
-/*{*/
-/*    PyObject *ret = NULL;*/
-/*    DeguResponse dr = NEW_DEGU_RESPONSE;*/
-/*    if (_Writer_write_request(WRITER(self->writer),*/
-/*            method, uri, headers, body) < 0) {*/
-/*        goto error;*/
-/*    }*/
-/*    if (_Reader_read_response(READER(self->reader), method, &dr)) {*/
-/*        _SET(ret, _Response(&dr))*/
-/*    }*/
+static PyObject *
+_Connection_request(Connection *self, DeguRequest *dr)
+{
+    DeguResponse r = NEW_DEGU_RESPONSE;
+    PyObject *response = NULL;
 
-/*error:*/
-/*    _clear_degu_response(&dr);*/
-/*    return ret;*/
-/*}*/
+    /* Check in Connection is closed */
+    if (self->closed) {
+        PyErr_SetString(PyExc_ValueError, "Connection is closed");
+        return NULL;
+    }
+
+    /* Check whether previous response body was consumed */
+    if (! _body_is_consumed(self->response_body)) {
+        PyErr_Format(PyExc_ValueError,
+            "previous response body not consumed: %R", self->response_body
+        );
+        goto error;
+    }
+    Py_CLEAR(self->response_body);
+
+    /* Update headers with base_headers if they were provided */
+    if (self->base_headers != Py_None) {
+        if (! _check_dict("headers", dr->headers)) {
+            goto error;
+        }
+        if (PyDict_Update(dr->headers, self->base_headers) != 0) {
+            goto error;
+        }
+    }
+
+    /* Write request, read response */
+    if (_Writer_write_request(WRITER(self->writer), dr) < 0) {
+        goto error;
+    }
+    if (! _Reader_read_response(READER(self->reader), dr->method, &r)) {
+        goto error;
+    }
+
+    /* Build Response, retain a reference to previous response body */
+    _SET(response, _Response(&r))
+    _SET_AND_INC(self->response_body, r.body)
+    goto cleanup;
+
+error:
+    _Connection_close(self);
+
+cleanup:
+    _clear_degu_response(&r);
+    return response;
+}
 
 static PyObject *
 Connection_request(Connection *self, PyObject *args)
 {
     const uint8_t *buf = NULL;
     size_t len = 0;
-    PyObject *uri = NULL;
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
-    PyObject *method = NULL;
-    PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *response = NULL;
 
     if (! PyArg_ParseTuple(args, "s#UOO:request",
-            &buf, &len, &uri, &headers, &body)) {
+            &buf, &len, &dr.uri, &dr.headers, &dr.body)) {
         goto error;
     }
-    _SET(method, _parse_method((DeguSrc){buf, len}))
-    if (_Writer_write_request(WRITER(self->writer), method, uri, headers, body) < 0) {
-        goto error;
-    }
-    if (_Reader_read_response(READER(self->reader), method, &dr)) {
-        _SET(ret, _Response(&dr))
-    }
+    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
+    _SET(response, _Connection_request(self, &dr))
 
 error:
-    Py_CLEAR(method);
-    _clear_degu_response(&dr);
-    return ret;
+    Py_CLEAR(dr.method);
+    return response;
 }
 
 

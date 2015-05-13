@@ -24,6 +24,7 @@
 #include <Python.h>
 #include <structmember.h>
 #include <stdbool.h>
+#include <sys/socket.h>
 
 #define _MAX_LINE_SIZE 4096
 #define MIN_PREAMBLE 4096
