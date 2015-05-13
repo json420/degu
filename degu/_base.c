@@ -4723,7 +4723,7 @@ Connection_request(Connection *self, PyObject *args)
     DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *response = NULL;
 
-    if (! PyArg_ParseTuple(args, "s#UOO:request",
+    if (! PyArg_ParseTuple(args, "s#OOO:request",
             &buf, &len, &dr.uri, &dr.headers, &dr.body)) {
         goto error;
     }
@@ -4733,6 +4733,64 @@ Connection_request(Connection *self, PyObject *args)
 error:
     Py_CLEAR(dr.method);
     return response;
+}
+
+static PyObject *
+Connection_put(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OOO:put", &dr.uri, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    dr.method = str_PUT;
+    return _Connection_request(self, &dr);
+}
+
+static PyObject *
+Connection_post(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OOO:post", &dr.uri, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    dr.method = str_POST;
+    return _Connection_request(self, &dr);
+}
+
+static PyObject *
+Connection_get(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OO:get", &dr.uri, &dr.headers)) {
+        return NULL;
+    }
+    dr.method = str_GET;
+    dr.body = Py_None;
+    return _Connection_request(self, &dr);
+}
+
+static PyObject *
+Connection_head(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OO:head", &dr.uri, &dr.headers)) {
+        return NULL;
+    }
+    dr.method = str_HEAD;
+    dr.body = Py_None;
+    return _Connection_request(self, &dr);
+}
+
+static PyObject *
+Connection_delete(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OO:delete", &dr.uri, &dr.headers)) {
+        return NULL;
+    }
+    dr.method = str_DELETE;
+    dr.body = Py_None;
+    return _Connection_request(self, &dr);
 }
 
 

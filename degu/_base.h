@@ -874,10 +874,20 @@ static PyMemberDef Connection_members[] = {
 
 static PyObject * Connection_close(Connection *);
 static PyObject * Connection_request(Connection *, PyObject *);
+static PyObject * Connection_put(Connection *, PyObject *);
+static PyObject * Connection_post(Connection *, PyObject *);
+static PyObject * Connection_get(Connection *, PyObject *);
+static PyObject * Connection_head(Connection *, PyObject *);
+static PyObject * Connection_delete(Connection *, PyObject *);
 
 static PyMethodDef Connection_methods[] = {
     {"close",   (PyCFunction)Connection_close,   METH_NOARGS,  NULL},
     {"request", (PyCFunction)Connection_request, METH_VARARGS, NULL},
+    {"put",     (PyCFunction)Connection_put,     METH_VARARGS, NULL},
+    {"post",    (PyCFunction)Connection_post,    METH_VARARGS, NULL},
+    {"get",     (PyCFunction)Connection_get,     METH_VARARGS, NULL},
+    {"head",    (PyCFunction)Connection_head,    METH_VARARGS, NULL},
+    {"delete",  (PyCFunction)Connection_delete,  METH_VARARGS, NULL},
     {NULL}
 };
 
