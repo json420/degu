@@ -258,47 +258,15 @@ class Range:
     def __str__(self):
         return 'bytes={}-{}'.format(self._start, self._stop - 1)
 
-    def __get_this(self, other):
-        if type(other) is tuple or type(other) is type(self):
-            return (self._start, self._stop)
-        if type(other) is str:
-            return str(self)
-
-    def __lt__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this < other
-
-    def __le__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this <= other
-
     def __eq__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this == other
+        if type(other) is type(self):
+            return self._start == other._start and self._stop == other._stop
+        if type(other) is str:
+            return str(self) == other
+        raise TypeError('cannot compare Range() with {!r}'.format(type(other)))
 
     def __ne__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this != other
-
-    def __gt__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this > other
-
-    def __ge__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this >= other
+        return not self.__eq__(other)
 
 
 class ContentRange:
@@ -340,47 +308,20 @@ class ContentRange:
             self._start, self._stop - 1, self._total
         )
 
-    def _get_this(self, other):
-        if type(other) is tuple or type(other) is ContentRange:
-            return (self._start, self._stop, self._total)
-        if type(other) is str:
-            return str(self)
-
-    def __lt__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this < other
-
-    def __le__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this <= other
-
     def __eq__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this == other
+        if type(other) is type(self):
+            return (self._start == other._start
+                and self._stop == other._stop
+                and self._total == other._total
+            )
+        if type(other) is str:
+            return str(self) == other
+        raise TypeError(
+            'cannot compare ContentRange() with {!r}'.format(type(other))
+        )
 
     def __ne__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this != other
-
-    def __gt__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this > other
-
-    def __ge__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this >= other
+        return not self.__eq__(other)
 
 
 def _parse_key(src):
@@ -495,7 +436,9 @@ def _raise_bad_range(src):
 
 def parse_range(src):
     assert isinstance(src, bytes)
-    if len(src) < 9 or len(src) > 39 or src[0:6] != b'bytes=':
+    if len(src) > 39:
+        raise ValueError('range too long: {!r}...'.format(src[:39]))
+    if len(src) < 9 or src[0:6] != b'bytes=':
         _raise_bad_range(src)
     inner = src[6:]
     parts = inner.split(b'-', 1)
@@ -513,7 +456,9 @@ def _bad_content_range(src):
 
 def parse_content_range(src):
     assert isinstance(src, bytes)
-    if len(src) < 11 or len(src) > 56 or src[0:6] != b'bytes ':
+    if len(src) > 56:
+        raise  ValueError('content-range too long: {!r}...'.format(src[:56]))
+    if len(src) < 11 or src[0:6] != b'bytes ':
         _bad_content_range(src)
     inner = src[6:]
     a = inner.split(b'-', 1)
@@ -1052,7 +997,6 @@ class Reader:
 def set_default_header(headers, key, val):
     assert isinstance(headers, dict)
     assert isinstance(key, str)
-    assert isinstance(val, (str, int))
     cur = headers.setdefault(key, val)
     if val != cur:
         raise ValueError(
@@ -1523,8 +1467,52 @@ def _check_dict(name, obj):
 def _body_is_consumed(body):
     if body is None:
         return True
-    assert type(body) in (Body, BodyIter)
+    assert type(body) in (Body, ChunkedBody)
     return body._state == BODY_CONSUMED
+
+
+def handle_requests(app, max_requests, sock, session):
+    reader = Reader(sock)
+    writer = Writer(sock)
+    for count in range(1, max_requests + 1):
+        request = reader.read_request()
+        (status, reason, headers, body) = app(session, request, bodies)
+
+        # Make sure application fully consumed request body:
+        if not _body_is_consumed(request.body):
+            raise ValueError(
+                'request body not consumed: {!r}'.format(request.body)
+            )
+
+        # Make sure HEAD requests are properly handled:
+        if request.method == 'HEAD':
+            if body is not None:
+                raise TypeError(
+                    'response body must be None when request method is HEAD'
+                )
+            if 200 <= status < 300:
+                if 'content-length' in headers:
+                    if 'transfer-encoding' in headers:
+                        raise ValueError(
+                            'cannot have both content-length and transfer-encoding headers'
+                        )
+                elif headers.get('transfer-encoding') != 'chunked':
+                    raise ValueError(
+                        'response to HEAD request must include content-length or transfer-encoding'
+                    )
+
+        # Write response:
+        writer.write_response(status, reason, headers, body)
+
+        # Update session counter:
+        session['requests'] = count
+
+        # Possibly close the connection:
+        if status >= 400 and status not in {404, 409, 412}:
+            break
+
+    # Make sure sndbuf gets flushed:
+    sock.close()
 
 
 class Connection:
@@ -1600,5 +1588,5 @@ class Connection:
         return self.request('DELETE', uri, headers, None)
 
     def get_range(self, uri, headers, start, stop):
-        headers['range'] = Range(start, stop)
+        set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)

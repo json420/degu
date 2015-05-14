@@ -36,6 +36,8 @@ try:
         Reader,
         Writer,
         bodies,
+        handle_requests,
+        Connection,
     )
 except ImportError:
     from ._basepy import (
@@ -50,6 +52,8 @@ except ImportError:
         Reader,
         Writer,
         bodies,
+        handle_requests,
+        Connection,
     )
 
 
@@ -62,6 +66,8 @@ __all__ = (
     'Range',
     'ContentRange',
     'bodies',
+    'handle_requests',
+    'Connection',
 )
 
 

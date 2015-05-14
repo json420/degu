@@ -276,6 +276,8 @@ class TestAliases(TestCase):
             'Reader',
             'Writer',
             'bodies',
+            'handle_requests',
+            'Connection',
         )
         for name in all_names:
             self.check(name)
@@ -461,81 +463,100 @@ class TestRange_Py(BackendTestCase):
     def test_cmp(self):
         def iter_types(pairs):
             for (start, stop) in pairs:
-                yield (start, stop)
                 yield self.Range(start, stop)
                 yield 'bytes={}-{}'.format(start, stop - 1)
+
+        def iter_swaps(this, others):
+            for o in others:
+                yield (this, o)
+                yield (o, this)
 
         r = self.Range(16, 21)
         equals   = tuple(iter_types([(16, 21)]))
         lessers  = tuple(iter_types([(15, 21), (16, 20)]))
         greaters = tuple(iter_types([(17, 21), (16, 22)]))
+        notequals = lessers + greaters
+        badtypes = ((r.start, r.stop), str(r).encode)
+        combined = equals + notequals + badtypes
 
         # __lt__():
-        for o in lessers:
-            self.assertIs(r < o, False)
-            self.assertIs(o < r, True)
-        for o in equals:
-            self.assertIs(r < o, False)
-            self.assertIs(o < r, False)
-        for o in greaters:
-            self.assertIs(r < o, True)
-            self.assertIs(o < r, False)
-
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() < {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t < o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
+        
         # __le__():
-        for o in lessers:
-            self.assertIs(r <= o, False)
-            self.assertIs(o <= r, True)
-        for o in equals:
-            self.assertIs(r <= o, True)
-            self.assertIs(o <= r, True)
-        for o in greaters:
-            self.assertIs(r <= o, True)
-            self.assertIs(o <= r, False)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() <= {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t <= o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
         # __eq__():
-        for o in lessers:
-            self.assertIs(r == o, False)
-            self.assertIs(o == r, False)
-        for o in equals:
-            self.assertIs(r == o, True)
-            self.assertIs(o == r, True)
-        for o in greaters:
-            self.assertIs(r == o, False)
-            self.assertIs(o == r, False)
+        for (t, o) in iter_swaps(r, equals):
+            self.assertIs(t == o, True)
+        for (t, o) in iter_swaps(r, notequals):
+            self.assertIs(t == o, False)
 
         # __ne__():
-        for o in lessers:
-            self.assertIs(r != o, True)
-            self.assertIs(o != r, True)
-        for o in equals:
-            self.assertIs(r != o, False)
-            self.assertIs(o != r, False)
-        for o in greaters:
-            self.assertIs(r != o, True)
-            self.assertIs(o != r, True)
+        for (t, o) in iter_swaps(r, equals):
+            self.assertIs(t != o, False)
+        for (t, o) in iter_swaps(r, notequals):
+            self.assertIs(t != o, True)
 
         # __gt__():
-        for o in lessers:
-            self.assertIs(r > o, True)
-            self.assertIs(o > r, False)
-        for o in equals:
-            self.assertIs(r > o, False)
-            self.assertIs(o > r, False)
-        for o in greaters:
-            self.assertIs(r > o, False)
-            self.assertIs(o > r, True)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() > {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t > o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
         # __ge__():
-        for o in lessers:
-            self.assertIs(r >= o, True)
-            self.assertIs(o >= r, False)
-        for o in equals:
-            self.assertIs(r >= o, True)
-            self.assertIs(o >= r, True)
-        for o in greaters:
-            self.assertIs(r >= o, False)
-            self.assertIs(o >= r, True)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() >= {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t >= o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
+        # uncomparable types:
+        for bad in badtypes:
+            msg = 'cannot compare Range() with {!r}'.format(type(bad))
+            for (t, o) in [(r, bad), (bad, r)]:
+                with self.assertRaises(TypeError) as cm:
+                    t == o
+                self.assertEqual(str(cm.exception), msg)
+                with self.assertRaises(TypeError) as cm:
+                    t != o
+                self.assertEqual(str(cm.exception), msg)
 
 class TestRange_C(TestRange_Py):
     backend = _base
@@ -730,7 +751,6 @@ class TestContentRange_Py(BackendTestCase):
     def test_cmp(self):
         def iter_types(triplets):
             for (start, stop, total) in triplets:
-                yield (start, stop, total)
                 yield self.ContentRange(start, stop, total)
                 yield 'bytes {}-{}/{}'.format(start, stop - 1, total)
 
@@ -739,27 +759,27 @@ class TestContentRange_Py(BackendTestCase):
         lessers  = tuple(iter_types([(15, 21, 23), (16, 20, 23)]))
         greaters = tuple(iter_types([(17, 21, 23), (16, 22, 23)]))
 
-        # __lt__():
-        for o in lessers:
-            self.assertIs(cr < o, False)
-            self.assertIs(o < cr, True)
-        for o in equals:
-            self.assertIs(cr < o, False)
-            self.assertIs(o < cr, False)
-        for o in greaters:
-            self.assertIs(cr < o, True)
-            self.assertIs(o < cr, False)
+#        # __lt__():
+#        for o in lessers:
+#            self.assertIs(cr < o, False)
+#            self.assertIs(o < cr, True)
+#        for o in equals:
+#            self.assertIs(cr < o, False)
+#            self.assertIs(o < cr, False)
+#        for o in greaters:
+#            self.assertIs(cr < o, True)
+#            self.assertIs(o < cr, False)
 
-        # __le__():
-        for o in lessers:
-            self.assertIs(cr <= o, False)
-            self.assertIs(o <= cr, True)
-        for o in equals:
-            self.assertIs(cr <= o, True)
-            self.assertIs(o <= cr, True)
-        for o in greaters:
-            self.assertIs(cr <= o, True)
-            self.assertIs(o <= cr, False)
+#        # __le__():
+#        for o in lessers:
+#            self.assertIs(cr <= o, False)
+#            self.assertIs(o <= cr, True)
+#        for o in equals:
+#            self.assertIs(cr <= o, True)
+#            self.assertIs(o <= cr, True)
+#        for o in greaters:
+#            self.assertIs(cr <= o, True)
+#            self.assertIs(o <= cr, False)
 
         # __eq__():
         for o in lessers:
@@ -783,27 +803,27 @@ class TestContentRange_Py(BackendTestCase):
             self.assertIs(cr != o, True)
             self.assertIs(o != cr, True)
 
-        # __gt__():
-        for o in lessers:
-            self.assertIs(cr > o, True)
-            self.assertIs(o > cr, False)
-        for o in equals:
-            self.assertIs(cr > o, False)
-            self.assertIs(o > cr, False)
-        for o in greaters:
-            self.assertIs(cr > o, False)
-            self.assertIs(o > cr, True)
+#        # __gt__():
+#        for o in lessers:
+#            self.assertIs(cr > o, True)
+#            self.assertIs(o > cr, False)
+#        for o in equals:
+#            self.assertIs(cr > o, False)
+#            self.assertIs(o > cr, False)
+#        for o in greaters:
+#            self.assertIs(cr > o, False)
+#            self.assertIs(o > cr, True)
 
-        # __ge__():
-        for o in lessers:
-            self.assertIs(cr >= o, True)
-            self.assertIs(o >= cr, False)
-        for o in equals:
-            self.assertIs(cr >= o, True)
-            self.assertIs(o >= cr, True)
-        for o in greaters:
-            self.assertIs(cr >= o, False)
-            self.assertIs(o >= cr, True)
+#        # __ge__():
+#        for o in lessers:
+#            self.assertIs(cr >= o, True)
+#            self.assertIs(o >= cr, False)
+#        for o in equals:
+#            self.assertIs(cr >= o, True)
+#            self.assertIs(o >= cr, True)
+#        for o in greaters:
+#            self.assertIs(cr >= o, False)
+#            self.assertIs(o >= cr, True)
 
 
 class TestContentRange_C(TestContentRange_Py):
@@ -1017,13 +1037,13 @@ class TestParsingFunctions_Py(BackendTestCase):
             (9999999999999998, 9999999999999999),
         )
         for (start, stop) in ranges:
-            suffix = '-'.join([str(start), str(stop - 1)]).encode()
-            src = prefix + suffix
-            r = parse_range(src)
+            value = 'bytes={}-{}'.format(start, stop - 1)
+            suffix = '{}-{}'.format(start, stop - 1).encode()
+            r = parse_range(value.encode())
             self.assertIs(type(r), Range)
             self.assertEqual(r.start, start)
             self.assertEqual(r.stop, stop)
-            self.assertEqual(r, (start, stop))
+            self.assertEqual(r, value)
 
             for i in range(len(prefix)):
                 g = prefix[i]
@@ -1036,7 +1056,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                         self.assertIs(type(r), Range)
                         self.assertEqual(r.start, start)
                         self.assertEqual(r.stop, stop)
-                        self.assertEqual(r, (start, stop))
+                        self.assertEqual(r, value)
                     else:
                         with self.assertRaises(ValueError) as cm:
                             parse_range(src)
@@ -1054,7 +1074,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertIs(type(r), Range)
                     self.assertEqual(r.start, start)
                     self.assertEqual(r.stop, stop)
-                    self.assertEqual(r, (start, stop))
+                    self.assertEqual(r, value)
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_range(src)
@@ -1063,7 +1083,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     )
 
         # end < start
-        for i in range(2000):
+        for i in range(500):
             stop = random.randrange(1, MAX_LENGTH + 1)
             start = stop - 1
             good = 'bytes={}-{}'.format(start, stop - 1).encode()
@@ -1072,7 +1092,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(r.start, start)
             self.assertEqual(r.stop, stop)
             self.assertEqual(str(r), good.decode())
-            self.assertEqual(r, (start, stop))
+            self.assertEqual(r, Range(start, stop))
             bad = 'bytes={}-{}'.format(start, stop - 2).encode()
             with self.assertRaises(ValueError) as cm:
                 parse_range(bad)
@@ -1087,11 +1107,21 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.start, start)
         self.assertEqual(r.stop, stop)
         self.assertEqual(str(r), good.decode())
-        self.assertEqual(r, (start, stop))
+        self.assertEqual(r, Range(start, stop))
+        self.assertEqual(r, 'bytes=9999999999999998-9999999999999998')
         bad = 'bytes={}-{}'.format(start, stop).encode()
         with self.assertRaises(ValueError) as cm:
             parse_range(bad)
         self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
+
+        # Too long:
+        for b in range(256):
+            bad = good + bytes([b])
+            with self.assertRaises(ValueError) as cm:
+                parse_range(bad)
+            self.assertEqual(str(cm.exception),
+                'range too long: {!r}...'.format(good)
+            )
 
     def test_parse_content_range(self):
         parse_content_range = self.getattr('parse_content_range')
@@ -1114,7 +1144,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(cr.start, start)
             self.assertEqual(cr.stop, stop)
             self.assertEqual(cr.total, total)
-            self.assertEqual(cr, (start, stop, total))
+            self.assertEqual(cr, ContentRange(start, stop, total))
             for i in range(len(prefix)):
                 g = prefix[i]
                 bad = bytearray(prefix)
@@ -1127,7 +1157,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                         self.assertEqual(cr.start, start)
                         self.assertEqual(cr.stop, stop)
                         self.assertEqual(cr.total, total)
-                        self.assertEqual(cr, (start, stop, total))
+                        self.assertEqual(cr, ContentRange(start, stop, total))
                     else:
                         with self.assertRaises(ValueError) as cm:
                             parse_content_range(src)
@@ -1148,7 +1178,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(cr.start, start)
                     self.assertEqual(cr.stop, stop)
                     self.assertEqual(cr.total, total)
-                    self.assertEqual(cr, (start, stop, total))
+                    self.assertEqual(cr, ContentRange(start, stop, total))
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_content_range(src)
@@ -1163,7 +1193,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(cr.start, start)
                     self.assertEqual(cr.stop, stop)
                     self.assertEqual(cr.total, total)
-                    self.assertEqual(cr, (start, stop, total))
+                    self.assertEqual(cr, ContentRange(start, stop, total))
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_content_range(src)
@@ -1172,7 +1202,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     )
 
         # end < start
-        for i in range(2000):
+        for i in range(500):
             total = stop = random.randrange(1, MAX_LENGTH + 1)
             start = stop - 1
             good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
@@ -1181,7 +1211,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(cr.start, start)
             self.assertEqual(cr.stop, stop)
             self.assertEqual(cr.total, total)
-            self.assertEqual(cr, (start, stop, total))
+            self.assertEqual(cr, ContentRange(start, stop, total))
             bad = 'bytes {}-{}/{}'.format(start, stop - 2, total).encode()
             with self.assertRaises(ValueError) as cm:
                 parse_content_range(bad)
@@ -1198,13 +1228,22 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(cr.start, start)
         self.assertEqual(cr.stop, stop)
         self.assertEqual(cr.total, total)
-        self.assertEqual(cr, (start, stop, total))
+        self.assertEqual(cr, ContentRange(start, stop, total))
         bad = 'bytes {}-{}/{}'.format(start, stop, total).encode()
         with self.assertRaises(ValueError) as cm:
             parse_content_range(bad)
         self.assertEqual(str(cm.exception),
             'bad content-range: {!r}'.format(bad)
         )
+
+        # Too long:
+        for b in range(256):
+            bad = good + bytes([b])
+            with self.assertRaises(ValueError) as cm:
+                parse_content_range(bad)
+            self.assertEqual(str(cm.exception),
+                'content-range too long: {!r}...'.format(good)
+            )
 
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
@@ -1255,7 +1294,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         )
 
         h = parse_headers(_range)
-        self.assertEqual(h, {'range': (16, 17)})
         self.assertEqual(h, {'range': 'bytes=16-16'})
         self.assertIs(type(h['range']), Range)
         self.assertEqual(h['range'].start, 16)
@@ -1273,7 +1311,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(set(h), {'content-range'})
         cr = h['content-range']
         self.assertIs(type(cr), ContentRange)
-        self.assertEqual(cr, (16, 17, 23))
         self.assertEqual(cr, 'bytes 16-16/23')
         self.assertEqual(cr.start, 16)
         self.assertEqual(cr.stop, 17)
@@ -1389,7 +1426,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIs(type(_range), Range)
         self.assertEqual(_range.start, 17)
         self.assertEqual(_range.stop, 21)
-        self.assertEqual(_range, (17, 21))
+        self.assertEqual(_range, Range(17, 21))
         self.assertEqual(_range, 'bytes=17-20')
         self.assertEqual(repr(_range), 'Range(17, 21)')
         self.assertEqual(str(_range), 'bytes=17-20')
@@ -5678,6 +5715,14 @@ class TestConnection_Py(BackendTestCase):
     def Body(self):
         return getattr(self.backend, 'Body')
 
+    @property
+    def Range(self):
+        return getattr(self.backend, 'Range')
+
+    @property
+    def ContentRange(self):
+        return getattr(self.backend, 'ContentRange')
+
     def test_init(self):
         # no sock.recv_into() attribute:
         class BadSocket1(BaseMockSocket):
@@ -5937,6 +5982,40 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(response, (200, 'OK', {}, None))
         self.assertEqual(sock._wfile.getvalue(), b'DELETE / HTTP/1.1\r\n\r\n')
         del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_get_range(self):
+        parts = (
+            b'HTTP/1.1 200 OK\r\n',
+            b'Content-Length: 3\r\n',
+            b'Content-Range: bytes 17-19/21\r\n',
+            b'\r\n',
+            b'foo',
+        )
+        data = b''.join(parts)
+        sock = NewMockSocket(data)
+        conn = self.Connection(sock, None)
+        h = {}
+        r = conn.get_range('/', h, 17, 20)
+        self.assertIs(type(r), self.ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {
+            'content-length': 3,
+            'content-range': 'bytes 17-19/21',
+        })
+        self.assertIs(type(r.headers['content-range']), self.ContentRange)
+        self.assertIs(type(r.body), self.Body)
+        self.assertEqual(r.body.read(), b'foo')
+        self.assertEqual(sock._wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nrange: bytes=17-19\r\n\r\n'
+        )
+        self.assertEqual(h, {'range': 'bytes=17-19'})
+        self.assertIs(type(h['range']), self.Range)
+        self.assertEqual(sys.getrefcount(h), 2)
+        self.assertEqual(sys.getrefcount(h['range']), 2)
+        del conn
+        del r
         self.assertEqual(sys.getrefcount(sock), 2)
 
 class TestConnection_C(TestConnection_Py):

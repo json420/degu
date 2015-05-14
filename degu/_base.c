@@ -625,6 +625,8 @@ _clear_degu_headers(DeguHeaders *dh)
 {
     Py_CLEAR(dh->headers);
     Py_CLEAR(dh->body);
+    dh->content_length = 0;
+    dh->flags = 0;
 }
 
 static void
@@ -644,6 +646,7 @@ _clear_degu_response(DeguResponse *dr)
     _clear_degu_headers((DeguHeaders *)dr);
     Py_CLEAR(dr->status);
     Py_CLEAR(dr->reason);
+    dr->_status = 0;
 }
 
 static void
@@ -898,6 +901,28 @@ _Range_New(uint64_t start, uint64_t stop)
     self->stop = stop;
     return (PyObject *)PyObject_INIT(self, &RangeType);
 }
+
+static PyObject *
+_Range_PyNew(PyObject *arg0, PyObject *arg1)
+{
+    int64_t start, stop;
+
+    start = _validate_length("start", arg0);
+    if (start < 0) {
+        return NULL;
+    }
+    stop = _validate_length("stop", arg1);
+    if (stop < 0) {
+        return NULL;
+    }
+    if (start >= stop) {
+        PyErr_Format(PyExc_ValueError,
+            "need start < stop; got %lld >= %lld", start, stop
+        );
+        return NULL;
+    }
+    return _Range_New((uint64_t)start, (uint64_t)stop);
+}
  
 static void
 Range_dealloc(Range *self)
@@ -950,46 +975,47 @@ Range_str(Range *self)
 }
 
 static PyObject *
-_Range_as_tuple(Range *self)
+_Range_compare_with_same(Range *self, Range *other, int op)
 {
-    PyObject *start = NULL;
-    PyObject *stop = NULL;
+    bool r = (self->start == other->start && self->stop == other->stop);
+    if (op == Py_NE) {
+        r = !r;
+    }
+    if (r) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
+}
+
+static PyObject *
+_Range_compare_with_str(Range *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
     PyObject *ret = NULL;
-
-    _SET(start, PyLong_FromUnsignedLongLong(self->start))
-    _SET(stop, PyLong_FromUnsignedLongLong(self->stop))
-    _SET(ret, PyTuple_Pack(2, start, stop))
-
+    _SET(this, Range_str(self))
+    _SET(ret, PyObject_RichCompare(this, other, op))
 error:
-    Py_CLEAR(start);  // Always cleared, whether or not there was an error
-    Py_CLEAR(stop);   // Same as above
+    Py_CLEAR(this);
     return ret;
 }
 
 static PyObject *
 Range_richcompare(Range *self, PyObject *other, int op)
 {
-    PyObject *this = NULL;
-    PyObject *ret = NULL;
-
-    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &RangeType) {
-        _SET(this, _Range_as_tuple(self))
+    if (op != Py_EQ && op != Py_NE) {
+        PyErr_SetString(PyExc_TypeError, "unorderable type: Range()");
+        return NULL;
     }
-    else if (PyUnicode_CheckExact(other)) {
-        _SET(this, Range_str(self))
+    if (Py_TYPE(other) == &RangeType) {
+        return _Range_compare_with_same(self, (Range *)other, op);
     }
-    else {
-        return Py_NotImplemented;
+    if (PyUnicode_CheckExact(other)) {
+        return _Range_compare_with_str(self, other, op);
     }
-    _SET(ret, PyObject_RichCompare(this, other, op))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(this);
-    return ret;  
+    PyErr_Format(PyExc_TypeError,
+        "cannot compare Range() with %R", Py_TYPE(other)
+    );
+    return NULL;
 }
 
 
@@ -1070,49 +1096,48 @@ ContentRange_str(ContentRange *self)
 }
 
 static PyObject *
-_ContentRange_as_tuple(ContentRange *self)
+_ContentRange_compare_with_same(ContentRange *s, ContentRange *o, int op)
 {
-    PyObject *start = NULL;
-    PyObject *stop = NULL;
-    PyObject *total = NULL;
+    bool r;
+    r = (s->start == o->start && s->stop == o->stop && s->total == o->total);
+    if (op == Py_NE) {
+        r = !r;
+    }
+    if (r) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
+}
+
+static PyObject *
+_ContentRange_compare_with_str(ContentRange *self, PyObject *other, int op)
+{
+    PyObject *this = NULL;
     PyObject *ret = NULL;
-
-    _SET(start, PyLong_FromUnsignedLongLong(self->start))
-    _SET(stop, PyLong_FromUnsignedLongLong(self->stop))
-    _SET(total, PyLong_FromUnsignedLongLong(self->total))
-    _SET(ret, PyTuple_Pack(3, start, stop, total))
-
+    _SET(this, ContentRange_str(self))
+    _SET(ret, PyObject_RichCompare(this, other, op))
 error:
-    Py_CLEAR(start);  // Always cleared, whether or not there was an error
-    Py_CLEAR(stop);   // Same as above
-    Py_CLEAR(total);  // Same as above
+    Py_CLEAR(this);
     return ret;
 }
 
 static PyObject *
 ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
 {
-    PyObject *this = NULL;
-    PyObject *ret = NULL;
-
-    if (PyTuple_CheckExact(other) || Py_TYPE(other) == &ContentRangeType) {
-        _SET(this, _ContentRange_as_tuple(self))
+    if (op != Py_EQ && op != Py_NE) {
+        PyErr_SetString(PyExc_TypeError, "unorderable type: ContentRange()");
+        return NULL;
     }
-    else if (PyUnicode_CheckExact(other)) {
-        _SET(this, ContentRange_str(self))
+    if (Py_TYPE(other) == &ContentRangeType) {
+        return _ContentRange_compare_with_same(self, (ContentRange *)other, op);
     }
-    else {
-        return Py_NotImplemented;
+    if (PyUnicode_CheckExact(other)) {
+        return _ContentRange_compare_with_str(self, other, op);
     }
-    _SET(ret, PyObject_RichCompare(this, other, op))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(this);
-    return ret;  
+    PyErr_Format(PyExc_TypeError,
+        "cannot compare ContentRange() with %R", Py_TYPE(other)
+    );
+    return NULL;
 }
 
 
@@ -4705,7 +4730,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     PyObject *response = NULL;
 
     /* Check if Connection is closed */
-    if (self->closed || self->sock == NULL) {
+    if (self->closed) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
         return NULL;
     }
@@ -4826,6 +4851,32 @@ Connection_delete(Connection *self, PyObject *args)
     dr.method = str_DELETE;
     dr.body = Py_None;
     return _Connection_request(self, &dr);
+}
+
+static PyObject *
+Connection_get_range(Connection *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *start = NULL;
+    PyObject *stop = NULL;
+    PyObject *range = NULL;
+    PyObject *ret = NULL;
+
+    if (! PyArg_ParseTuple(args, "OOOO:get_range",
+            &dr.uri, &dr.headers, &start, &stop)) {
+        return NULL;
+    }
+    dr.method = str_GET;
+    dr.body = Py_None;
+    _SET(range, _Range_PyNew(start, stop))
+    if (! _set_default_header(dr.headers, key_range, range)) {
+        goto error;
+    }
+    _SET(ret, _Connection_request(self, &dr))
+
+error:
+    Py_CLEAR(range);
+    return ret;
 }
 
 
