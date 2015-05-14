@@ -4787,29 +4787,12 @@ class TestReader_Py(BackendTestCase):
 
     def test_init(self):
         default = self.DEFAULT_PREAMBLE
-        _min = self.MIN_PREAMBLE
-        _max = self.MAX_PREAMBLE
-        self.assertTrue(_min <= default <= _max)
-
         sock = MockSocket(b'')
         reader = self.Reader(sock)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
-
-        # Test min and max sizes:
-        for good in (_min, _max):
-            reader = self.Reader(sock, size=good)
-            self.assertEqual(reader.expose(), b'\x00' * good)
-
-        # size out of range:
-        for bad in (_min - 1, _max + 1):
-            with self.assertRaises(ValueError) as cm:
-                self.Reader(sock, size=bad)
-            self.assertEqual(str(cm.exception),
-                'need {} <= size <= {}; got {}'.format(_min, _max, bad)
-            )
 
     def test_del(self):
         sock = MockSocket(b'')

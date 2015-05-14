@@ -411,12 +411,9 @@ static PyTypeObject ContentRangeType = {
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
-    bool closed;
     PyObject *recv_into;
-    uint8_t *scratch;
-    uint64_t rawtell;
     uint8_t *buf;
-    size_t len;
+    uint64_t rawtell;
     size_t start;
     size_t stop;
 } Reader;

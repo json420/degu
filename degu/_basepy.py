@@ -786,17 +786,10 @@ class Reader:
         '_closed',
     )
 
-    def __init__(self, sock, size=DEFAULT_PREAMBLE):
-        assert isinstance(size, int)
-        if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
-            raise ValueError(
-                'need {!r} <= size <= {!r}; got {!r}'.format(
-                    MIN_PREAMBLE, MAX_PREAMBLE, size
-                )
-            )
+    def __init__(self, sock):
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(size))
+        self._rawbuf = memoryview(bytearray(DEFAULT_PREAMBLE))
         self._start = 0
         self._buf = b''
         self._closed = False

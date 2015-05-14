@@ -3088,10 +3088,6 @@ static void
 Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->recv_into);
-    if (self->scratch != NULL) {
-        free(self->scratch);
-        self->scratch = NULL;
-    }
     if (self->buf != NULL) {
         free(self->buf);
         self->buf = NULL;
@@ -3103,27 +3099,16 @@ static int
 Reader_init(Reader *self, PyObject *args, PyObject *kw)
 {
     PyObject *sock = NULL;
-    ssize_t len = DEFAULT_PREAMBLE;
-    static char *keys[] = {"sock", "size", NULL};
+    static char *keys[] = {"sock", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "O|n:Reader", keys, &sock,  &len)) {
-        return -1;
-    }
-    if (len < MIN_PREAMBLE || len > MAX_PREAMBLE) {
-        PyErr_Format(PyExc_ValueError,
-            "need %zd <= size <= %zd; got %zd",
-            MIN_PREAMBLE, MAX_PREAMBLE, len
-        );
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Reader", keys, &sock)) {
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->scratch, _calloc_buf(MAX_KEY))
-    self->len = (size_t)len;
-    _SET(self->buf, _calloc_buf(self->len))
+    _SET(self->buf, _calloc_buf(DEFAULT_PREAMBLE + MAX_KEY))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
-    self->closed = false;
     return 0;
 
 error:
@@ -3131,20 +3116,28 @@ error:
 }
 
 static DeguSrc
+_Reader_preamble_src(Reader *self)
+{
+    return (DeguSrc){self->buf, DEFAULT_PREAMBLE};
+}
+
+static DeguDst
+_Reader_scratch_dst(Reader *self)
+{
+    return (DeguDst){self->buf + DEFAULT_PREAMBLE, MAX_KEY};
+}
+
+static DeguSrc
 _Reader_peek(Reader *self, const size_t size)
 {
-    if (self->buf == NULL) {
-        Py_FatalError("_Reader_peak: buf == NULL");
-    }
-    if (self->stop > self->len) {
-        Py_FatalError("_Reader_peak: stop > len");
-    }
     if (self->start >= self->stop && self->start != 0) {
         Py_FatalError("_Reader_peak: start >= stop && start != 0");
     }
-    const uint8_t *cur_buf = self->buf + self->start;
-    const size_t cur_len = self->stop - self->start;
-    return (DeguSrc){cur_buf, _min(size, cur_len)};
+    DeguSrc cur = _slice(_Reader_preamble_src(self), self->start, self->stop);
+    if (cur.len == 0) {
+        return cur;
+    }
+    return _slice(cur, 0, _min(cur.len, size));
 }
 
 static DeguSrc
@@ -3168,7 +3161,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
     if (_isempty(end)) {
         Py_FatalError("_Reader_read_until(): bad internal call");
     }
-    DeguDst dst = {self->buf, self->len};
+    DeguDst dst = {self->buf, DEFAULT_PREAMBLE};
     if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
             "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
@@ -3254,7 +3247,7 @@ Reader_rawtell(Reader *self) {
 
 static PyObject *
 Reader_tell(Reader *self) {
-    DeguSrc cur = _Reader_peek(self, self->len);
+    DeguSrc cur = _Reader_peek(self, DEFAULT_PREAMBLE);
     if (cur.len > self->rawtell) {
         Py_FatalError("Reader_tell(): cur.len > self->rawtell");
     }
@@ -3263,8 +3256,7 @@ Reader_tell(Reader *self) {
 
 static PyObject *
 Reader_expose(Reader *self) {
-    DeguSrc rawbuf = {self->buf, self->len};
-    return _tobytes(rawbuf);
+    return _tobytes(_Reader_preamble_src(self));
 }
 
 static PyObject *
@@ -3297,12 +3289,12 @@ Reader_read_until(Reader *self, PyObject *args)
 
 static bool
 _Reader_read_request(Reader *self, DeguRequest *dr) {
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
+    DeguSrc src = _Reader_read_until(self, DEFAULT_PREAMBLE, CRLFCRLF);
     if (src.buf == NULL) {
         return false;
     }
     PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = {self->scratch, MAX_KEY};
+    DeguDst scratch = _Reader_scratch_dst(self);
     return _parse_request(src, rfile, scratch, dr);
 }
 
@@ -3322,12 +3314,12 @@ Reader_read_request(Reader *self) {
 static bool
 _Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
 {
-    DeguSrc src = _Reader_read_until(self, self->len, CRLFCRLF);
+    DeguSrc src = _Reader_read_until(self, DEFAULT_PREAMBLE, CRLFCRLF);
     if (src.buf == NULL) {
         return false;
     }
     PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = {self->scratch, MAX_KEY};
+    DeguDst scratch = _Reader_scratch_dst(self);
     return _parse_response(method, src, rfile, scratch, dr);
 }
 
