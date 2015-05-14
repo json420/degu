@@ -59,6 +59,12 @@
 #define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
 #define CHUNKED_BODY(obj) ((ChunkedBody *)(obj))
 
+#define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
+#define BODY_ITER(obj) ((BodyIter *)(obj))
+
+#define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
+#define CHUNKED_BODY_ITER(obj) ((ChunkedBodyIter *)(obj))
+
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -156,6 +162,7 @@ typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
+    size_t _status;
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \

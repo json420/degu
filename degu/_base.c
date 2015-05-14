@@ -568,6 +568,29 @@ _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
 }
 
 static bool
+_check_int(const char *name, PyObject *obj)
+{
+    return _check_type(name, obj, &PyLong_Type);
+}
+
+static ssize_t
+_get_size(const char *name, PyObject *obj, const size_t min, const size_t max)
+{
+    if (! _check_int(name, obj)) {
+        return -1;
+    }
+    const size_t size = PyLong_AsSize_t(obj);
+    if (PyErr_Occurred() || size < min || size > max) {
+        PyErr_Clear();
+        PyErr_Format(PyExc_ValueError,
+            "need %zu <= %s <= %zu; got %R", name, min, max, obj
+        );
+        return -1;
+    }
+    return (ssize_t)size;
+}
+
+static bool
 _check_dict(const char *name, PyObject *obj)
 {
     return _check_type(name, obj, &PyDict_Type);
@@ -2717,8 +2740,8 @@ _readinto(PyObject *method, DeguDst dst)
 static bool
 _readinto_from(PyObject *robj, DeguDst dst)
 {
-    if (Py_TYPE(robj) == &ReaderType) {
-        return _Reader_readinto((Reader *)robj, dst);
+    if (IS_READER(robj)) {
+        return _Reader_readinto(READER(robj), dst);
     }
     return _readinto(robj, dst);
 }
@@ -2842,8 +2865,8 @@ static bool
 _readchunk_from(PyObject *robj, PyObject *readline, DeguChunk *dc)
 {
 
-    if (Py_TYPE(robj) == &ReaderType) {
-        if (! _Reader_readchunkline((Reader *)robj, dc)) {
+    if (IS_READER(robj)) {
+        if (! _Reader_readchunkline(READER(robj), dc)) {
             goto error;
         }
     }
@@ -2876,7 +2899,7 @@ _get_robj(PyObject *rfile)
 {
     PyObject *robj = NULL;
 
-    if (Py_TYPE(rfile) == &ReaderType) {
+    if (IS_READER(rfile)) {
         _SET_AND_INC(robj, rfile)
     }
     else {
@@ -2894,7 +2917,7 @@ _get_readline(PyObject *rfile)
 {
     PyObject *robj = NULL;
 
-    if (Py_TYPE(rfile) == &ReaderType) {
+    if (IS_READER(rfile)) {
         _SET_AND_INC(robj, rfile)
     }
     else {
@@ -3471,8 +3494,8 @@ _set_output_headers(PyObject *headers, PyObject *body)
     if (PyBytes_CheckExact(body)) {
         return _set_content_length(headers, (uint64_t)PyBytes_GET_SIZE(body));
     }
-    if (Py_TYPE(body) == &BodyType) {
-        return _set_content_length(headers, ((Body *)body)->content_length);
+    if (IS_BODY(body)) {
+        return _set_content_length(headers, BODY(body)->content_length);
     }
     if (Py_TYPE(body) == &BodyIterType) {
         return _set_content_length(headers, ((BodyIter *)body)->content_length);
@@ -3547,17 +3570,17 @@ _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
     else if (PyBytes_CheckExact(body)) {
         wrote = _Writer_write(self, _frombytes(body));
     }
-    else if (Py_TYPE(body) == &BodyType) {
-        wrote = _Body_write_to((Body *)body, rfile);
+    else if (IS_BODY(body)) {
+        wrote = _Body_write_to(BODY(body), rfile);
     }
-    else if (Py_TYPE(body) == &ChunkedBodyType) {
-        wrote = _ChunkedBody_write_to((ChunkedBody *)body, rfile);
+    else if (IS_CHUNKED_BODY(body)) {
+        wrote = _ChunkedBody_write_to(CHUNKED_BODY(body), rfile);
     }
-    else if (Py_TYPE(body) == &BodyIterType) {
-        wrote = _BodyIter_write_to((BodyIter *)body, rfile);
+    else if (IS_BODY_ITER(body)) {
+        wrote = _BodyIter_write_to(BODY_ITER(body), rfile);
     }
-    else if (Py_TYPE(body) == &ChunkedBodyIterType) {
-        wrote = _ChunkedBodyIter_write_to((ChunkedBodyIter *)body, rfile);
+    else if (IS_CHUNKED_BODY_ITER(body)) {
+        wrote = _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), rfile);
     }
     else {
         PyErr_Format(PyExc_TypeError,
@@ -3747,7 +3770,7 @@ _rfile_repr(PyObject *rfile)
     if (rfile == NULL) {
         return repr_null;
     }
-    if (Py_TYPE(rfile) == &ReaderType) {
+    if (IS_READER(rfile)) {
         return repr_reader;
     }
     return repr_rfile;
@@ -4526,6 +4549,11 @@ _unpack_response(PyObject *obj, DeguResponse *dr)
         PyErr_Format(PyExc_TypeError, "bad response type: %R", Py_TYPE(obj));
         goto error;
     }
+    const ssize_t _status = _get_size("status", dr->status, 100, 599);
+    if (_status < 0) {
+        goto error;
+    }
+    dr->_status = (size_t)_status;
     return true;
 
 error:
@@ -4541,7 +4569,7 @@ handle_requests(PyObject *self, PyObject *args)
     PyObject *session = NULL;
     PyObject *ret = NULL;
     ssize_t _max_requests;
-    size_t i;
+    size_t i, status;
 
     PyObject *reader = NULL;
     PyObject *writer = NULL;
@@ -4570,13 +4598,23 @@ handle_requests(PyObject *self, PyObject *args)
         _SET(response,
             PyObject_CallFunctionObjArgs(app, session, request, bodies, NULL)
         )
-        Py_CLEAR(request);
+        if (! _body_is_consumed(req.body)) {
+            PyErr_Format(PyExc_ValueError,
+                "request body not consumed: %R", req.body
+            );
+            goto error;
+        }
         if (! _unpack_response(response, &rsp)) {
             goto error;
         }
+        status = rsp._status;
         if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
             goto error;
         }
+        if (status >= 400 && status != 404 && status != 409 && status != 412) {
+            break;
+        }
+        Py_CLEAR(request);
         Py_CLEAR(response);
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
@@ -4638,29 +4676,25 @@ error:
     return -1;
 }
 
-static bool
+static void
 _Connection_close(Connection *self)
 {
     if (self->closed) {
-        return true;
+        return;
     }
     self->closed = true;
-    PyObject *r = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
-    Py_CLEAR(self->sock);
-    if (r == NULL) {
-        return false;
-    }
-    Py_CLEAR(r);
-    return true;
+    PyObject *err_type, *err_value, *err_traceback, *result;
+    PyErr_Fetch(&err_type, &err_value, &err_traceback);
+    result = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
+    Py_CLEAR(result);
+    PyErr_Restore(err_type, err_value, err_traceback);
 }
 
 static PyObject *
 Connection_close(Connection *self)
 {
-    if (_Connection_close(self)) {
-        Py_RETURN_NONE;
-    }
-    return NULL;
+    _Connection_close(self);
+    Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -4669,7 +4703,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     DeguResponse r = NEW_DEGU_RESPONSE;
     PyObject *response = NULL;
 
-    /* Check in Connection is closed */
+    /* Check if Connection is closed */
     if (self->closed) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
         return NULL;

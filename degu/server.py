@@ -34,7 +34,6 @@ from .base import (
     _isconsumed,
     bodies,
 )
-from ._base import handle_requests
 
 
 log = logging.getLogger()
@@ -298,8 +297,8 @@ class Server:
 
     def _handler(self, sock, max_requests, session):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            #_handle_requests(self.app, sock, max_requests, session)
-            handle_requests(self.app, max_requests, sock, session)
+            _handle_requests(self.app, sock, max_requests, session)
+            #handle_requests(self.app, max_requests, sock, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
