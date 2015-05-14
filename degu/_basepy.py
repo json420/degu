@@ -953,9 +953,10 @@ class Reader:
     def readchunk(self):
         line = self.read_until(4096, b'\r\n')
         (size, ext) = parse_chunk(line)
-        data = self.read(size + 2)
-        if len(data) != size + 2:
+        data = memoryview(bytearray(size + 2))
+        if self.readinto(data) != size + 2:
             raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
+        data = data.tobytes()
         end = data[-2:]
         if end != b'\r\n':
             raise ValueError('bad chunk data termination: {!r}'.format(end))
@@ -976,19 +977,6 @@ class Reader:
         self._rawtell += added
         assert dst_len == src_len + added
         return dst_len
-
-    def read(self, size):
-        assert isinstance(size, int)
-        if not (0 <= size <= MAX_IO_SIZE):
-            raise ValueError(
-                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
-            )
-        if size == 0:
-            return b''
-        dst = memoryview(bytearray(size))
-        self.readinto(dst)
-        return dst.tobytes()
-
 
 
 ################################################################################

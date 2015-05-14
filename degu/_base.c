@@ -3248,35 +3248,6 @@ _Reader_readinto(Reader *self, DeguDst dst)
 }
 
 static PyObject *
-_Reader_read(Reader *self, const ssize_t size)
-{
-    PyObject *ret = NULL;
-
-    if (size < 0 || size > MAX_IO_SIZE) {
-        PyErr_Format(PyExc_ValueError,
-            "need 0 <= size <= %zu; got %zd", MAX_IO_SIZE, size
-        );
-        return NULL;
-    }
-    if (size == 0) {
-        _SET_AND_INC(ret, bytes_empty)
-        goto cleanup;
-    }
-    _SET(ret, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = _dst_frombytes(ret);
-    if (! _Reader_readinto(self, dst)) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    return ret;
-}
-
-static PyObject *
 Reader_rawtell(Reader *self) {
     return PyLong_FromUnsignedLongLong(self->rawtell);
 }
@@ -3409,16 +3380,6 @@ Reader_readchunk(Reader *self)
     }
     _clear_degu_chunk(&dc);
     return ret;
-}
-
-static PyObject *
-Reader_read(Reader *self, PyObject *args)
-{
-    ssize_t size = -1;
-    if (!PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _Reader_read(self, size);
 }
 
 static PyObject *
