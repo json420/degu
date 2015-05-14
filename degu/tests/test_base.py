@@ -29,6 +29,7 @@ import io
 import sys
 from random import SystemRandom
 import types
+import socket
 
 from . import helpers
 from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
@@ -5623,9 +5624,321 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(),
             b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
-        
-
 
 class TestWriter_C(TestWriter_Py):
+    backend = _base
+
+
+class BaseMockSocket:
+    __slots__ = ('_calls',)
+
+    def __init__(self):
+        self._calls = []
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+
+class NewMockSocket(BaseMockSocket):
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf')
+
+    def __init__(self, data=b'', rcvbuf=None, sndbuf=None):
+        assert rcvbuf is None or type(rcvbuf) is int
+        assert sndbuf is None or type(sndbuf) is int
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+        self._rcvbuf = rcvbuf
+        self._sndbuf = sndbuf
+        super().__init__()
+
+    def recv_into(self, dst):
+        assert type(dst) is memoryview
+        self._calls.append(('recv_into', len(dst)))
+        if self._rcvbuf is not None:
+            dst = dst[0:self._rcvbuf]
+        return self._rfile.readinto(dst)
+
+    def send(self, src):
+        assert type(src) in (bytes, memoryview)
+        self._calls.append(('send', len(src)))
+        if self._sndbuf is not None:
+            src = src[0:self._sndbuf]
+        return self._wfile.write(src)
+
+
+class TestConnection_Py(BackendTestCase):
+    @property
+    def Connection(self):
+        return getattr(self.backend, 'Connection')
+
+    @property
+    def ResponseType(self):
+        return getattr(self.backend, 'ResponseType')
+
+    @property
+    def Body(self):
+        return getattr(self.backend, 'Body')
+
+    def test_init(self):
+        # no sock.recv_into() attribute:
+        class BadSocket1(BaseMockSocket):
+            __slots__ = tuple()
+            def send(self, src):
+                assert False
+        sock = BadSocket1()
+        with self.assertRaises(AttributeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            "'BadSocket1' object has no attribute 'recv_into'"
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # no sock.send() attribute:
+        class BadSocket2(BaseMockSocket):
+            __slots__ = tuple()
+            def recv_into(self, src):
+                assert False
+        sock = BadSocket2()
+        with self.assertRaises(AttributeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            "'BadSocket2' object has no attribute 'send'"
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # sock.recv_into() isn't callable:
+        class BadSocket3(BaseMockSocket):
+            __slots__ = tuple()
+            recv_into = 'hello, world'
+            def send(self, src):
+                assert False
+        sock = BadSocket3()
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            'sock.recv_into() is not callable'
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # sock.send() isn't callable:
+        class BadSocket4(BaseMockSocket):
+            __slots__ = tuple()
+            send = 'hello, world'
+            def recv_into(self, src):
+                assert False
+        sock = BadSocket4()
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            'sock.send() is not callable'
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # base_headers is neither None nor a dict:
+        sock = NewMockSocket()
+        base_headers = [('foo', 'bar')]
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, base_headers)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('base_headers', dict, list, base_headers)
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(base_headers), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(base_headers, [('foo', 'bar')])
+
+        # Good sock, base_headers is None:
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertIs(conn.sock, sock)
+        self.assertIsNone(conn.base_headers)
+        self.assertIs(conn.closed, False)
+        self.assertEqual(sock._calls, [])
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # Good sock, base_headers is a dict:
+        sock = NewMockSocket()
+        k = random_id().lower()
+        v = random_id()
+        base_headers = {k: v}
+        conn = self.Connection(sock, base_headers)
+        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertIs(conn.sock, sock)
+        self.assertIs(conn.base_headers, base_headers)
+        self.assertEqual(conn.base_headers, {k: v})
+        self.assertIs(conn.closed, False)
+        self.assertEqual(sock._calls, [])
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(base_headers), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+    def test_request(self):
+        # Test when connection is closed:
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        self.assertIsNone(conn.close())
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        sock._calls.clear()
+        with self.assertRaises(ValueError) as cm:
+            conn.request('GET', '/', {}, None)
+        self.assertEqual(str(cm.exception),
+            'Connection is closed'
+        )
+        del conn
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+        send = b'GET / HTTP/1.1\r\n\r\n'
+        recv = b'HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nhello, world'
+
+        # Previous response body not consumed:
+        sock = NewMockSocket(recv * 2)
+        conn = self.Connection(sock, None)
+        response = conn.request('GET', '/', {}, None)
+        self.assertIs(conn.closed, False)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': 12})
+        self.assertIs(type(response.body), self.Body)
+        self.assertEqual(sock._calls, [
+            ('send', len(send)),
+            ('recv_into', 32 * 1024),
+        ])
+        self.assertEqual(sock._wfile.getvalue(), send)
+        self.assertEqual(sock._rfile.tell(), len(recv) * 2)
+        sock._calls.clear()
+        with self.assertRaises(ValueError) as cm:
+            conn.request('GET', '/', {}, None)
+        self.assertEqual(str(cm.exception),
+            'response body not consumed: {!r}'.format(response.body)
+        )
+        self.assertIs(conn.closed, True)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(sock._wfile.getvalue(), send)
+        self.assertEqual(sock._rfile.tell(), len(recv) * 2)
+        sock._calls.clear()
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 3)
+        del response
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [])
+
+        v = (None, 1, 2, 3)
+        comb = tuple((s, r) for s in v for r in v)
+        for (r, s) in comb:
+            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            conn = self.Connection(sock, None)
+            h = {}
+            response = conn.request('GET', '/', h, None)
+            self.assertEqual(h, {})
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 12})
+            self.assertIs(type(response.body), self.Body)
+            self.assertEqual(response.body.read(), b'hello, world')
+            self.assertEqual(sys.getrefcount(sock), 5)
+            del response
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
+
+            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            k = random_id().lower()
+            v = random_id()
+            bh = {k: v}
+            conn = self.Connection(sock, bh)
+            h = {}
+            response = conn.request('GET', '/', h, None)
+            self.assertEqual(h, {k: v})
+            self.assertEqual(sys.getrefcount(h), 2)
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 12})
+            self.assertIs(type(response.body), self.Body)
+            self.assertEqual(response.body.read(), b'hello, world')
+            self.assertEqual(sys.getrefcount(sock), 5)
+            del response
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
+            self.assertEqual(sys.getrefcount(bh), 2)
+
+    def test_put(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.put('/', {}, None)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'PUT / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_post(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.post('/', {}, None)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'POST / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_get(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.get('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'GET / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_head(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.head('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {'content-length': 17}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'HEAD / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_delete(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.delete('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'DELETE / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+class TestConnection_C(TestConnection_Py):
     backend = _base
 

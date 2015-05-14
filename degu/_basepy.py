@@ -31,6 +31,7 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
+import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -1508,6 +1509,96 @@ class ChunkedBodyIter:
         self._state = BODY_CONSUMED
         return total
 
-
 # Used to expose the RGI IO wrappers:
 bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+
+
+def _check_dict(name, obj):
+    if type(obj) is not dict:
+        raise TypeError(
+            TYPE_ERROR.format(name, dict, type(obj), obj)
+        )
+
+
+def _body_is_consumed(body):
+    if body is None:
+        return True
+    assert type(body) in (Body, BodyIter)
+    return body._state == BODY_CONSUMED
+
+
+class Connection:
+    __slots__ = (
+        'sock',
+        'base_headers',
+        '_reader',
+        '_writer',
+        '_response_body',
+        '_closed',
+    )
+
+    def __init__(self, sock, base_headers):
+        self._closed = False
+        self.sock = sock
+        if base_headers is not None:
+            _check_dict('base_headers', base_headers)
+        self.base_headers = base_headers
+        self._reader = Reader(sock)
+        self._writer = Writer(sock)
+        self._response_body = None
+        self._closed = False
+
+    @property
+    def closed(self):
+        return self._closed
+
+    def __del__(self):
+        self._shutdown()
+
+    def _shutdown(self, how=socket.SHUT_RDWR):
+        if self._closed is not True:
+            self._closed = True
+            try:
+                self.sock.shutdown(how)
+            except:
+                pass
+
+    def close(self):
+        self._shutdown()
+
+    def request(self, method, uri, headers, body):
+        if self._closed is not False:
+            raise ValueError('Connection is closed')
+        try:
+            if not _body_is_consumed(self._response_body):
+                raise ValueError(
+                    'response body not consumed: {!r}'.format(self._response_body)
+                )
+            if self.base_headers:
+                headers.update(self.base_headers)
+            self._writer.write_request(method, uri, headers, body)
+            response = self._reader.read_response(method)
+            self._response_body = response.body
+            return response
+        except Exception:
+            self._shutdown()
+            raise
+
+    def put(self, uri, headers, body):
+        return self.request('PUT', uri, headers, body)
+
+    def post(self, uri, headers, body):
+        return self.request('POST', uri, headers, body)
+
+    def get(self, uri, headers):
+        return self.request('GET', uri, headers, None)
+
+    def head(self, uri, headers):
+        return self.request('HEAD', uri, headers, None)
+
+    def delete(self, uri, headers):
+        return self.request('DELETE', uri, headers, None)
+
+    def get_range(self, uri, headers, start, stop):
+        headers['range'] = Range(start, stop)
+        return self.request('GET', uri, headers, None)

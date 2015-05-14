@@ -3447,7 +3447,7 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
         goto error;
     }
     self->tell = 0;
-    _SET(self->send,      _getcallable("sock", sock, attr_send))
+    _SET(self->send, _getcallable("sock", sock, attr_send))
     goto cleanup;
 
 error:
@@ -4641,6 +4641,7 @@ cleanup:
 static void
 Connection_dealloc(Connection *self)
 {
+    _Connection_shutdown(self);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
     Py_CLEAR(self->reader);
@@ -4660,30 +4661,30 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
             &sock, &base_headers)) {
         goto error;
     }
+    self->closed = false;
+    _SET_AND_INC(self->sock, sock)
     if (base_headers != Py_None && !_check_dict("base_headers", base_headers)) {
         goto error;
     }
-    _SET_AND_INC(self->sock, sock)
     _SET_AND_INC(self->base_headers, base_headers)
     _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
     _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
     self->response_body = NULL;
-    self->closed = false;
     return 0;
 
 error:
-    self->closed = true;
     return -1;
 }
 
 static void
-_Connection_close(Connection *self)
+_Connection_shutdown(Connection *self)
 {
-    if (self->closed) {
+    PyObject *err_type, *err_value, *err_traceback, *result;
+
+    if (self->closed || self->sock == NULL) {
         return;
     }
     self->closed = true;
-    PyObject *err_type, *err_value, *err_traceback, *result;
     PyErr_Fetch(&err_type, &err_value, &err_traceback);
     result = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
     Py_CLEAR(result);
@@ -4693,7 +4694,7 @@ _Connection_close(Connection *self)
 static PyObject *
 Connection_close(Connection *self)
 {
-    _Connection_close(self);
+    _Connection_shutdown(self);
     Py_RETURN_NONE;
 }
 
@@ -4704,7 +4705,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     PyObject *response = NULL;
 
     /* Check if Connection is closed */
-    if (self->closed) {
+    if (self->closed || self->sock == NULL) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
         return NULL;
     }
@@ -4712,7 +4713,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     /* Check whether previous response body was consumed */
     if (! _body_is_consumed(self->response_body)) {
         PyErr_Format(PyExc_ValueError,
-            "previous response body not consumed: %R", self->response_body
+            "response body not consumed: %R", self->response_body
         );
         goto error;
     }
@@ -4742,7 +4743,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     goto cleanup;
 
 error:
-    _Connection_close(self);
+    _Connection_shutdown(self);
 
 cleanup:
     _clear_degu_response(&r);
