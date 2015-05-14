@@ -33,6 +33,7 @@ from .base import (
     Range,
     _isconsumed,
 )
+from .base import Connection as Connection2
 
 __all__ = (
     'Client',
@@ -357,7 +358,7 @@ class Client:
     def connect(self):
         sock = self.create_socket()
         #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        conn = Connection(sock, self._base_headers)
+        conn = Connection2(sock, self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
         conn.close()

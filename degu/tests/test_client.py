@@ -517,21 +517,17 @@ class TestClient(TestCase):
         inst = ClientSubclass(sock, host)
         self.assertIsNone(inst.on_connect)
         conn = inst.connect()
-        self.assertIsInstance(conn, client.Connection)
+        self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIsInstance(conn._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # Should return a new Connection instance each time:
         conn2 = inst.connect()
         self.assertIsNot(conn2, conn)
-        self.assertIsInstance(conn2, client.Connection)
+        self.assertIsInstance(conn2, base.Connection)
         self.assertIs(conn2.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIsInstance(conn2._rfile, base.Reader)
-        self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # on_connect() returns True:
@@ -542,11 +538,9 @@ class TestClient(TestCase):
         inst = ClientSubclass(sock, host, on_connect_true)
         self.assertIs(inst.on_connect, on_connect_true)
         conn = inst.connect()
-        self.assertIsInstance(conn, client.Connection)
+        self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # on_connect() does not return True:
