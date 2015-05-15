@@ -1,5 +1,26 @@
+Python globals:
+    _init_all_globals()
 
-Python object validation and conversion
+DeguSrc globals
+
+namedtuples:
+    Bodies
+    Request
+    Response
+    _init_namedtuple()
+    _init_all_namedtuples()
+
+Python object validation and conversion:
+    _check_type()
+    _check_type2()
+    _check_int()
+    _get_size()
+    _get_read_size()
+    _get_length()
+    _check_tuple()
+    _check_bytes()
+    _get_bytes_len()
+    _getcallable()
 
 Helpers to clear DeguHeaders, DeguRequest, DeguResponse, DeguChunk:
     _clear_degu_headers()

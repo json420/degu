@@ -71,7 +71,7 @@ BAD_LENGTHS = (
 CRLF = b'\r\n'
 TERM = CRLF * 2
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
+TYPE_ERROR2 = '{}: need a {!r}; got a {!r}'
 
 BAD_HEADER_LINES = (
     b'K:V\r\n',
@@ -2041,7 +2041,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk must be a {!r}; got a {!r}'.format(tuple, list)
+            'chunk: need a {!r}; got a {!r}'.format(tuple, list)
         )
 
         # chunk isn't a 2-tuple:
@@ -2049,7 +2049,7 @@ class TestFormatting_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 format_chunk(chunk)
             self.assertEqual(str(cm.exception),
-                'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
+                'chunk: need a 2-tuple; got a {}-tuple'.format(len(chunk))
             )
 
         # chunk[0] isn't a tuple:
@@ -2057,7 +2057,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, list)
+            'chunk[0]: need a {!r}; got a {!r}'.format(tuple, list)
         )
 
         # chunk[0] isn't a 2-tuple:
@@ -2066,7 +2066,7 @@ class TestFormatting_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 format_chunk(chunk)
             self.assertEqual(str(cm.exception),
-                'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
+                'chunk[0]: need a 2-tuple; got a {}-tuple'.format(len(ext))
             )
 
         # chunk[1] isn't bytes:
@@ -2074,7 +2074,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, bytearray)
+            'chunk[1]: need a {!r}; got a {!r}'.format(bytes, bytearray)
         )
 
         # len(chunk[1]) > MAX_IO_SIZE:
@@ -4507,7 +4507,7 @@ class TestBodyIter_Py(BodyBackendTestCase):
                 with self.assertRaises(TypeError) as cm:
                     body.write_to(wfile)
                 self.assertEqual(str(cm.exception),
-                    'need a {!r}; source contains a {!r}'.format(bytes, type(None))
+                    TYPE_ERROR2.format('BodyIter source item', bytes, type(None))
                 )
                 self.assertEqual(body.state, self.BODY_ERROR)
                 wfile = io.BytesIO()
@@ -5554,6 +5554,270 @@ class NewMockSocket(BaseMockSocket):
             src = src[0:self._sndbuf]
         return self._wfile.write(src)
 
+    def close(self):
+        self._calls.append('close')
+
+
+class TestServerFunctions_Py(BackendTestCase):
+    def test_handle_requests(self):
+        handle_requests = self.getattr('handle_requests')
+
+        ses = {'requests': 0, 'client': ('127.0.0.1', 12345)}
+
+        # app() returns neither a tuple nor Response namedtuple:
+        rsp = [200, 'OK', {}, b'hello, world']
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a {!r}; got a {!r}'.format(tuple, list)
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns a 3-tuple:
+        rsp = (200, 'OK', {})
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a 4-tuple; got a 3-tuple'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns a 5-tuple:
+        rsp = (200, 'OK', {}, b'hello', b'world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a 4-tuple; got a 5-tuple'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status that isn't an int:
+        rsp = ('200', 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('status', int, str, '200')
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status < 100:
+        rsp = (99, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'need 100 <= status <= 599; got 99'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status > 599:
+        rsp = (600, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'need 100 <= status <= 599; got 600'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() doesn't consume request body:
+        rsp = (200, 'OK', {}, None)
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'PUT'
+            assert request.uri == '/foo'
+            assert request.headers == {'content-length': 3}
+            assert type(request.body) is bodies.Body
+            assert request.body.content_length == 3
+            return rsp
+
+        data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'request body not consumed: Body(<reader>, 3)'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() doesn't return response body None for HEAD request:
+        rsp = (200, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'HEAD'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'HEAD /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            "request method is HEAD, but response body is not None: <class 'bytes'>" 
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # Should close connection after max_requests:
+        rsp = (200, 'OK', {}, b'bar')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        indata = b'GET /foo HTTP/1.1\r\n\r\n'
+        outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
+        sock = NewMockSocket(indata * 3)
+        self.assertEqual(handle_requests(app, 2, sock, ses), 2)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [
+            ('recv_into', 32 * 1024),
+            ('send', len(outdata)),
+            ('send', len(outdata)),
+            'close',
+        ])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+        self.assertEqual(sock._rfile.read(), b'')
+        self.assertEqual(sock._wfile.getvalue(), outdata * 2)
+
+        # Should close connection when status >= 400 and not 404, 409, 412:
+        class App:
+            def __init__(self):
+                self._status_list = [404, 409, 412, 400, 200]
+
+            def __call__(self, session, request, bodies):
+                assert session is ses
+                assert request.method == 'GET'
+                assert request.uri == '/foo'
+                assert request.headers == {}
+                assert request.body is None
+                status = self._status_list.pop(0)
+                return (status, 'OK', {}, b'bar')
+
+        app = App()
+        indata = b'GET /foo HTTP/1.1\r\n\r\n'
+        out = 'HTTP/1.1 {} OK\r\ncontent-length: 3\r\n\r\nbar'
+        out1 = out.format(404).encode()
+        out2 = out.format(409).encode()
+        out3 = out.format(412).encode()
+        out4 = out.format(400).encode()
+        sock = NewMockSocket(indata * 10)
+        self.assertEqual(handle_requests(app, 10, sock, ses), 4)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [
+            ('recv_into', 32 * 1024),
+            ('send', len(out1)),
+            ('send', len(out2)),
+            ('send', len(out3)),
+            ('send', len(out4)),
+            'close',
+        ])
+        self.assertEqual(sock._rfile.read(), b'')
+        self.assertEqual(sock._wfile.getvalue(), out1 + out2 + out3 + out4)
+        self.assertEqual(app._status_list, [200])
+
+
+class TestServerFunctions_C(TestServerFunctions_Py):
+    backend = _base
+
 
 class TestConnection_Py(BackendTestCase):
     @property
@@ -5575,6 +5839,10 @@ class TestConnection_Py(BackendTestCase):
     @property
     def ContentRange(self):
         return getattr(self.backend, 'ContentRange')
+
+    @property
+    def bodies(self):
+        return getattr(self.backend, 'bodies')
 
     def test_init(self):
         # no sock.recv_into() attribute:
@@ -5659,11 +5927,14 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(base_headers, [('foo', 'bar')])
 
         # Good sock, base_headers is None:
+        bodies = self.bodies
+        bcount = sys.getrefcount(bodies)
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
         self.assertEqual(sys.getrefcount(sock), 5)
         self.assertIs(conn.sock, sock)
         self.assertIsNone(conn.base_headers)
+        self.assertIs(conn.bodies, bodies)
         self.assertIs(conn.closed, False)
         self.assertEqual(sock._calls, [])
         del conn
@@ -5671,6 +5942,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR)
         ])
+        self.assertEqual(sys.getrefcount(bodies), bcount)
 
         # Good sock, base_headers is a dict:
         sock = NewMockSocket()
@@ -5682,6 +5954,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, base_headers)
         self.assertEqual(conn.base_headers, {k: v})
+        self.assertIs(conn.bodies, bodies)
         self.assertIs(conn.closed, False)
         self.assertEqual(sock._calls, [])
         del conn
@@ -5690,6 +5963,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR)
         ])
+        self.assertEqual(sys.getrefcount(bodies), bcount)
 
     def test_request(self):
         # Test when connection is closed:

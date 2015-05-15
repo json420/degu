@@ -715,34 +715,34 @@ def format_response(status, reason, headers):
     return ''.join(lines).encode()
 
 
+def _check_type2(name, obj, _type):
+    if type(obj) is not _type:
+        raise TypeError(
+            '{}: need a {!r}; got a {!r}'.format(name, _type, type(obj))
+        )
+
+def _check_tuple(name, obj, size):
+    _check_type2(name, obj, tuple)
+    if len(obj) != size:
+        raise ValueError(
+            '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
+        )
+    return obj
+
+def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
+    assert max_len <= MAX_IO_SIZE
+    _check_type2(name, obj, bytes)
+    if len(obj) > max_len:
+        raise ValueError(
+            'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
+        )
+
 def _validate_chunk(chunk):
-    if type(chunk) is not tuple:
-        raise TypeError(
-            'chunk must be a {!r}; got a {!r}'.format(tuple, type(chunk))
-        )
-    if len(chunk) != 2:
-        raise ValueError(
-            'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
-        )
+    _check_tuple('chunk', chunk, 2)
     (ext, data) = chunk
-    if type(data) is not bytes:
-        raise TypeError(
-            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, type(data))
-        )
-    if len(data) > MAX_IO_SIZE:
-        raise ValueError(
-            'need len(chunk[1]) <= {}; got {}'.format(MAX_IO_SIZE, len(data))
-        )
-    if ext is None:
-        return chunk
-    if type(ext) is not tuple:
-        raise TypeError(
-            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, type(ext))
-        )
-    if len(ext) != 2:
-        raise ValueError(
-            'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
-        )
+    if ext is not None:
+        _check_tuple('chunk[0]', ext, 2)
+    _check_bytes('chunk[1]', data, MAX_IO_SIZE)
     return chunk
 
 
@@ -1362,11 +1362,7 @@ class BodyIter:
         try:
             for part in self._source:
                 if type(part) is not bytes:
-                    raise TypeError(
-                        'need a {!r}; source contains a {!r}'.format(
-                            bytes, type(part)
-                        )
-                    )
+                    _check_bytes('BodyIter source item', part)
                 total += _write_to(wobj, part)
                 if total > length:
                     raise ValueError(
@@ -1440,12 +1436,26 @@ def _body_is_consumed(body):
     return body._state == BODY_CONSUMED
 
 
+def _unpack_response(obj):
+    if type(obj) is Response:
+        return obj
+    return _check_tuple('response', obj, 4)   
+
+def _check_status(status):
+    _validate_int('status', status)
+    if not 100 <= status <= 599:
+        raise ValueError(
+            'need 100 <= status <= 599; got {}'.format(status)
+        )
+
 def handle_requests(app, max_requests, sock, session):
     reader = Reader(sock)
     writer = Writer(sock)
     for count in range(1, max_requests + 1):
         request = reader.read_request()
-        (status, reason, headers, body) = app(session, request, bodies)
+        response = app(session, request, bodies)
+        (status, reason, headers, body) = _unpack_response(response)
+        _check_status(status)
 
         # Make sure application fully consumed request body:
         if not _body_is_consumed(request.body):
@@ -1453,22 +1463,19 @@ def handle_requests(app, max_requests, sock, session):
                 'request body not consumed: {!r}'.format(request.body)
             )
 
+        # FIXME: when 200 <= status <= 299, we should consider requiring that
+        # the response body not be None
+
         # Make sure HEAD requests are properly handled:
-        if request.method == 'HEAD':
-            if body is not None:
-                raise TypeError(
-                    'response body must be None when request method is HEAD'
+        if request.method == 'HEAD' and body is not None:
+            raise TypeError(
+                'request method is HEAD, but response body is not None: {!r}'.format(
+                    type(body)
                 )
-            if 200 <= status < 300:
-                if 'content-length' in headers:
-                    if 'transfer-encoding' in headers:
-                        raise ValueError(
-                            'cannot have both content-length and transfer-encoding headers'
-                        )
-                elif headers.get('transfer-encoding') != 'chunked':
-                    raise ValueError(
-                        'response to HEAD request must include content-length or transfer-encoding'
-                    )
+            )
+            # FIXME: when 200 <= status <= 299, we should consider requiring
+            # a 'content-length' or 'transfer-encoding' header in the response
+            # to a HEAD request
 
         # Write response:
         writer.write_response(status, reason, headers, body)
@@ -1482,6 +1489,7 @@ def handle_requests(app, max_requests, sock, session):
 
     # Make sure sndbuf gets flushed:
     sock.close()
+    return count
 
 
 class Connection:
@@ -1492,6 +1500,7 @@ class Connection:
         '_writer',
         '_response_body',
         '_closed',
+        '_bodies',
     )
 
     def __init__(self, sock, base_headers):
@@ -1504,10 +1513,15 @@ class Connection:
         self._writer = Writer(sock)
         self._response_body = None
         self._closed = False
+        self._bodies = bodies
 
     @property
     def closed(self):
         return self._closed
+
+    @property
+    def bodies(self):
+        return self._bodies
 
     def __del__(self):
         self._shutdown()

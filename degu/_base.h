@@ -156,7 +156,7 @@ typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
-    size_t _status;
+    size_t s;
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \
@@ -871,6 +871,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *sock;
     PyObject *base_headers;
+    PyObject *bodies;
     PyObject *reader;
     PyObject *writer;
     PyObject *response_body;
@@ -880,6 +881,7 @@ typedef struct {
 static PyMemberDef Connection_members[] = {
     {"sock",         T_OBJECT_EX, offsetof(Connection, sock),         READONLY, NULL},
     {"base_headers", T_OBJECT_EX, offsetof(Connection, base_headers), READONLY, NULL},
+    {"bodies",       T_OBJECT_EX, offsetof(Connection, bodies),       READONLY, NULL},
     {"closed",       T_BOOL,      offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
