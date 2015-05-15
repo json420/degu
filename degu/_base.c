@@ -1141,14 +1141,9 @@ ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
 }
 
 
-/*******************************************************************************
- * Internal API: Parsing: Headers:
- *     _parse_key()
- *     _parse_val()
- *     _parse_content_length()
- *     _parse_header_line()
- *     _parse_headers()
- */
+/******************************************************************************
+ * Header parsing - internal C API
+ ******************************************************************************/
 static bool
 _parse_key(DeguSrc src, DeguDst dst)
 {
@@ -1246,22 +1241,6 @@ _parse_content_length(DeguSrc src)
 }
 
 static PyObject *
-parse_content_length(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
-        return NULL;
-    }
-    const int64_t value = _parse_content_length((DeguSrc){buf, len});
-    if (value < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(value);
-}
-
-static PyObject *
 _parse_range(DeguSrc src)
 {
     ssize_t index;
@@ -1308,19 +1287,6 @@ _parse_range(DeguSrc src)
 bad_range:
     _value_error("bad range: %R", src);
     return NULL;
-}
-
-static PyObject *
-parse_range(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    return _parse_range(src);
 }
 
 static PyObject *
@@ -1382,19 +1348,6 @@ _parse_content_range(DeguSrc src)
 bad_content_range:
     _value_error("bad content-range: %R", src);
     return NULL;
-}
-
-static PyObject *
-parse_content_range(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_content_range", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    return _parse_content_range(src);
 }
 
 static bool
@@ -1531,6 +1484,127 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
 
 error:
     return false;
+}
+
+
+/******************************************************************************
+ * Header parsing - exported Python API
+ ******************************************************************************/
+static PyObject *
+parse_header_name(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    if (src.len < 1) {
+        PyErr_SetString(PyExc_ValueError, "header name is empty");
+        return NULL;
+    }
+    if (src.len > MAX_KEY) {
+        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
+        return NULL;
+    }
+    _SET(ret, PyUnicode_New((ssize_t)src.len, 127))
+    DeguDst dst = {PyUnicode_1BYTE_DATA(ret), src.len};
+    if (!_parse_key(src, dst)) {
+        goto error;
+    }
+    goto done;
+
+error:
+    Py_CLEAR(ret);
+
+done:
+    return ret;
+}
+
+static PyObject *
+parse_content_length(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
+        return NULL;
+    }
+    const int64_t value = _parse_content_length((DeguSrc){buf, len});
+    if (value < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(value);
+}
+
+static PyObject *
+parse_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_range", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    return _parse_range(src);
+}
+
+static PyObject *
+parse_content_range(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#:parse_content_range", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    return _parse_content_range(src);
+}
+
+static PyObject *
+parse_headers(PyObject *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"src", "isresponse", NULL};
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *isresponse = Py_False;
+    bool _isresponse;
+    DeguHeaders dh = NEW_DEGU_HEADERS;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "y#|O:parse_headers", keys,
+            &buf, &len, &isresponse)) {
+        return NULL;
+    }
+    if (isresponse == Py_False) {
+        _isresponse = false;
+    }
+    else if (isresponse == Py_True) {
+        _isresponse = true;
+    }
+    else {
+        _type_error("isresponse", &PyBool_Type, isresponse);
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    DeguDst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
+        return NULL;
+    }
+    if (!_parse_headers(src, scratch, &dh, _isresponse)) {
+        goto error;
+    }
+    goto cleanup;
+
+error:
+    Py_CLEAR(dh.headers);
+
+cleanup:
+    free(scratch.buf);
+    return dh.headers;
 }
 
 
@@ -2291,90 +2365,6 @@ cleanup:
     Py_CLEAR(str);
     return  ret;
 }
-
-
-/*******************************************************************************
- * Public API: Parsing: Headers:
- *     parse_header_name()
- *     parse_content_length()
- *     parse_header_line()
- *     parse_headers()
- */
-static PyObject *
-parse_header_name(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *ret = NULL;
-
-    if (!PyArg_ParseTuple(args, "y#:parse_header_name", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "header name is empty");
-        return NULL;
-    }
-    if (src.len > MAX_KEY) {
-        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
-        return NULL;
-    }
-    _SET(ret, PyUnicode_New((ssize_t)src.len, 127))
-    DeguDst dst = {PyUnicode_1BYTE_DATA(ret), src.len};
-    if (!_parse_key(src, dst)) {
-        goto error;
-    }
-    goto done;
-
-error:
-    Py_CLEAR(ret);
-
-done:
-    return ret;
-}
-
-static PyObject *
-parse_headers(PyObject *self, PyObject *args, PyObject *kw)
-{
-    static char *keys[] = {"src", "isresponse", NULL};
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *isresponse = Py_False;
-    bool _isresponse;
-    DeguHeaders dh = NEW_DEGU_HEADERS;
-
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "y#|O:parse_headers", keys,
-            &buf, &len, &isresponse)) {
-        return NULL;
-    }
-    if (isresponse == Py_False) {
-        _isresponse = false;
-    }
-    else if (isresponse == Py_True) {
-        _isresponse = true;
-    }
-    else {
-        _type_error("isresponse", &PyBool_Type, isresponse);
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    DeguDst scratch = _calloc_dst(MAX_KEY);
-    if (scratch.buf == NULL) {
-        return NULL;
-    }
-    if (!_parse_headers(src, scratch, &dh, _isresponse)) {
-        goto error;
-    }
-    goto cleanup;
-
-error:
-    Py_CLEAR(dh.headers);
-
-cleanup:
-    free(scratch.buf);
-    return dh.headers;
-}
-
 
 /*******************************************************************************
  * Public API: Parsing: Requests:
