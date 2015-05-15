@@ -943,18 +943,6 @@ class Reader:
         line = self.read_until(4096, b'\r\n')
         return parse_chunk(line)
 
-    def readchunk(self):
-        line = self.read_until(4096, b'\r\n')
-        (size, ext) = parse_chunk(line)
-        data = memoryview(bytearray(size + 2))
-        if self.readinto(data) != size + 2:
-            raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
-        data = data.tobytes()
-        end = data[-2:]
-        if end != b'\r\n':
-            raise ValueError('bad chunk data termination: {!r}'.format(end))
-        return (ext, data[:-2])
-
     def readinto(self, dst):
         dst = memoryview(dst)
         dst_len = len(dst)

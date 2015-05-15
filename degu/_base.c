@@ -2860,6 +2860,7 @@ _readinto_from(DeguRObj *r, DeguDst dst)
     return false;
 }
 
+
 /* DeguWObj: absracted writer object */
 static void
 _clear_wobj(DeguWObj *w)
@@ -2898,7 +2899,8 @@ _write_to(DeguWObj *w, DeguSrc src)
     return -1;
 }
 
-/* Chunk helpers to abstract Reader.read_until() from wfile.readline() */
+
+/* Chunk helpers to abstract Reader.read_until() vs. wfile.readline() */
 static bool
 _read_chunkline(PyObject *readline, DeguChunk *dc)
 {
@@ -3034,6 +3036,9 @@ cleanup:
 }
 
 
+/******************************************************************************
+ * Exported read_chunk(), write_chunk() Python methods
+ ******************************************************************************/
 static PyObject *
 readchunk(PyObject *self, PyObject *args)
 {
@@ -3356,20 +3361,6 @@ _Reader_read_chunkline(Reader *self, DeguChunk *dc) {
 
 error:
     return false;
-}
-
-static PyObject *
-Reader_readchunk(Reader *self)
-{
-    PyObject *ret = NULL;
-    DeguRObj r = {self, NULL, NULL};
-    DeguChunk dc = NEW_DEGU_CHUNK;
-
-    if (_read_chunk_from(&r, &dc)) {
-        ret = _pack_chunk(&dc);
-    }
-    _clear_degu_chunk(&dc);
-    return ret;
 }
 
 static PyObject *

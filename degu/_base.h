@@ -422,7 +422,6 @@ static PyObject * Reader_read_response(Reader *, PyObject *);
 static PyObject * Reader_expose(Reader *);
 static PyObject * Reader_peek(Reader *, PyObject *);
 static PyObject * Reader_read_until(Reader *, PyObject *);
-static PyObject * Reader_readchunk(Reader *);
 static PyObject * Reader_readinto(Reader *, PyObject *);
 
 static PyMethodDef Reader_methods[] = {
@@ -433,7 +432,6 @@ static PyMethodDef Reader_methods[] = {
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
     {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS, NULL},
-    {"readchunk", (PyCFunction)Reader_readchunk, METH_NOARGS, NULL},
     {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
     {NULL}
 };
