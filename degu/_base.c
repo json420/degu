@@ -1486,6 +1486,25 @@ error:
     return false;
 }
 
+static bool
+_create_body(PyObject *rfile, DeguHeaders *dh) 
+{
+    const uint8_t bodyflags = (dh->flags & 3);
+    if (bodyflags == 0) {
+        _SET_AND_INC(dh->body, Py_None)
+    }
+    else if (bodyflags == 1) {
+        _SET(dh->body, _Body_New(rfile, dh->content_length))
+    }
+    else if (bodyflags == 2) {
+        _SET(dh->body, _ChunkedBody_New(rfile))
+    }
+    return true;
+
+error:
+    return false;
+}
+
 
 /******************************************************************************
  * Header parsing - exported Python API
@@ -1608,16 +1627,9 @@ cleanup:
 }
 
 
-/*******************************************************************************
- * Internal API: Parsing: Request:
- *     _parse_method()
- *     _parse_path_component()
- *     _parse_path()
- *     _parse_query()
- *     _parse_uri()
- *     _parse_request_line()
- *     _parse_request()
- */
+/******************************************************************************
+ * Request parsing - internal C API
+ ******************************************************************************/
 static PyObject *
 _parse_method(DeguSrc src)
 {
@@ -1794,26 +1806,6 @@ error:
     return false;
 }
 
-
-static bool
-_create_body(PyObject *rfile, DeguHeaders *dh) 
-{
-    const uint8_t bodyflags = (dh->flags & 3);
-    if (bodyflags == 0) {
-        _SET_AND_INC(dh->body, Py_None)
-    }
-    else if (bodyflags == 1) {
-        _SET(dh->body, _Body_New(rfile, dh->content_length))
-    }
-    else if (bodyflags == 2) {
-        _SET(dh->body, _ChunkedBody_New(rfile))
-    }
-    return true;
-
-error:
-    return false;
-}
-
 static bool
 _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 {
@@ -1837,6 +1829,48 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 
     /* Create request body */
     return _create_body(rfile, (DeguHeaders *)dr);
+}
+
+
+/******************************************************************************
+ * Request parsing- exported Python API
+ ******************************************************************************/
+static PyObject *
+parse_method(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
+        return NULL;
+    }
+    return _parse_method((DeguSrc){buf, len});
+}
+
+static PyObject *
+parse_uri(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    if (!_parse_uri(src, &dr)) {
+        goto error;
+    }
+    _SET(ret,
+        PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
+    )
+    goto cleanup;
+
+error:
+    Py_CLEAR(ret);
+
+cleanup:
+    _clear_degu_request(&dr);
+    return ret;
 }
 
 static PyObject *
@@ -2364,51 +2398,6 @@ cleanup:
     Py_CLEAR(hstr);
     Py_CLEAR(str);
     return  ret;
-}
-
-/*******************************************************************************
- * Public API: Parsing: Requests:
- *     parse_method()
- *     parse_uri()
- *     parse_request_line()
- *     parse_request()
- */
-static PyObject *
-parse_method(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    if (!PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
-        return NULL;
-    }
-    return _parse_method((DeguSrc){buf, len});
-}
-
-static PyObject *
-parse_uri(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *ret = NULL;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    if (!PyArg_ParseTuple(args, "y#:parse_uri", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    if (!_parse_uri(src, &dr)) {
-        goto error;
-    }
-    _SET(ret,
-        PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
-    )
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    _clear_degu_request(&dr);
-    return ret;
 }
 
 

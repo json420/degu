@@ -9,9 +9,26 @@ Header parsing:
         _parse_content_range()
         _parse_header_line()
         _parse_headers()
+        _create_body()
     Exported Python functions:
         parse_header_name()
         parse_content_length()
         parse_range()
         parse_content_range()
         parse_headers()
+
+Request parsing:
+    Internal C API:
+        _parse_method()
+        _parse_path_component()
+        _parse_path()
+        _parse_query()
+        _parse_uri()
+        _parse_request_line()
+        _parse_request()
+    Exported Python functions:
+        parse_method()
+        parse_uri()
+        parse_request_line()
+        parse_request()
+        
