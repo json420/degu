@@ -1,7 +1,11 @@
 
 Python object validation and conversion
 
-Helpers to clear DeguHeaders, DeguRequest, DeguResponse, DeguChunk
+Helpers to clear DeguHeaders, DeguRequest, DeguResponse, DeguChunk:
+    _clear_degu_headers()
+    _clear_degu_request()
+    _clear_degu_response()
+    _clear_degu_chunk()
 
 Header parsing:
     Internal C API:
