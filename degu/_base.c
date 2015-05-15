@@ -1833,7 +1833,7 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 
 
 /******************************************************************************
- * Request parsing- exported Python API
+ * Request parsing - exported Python API
  ******************************************************************************/
 static PyObject *
 parse_method(PyObject *self, PyObject *args)
@@ -1927,13 +1927,9 @@ parse_request(PyObject *self, PyObject *args)
 }
 
 
-/*******************************************************************************
- * Internal API: Parsing: Response:
- *     _parse_status()
- *     _parse_reason()
- *     _parse_response_line()
- *     _parse_response()
- */
+/******************************************************************************
+ * Response parsing - internal C API
+ ******************************************************************************/
 static inline PyObject *
 _parse_status(DeguSrc src)
 {
@@ -2036,6 +2032,72 @@ _parse_response(PyObject *method, DeguSrc src, PyObject *rfile, DeguDst scratch,
 
 error:
     return false;
+}
+
+
+/******************************************************************************
+ * Response parsing - exported Python API
+ ******************************************************************************/
+static PyObject *
+parse_response_line(PyObject *self, PyObject *args)
+{
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+    if (!PyArg_ParseTuple(args, "y#:parse_response_line", &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc src = {buf, len};
+    if (!_parse_response_line(src, &dr)) {
+        goto error;
+    }
+    if (dr.status == NULL || dr.reason == NULL) {
+        Py_FatalError("parse_response_line");
+        goto error;
+    }
+    _SET(ret, PyTuple_Pack(2, dr.status, dr.reason))
+    goto done;
+
+error:
+    Py_CLEAR(ret);
+
+done:
+    _clear_degu_response(&dr);
+    return ret;
+}
+
+static PyObject *
+parse_response(PyObject *self, PyObject *args)
+{
+    const uint8_t *method_buf = NULL;
+    size_t method_len = 0;
+    const uint8_t *buf = NULL;
+    size_t len = 0;
+    PyObject *rfile = NULL;
+    PyObject *method = NULL;
+    PyObject *ret = NULL;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (! PyArg_ParseTuple(args, "s#y#O:parse_response",
+            &method_buf, &method_len, &buf, &len, &rfile)) {
+        return NULL;
+    }
+    DeguDst scratch = _calloc_dst(MAX_KEY);
+    if (scratch.buf == NULL) {
+        return NULL;
+    }
+    _SET(method, _parse_method((DeguSrc){method_buf, method_len}))
+    DeguSrc src = {buf, len};
+    if (_parse_response(method, src, rfile, scratch, &dr)) {
+        _SET(ret, _Response(&dr))
+    }
+
+error:
+    free(scratch.buf);
+    Py_CLEAR(method);
+    _clear_degu_response(&dr);
+    return ret;
 }
 
 
@@ -2398,77 +2460,6 @@ cleanup:
     Py_CLEAR(hstr);
     Py_CLEAR(str);
     return  ret;
-}
-
-
-
-
-
-/*******************************************************************************
- * Public API: Parsing: Responses:
- *     parse_response_line()
- *     parse_response()
- */
-static PyObject *
-parse_response_line(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-    if (!PyArg_ParseTuple(args, "y#:parse_response_line", &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc src = {buf, len};
-    if (!_parse_response_line(src, &dr)) {
-        goto error;
-    }
-    if (dr.status == NULL || dr.reason == NULL) {
-        Py_FatalError("parse_response_line");
-        goto error;
-    }
-    _SET(ret, PyTuple_Pack(2, dr.status, dr.reason))
-    goto done;
-
-error:
-    Py_CLEAR(ret);
-
-done:
-    _clear_degu_response(&dr);
-    return ret;
-}
-
-static PyObject *
-parse_response(PyObject *self, PyObject *args)
-{
-    const uint8_t *method_buf = NULL;
-    size_t method_len = 0;
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *rfile = NULL;
-    PyObject *method = NULL;
-    PyObject *ret = NULL;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-
-    if (! PyArg_ParseTuple(args, "s#y#O:parse_response",
-            &method_buf, &method_len, &buf, &len, &rfile)) {
-        return NULL;
-    }
-    DeguDst scratch = _calloc_dst(MAX_KEY);
-    if (scratch.buf == NULL) {
-        return NULL;
-    }
-    _SET(method, _parse_method((DeguSrc){method_buf, method_len}))
-    DeguSrc src = {buf, len};
-    if (_parse_response(method, src, rfile, scratch, &dr)) {
-        _SET(ret, _Response(&dr))
-    }
-
-error:
-    free(scratch.buf);
-    Py_CLEAR(method);
-    _clear_degu_response(&dr);
-    return ret;
 }
 
 

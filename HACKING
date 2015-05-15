@@ -31,4 +31,14 @@ Request parsing:
         parse_uri()
         parse_request_line()
         parse_request()
-        
+
+Response parsing:
+    Internal C API:
+        _parse_status()
+        _parse_reason()
+        _parse_response_line()
+        _parse_response()
+    Exported Python functions:
+        parse_response_line()
+        parse_response()
+
