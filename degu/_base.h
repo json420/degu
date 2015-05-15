@@ -47,12 +47,6 @@
 #define BIT_CONTENT_RANGE 8u
 #define FRAMING_MASK 3u
 
-#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
-#define READER(obj) ((Reader *)(obj))
-
-#define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
-#define WRITER(obj) ((Writer *)(obj))
-
 #define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
 #define BODY(obj) ((Body *)(obj))
 
@@ -419,7 +413,7 @@ typedef struct {
 } Reader;
 
 static bool _Reader_readinto(Reader *, DeguDst);
-static bool _Reader_readchunkline(Reader *, DeguChunk *);
+static bool _Reader_read_chunkline(Reader *, DeguChunk *);
 
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
@@ -487,6 +481,16 @@ static PyTypeObject ReaderType = {
 };
 
 #define READER_CLASS ((PyObject *)&ReaderType)
+#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
+#define READER(obj) ((Reader *)(obj))
+
+typedef struct {
+    Reader *reader;
+    PyObject *readinto;
+    PyObject *readline;
+} DeguRObj;
+
+#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
 
 
 /******************************************************************************
@@ -556,6 +560,15 @@ static PyTypeObject WriterType = {
 };
 
 #define WRITER_CLASS ((PyObject *)&WriterType)
+#define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
+#define WRITER(obj) ((Writer *)(obj))
+
+typedef struct {
+    Writer *writer;
+    PyObject *write;
+} DeguWObj;
+
+#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
 
 
 /******************************************************************************
@@ -564,7 +577,7 @@ static PyTypeObject WriterType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *robj;
+    DeguRObj robj;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -572,7 +585,7 @@ typedef struct {
 } Body;
 
 static PyObject * _Body_New(PyObject *, uint64_t);
-static int64_t _Body_write_to(Body *, PyObject *);
+static int64_t _Body_write_to(Body *, DeguWObj *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
@@ -643,14 +656,13 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *robj;
-    PyObject *readline;
+    DeguRObj robj;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
 
 static PyObject * _ChunkedBody_New(PyObject *);
-static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -726,7 +738,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-static int64_t _BodyIter_write_to(BodyIter *, PyObject *);
+static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
@@ -795,7 +807,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, PyObject *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},

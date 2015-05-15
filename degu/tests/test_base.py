@@ -3294,11 +3294,9 @@ class TestBody_Py(BodyBackendTestCase):
 
         for rfile in self.iter_rfiles(os.urandom(16)):
             name = ('reader' if type(rfile) is self.Reader else 'rfile')
-
             # All good:
             for good in (0, 1, 17, 34969, max_length):
                 body = Body(rfile, good)
-                self.assertEqual(sys.getrefcount(rfile), 4)
                 self.assertEqual(body.state, self.BODY_READY)
                 self.assertIs(body.rfile, rfile)
                 self.assertEqual(body.content_length, good)
@@ -3308,7 +3306,6 @@ class TestBody_Py(BodyBackendTestCase):
             self.check_readonly_attrs(body,
                 'rfile', 'content_length', 'state', 'chunked'
             )
-
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3672,9 +3669,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         rfile = self.Reader(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         self.check_common(body, rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3744,9 +3739,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             name = ('reader' if type(rfile) is self.Reader else 'rfile')
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
-            self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3965,7 +3958,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             sock = MockSocket(bad, None)
             rfile = self.Reader(sock)
             body = self.ChunkedBody(rfile)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
@@ -3978,14 +3970,12 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                 'ChunkedBody.state == BODY_ERROR, cannot be used'
             )
             self.assertEqual(body.state, self.BODY_ERROR)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         sock = MockSocket(b'c\r\nhello, worl\r\n', None)
         rfile = self.Reader(sock)
         body = self.ChunkedBody(rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
@@ -3998,7 +3988,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             'ChunkedBody.state == BODY_ERROR, cannot be used'
         )
         self.assertEqual(body.state, self.BODY_ERROR)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -4012,7 +4001,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
             for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 self.assertEqual(body.state, self.BODY_READY)
                 for (j, chunk) in enumerate(chunks):
                     if j == 0:
@@ -4027,13 +4015,11 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                     'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
                 self.assertEqual(body.state, self.BODY_CONSUMED)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
             for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 body = self.ChunkedBody(rfile)
                 result = tuple(body)
                 self.assertEqual(len(result), len(chunks))
@@ -4045,7 +4031,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                     'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
                 self.assertEqual(body.state, self.BODY_CONSUMED)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
