@@ -25,7 +25,7 @@
 
 
 /******************************************************************************
- * PyObject globals (largely for performance and memory efficiency).
+ * PyObject globals.
  ******************************************************************************/
 
 /* EmptyPreambleError exception */
@@ -115,7 +115,7 @@ error:
 
 
 /******************************************************************************
- * DeguSrc static globals
+ * DeguSrc globals
  ******************************************************************************/
 _DEGU_SRC_CONSTANT(LF, "\n")
 _DEGU_SRC_CONSTANT(CRLF, "\r\n")
@@ -145,6 +145,168 @@ _DEGU_SRC_CONSTANT(BYTES_SP, "bytes ")
 _DEGU_SRC_CONSTANT(MINUS, "-")
 _DEGU_SRC_CONSTANT(SEMICOLON, ";")
 _DEGU_SRC_CONSTANT(EQUALS, "=")
+
+
+/******************************************************************************
+ * namedtuples (PyStructSequence)
+ ******************************************************************************/
+#define _SET_NAMEDTUPLE_ITEM(tup, index, value) \
+    if (value == NULL) { \
+        Py_FatalError("_SET_NAMEDTUPLE_ITEM(): value == NULL"); \
+    } \
+    Py_INCREF(value); \
+    PyStructSequence_SET_ITEM(tup, index, value);
+
+
+/* Bodies namedtuple */
+static PyTypeObject BodiesType;
+static PyStructSequence_Field BodiesFields[] = {
+    {"Body", NULL},
+    {"BodyIter", NULL},
+    {"ChunkedBody", NULL},
+    {"ChunkedBodyIter", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc BodiesDesc = {"Bodies", NULL, BodiesFields, 4};
+
+static PyObject *
+_Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
+{
+    PyObject *ret = PyStructSequence_New(&BodiesType);
+    if (ret != NULL) {
+        _SET_NAMEDTUPLE_ITEM(ret, 0, arg0)
+        _SET_NAMEDTUPLE_ITEM(ret, 1, arg1)
+        _SET_NAMEDTUPLE_ITEM(ret, 2, arg2)
+        _SET_NAMEDTUPLE_ITEM(ret, 3, arg3)
+    }
+    return ret;
+}
+
+static PyObject *
+Bodies(PyObject *self, PyObject *args)
+{
+    PyObject *arg0 = NULL;  // Body
+    PyObject *arg1 = NULL;  // BodyIter
+    PyObject *arg2 = NULL;  // ChunkedBody
+    PyObject *arg3 = NULL;  // ChunkedBodyIter
+
+    if (!PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
+        return NULL;
+    }
+    return _Bodies(arg0, arg1, arg2, arg3);
+}
+
+
+/* Request namedtuple */
+static PyTypeObject RequestType;
+static PyStructSequence_Field RequestFields[] = {
+    {"method", NULL},
+    {"uri", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {"script", NULL},
+    {"path", NULL},
+    {"query", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc RequestDesc = {"Request", NULL, RequestFields, 7};
+
+static PyObject *
+_Request(DeguRequest *dr)
+{
+    PyObject *ret = PyStructSequence_New(&RequestType);
+    if (ret != NULL) {
+        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->method)
+        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->uri)
+        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
+        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
+        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->script)
+        _SET_NAMEDTUPLE_ITEM(ret, 5, dr->path)
+        _SET_NAMEDTUPLE_ITEM(ret, 6, dr->query)
+    }
+    return ret;
+}
+
+static PyObject *
+Request(PyObject *self, PyObject *args)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    if (! PyArg_ParseTuple(args, "OOOOOOO:Request",
+            &dr.method, &dr.uri, &dr.headers, &dr.body,
+            &dr.script, &dr.path, &dr.query)) {
+        return NULL;
+    }
+    return _Request(&dr);
+}
+
+
+/* Response namedtuple */
+static PyTypeObject ResponseType;
+static PyStructSequence_Field ResponseFields[] = {
+    {"status", NULL},
+    {"reason", NULL},
+    {"headers", NULL},
+    {"body", NULL},
+    {NULL},
+};
+static PyStructSequence_Desc ResponseDesc = {
+    "Response", NULL, ResponseFields, 4
+};
+
+static PyObject *
+_Response(DeguResponse *dr)
+{
+    PyObject *ret = PyStructSequence_New(&ResponseType);
+    if (ret != NULL) {
+        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->status)
+        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->reason)
+        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
+        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
+    }
+    return ret;
+}
+
+static PyObject *
+Response(PyObject *self, PyObject *args)
+{
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+    if (!PyArg_ParseTuple(args, "OOOO:Response",
+            &dr.status, &dr.reason, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    return _Response(&dr);
+}
+
+
+/* namedtuple init helper functions  */
+static bool
+_init_namedtuple(PyObject *module, const char *name,
+                 PyTypeObject *type, PyStructSequence_Desc *desc)
+{
+    if (PyStructSequence_InitType2(type, desc) != 0) {
+        return false;
+    }
+    Py_INCREF(type);
+    if (PyModule_AddObject(module, name, (PyObject *)type) != 0) {
+        return false;
+    }
+    return true;
+}
+
+static bool
+_init_all_namedtuples(PyObject *module)
+{
+    if (!_init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
+        return false;
+    }
+    if (!_init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
+        return false;
+    }
+    if (!_init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
+        return false;
+    }
+    return true;
+}
 
 
 /******************************************************************************
@@ -489,169 +651,6 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
         PyErr_Format(PyExc_TypeError, "%s.%S() is not callable", label, name);
     }
     return attr;
-}
-
-
-/******************************************************************************
- * C equivalent of Python namedtuple (PyStructSequence).
- ******************************************************************************/
-#define _SET_NAMEDTUPLE_ITEM(tup, index, value) \
-    if (value == NULL) { \
-        Py_FatalError("_SET_NAMEDTUPLE_ITEM(): value == NULL"); \
-    } \
-    Py_INCREF(value); \
-    PyStructSequence_SET_ITEM(tup, index, value);
-
-/* Bodies namedtuple */
-static PyTypeObject BodiesType;
-static PyStructSequence_Field BodiesFields[] = {
-    {"Body", NULL},
-    {"BodyIter", NULL},
-    {"ChunkedBody", NULL},
-    {"ChunkedBodyIter", NULL},
-    {NULL},
-};
-static PyStructSequence_Desc BodiesDesc = {"Bodies", NULL, BodiesFields, 4};
-
-static PyObject *
-_Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
-{
-    PyObject *ret = PyStructSequence_New(&BodiesType);
-    if (ret != NULL) {
-        _SET_NAMEDTUPLE_ITEM(ret, 0, arg0)
-        _SET_NAMEDTUPLE_ITEM(ret, 1, arg1)
-        _SET_NAMEDTUPLE_ITEM(ret, 2, arg2)
-        _SET_NAMEDTUPLE_ITEM(ret, 3, arg3)
-    }
-    return ret;
-}
-
-static PyObject *
-Bodies(PyObject *self, PyObject *args)
-{
-    PyObject *arg0 = NULL;  // Body
-    PyObject *arg1 = NULL;  // BodyIter
-    PyObject *arg2 = NULL;  // ChunkedBody
-    PyObject *arg3 = NULL;  // ChunkedBodyIter
-
-    if (!PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
-        return NULL;
-    }
-    return _Bodies(arg0, arg1, arg2, arg3);
-}
-
-
-/* Request namedtuple */
-static PyTypeObject RequestType;
-static PyStructSequence_Field RequestFields[] = {
-    {"method", NULL},
-    {"uri", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {"script", NULL},
-    {"path", NULL},
-    {"query", NULL},
-    {NULL},
-};
-static PyStructSequence_Desc RequestDesc = {"Request", NULL, RequestFields, 7};
-
-static PyObject *
-_Request(DeguRequest *dr)
-{
-    PyObject *ret = PyStructSequence_New(&RequestType);
-    if (ret != NULL) {
-        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->method)
-        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->uri)
-        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
-        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
-        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->script)
-        _SET_NAMEDTUPLE_ITEM(ret, 5, dr->path)
-        _SET_NAMEDTUPLE_ITEM(ret, 6, dr->query)
-    }
-    return ret;
-}
-
-static PyObject *
-Request(PyObject *self, PyObject *args)
-{
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OOOOOOO:Request",
-            &dr.method, &dr.uri, &dr.headers, &dr.body,
-            &dr.script, &dr.path, &dr.query)) {
-        return NULL;
-    }
-    return _Request(&dr);
-}
-
-
-/* Response namedtuple */
-static PyTypeObject ResponseType;
-static PyStructSequence_Field ResponseFields[] = {
-    {"status", NULL},
-    {"reason", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {NULL},
-};
-static PyStructSequence_Desc ResponseDesc = {
-    "Response", NULL, ResponseFields, 4
-};
-
-static PyObject *
-_Response(DeguResponse *dr)
-{
-    PyObject *ret = PyStructSequence_New(&ResponseType);
-    if (ret != NULL) {
-        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->status)
-        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->reason)
-        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
-        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
-    }
-    return ret;
-}
-
-static PyObject *
-Response(PyObject *self, PyObject *args)
-{
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-    if (!PyArg_ParseTuple(args, "OOOO:Response",
-            &dr.status, &dr.reason, &dr.headers, &dr.body)) {
-        return NULL;
-    }
-    return _Response(&dr);
-}
-
-
-/* _init_namedtuple(): initialize one module namedtuple  */
-static bool
-_init_namedtuple(PyObject *module, const char *name,
-                 PyTypeObject *type, PyStructSequence_Desc *desc)
-{
-    if (PyStructSequence_InitType2(type, desc) != 0) {
-        return false;
-    }
-    Py_INCREF(type);
-    if (PyModule_AddObject(module, name, (PyObject *)type) != 0) {
-        return false;
-    }
-    return true;
-}
-
-
-/* _init_all_namedtuples(): initialize all module named-tuples */
-static bool
-_init_all_namedtuples(PyObject *module)
-{
-    if (!_init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
-        return false;
-    }
-    if (!_init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
-        return false;
-    }
-    if (!_init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
-        return false;
-    }
-    return true;
 }
 
 
