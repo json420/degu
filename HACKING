@@ -1,4 +1,8 @@
 
+Python object validation and conversion
+
+Helpers to clear DeguHeaders, DeguRequest, DeguResponse, DeguChunk
+
 Header parsing:
     Internal C API:
         _parse_key()

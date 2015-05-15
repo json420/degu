@@ -618,48 +618,6 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
 
 
 /******************************************************************************
- * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk.
- ******************************************************************************/
-static void
-_clear_degu_headers(DeguHeaders *dh)
-{
-    Py_CLEAR(dh->headers);
-    Py_CLEAR(dh->body);
-    dh->content_length = 0;
-    dh->flags = 0;
-}
-
-static void
-_clear_degu_request(DeguRequest *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->method);
-    Py_CLEAR(dr->uri);
-    Py_CLEAR(dr->script);
-    Py_CLEAR(dr->path);
-    Py_CLEAR(dr->query);
-}
-
-static void
-_clear_degu_response(DeguResponse *dr)
-{
-    _clear_degu_headers((DeguHeaders *)dr);
-    Py_CLEAR(dr->status);
-    Py_CLEAR(dr->reason);
-    dr->_status = 0;
-}
-
-static void
-_clear_degu_chunk(DeguChunk *dc)
-{
-    Py_CLEAR(dc->key);
-    Py_CLEAR(dc->val);
-    Py_CLEAR(dc->data);
-    dc->size = 0;
-}
-
-
-/******************************************************************************
  * C equivalent of Python namedtuple (PyStructSequence).
  ******************************************************************************/
 #define _SET_NAMEDTUPLE_ITEM(tup, index, value) \
@@ -1138,6 +1096,48 @@ ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
         "cannot compare ContentRange() with %R", Py_TYPE(other)
     );
     return NULL;
+}
+
+
+/******************************************************************************
+ * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk
+ ******************************************************************************/
+static void
+_clear_degu_headers(DeguHeaders *dh)
+{
+    Py_CLEAR(dh->headers);
+    Py_CLEAR(dh->body);
+    dh->content_length = 0;
+    dh->flags = 0;
+}
+
+static void
+_clear_degu_request(DeguRequest *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->method);
+    Py_CLEAR(dr->uri);
+    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->path);
+    Py_CLEAR(dr->query);
+}
+
+static void
+_clear_degu_response(DeguResponse *dr)
+{
+    _clear_degu_headers((DeguHeaders *)dr);
+    Py_CLEAR(dr->status);
+    Py_CLEAR(dr->reason);
+    dr->_status = 0;
+}
+
+static void
+_clear_degu_chunk(DeguChunk *dc)
+{
+    Py_CLEAR(dc->key);
+    Py_CLEAR(dc->val);
+    Py_CLEAR(dc->data);
+    dc->size = 0;
 }
 
 
