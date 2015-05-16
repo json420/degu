@@ -35,7 +35,6 @@ from . import helpers
 from .helpers import random_chunks, FuzzTestCase, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
 from degu.sslhelpers import random_id
-from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
 
 
@@ -2183,12 +2182,6 @@ class TestConstants_Py(BackendTestCase):
         self.assertGreaterEqual(size, min_size, name)
         self.assertLessEqual(size, max_size, name)
 
-    def test__MAX_LINE_SIZE(self):
-        self.assertIsInstance(base._MAX_LINE_SIZE, int)
-        self.assertGreaterEqual(base._MAX_LINE_SIZE, 1024)
-        self.assertEqual(base._MAX_LINE_SIZE % 1024, 0)
-        self.assertLessEqual(base._MAX_LINE_SIZE, 8192)
-
     def test_STREAM_BUFFER_SIZE(self):
         self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
         self.assertEqual(base.STREAM_BUFFER_SIZE % 4096, 0)
@@ -2911,7 +2904,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             "bad chunk size termination: b'DD'"
         )
-        self.assertEqual(rfile.tell(), _MAX_LINE_SIZE)
+        self.assertEqual(rfile.tell(), 4096)
         self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:

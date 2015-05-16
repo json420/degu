@@ -25,7 +25,6 @@ Common HTTP parser and IO abstractions used by server and client.
 
 try:
     from ._base import (
-        _MAX_LINE_SIZE,  # FIXME: No need to import this
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
@@ -38,7 +37,6 @@ try:
     )
 except ImportError:
     from ._basepy import (
-        _MAX_LINE_SIZE,  # FIXME: No need to import this
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
@@ -52,7 +50,6 @@ except ImportError:
 
 
 __all__ = (
-    '_MAX_LINE_SIZE',
     'EmptyPreambleError',
     'Bodies', 'BodiesType',
     'Request', 'RequestType',
@@ -83,7 +80,7 @@ def read_chunk(rfile):
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
-    line = rfile.readline(_MAX_LINE_SIZE)
+    line = rfile.readline(4096)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
     parts = line[:-2].split(b';')
