@@ -467,6 +467,22 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
     return attr;
 }
 
+static bool
+_check_str(const char *name, PyObject *obj)
+{
+    if (! _check_type(name, obj, &PyUnicode_Type)) {
+        return false;
+    }
+    if (PyUnicode_READY(obj) != 0) {
+        return false;
+    }
+    if (PyUnicode_KIND(obj) != PyUnicode_1BYTE_KIND) {
+        PyErr_Format(PyExc_ValueError, "%s: contains non-ASCII: %R", name, obj);
+        return false;
+    }
+    return true;
+}
+
 
 /******************************************************************************
  * Internal API for working with DeguSrc and DeguDst memory buffers
@@ -559,18 +575,17 @@ _frombytes(PyObject *bytes)
     };
 }
 
-/*static DeguSrc*/
-/*_src_from_bytes(PyObject *obj)*/
-/*{*/
-/*    if (obj == NULL) {*/
-/*        return NULL_DEGU_SRC;*/
-/*    }*/
-/*    const ssize_t len = _get_bytes_len(*/
-/*    return (DeguSrc){*/
-/*        (uint8_t *)PyBytes_AS_STRING(bytes),*/
-/*        (size_t)PyBytes_GET_SIZE(bytes)*/
-/*    };*/
-/*}*/
+static DeguSrc
+_src_from_str(const char *name, PyObject *obj)
+{
+    if (! _check_str(name, obj)) {
+        return NULL_DeguSrc;
+    }
+    return (DeguSrc){
+        PyUnicode_1BYTE_DATA(obj),
+        (size_t)PyUnicode_GET_LENGTH(obj)
+    };
+}
 
 static DeguDst
 _dst_frombytes(PyObject *bytes)
@@ -2340,6 +2355,184 @@ cleanup:
     Py_CLEAR(h);
     Py_CLEAR(str);
     return  ret;
+}
+
+static inline ssize_t
+_get_status(PyObject *obj)
+{
+    return _get_size("status", obj, 100, 599);
+}
+
+static bool
+_copy_into(DeguOutput *o, DeguSrc src)
+{
+    if (src.buf == NULL) {
+        return false;  /* Assuming an error has already been set */
+    }
+    if (src.len == 0) {
+        return true;
+    }
+    if (o->stop + src.len > o->dst.len) {
+        PyErr_Format(PyExc_ValueError,
+            "output too large: %zu > %zu", o->stop + src.len, o->dst.len
+        );
+        return false;
+    }
+    o->stop += _copy(_dst_slice(o->dst, o->stop, o->dst.len), src);
+    return true;
+}
+
+#define _COPY_INTO(o, src) \
+    if (! _copy_into(o, src)) { \
+        goto error; \
+    }
+
+static bool
+_render_header_line(DeguOutput *o, PyObject *key, PyObject *val)
+{
+    PyObject *vstr = NULL;
+    bool ret = true;
+
+    _COPY_INTO(o, _src_from_str("key", key))
+    _COPY_INTO(o, SEP)
+    if (Py_TYPE(val) == &PyUnicode_Type) {
+        _COPY_INTO(o, _src_from_str("val", val))
+    }
+    else {
+        _SET(vstr, PyObject_Str(val))
+        _COPY_INTO(o, _src_from_str("val", vstr))
+    }
+    _COPY_INTO(o, CRLF)
+    goto cleanup;
+
+error:
+    ret = false;
+
+cleanup:
+    Py_CLEAR(vstr);
+    return ret;
+}
+
+static bool
+_render_headers(DeguOutput *o, PyObject *headers)
+{
+    ssize_t pos = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+
+    if (! _check_headers(headers)) {
+        return false;
+    }
+    while (PyDict_Next(headers, &pos, &key, &val)) {
+        if (! _render_header_line(o, key, val)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+_render_request(DeguOutput *o, DeguRequest *r)
+{ 
+    _COPY_INTO(o, _src_from_str("method", r->method))
+    _COPY_INTO(o, SPACE)
+    _COPY_INTO(o, _src_from_str("uri", r->uri))
+    _COPY_INTO(o, REQUEST_PROTOCOL)
+    _COPY_INTO(o, CRLF)
+    if (! _render_headers(o, r->headers)) {
+        return false;
+    }
+    _COPY_INTO(o, CRLF)
+    return true;
+
+error:
+    return false;
+}
+
+static PyObject *
+render_request(PyObject *self, PyObject *args)
+{
+    Py_buffer pybuf;
+    DeguRequest r = NEW_DEGU_REQUEST;
+    PyObject *ret = NULL;
+
+    if (! PyArg_ParseTuple(args, "w*OOO:render_request",
+            &pybuf, &r.method, &r.uri, &r.headers)) {
+        return NULL;
+    }
+    DeguDst dst = _dst_frompybuf(&pybuf);
+    DeguOutput o = {dst, 0};
+    if (_render_request(&o, &r)) {
+        ret = PyLong_FromSize_t(o.stop);
+    }
+    PyBuffer_Release(&pybuf);
+    return ret;
+}
+
+static bool
+_render_status(DeguOutput *o, const size_t s)
+{
+    if (o->stop + 4 > o->dst.len) {
+        PyErr_Format(PyExc_ValueError,
+            "output too large: %zu > %zu", o->stop + 4, o->dst.len
+        );
+        return false;
+    }
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (dst.len < 4) {
+        Py_FatalError("_render_status(): dst.len < 4");
+    }
+    dst.buf[0] = 48 + (s / 10);
+    dst.buf[1] = 48 + (s % 100 / 10);
+    dst.buf[2] = 48 + (s % 10);
+    dst.buf[3] = ' ';
+    o->stop += 4;
+    return true;
+}
+
+static bool
+_render_response(DeguOutput *o, DeguResponse *r)
+{
+    _COPY_INTO(o, RESPONSE_PROTOCOL)
+    if (! _render_status(o, r->s)) {
+        return false;
+    }
+    _COPY_INTO(o, _src_from_str("reason", r->reason))
+    _COPY_INTO(o, CRLF)
+    if (! _render_headers(o, r->headers)) {
+        return false;
+    }
+    _COPY_INTO(o, CRLF)
+    return true;
+
+error:
+    return false;
+}
+
+static PyObject *
+render_response(PyObject *self, PyObject *args)
+{
+    Py_buffer pybuf;
+    DeguResponse r = NEW_DEGU_RESPONSE;
+    ssize_t status;
+    PyObject *ret = NULL;
+
+    if (! PyArg_ParseTuple(args, "w*OOO:render_response",
+            &pybuf, &r.status, &r.reason, &r.headers)) {
+        return NULL;
+    }
+    status = _get_status(r.status);
+    if (status < 0) {
+        return NULL;
+    }
+    r.s = (size_t)status;
+    DeguDst dst = _dst_frompybuf(&pybuf);
+    DeguOutput o = {dst, 0};
+    if (_render_response(&o, &r)) {
+        ret = PyLong_FromSize_t(o.stop);
+    }
+    PyBuffer_Release(&pybuf);
+    return ret;
 }
 
 
@@ -4356,7 +4549,7 @@ _unpack_response(PyObject *obj, DeguResponse *dr)
         _SET(dr->headers, PyTuple_GET_ITEM(obj, 2))
         _SET(dr->body,    PyTuple_GET_ITEM(obj, 3))
     }
-    const ssize_t s = _get_size("status", dr->status, 100, 599);
+    const ssize_t s = _get_status(dr->status);
     if (s < 0) {
         goto error;
     }

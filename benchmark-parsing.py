@@ -24,6 +24,7 @@ from degu._base import (
     format_headers,
     format_request,
     format_response,
+    render_request,
 
     parse_chunk_size,
     parse_chunk,
@@ -43,6 +44,8 @@ headers = {
 headers_src = format_headers(headers).encode()
 request = format_request('POST', '/foo/bar?stuff=junk', headers)[:-4]
 response = format_response(200, 'OK', headers)[:-4]
+
+dst = memoryview(bytearray(4096))
 """
 
 
@@ -60,8 +63,27 @@ def run(statement, K=250):
     print('{:>11,}: {}'.format(rate, statement))
     return rate
 
+def compare(s1, s2, K=250):
+    r1 = run(s1, K)
+    r2 = run(s2, K)
+    vs = r1 / r2
+    print('[{:.3f}]\n'.format(vs))
+    return vs
+
+def test(s, K=250):
+    p1 = 'render_request(dst, '
+    p2 = 'format_request('
+    return compare(p1 + s, p2 + s, K)
+
 
 print('-' * 80)
+
+print('\nRequest formatting:')
+test("'GET', '/foo', {})")
+test("'PUT', '/foo', {'content-length': 17})")
+test("'PUT', '/foo', headers)")
+
+raise SystemExit()
 
 print('\nHeader parsing:')
 run('parse_headers(headers_src)')

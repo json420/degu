@@ -129,6 +129,11 @@ typedef const struct {
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
+typedef struct {
+    DeguDst dst;
+    size_t stop;
+} DeguOutput;
+
 
 /******************************************************************************
  * Structures for internal C parsing API.
@@ -211,6 +216,8 @@ static PyObject * format_headers(PyObject *, PyObject *);
 static PyObject * format_request(PyObject *, PyObject *);
 static PyObject * format_response(PyObject *, PyObject *);
 static PyObject * format_chunk(PyObject *, PyObject *);
+static PyObject * render_request(PyObject *, PyObject *);
+static PyObject * render_response(PyObject *, PyObject *);
 
 /* Misc */
 static PyObject * readchunk(PyObject *, PyObject *);
@@ -254,6 +261,8 @@ static struct PyMethodDef degu_functions[] = {
     {"format_request", format_request, METH_VARARGS, NULL},
     {"format_response", format_response, METH_VARARGS, NULL},
     {"format_chunk", format_chunk, METH_VARARGS, NULL},
+    {"render_request", render_request, METH_VARARGS, NULL},
+    {"render_response", render_response, METH_VARARGS, NULL},
 
     /* Misc */
     {"readchunk", readchunk, METH_VARARGS, NULL},
