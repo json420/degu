@@ -61,10 +61,8 @@ __all__ = (
     'Connection',
 )
 
-
 MAX_READ_SIZE = 16777216  # 16 MiB
 MAX_CHUNK_SIZE = 16777216  # 16 MiB
-STREAM_BUFFER_SIZE = 65536  # 64 KiB
 IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:

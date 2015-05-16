@@ -317,6 +317,30 @@ class BackendTestCase(TestCase):
     def BUF_LEN(self):
         return self.getattr('BUF_LEN')
 
+    @property
+    def SCRATCH_LEN(self):
+        return self.getattr('SCRATCH_LEN')
+
+    @property
+    def MAX_LINE_LEN(self):
+        return self.getattr('MAX_LINE_LEN')
+
+    @property
+    def MAX_CL_LEN(self):
+        return self.getattr('MAX_CL_LEN')
+
+    @property
+    def MAX_LENGTH(self):
+        return self.getattr('MAX_LENGTH')
+
+    @property
+    def IO_SIZE(self):
+        return self.getattr('IO_SIZE')
+
+    @property
+    def MAX_IO_SIZE(self):
+        return self.getattr('MAX_IO_SIZE')
+
 
 class TestRange_Py(BackendTestCase):
     @property
@@ -2191,19 +2215,38 @@ class TestConstants_Py(BackendTestCase):
         self.assertIs(type(self.BUF_LEN), int)
         self.assertEqual(self.BUF_LEN, 32 * 1024)
 
-    def test_STREAM_BUFFER_SIZE(self):
-        self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
-        self.assertEqual(base.STREAM_BUFFER_SIZE % 4096, 0)
-        self.assertGreaterEqual(base.STREAM_BUFFER_SIZE, 4096)
+    def test_SCRATCH_LEN(self):
+        self.assertIs(type(self.SCRATCH_LEN), int)
+        self.assertEqual(self.SCRATCH_LEN, 32)
+
+    def test_MAX_LINE_LEN(self):
+        self.assertIs(type(self.MAX_LINE_LEN), int)
+        self.assertEqual(self.MAX_LINE_LEN, 4096)
+        self.assertLess(self.MAX_LINE_LEN, self.BUF_LEN)
+
+    def test_MAX_CL_LEN(self):
+        self.assertIs(type(self.MAX_CL_LEN), int)
+        self.assertEqual(self.MAX_CL_LEN, 16)
+
+    def test_MAX_LENGTH(self):
+        self.assertIs(type(self.MAX_LENGTH), int)
+        self.assertEqual(self.MAX_LENGTH, 9999999999999999)
+        self.assertEqual(self.MAX_LENGTH, int('9' * self.MAX_CL_LEN))
+
+    def test_IO_SIZE(self):
+        self.assertIs(type(self.IO_SIZE), int)
+        self.assertEqual(self.IO_SIZE, 1024 * 1024)
+        self.assertLess(self.IO_SIZE, self.MAX_IO_SIZE)
+
+    def test_MAX_IO_SIZE(self):
+        self.assertIs(type(self.MAX_IO_SIZE), int)
+        self.assertEqual(self.MAX_IO_SIZE, 16 * 1024 * 1024)
 
     def test_MAX_READ_SIZE(self):
         self.check_size_constant('MAX_READ_SIZE')
 
     def test_MAX_CHUNK_SIZE(self):
         self.check_size_constant('MAX_CHUNK_SIZE')
-
-    def test_IO_SIZE(self):
-        self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
         bodies = self.getattr('bodies')

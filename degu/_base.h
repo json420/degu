@@ -26,15 +26,23 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 
-/* Reader/Writer buffer size, max allowed input/output preamble size */
+/* Reader/Writer buf size, also max allowed input/output preamble size */
 #define BUF_LEN 32768u
 
-#define _MAX_LINE_SIZE 4096
-#define MAX_KEY 32
-#define MAX_CL_LEN 16
-#define MAX_IO_SIZE 16777216
+/* Reader scratch buf size, also max header name size */
+#define SCRATCH_LEN 32u
+
+/* Max length of chunk size line, including CRLF */
+#define MAX_LINE_LEN 4096u
+
+/* Max length of a content-length value */
+#define MAX_CL_LEN 16u
+
+/* Max uint64_t value for a content-length, range start/stop, etc */
 #define MAX_LENGTH 9999999999999999ull
-#define IO_SIZE 1048576
+
+#define IO_SIZE 1048576u
+#define MAX_IO_SIZE 16777216u
 
 #define BODY_READY 0u
 #define BODY_STARTED 1u

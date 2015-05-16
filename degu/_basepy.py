@@ -36,12 +36,15 @@ import socket
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-_MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
 BUF_LEN = 32768  # 32 KiB
-MAX_IO_SIZE = 16777216  # 16 MiB
-MAX_LENGTH = 9999999999999999
-MAX_READ_SIZE = 16777216  # 16 MiB
+SCRATCH_LEN = 32
+MAX_LINE_LEN = 4096  # Max length of chunk size line, including CRLF
+
+MAX_CL_LEN = 16  # Max length (in bytes) of a content-length/etc
+MAX_LENGTH = 9999999999999999  # Max value for content-length/etc
+
 IO_SIZE = 1048576  # 1 MiB
+MAX_IO_SIZE = 16777216  # 16 MiB
 
 BODY_READY = 0
 BODY_STARTED = 1

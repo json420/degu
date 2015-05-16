@@ -64,7 +64,7 @@ static PyObject *str_empty             = NULL;  //  ''
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
 static PyObject *bytes_CRLF            = NULL;  //  b'\r\n'
-static PyObject *int_MAX_LINE_SIZE     = NULL;  //  4096
+static PyObject *int_MAX_LINE_LEN     = NULL;  //  4096
 
 
 /* _init_all_globals(): called by PyInit__base() */
@@ -107,7 +107,7 @@ _init_all_globals(PyObject *module)
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
     _SET(bytes_CRLF,  PyBytes_FromStringAndSize("\r\n", 2))
-    _SET(int_MAX_LINE_SIZE, PyLong_FromLong(_MAX_LINE_SIZE))
+    _SET(int_MAX_LINE_LEN, PyLong_FromLong(MAX_LINE_LEN))
 
     return true;
 
@@ -1446,8 +1446,8 @@ parse_header_name(PyObject *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "header name is empty");
         return NULL;
     }
-    if (src.len > MAX_KEY) {
-        _value_error("header name too long: %R...",  _slice(src, 0, MAX_KEY));
+    if (src.len > SCRATCH_LEN) {
+        _value_error("header name too long: %R...",  _slice(src, 0, SCRATCH_LEN));
         return NULL;
     }
     _SET(ret, PyUnicode_New((ssize_t)src.len, 127))
@@ -1531,7 +1531,7 @@ parse_headers(PyObject *self, PyObject *args, PyObject *kw)
         return NULL;
     }
     DeguSrc src = {buf, len};
-    DeguDst scratch = _calloc_dst(MAX_KEY);
+    DeguDst scratch = _calloc_dst(SCRATCH_LEN);
     if (scratch.buf == NULL) {
         return NULL;
     }
@@ -1840,7 +1840,7 @@ parse_request(PyObject *self, PyObject *args)
         return NULL;
     }
     DeguSrc src = {buf, len};
-    DeguDst scratch = _calloc_dst(MAX_KEY);
+    DeguDst scratch = _calloc_dst(SCRATCH_LEN);
     if (scratch.buf == NULL) {
         return NULL;
     }
@@ -2011,7 +2011,7 @@ parse_response(PyObject *self, PyObject *args)
             &method_buf, &method_len, &buf, &len, &rfile)) {
         return NULL;
     }
-    DeguDst scratch = _calloc_dst(MAX_KEY);
+    DeguDst scratch = _calloc_dst(SCRATCH_LEN);
     if (scratch.buf == NULL) {
         return NULL;
     }
@@ -3114,7 +3114,7 @@ _read_chunkline(PyObject *readline, DeguChunk *dc)
     bool success = true;
 
     /* Read and parse chunk line */
-    _SET(line, PyObject_CallFunctionObjArgs(readline, int_MAX_LINE_SIZE, NULL))
+    _SET(line, PyObject_CallFunctionObjArgs(readline, int_MAX_LINE_LEN, NULL))
     if (! PyBytes_CheckExact(line)) {
         PyErr_Format(PyExc_TypeError,
             "need a <class 'bytes'>; readline() returned a %R", Py_TYPE(line)
@@ -3122,10 +3122,10 @@ _read_chunkline(PyObject *readline, DeguChunk *dc)
         goto error;
     }
     DeguSrc src = _frombytes(line);
-    if (src.len > _MAX_LINE_SIZE) {
+    if (src.len > MAX_LINE_LEN) {
         PyErr_Format(PyExc_ValueError,
             "readline() returned too many bytes: %zu > %zu",
-            src.len, _MAX_LINE_SIZE
+            src.len, MAX_LINE_LEN
         );
         goto error;
     }
@@ -3306,7 +3306,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->buf, _calloc_buf(BUF_LEN + MAX_KEY))
+    _SET(self->buf, _calloc_buf(BUF_LEN + SCRATCH_LEN))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
@@ -3325,7 +3325,7 @@ _Reader_preamble_src(Reader *self)
 static DeguDst
 _Reader_scratch_dst(Reader *self)
 {
-    return (DeguDst){self->buf + BUF_LEN, MAX_KEY};
+    return (DeguDst){self->buf + BUF_LEN, SCRATCH_LEN};
 }
 
 static DeguSrc
@@ -5135,8 +5135,15 @@ PyInit__base(void)
         return NULL;
     }
     PyModule_AddIntMacro(module, BUF_LEN);
-    PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
+    PyModule_AddIntMacro(module, SCRATCH_LEN);
+    PyModule_AddIntMacro(module, MAX_LINE_LEN);
+
+    PyModule_AddIntMacro(module, MAX_CL_LEN);
+    PyModule_AddIntMacro(module, MAX_LENGTH);
+
+    PyModule_AddIntMacro(module, IO_SIZE);    
     PyModule_AddIntMacro(module, MAX_IO_SIZE);
+
     PyModule_AddIntMacro(module, BODY_READY);
     PyModule_AddIntMacro(module, BODY_STARTED);
     PyModule_AddIntMacro(module, BODY_CONSUMED);
