@@ -28,21 +28,10 @@ import logging
 import threading
 import os
 
-from .base import (
-    _TYPE_ERROR,
-    handle_requests,
-)
+from .base import handle_requests, _TYPE_ERROR
 
 
 log = logging.getLogger()
-
-
-class UnconsumedRequestError(Exception):
-    def __init__(self, body):
-        self.body = body
-        super().__init__(
-            'previous request body not consumed: {!r}'.format(body)
-        )
 
 
 def build_server_sslctx(sslconfig):
