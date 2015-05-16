@@ -25,6 +25,7 @@ from degu._base import (
     format_request,
     format_response,
     render_request,
+    render_response,
 
     parse_chunk_size,
     parse_chunk,
@@ -66,22 +67,32 @@ def run(statement, K=250):
 def compare(s1, s2, K=250):
     r1 = run(s1, K)
     r2 = run(s2, K)
-    vs = r1 / r2
-    print('[{:.3f}]\n'.format(vs))
-    return vs
+    percent = (r1 / r2 * 100) - 100
+    print('[{:.1f}%]'.format(percent))
+    return percent
 
-def test(s, K=250):
+def test1(s, K=250):
     p1 = 'render_request(dst, '
     p2 = 'format_request('
+    return compare(p1 + s, p2 + s, K)
+
+def test2(s, K=250):
+    p1 = 'render_response(dst, '
+    p2 = 'format_response('
     return compare(p1 + s, p2 + s, K)
 
 
 print('-' * 80)
 
-print('\nRequest formatting:')
-test("'GET', '/foo', {})")
-test("'PUT', '/foo', {'content-length': 17})")
-test("'PUT', '/foo', headers)")
+test1("'GET', '/foo', {})")
+test1("'PUT', '/foo', {'content-length': 17})")
+test1("'PUT', '/foo', {'content-length': 17, 'content-type': 'text/plain'})")
+test1("'PUT', '/foo', headers)")
+print('')
+test2("200, 'OK', {})")
+test2("200, 'OK', {'content-length': 17})")
+test2("200, 'OK', {'content-length': 17, 'content-type': 'text/plain'})")
+test2("200, 'OK', headers)")
 
 raise SystemExit()
 

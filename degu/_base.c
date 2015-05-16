@@ -499,7 +499,8 @@ _isempty(DeguSrc src)
 static DeguSrc
 _slice(DeguSrc src, const size_t start, const size_t stop)
 {
-    if (_isempty(src) || start > stop || stop > src.len) {
+    // FIXME: should we allow slices of an empty src?
+    if (src.buf == NULL || start > stop || stop > src.len) {
         Py_FatalError("_slice(): bad internal call");
     }
     return (DeguSrc){src.buf + start, stop - start};
@@ -2240,6 +2241,64 @@ _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
 }
 
 static bool
+_set_content_length(PyObject *headers, const uint64_t content_length)
+{
+    PyObject *val = PyLong_FromUnsignedLongLong(content_length);
+    if (val == NULL) {
+        return false;
+    }
+    const bool result = _set_default_header(headers, key_content_length, val);
+    Py_CLEAR(val);
+    return result;
+}
+
+static bool
+_set_transfer_encoding(PyObject *headers)
+{
+    return _set_default_header(headers, key_transfer_encoding, val_chunked);
+}
+
+static bool
+_set_output_headers(PyObject *headers, PyObject *body)
+{
+    if (body == Py_None) {
+        return true;
+    }
+    if (PyBytes_CheckExact(body)) {
+        return _set_content_length(headers, (uint64_t)PyBytes_GET_SIZE(body));
+    }
+    if (IS_BODY(body)) {
+        return _set_content_length(headers, BODY(body)->content_length);
+    }
+    if (Py_TYPE(body) == &BodyIterType) {
+        return _set_content_length(headers, ((BodyIter *)body)->content_length);
+    }
+    if (Py_TYPE(body) == &ChunkedBodyType) {
+        return _set_transfer_encoding(headers);
+    }
+    if (Py_TYPE(body) == &ChunkedBodyIterType) {
+        return _set_transfer_encoding(headers);
+    }
+    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
+    return false;
+}
+
+static PyObject *
+set_output_headers(PyObject *self, PyObject *args)
+{
+    PyObject *headers = NULL;
+    PyObject *body = NULL;
+
+    if (! PyArg_ParseTuple(args, "OO:set_output_headers", &headers, &body)) {
+        return NULL;
+    }
+    if (! _set_output_headers(headers, body)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static bool
 _validate_key(PyObject *key)
 {
     size_t i;
@@ -2482,7 +2541,7 @@ _render_status(DeguOutput *o, const size_t s)
     if (dst.len < 4) {
         Py_FatalError("_render_status(): dst.len < 4");
     }
-    dst.buf[0] = 48 + (s / 10);
+    dst.buf[0] = 48 + (s / 100);
     dst.buf[1] = 48 + (s % 100 / 10);
     dst.buf[2] = 48 + (s % 10);
     dst.buf[3] = ' ';
@@ -3441,6 +3500,10 @@ static void
 Writer_dealloc(Writer *self)
 {
     Py_CLEAR(self->send);
+    if (self->buf != NULL) {
+        free(self->buf);
+        self->buf = NULL;
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3453,8 +3516,10 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
     if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Writer", keys, &sock)) {
         goto error;
     }
-    self->tell = 0;
     _SET(self->send, _getcallable("sock", sock, attr_send))
+    _SET(self->buf, _calloc_buf(BUF_LEN))
+    self->tell = 0;
+    self->stop = 0;
     goto cleanup;
 
 error:
@@ -3464,8 +3529,22 @@ cleanup:
     return ret;
 }
 
+static DeguDst
+_Writer_get_dst(Writer *self)
+{
+    DeguDst raw = {self->buf, BUF_LEN};
+    return _dst_slice(raw, self->stop, raw.len);
+}
+
+static DeguSrc
+_Writer_get_src(Writer *self)
+{
+    DeguSrc raw = {self->buf, BUF_LEN};
+    return _slice(raw, 0, self->stop);
+}
+
 static ssize_t
-_Writer_write(Writer *self, DeguSrc src)
+_Writer_raw_write(Writer *self, DeguSrc src)
 {
     const ssize_t wrote = _write(self->send, src);
     if (wrote > 0) {
@@ -3475,145 +3554,106 @@ _Writer_write(Writer *self, DeguSrc src)
 }
 
 static bool
-_set_content_length(PyObject *headers, const uint64_t content_length)
+_Writer_flush(Writer *self)
 {
-    PyObject *val = PyLong_FromUnsignedLongLong(content_length);
-    if (val == NULL) {
-        return false;
-    }
-    const bool result = _set_default_header(headers, key_content_length, val);
-    Py_CLEAR(val);
-    return result;
-}
-
-static bool
-_set_transfer_encoding(PyObject *headers)
-{
-    return _set_default_header(headers, key_transfer_encoding, val_chunked);
-}
-
-static bool
-_set_output_headers(PyObject *headers, PyObject *body)
-{
-    if (body == Py_None) {
+    if (self->stop == 0) {
         return true;
     }
-    if (PyBytes_CheckExact(body)) {
-        return _set_content_length(headers, (uint64_t)PyBytes_GET_SIZE(body));
+    DeguSrc src = _Writer_get_src(self);
+    self->stop = 0;
+    if (_Writer_raw_write(self, src) < 0) {
+        return false;
     }
-    if (IS_BODY(body)) {
-        return _set_content_length(headers, BODY(body)->content_length);
-    }
-    if (Py_TYPE(body) == &BodyIterType) {
-        return _set_content_length(headers, ((BodyIter *)body)->content_length);
-    }
-    if (Py_TYPE(body) == &ChunkedBodyType) {
-        return _set_transfer_encoding(headers);
-    }
-    if (Py_TYPE(body) == &ChunkedBodyIterType) {
-        return _set_transfer_encoding(headers);
-    }
-    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
-    return false;
+    return true;
 }
 
-static PyObject *
-set_output_headers(PyObject *self, PyObject *args)
+static ssize_t
+_Writer_write(Writer *self, DeguSrc src)
 {
-    PyObject *headers = NULL;
-    PyObject *body = NULL;
+    if (self->stop == 0) {
+        return _Writer_raw_write(self, src);
+    }
 
-    if (! PyArg_ParseTuple(args, "OO:set_output_headers", &headers, &body)) {
-        return NULL;
+    DeguDst dst = _Writer_get_dst(self);
+    if (src.len <= dst.len) {
+        self->stop += _copy(dst, src);
+        if (! _Writer_flush(self)) {
+            return -1;
+        }
     }
-    if (! _set_output_headers(headers, body)) {
-        return NULL;
+    else {
+        if (! _Writer_flush(self)) {
+            return -1;
+        }
+        if (_Writer_raw_write(self, src) < 0) {
+            return -1;
+        }
     }
-    Py_RETURN_NONE;
+    return (ssize_t)src.len;
 }
 
 static int64_t
-_Writer_write_combined(Writer *self, DeguSrc src1, DeguSrc src2)
+_Writer_write_body(Writer *self, PyObject *body)
 {
-    const size_t len = src1.len + src2.len;
-    if (len == 0) {
+    DeguWObj w = {self, NULL};
+
+    if (body == Py_None) {
         return 0;
     }
-    DeguDst dst = _calloc_dst(len);
-    if (dst.buf == NULL) {
-        return -1;
+    if (PyBytes_CheckExact(body)) {
+        return _Writer_write(self, _frombytes(body));
     }
-    _copy(dst, src1);
-    _copy(_dst_slice(dst, src1.len, dst.len), src2);
-    const int64_t wrote = _Writer_write(self, (DeguSrc){dst.buf, dst.len});
-    free(dst.buf);
-    return wrote;
+    if (IS_BODY(body)) {
+        return _Body_write_to(BODY(body), &w);
+    }
+    if (IS_CHUNKED_BODY(body)) {
+        return _ChunkedBody_write_to(CHUNKED_BODY(body), &w);
+    }
+    if (IS_BODY_ITER(body)) {
+        return _BodyIter_write_to(BODY_ITER(body), &w);
+    }
+    if (IS_CHUNKED_BODY_ITER(body)) {
+        return _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &w);
+    }
+
+    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
+    return -1;
 }
 
 static int64_t
 _Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
 {
-    if (PyBytes_CheckExact(body)) {
-        return _Writer_write_combined(self, preamble, _frombytes(body));
+    if (self->stop != 0) {
+        Py_FatalError("_Writer_write_output(): self->stop != 0");
     }
 
     const uint64_t origtell = self->tell;
-    uint64_t total = 0;
+    uint64_t total = preamble.len;
     int64_t wrote;
-    int64_t ret = -2;
-    DeguWObj w = {self, NULL};
+    DeguDst dst = _Writer_get_dst(self);
 
-    /* Write the preamble */
-    wrote = _Writer_write(self, preamble);
+    /* Buffer the preamble */
+    self->stop += _copy(dst, preamble);
+
+    /* Write the body */
+    wrote = _Writer_write_body(self, body);
     if (wrote < 0) {
-        goto error;
+        return -1;
     }
     total += (uint64_t)wrote;
 
-    if (body == Py_None) {
-        wrote = 0;
+    if (! _Writer_flush(self)) {
+        return -1;
     }
-    else if (PyBytes_CheckExact(body)) {
-        wrote = _Writer_write(self, _frombytes(body));
-    }
-    else if (IS_BODY(body)) {
-        wrote = _Body_write_to(BODY(body), &w);
-    }
-    else if (IS_CHUNKED_BODY(body)) {
-        wrote = _ChunkedBody_write_to(CHUNKED_BODY(body), &w);
-    }
-    else if (IS_BODY_ITER(body)) {
-        wrote = _BodyIter_write_to(BODY_ITER(body), &w);
-    }
-    else if (IS_CHUNKED_BODY_ITER(body)) {
-        wrote = _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &w);
-    }
-    else {
-        PyErr_Format(PyExc_TypeError,
-            "bad body type: %R: %R", Py_TYPE(body), body
-        );
-        goto error;
-    }
-    if (wrote < 0) {
-        goto error;
-    }
-    total += (uint64_t)wrote;
 
     /* Sanity check */
     if (origtell + total != self->tell) {
         PyErr_Format(PyExc_ValueError,
             "%llu + %llu != %llu", origtell, total, self->tell
         );
-        goto error;
+        return -1;
     }
-    ret = (int64_t)total;
-    goto cleanup;
-
-error:
-    ret = -1;
-
-cleanup:
-    return ret;
+    return (int64_t)total;
 }
 
 
@@ -3647,26 +3687,50 @@ Writer_write_output(Writer *self, PyObject *args)
     return PyLong_FromLongLong(total);
 }
 
-
 static int64_t
 _Writer_write_request(Writer *self, DeguRequest *dr)
 {
-    PyObject *preamble = NULL;
-    int64_t wrote = -2;
+    int64_t wrote;
+    DeguOutput o = {_Writer_get_dst(self), 0};
 
     if (! _set_output_headers(dr->headers, dr->body)) {
-        goto error;
+        return -1;
     }
-    _SET(preamble, _format_request(dr))
-    wrote = _Writer_write_output(self, _frombytes(preamble), dr->body);
-    goto cleanup;
+    if (! _render_request(&o, dr)) {
+        return -1;
+    }
+    self->stop = o.stop;
+    wrote = _Writer_write_body(self, dr->body);
+    if (wrote < 0) {
+        return -1;
+    }
+    if (! _Writer_flush(self)) {
+        return -1;
+    }
+    return wrote + (int64_t)o.stop;
+}
 
-error:
-    wrote = -1;
+static int64_t
+_Writer_write_response(Writer *self, DeguResponse *dr)
+{
+    int64_t wrote;
+    DeguOutput o = {_Writer_get_dst(self), 0};
 
-cleanup:
-    Py_CLEAR(preamble);
-    return wrote;
+    if (! _set_output_headers(dr->headers, dr->body)) {
+        return -1;
+    }
+    if (! _render_response(&o, dr)) {
+        return -1;
+    }
+    self->stop = o.stop;
+    wrote = _Writer_write_body(self, dr->body);
+    if (wrote < 0) {
+        return -1;
+    }
+    if (! _Writer_flush(self)) {
+        return -1;
+    }
+    return wrote + (int64_t)o.stop;
 }
 
 static PyObject *
@@ -3694,27 +3758,6 @@ cleanup:
         return NULL;
     }
     return PyLong_FromLongLong(wrote);
-}
-
-static int64_t
-_Writer_write_response(Writer *self, DeguResponse *dr)
-{
-    PyObject *preamble = NULL;
-    int64_t total = -2;
-
-    if (! _set_output_headers(dr->headers, dr->body)) {
-        goto error;
-    }
-    _SET(preamble, _format_response(dr->status, dr->reason, dr->headers))
-    total = _Writer_write_output(self, _frombytes(preamble), dr->body);
-    goto cleanup;
-
-error:
-    total = -1;
-
-cleanup:
-    Py_CLEAR(preamble);
-    return total;
 }
 
 static PyObject *

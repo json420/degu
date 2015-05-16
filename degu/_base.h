@@ -36,6 +36,8 @@
 #define MAX_LENGTH 9999999999999999ull
 #define IO_SIZE 1048576
 
+#define BUF_LEN 32768u
+
 #define BODY_READY 0u
 #define BODY_STARTED 1u
 #define BODY_CONSUMED 2u
@@ -506,7 +508,9 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *send;
+    uint8_t *buf;
     uint64_t tell;
+    size_t stop;
 } Writer;
 
 static ssize_t _Writer_write(Writer *, DeguSrc);
