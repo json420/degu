@@ -66,33 +66,32 @@ def run(statement, K=250):
     print('{:>11,}: {}'.format(rate, statement))
     return rate
 
-def compare(s1, s2, K=250):
+def compare(s1, s2, K=100):
     r1 = run(s1, K)
     r2 = run(s2, K)
     percent = (r1 / r2 * 100) - 100
-    print('[{:.1f}%]'.format(percent))
+    print('  [{:.1f}%]\n'.format(percent))
     return percent
 
-def test0(s, K=250):
+def test0(s):
     p1 = 'render_headers(dst, '
     p2 = 'format_headers('
-    return compare(p1 + s, p2 + s, K)
+    return compare(p1 + s, p2 + s)
 
-def test1(s, K=250):
+def test1(s):
     p1 = 'render_request(dst, '
     p2 = 'format_request('
-    return compare(p1 + s, p2 + s, K)
+    return compare(p1 + s, p2 + s)
 
 def test2(s, K=250):
     p1 = 'render_response(dst, '
     p2 = 'format_response('
-    return compare(p1 + s, p2 + s, K)
+    return compare(p1 + s, p2 + s)
 
 
 print('-' * 80)
 
 test0('headers)')
-test0('{})')
 test0("{'content-length': 17})")
 test0("{'content-length': 17, 'content-type': 'text/plain'})")
 print('')

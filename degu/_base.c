@@ -576,7 +576,7 @@ _frombytes(PyObject *bytes)
     };
 }
 
-static DeguSrc
+static inline DeguSrc
 _src_from_str(const char *name, PyObject *obj)
 {
     if (! _check_str(name, obj)) {
@@ -668,7 +668,7 @@ _dst_isempty(DeguDst dst)
     return false;
 }
 
-static DeguDst
+static inline DeguDst
 _dst_slice(DeguDst dst, const size_t start, const size_t stop)
 {
     if (_dst_isempty(dst) || start > stop || stop > dst.len) {
@@ -695,7 +695,7 @@ _move(DeguDst dst, DeguSrc src)
     memmove(dst.buf, src.buf, src.len);
 }
 
-static size_t
+static inline size_t
 _copy(DeguDst dst, DeguSrc src)
 {
     if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
@@ -2425,19 +2425,20 @@ _get_status(PyObject *obj)
 static bool
 _copy_into(DeguOutput *o, DeguSrc src)
 {
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
     if (src.buf == NULL) {
         return false;  /* Assuming an error has already been set */
     }
     if (src.len == 0) {
         return true;
     }
-    if (o->stop + src.len > o->dst.len) {
+    if (src.len > dst.len) {
         PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", o->stop + src.len, o->dst.len
+            "output too large: %zu > %zu", src.len, o->dst.len
         );
         return false;
     }
-    o->stop += _copy(_dst_slice(o->dst, o->stop, o->dst.len), src);
+    o->stop += _copy(dst, src);
     return true;
 }
 
@@ -2446,20 +2447,29 @@ _copy_into(DeguOutput *o, DeguSrc src)
         goto error; \
     }
 
+typedef struct {
+    uint8_t *buf;
+    size_t len;
+    PyObject *val;
+} HLine;
+
+#define HMAX 16
+
 static bool
-_render_header_line(DeguOutput *o, PyObject *key, PyObject *val)
+_render_header_line(DeguOutput *o, HLine *l)
 {
-    PyObject *vstr = NULL;
+    DeguSrc key = {l->buf, l->len};
+    PyObject *val_str = NULL;
     bool ret = true;
 
-    _COPY_INTO(o, _src_from_str("key", key))
+    _COPY_INTO(o, key)
     _COPY_INTO(o, SEP)
-    if (Py_TYPE(val) == &PyUnicode_Type) {
-        _COPY_INTO(o, _src_from_str("val", val))
+    if (Py_TYPE(l->val) == &PyUnicode_Type) {
+        _COPY_INTO(o, _src_from_str("val", l->val))
     }
     else {
-        _SET(vstr, PyObject_Str(val))
-        _COPY_INTO(o, _src_from_str("val", vstr))
+        _SET(val_str, PyObject_Str(l->val))
+        _COPY_INTO(o, _src_from_str("val", val_str))
     }
     _COPY_INTO(o, CRLF)
     goto cleanup;
@@ -2468,26 +2478,92 @@ error:
     ret = false;
 
 cleanup:
-    Py_CLEAR(vstr);
+    Py_CLEAR(val_str);
     return ret;
+}
+
+static int
+_hline_cmp(const void *A, const void *B)
+{
+    HLine *a = (HLine *)A;
+    HLine *b = (HLine *)B;
+    return memcmp(a->buf, b->buf, _min(a->len, b->len));
+} 
+
+static bool
+_render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
+{
+    ssize_t pos = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+    HLine lines[HMAX];
+    size_t i;
+
+    if (count > HMAX) {
+        PyErr_Format(PyExc_ValueError,
+            "need len(headers) < %zu; got %zu", HMAX, count
+        );
+        return false;
+    }
+    i = 0;
+    while (PyDict_Next(headers, &pos, &key, &val)) {
+        if (! _check_str("key", key)) {
+            return false;
+        }
+        lines[i] = (HLine) {
+            PyUnicode_1BYTE_DATA(key),
+            (size_t)PyUnicode_GET_LENGTH(key),
+            val
+        }; 
+        i++;
+    }
+    qsort(lines, count, sizeof(HLine), _hline_cmp);
+    for (i = 0; i < count; i++) {
+        if (! _render_header_line(o, &lines[i])) {
+            return false;
+        } 
+    }
+    return true;
+}
+
+static bool
+_render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
+{
+    ssize_t pos = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+    HLine line;
+
+    while (PyDict_Next(headers, &pos, &key, &val)) {
+        if (! _check_str("key", key)) {
+            return false;
+        }
+        line = (HLine) {
+            PyUnicode_1BYTE_DATA(key),
+            (size_t)PyUnicode_GET_LENGTH(key),
+            val
+        }; 
+        if (! _render_header_line(o, &line)) {
+            return false;
+        } 
+    }
+    return true;
 }
 
 static bool
 _render_headers(DeguOutput *o, PyObject *headers)
 {
-    ssize_t pos = 0;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
-
     if (! _check_headers(headers)) {
         return false;
     }
-    while (PyDict_Next(headers, &pos, &key, &val)) {
-        if (! _render_header_line(o, key, val)) {
-            return false;
-        }
+    const size_t count = (size_t)PyDict_Size(headers);
+    if (count == 0) {
+        return true;
     }
-    return true;
+    if (count > 1) {
+        return _render_headers_sorted(o, headers, count);
+    }
+    return _render_headers_fast(o, headers, count);
 }
 
 static PyObject *
@@ -3780,11 +3856,17 @@ static PyObject *
 Writer_write_response(Writer *self, PyObject *args)
 {
     DeguResponse dr = NEW_DEGU_RESPONSE;
+    ssize_t s;
 
     if (! PyArg_ParseTuple(args, "OUOO:",
             &dr.status, &dr.reason, &dr.headers, &dr.body)) {
         return NULL;
     }
+    s = _get_status(dr.status);
+    if (s < 0) {
+        return NULL;
+    }
+    dr.s = (size_t)s;
     const int64_t total = _Writer_write_response(self, &dr);
     if (total < 0) {
         return NULL;
