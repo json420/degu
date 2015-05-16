@@ -30,9 +30,6 @@ import os
 
 from .base import (
     _TYPE_ERROR,
-    _makefiles,
-    _isconsumed,
-    bodies,
     handle_requests,
 )
 
@@ -138,53 +135,6 @@ def _validate_server_sslctx(sslctx):
         raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
 
     return sslctx
-
-
-def _handle_requests(app, sock, max_requests, session, bodies=bodies):
-    (reader, writer) = _makefiles(sock)
-    assert session['requests'] == 0
-    for count in range(1, max_requests + 1):
-        request = reader.read_request()
-        (status, reason, headers, body) = app(session, request, bodies)
-
-        # Make sure application fully consumed request body:
-        if not _isconsumed(request.body):
-            raise UnconsumedRequestError(request.body)
-
-        # Make sure HEAD requests are properly handled:
-        if request.method == 'HEAD':
-            if body is not None:
-                raise TypeError(
-                    'response body must be None when request method is HEAD'
-                )
-            if 200 <= status < 300:
-                if 'content-length' in headers:
-                    if 'transfer-encoding' in headers:
-                        raise ValueError(
-                            'cannot have both content-length and transfer-encoding headers'
-                        )
-                elif headers.get('transfer-encoding') != 'chunked':
-                    raise ValueError(
-                        'response to HEAD request must include content-length or transfer-encoding'
-                    )
-
-        # Write response:
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
-        writer.write_response(status, reason, headers, body)
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
-
-        # Update session counter:
-        session['requests'] = count
-
-        # Possibly close the connection:
-        if status >= 400 and status not in {404, 409, 412}:
-            log.warning('closing connection to %r after %d %r',
-                session['client'], status, reason
-            )
-            break
-
-    # Make sure sndbuf gets flushed:
-    sock.close()
 
 
 class Server:
