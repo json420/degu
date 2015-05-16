@@ -63,7 +63,7 @@ _OK = 'OK'
 
 
 BodiesType = Bodies = namedtuple('Bodies',
-    'Body BodyIter ChunkedBody ChunkedBodyIter'
+    'Body ChunkedBody BodyIter ChunkedBodyIter'
 )
 RequestType = Request = namedtuple('Request',
     'method uri headers body script path query'
@@ -1420,7 +1420,7 @@ class ChunkedBodyIter:
         return total
 
 # Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+bodies = Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter)
 
 
 def _check_dict(name, obj):

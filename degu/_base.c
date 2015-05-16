@@ -171,8 +171,8 @@ _DEGU_SRC_CONSTANT(EQUALS, "=")
 static PyTypeObject BodiesType;
 static PyStructSequence_Field BodiesFields[] = {
     {"Body", NULL},
-    {"BodyIter", NULL},
     {"ChunkedBody", NULL},
+    {"BodyIter", NULL},
     {"ChunkedBodyIter", NULL},
     {NULL},
 };
@@ -191,13 +191,12 @@ _Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
     return ret;
 }
 
-/* FIXME: change order to Body, ChunkedBody, BodyIter, ChunkedBodyIter */
 static PyObject *
 Bodies(PyObject *self, PyObject *args)
 {
     PyObject *arg0 = NULL;  // Body
-    PyObject *arg1 = NULL;  // BodyIter
-    PyObject *arg2 = NULL;  // ChunkedBody
+    PyObject *arg1 = NULL;  // ChunkedBody
+    PyObject *arg2 = NULL;  // BodyIter
     PyObject *arg3 = NULL;  // ChunkedBodyIter
 
     if (! PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
@@ -5108,8 +5107,8 @@ _init_all_types(PyObject *module)
     _SET(bodies,
         _Bodies(
             (PyObject *)&BodyType,
-            (PyObject *)&BodyIterType,
             (PyObject *)&ChunkedBodyType,
+            (PyObject *)&BodyIterType,
             (PyObject *)&ChunkedBodyIterType
         )
     )

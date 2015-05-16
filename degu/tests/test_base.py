@@ -2148,8 +2148,8 @@ class TestNamedTuples_Py(BackendTestCase):
     def test_Bodies(self):
         (tup, args) = self.new('Bodies', 4)
         self.assertIs(tup.Body,            args[0])
-        self.assertIs(tup.BodyIter,        args[1])
-        self.assertIs(tup.ChunkedBody,     args[2])
+        self.assertIs(tup.ChunkedBody,     args[1])
+        self.assertIs(tup.BodyIter,        args[2])
         self.assertIs(tup.ChunkedBodyIter, args[3])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
@@ -2261,15 +2261,15 @@ class TestConstants_Py(BackendTestCase):
         self.assertIs(bodies.ChunkedBodyIter, bodies.ChunkedBodyIter)
 
         self.assertIs(bodies[0], bodies.Body)
-        self.assertIs(bodies[1], bodies.BodyIter)
-        self.assertIs(bodies[2], bodies.ChunkedBody)
+        self.assertIs(bodies[1], bodies.ChunkedBody)
+        self.assertIs(bodies[2], bodies.BodyIter)
         self.assertIs(bodies[3], bodies.ChunkedBodyIter)
 
         self.assertEqual(bodies,
             (
                 bodies.Body,
-                bodies.BodyIter,
                 bodies.ChunkedBody,
+                bodies.BodyIter,
                 bodies.ChunkedBodyIter,
             )
         )
