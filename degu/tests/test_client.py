@@ -52,7 +52,6 @@ GOOD_ADDRESSES = (
     b'\x0000022',
 )
 
-
 # Some bad address permutations:
 BAD_TUPLE_ADDRESSES = (
     ('::1',),

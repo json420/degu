@@ -26,15 +26,12 @@ Common HTTP parser and IO abstractions used by server and client.
 try:
     from ._base import (
         _MAX_LINE_SIZE,  # FIXME: No need to import this
-        BODY_CONSUMED,
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
         Response, ResponseType,
         Range,
         ContentRange,
-        Reader,
-        Writer,
         bodies,
         handle_requests,
         Connection,
@@ -42,15 +39,12 @@ try:
 except ImportError:
     from ._basepy import (
         _MAX_LINE_SIZE,  # FIXME: No need to import this
-        BODY_CONSUMED,
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
         Response, ResponseType,
         Range,
         ContentRange,
-        Reader,
-        Writer,
         bodies,
         handle_requests,
         Connection,
@@ -78,17 +72,6 @@ IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
-
-def _makefiles(sock):
-    """
-    Create (rfile, wfile) from a socket connection.
-    """
-    return (Reader(sock), Writer(sock))
-
-
-def _isconsumed(body, state=BODY_CONSUMED):
-    return body is None or body.state == state
 
 
 # FIXME: Add optional max_size=None keyword argument

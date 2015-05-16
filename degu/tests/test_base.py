@@ -32,7 +32,7 @@ import types
 import socket
 
 from . import helpers
-from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
+from .helpers import random_chunks, FuzzTestCase, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
 from degu.sslhelpers import random_id
 from degu.base import _MAX_LINE_SIZE
@@ -266,15 +266,12 @@ class TestAliases(TestCase):
 
     def test_all(self):
         all_names = (
-            'BODY_CONSUMED',
             'EmptyPreambleError',
             'Bodies',   'BodiesType',
             'Request',  'RequestType',
             'Response', 'ResponseType',
             'Range',
             'ContentRange',
-            'Reader',
-            'Writer',
             'bodies',
             'handle_requests',
             'Connection',
@@ -2278,21 +2275,6 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test_makefiles(self):
-        sock = DummySocket()
-        self.assertEqual(sys.getrefcount(sock), 2)
-        (reader, writer) = base._makefiles(sock)
-        self.assertIsInstance(reader, base.Reader)
-        self.assertIsInstance(writer, base.Writer)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 4)
-        del reader
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 3)
-        del writer
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 2)
-
     def check_parse_method(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_method = backend.parse_method
