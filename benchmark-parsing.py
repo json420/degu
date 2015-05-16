@@ -24,6 +24,8 @@ from degu._base import (
     format_headers,
     format_request,
     format_response,
+
+    render_headers,
     render_request,
     render_response,
 
@@ -71,6 +73,11 @@ def compare(s1, s2, K=250):
     print('[{:.1f}%]'.format(percent))
     return percent
 
+def test0(s, K=250):
+    p1 = 'render_headers(dst, '
+    p2 = 'format_headers('
+    return compare(p1 + s, p2 + s, K)
+
 def test1(s, K=250):
     p1 = 'render_request(dst, '
     p2 = 'format_request('
@@ -84,6 +91,11 @@ def test2(s, K=250):
 
 print('-' * 80)
 
+test0('headers)')
+test0('{})')
+test0("{'content-length': 17})")
+test0("{'content-length': 17, 'content-type': 'text/plain'})")
+print('')
 test1("'GET', '/foo', {})")
 test1("'PUT', '/foo', {'content-length': 17})")
 test1("'PUT', '/foo', {'content-length': 17, 'content-type': 'text/plain'})")

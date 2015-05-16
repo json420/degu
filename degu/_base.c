@@ -476,7 +476,7 @@ _check_str(const char *name, PyObject *obj)
     if (PyUnicode_READY(obj) != 0) {
         return false;
     }
-    if (PyUnicode_KIND(obj) != PyUnicode_1BYTE_KIND) {
+    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127) {
         PyErr_Format(PyExc_ValueError, "%s: contains non-ASCII: %R", name, obj);
         return false;
     }
@@ -2490,6 +2490,25 @@ _render_headers(DeguOutput *o, PyObject *headers)
     return true;
 }
 
+static PyObject *
+render_headers(PyObject *self, PyObject *args)
+{
+    Py_buffer pybuf;
+    PyObject *headers = NULL;
+    PyObject *ret = NULL;
+
+    if (! PyArg_ParseTuple(args, "w*O:render_headers", &pybuf, &headers)) {
+        return NULL;
+    }
+    DeguDst dst = _dst_frompybuf(&pybuf);
+    DeguOutput o = {dst, 0};
+    if (_render_headers(&o, headers)) {
+        ret = PyLong_FromSize_t(o.stop);
+    }
+    PyBuffer_Release(&pybuf);
+    return ret;
+}
+
 static bool
 _render_request(DeguOutput *o, DeguRequest *r)
 { 
@@ -2537,10 +2556,7 @@ _render_status(DeguOutput *o, const size_t s)
         );
         return false;
     }
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
-    if (dst.len < 4) {
-        Py_FatalError("_render_status(): dst.len < 4");
-    }
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->stop + 4);
     dst.buf[0] = 48 + (s / 100);
     dst.buf[1] = 48 + (s % 100 / 10);
     dst.buf[2] = 48 + (s % 10);
