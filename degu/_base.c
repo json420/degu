@@ -30,6 +30,8 @@
 
 /* EmptyPreambleError exception */
 static PyObject *EmptyPreambleError = NULL;
+
+/* Default Bodies namedtuple instance */
 static PyObject *bodies = NULL;
 
 /* Interned `str` for fast attribute lookup */
@@ -3304,7 +3306,7 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->buf, _calloc_buf(DEFAULT_PREAMBLE + MAX_KEY))
+    _SET(self->buf, _calloc_buf(BUF_LEN + MAX_KEY))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
@@ -3317,13 +3319,13 @@ error:
 static DeguSrc
 _Reader_preamble_src(Reader *self)
 {
-    return (DeguSrc){self->buf, DEFAULT_PREAMBLE};
+    return (DeguSrc){self->buf, BUF_LEN};
 }
 
 static DeguDst
 _Reader_scratch_dst(Reader *self)
 {
-    return (DeguDst){self->buf + DEFAULT_PREAMBLE, MAX_KEY};
+    return (DeguDst){self->buf + BUF_LEN, MAX_KEY};
 }
 
 static DeguSrc
@@ -3360,7 +3362,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
     if (_isempty(end)) {
         Py_FatalError("_Reader_read_until(): bad internal call");
     }
-    DeguDst dst = {self->buf, DEFAULT_PREAMBLE};
+    DeguDst dst = {self->buf, BUF_LEN};
     if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
             "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
@@ -3446,7 +3448,7 @@ Reader_rawtell(Reader *self) {
 
 static PyObject *
 Reader_tell(Reader *self) {
-    DeguSrc cur = _Reader_peek(self, DEFAULT_PREAMBLE);
+    DeguSrc cur = _Reader_peek(self, BUF_LEN);
     if (cur.len > self->rawtell) {
         Py_FatalError("Reader_tell(): cur.len > self->rawtell");
     }
@@ -3488,7 +3490,7 @@ Reader_read_until(Reader *self, PyObject *args)
 
 static bool
 _Reader_read_request(Reader *self, DeguRequest *dr) {
-    DeguSrc src = _Reader_read_until(self, DEFAULT_PREAMBLE, CRLFCRLF);
+    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
     if (src.buf == NULL) {
         return false;
     }
@@ -3513,7 +3515,7 @@ Reader_read_request(Reader *self) {
 static bool
 _Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
 {
-    DeguSrc src = _Reader_read_until(self, DEFAULT_PREAMBLE, CRLFCRLF);
+    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
     if (src.buf == NULL) {
         return false;
     }
@@ -5132,10 +5134,8 @@ PyInit__base(void)
     if (! _init_all_types(module)) {
         return NULL;
     }
+    PyModule_AddIntMacro(module, BUF_LEN);
     PyModule_AddIntMacro(module, _MAX_LINE_SIZE);
-    PyModule_AddIntMacro(module, MIN_PREAMBLE);
-    PyModule_AddIntMacro(module, DEFAULT_PREAMBLE);
-    PyModule_AddIntMacro(module, MAX_PREAMBLE);
     PyModule_AddIntMacro(module, MAX_IO_SIZE);
     PyModule_AddIntMacro(module, BODY_READY);
     PyModule_AddIntMacro(module, BODY_STARTED);

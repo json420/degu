@@ -37,9 +37,7 @@ import socket
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 _MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
-MIN_PREAMBLE     =  4096  #  4 KiB
-DEFAULT_PREAMBLE = 32768  # 32 KiB
-MAX_PREAMBLE     = 65536  # 64 KiB
+BUF_LEN = 32768  # 32 KiB
 MAX_IO_SIZE = 16777216  # 16 MiB
 MAX_LENGTH = 9999999999999999
 MAX_READ_SIZE = 16777216  # 16 MiB
@@ -789,7 +787,7 @@ class Reader:
     def __init__(self, sock):
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(DEFAULT_PREAMBLE))
+        self._rawbuf = memoryview(bytearray(BUF_LEN))
         self._start = 0
         self._buf = b''
         self._closed = False

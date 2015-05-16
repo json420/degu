@@ -313,6 +313,10 @@ class BackendTestCase(TestCase):
         # FIXME: check imported alias in degu.base (when needed)
         return getattr(backend, name)
 
+    @property
+    def BUF_LEN(self):
+        return self.getattr('BUF_LEN')
+
 
 class TestRange_Py(BackendTestCase):
     @property
@@ -2181,6 +2185,11 @@ class TestConstants_Py(BackendTestCase):
         self.check_power_of_two(name, size)
         self.assertGreaterEqual(size, min_size, name)
         self.assertLessEqual(size, max_size, name)
+        return size
+
+    def test_BUF_LEN(self):
+        self.assertIs(type(self.BUF_LEN), int)
+        self.assertEqual(self.BUF_LEN, 32 * 1024)
 
     def test_STREAM_BUFFER_SIZE(self):
         self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
@@ -4721,18 +4730,6 @@ class TestReader_Py(BackendTestCase):
         return self.getattr('Range')
 
     @property
-    def MIN_PREAMBLE(self):
-        return self.backend.MIN_PREAMBLE
-
-    @property
-    def DEFAULT_PREAMBLE(self):
-        return self.backend.DEFAULT_PREAMBLE
-
-    @property
-    def MAX_PREAMBLE(self):
-        return self.backend.MAX_PREAMBLE
-
-    @property
     def ResponseType(self):
         return self.backend.ResponseType
 
@@ -4746,7 +4743,7 @@ class TestReader_Py(BackendTestCase):
         return (sock, reader)
 
     def test_init(self):
-        default = self.DEFAULT_PREAMBLE
+        default = self.BUF_LEN
         sock = MockSocket(b'')
         reader = self.Reader(sock)
         self.assertEqual(sock._rfile.tell(), 0)
@@ -4763,7 +4760,7 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_read_until(self):
-        default = self.DEFAULT_PREAMBLE
+        default = self.BUF_LEN
         end = b'\r\n'
 
         data = os.urandom(2 * default)
