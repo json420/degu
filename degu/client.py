@@ -37,30 +37,6 @@ __all__ = (
 )
 
 
-class ClosedConnectionError(Exception):
-    """
-    Raised by `Connection.request()` when connection is already closed.
-    """
-
-    def __init__(self, conn):
-        self.conn = conn
-        super().__init__(
-            'cannot use request() when connection is closed: {!r}'.format(conn)
-        )
-
-
-class UnconsumedResponseError(Exception):
-    """
-    Raised by `Connection.request()` when previous response body not fully read.
-    """
-
-    def __init__(self, body):
-        self.body = body
-        super().__init__(
-            'previous response body not consumed: {!r}'.format(body)
-        )
-
-
 def build_client_sslctx(sslconfig):
     """
     Build an `ssl.SSLContext` appropriately configured for client-side use.
