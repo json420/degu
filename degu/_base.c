@@ -1554,21 +1554,27 @@ static PyObject *
 _parse_method(DeguSrc src)
 {
     PyObject *method = NULL;
-    if (_equal(src, GET)) {
-        method = str_GET;
+
+    if (src.len == 3) {
+        if (_equal(src, GET)) {
+            method = str_GET;
+        }
+        else if (_equal(src, PUT)) {
+            method = str_PUT;
+        }
     }
-    else if (_equal(src, PUT)) {
-        method = str_PUT;
-    }
-    if (_equal(src, POST)) {
-        method = str_POST;
-    }
-    else if (_equal(src, HEAD)) {
-        method = str_HEAD;
+    else if (src.len == 4) {
+        if (_equal(src, POST)) {
+            method = str_POST;
+        }
+        else if (_equal(src, HEAD)) {
+            method = str_HEAD;
+        }
     }
     else if (_equal(src, DELETE)) {
         method = str_DELETE;
     }
+
     if (method == NULL) {
         _value_error("bad HTTP method: %R", src);
     }
