@@ -64,7 +64,10 @@ static PyObject *str_empty             = NULL;  //  ''
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
 static PyObject *bytes_CRLF            = NULL;  //  b'\r\n'
-static PyObject *int_MAX_LINE_LEN     = NULL;  //  4096
+static PyObject *int_MAX_LINE_LEN      = NULL;  //  4096
+
+/* PyModule_AddIntMacro() wont work for this on 32-bit systems */
+static PyObject *int_MAX_LENGTH        = NULL;  // 9999999999999999ull
 
 
 /* _init_all_globals(): called by PyInit__base() */
@@ -108,6 +111,10 @@ _init_all_globals(PyObject *module)
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
     _SET(bytes_CRLF,  PyBytes_FromStringAndSize("\r\n", 2))
     _SET(int_MAX_LINE_LEN, PyLong_FromLong(MAX_LINE_LEN))
+
+    /* Can't use PyModule_AddIntMacro() for this on 32-bit systems */
+    _SET(int_MAX_LENGTH, PyLong_FromUnsignedLongLong(MAX_LENGTH))
+    _ADD_MODULE_ATTR(module, "MAX_LENGTH", int_MAX_LENGTH)
 
     return true;
 
@@ -3571,7 +3578,7 @@ Reader_readinto(Reader *self, PyObject *args)
     if (! PyArg_ParseTuple(args, "w*", &pybuf)) {
         goto error;
     }
-    if (pybuf.len < 1 || pybuf.len > MAX_IO_SIZE) {
+    if (pybuf.len < 1 || (size_t)pybuf.len > MAX_IO_SIZE) {
         PyErr_Format(PyExc_ValueError,
             "need 1 <= len(buf) <= %zu; got %zd", MAX_IO_SIZE, pybuf.len
         );
@@ -5139,7 +5146,6 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_LINE_LEN);
 
     PyModule_AddIntMacro(module, MAX_CL_LEN);
-    PyModule_AddIntMacro(module, MAX_LENGTH);
 
     PyModule_AddIntMacro(module, IO_SIZE);    
     PyModule_AddIntMacro(module, MAX_IO_SIZE);
