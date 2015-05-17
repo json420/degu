@@ -1873,10 +1873,10 @@ static inline PyObject *
 _parse_status(DeguSrc src)
 {
     uint8_t n, err;
-    unsigned long accum;
+    size_t accum;
 
     if (src.len != 3) {
-        _value_error("bad status length: %R", src);
+        Py_FatalError("_parse_status(): src.len != 3");
         return NULL;
     }
     n = _NUMBER[src.buf[0]];  err  = n;  accum   = n * 100u;
@@ -1886,7 +1886,7 @@ _parse_status(DeguSrc src)
         _value_error("bad status: %R", src);
         return NULL;
     }
-    return PyLong_FromUnsignedLong(accum);
+    return PyLong_FromSize_t(accum);
 }
 
 static inline PyObject *
