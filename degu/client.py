@@ -249,6 +249,8 @@ class Client:
         if self._family is None:
             return socket.create_connection(self.address, timeout=self.timeout)
         sock = socket.socket(self._family, socket.SOCK_STREAM)
+        if self._family == socket.AF_UNIX:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
         sock.settimeout(self.timeout)
         sock.connect(self.address)
         return sock

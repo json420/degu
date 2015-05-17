@@ -27,6 +27,7 @@ import socket
 import logging
 import threading
 import os
+import struct
 
 from .base import handle_requests, _TYPE_ERROR
 
@@ -126,6 +127,13 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
+def get_peer_credentials(sock, address):
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
+    size = struct.calcsize('3i')
+    data = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size)
+    return struct.unpack('3i', data)
+
+
 class Server:
     _allowed_options = ('max_connections', 'max_requests', 'timeout')
 
@@ -195,6 +203,7 @@ class Server:
         max_requests = self.max_requests
         timeout = self.timeout
         listensock = self.sock
+        unix = (True if listensock.family == socket.AF_UNIX else False)
         worker = self._worker
         while True:
             (sock, address) = listensock.accept()
@@ -204,9 +213,15 @@ class Server:
             # that's why we use `timeout=2` rather than `blocking=False`:
             if semaphore.acquire(timeout=2) is True:
                 sock.settimeout(timeout)
+                if unix is True:
+                    cred = get_peer_credentials(sock, sock)
+                    log.info('Connection from %r %r', address, cred)
+                else:
+                    log.info('Connection from %r', address)
+                    cred = None
                 thread = threading.Thread(
                     target=worker,
-                    args=(semaphore, max_requests, sock, address),
+                    args=(semaphore, max_requests, sock, address, cred),
                     daemon=True
                 )
                 thread.start()
@@ -217,10 +232,9 @@ class Server:
                 except OSError:
                     pass
 
-    def _worker(self, semaphore, max_requests, sock, address):
-        session = {'client': address, 'requests': 0}
-        log.info('Connection from %r', address)
+    def _worker(self, semaphore, max_requests, sock, address, cred):
         try:
+            session = {'client': address, 'requests': 0}
             self._handler(sock, max_requests, session)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
