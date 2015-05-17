@@ -105,8 +105,6 @@ test2("200, 'OK', {'content-length': 17})")
 test2("200, 'OK', {'content-length': 17, 'content-type': 'text/plain'})")
 test2("200, 'OK', headers)")
 
-raise SystemExit()
-
 print('\nHeader parsing:')
 run('parse_headers(headers_src)')
 run("parse_headers(b'Content-Length: 123456')")
@@ -153,6 +151,7 @@ run("parse_chunk(b'0;key=value')")
 run("parse_chunk(b'1000000;key=value')")
 
 print('\nHeader formating:')
+run('render_headers(dst, headers)')
 run('format_headers(headers)')
 run('format_headers({})')
 run("format_headers({'content-length': 17})")
@@ -162,11 +161,13 @@ print('\nRequest formatting:')
 run("format_request('GET', '/foo', {})")
 run("format_request('PUT', '/foo', {'content-length': 17})")
 run("format_request('PUT', '/foo', headers)")
+run("render_request(dst, 'PUT', '/foo', headers)")
 
 print('\nResponse formatting:')
 run("format_response(200, 'OK', {})")
 run("format_response(200, 'OK', {'content-length': 17})")
 run("format_response(200, 'OK', headers)")
+run("render_response(dst, 200, 'OK', headers)")
 
 
 print('-' * 80)

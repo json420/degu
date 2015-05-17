@@ -56,7 +56,7 @@ client = Client(server.address)
 
 count = args.requests
 deltas = []
-for i in range(50):
+for i in range(10):
     conn = client.connect()
     start = time.monotonic()
     for i in range(count):
