@@ -1869,24 +1869,29 @@ parse_request(PyObject *self, PyObject *args)
 /******************************************************************************
  * Response parsing - internal C API
  ******************************************************************************/
-static inline PyObject *
-_parse_status(DeguSrc src)
+static inline bool
+_parse_status(DeguSrc src, DeguResponse *dr)
 {
     uint8_t n, err;
     size_t accum;
 
     if (src.len != 3) {
         Py_FatalError("_parse_status(): src.len != 3");
-        return NULL;
+        goto error; // Just in case the above doesn't kill it with fire
     }
     n = _NUMBER[src.buf[0]];  err  = n;  accum   = n * 100u;
     n = _NUMBER[src.buf[1]];  err |= n;  accum  += n * 10u;
     n = _NUMBER[src.buf[2]];  err |= n;  accum  += n;
     if ((err & 240) != 0 || accum < 100 || accum > 599) {
         _value_error("bad status: %R", src);
-        return NULL;
+        goto error;
     }
-    return PyLong_FromSize_t(accum);
+    dr->s = accum;
+    _SET(dr->status, PyLong_FromSize_t(accum))
+    return true;
+
+error:
+    return false;
 }
 
 static inline PyObject *
@@ -1929,7 +1934,9 @@ _parse_response_line(DeguSrc src, DeguResponse *dr)
      *     "HTTP/1.1 200 OK"[9:12]
      *               ^^^
      */
-    _SET(dr->status, _parse_status(_slice(src, 9, 12)))
+    if (! _parse_status(_slice(src, 9, 12), dr)) {
+        goto error;
+    }
 
     /* reason:
      *     "HTTP/1.1 200 OK"[13:]
