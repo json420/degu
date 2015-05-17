@@ -293,25 +293,25 @@ _init_namedtuple(PyObject *module, const char *name,
                  PyTypeObject *type, PyStructSequence_Desc *desc)
 {
     if (PyStructSequence_InitType2(type, desc) != 0) {
-        return false;
+        goto error;
     }
-    Py_INCREF(type);
-    if (PyModule_AddObject(module, name, (PyObject *)type) != 0) {
-        return false;
-    }
+    _ADD_MODULE_ATTR(module, name, (PyObject *)type)
     return true;
+
+error:
+    return false;
 }
 
 static bool
 _init_all_namedtuples(PyObject *module)
 {
-    if (!_init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
+    if (! _init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
         return false;
     }
-    if (!_init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
+    if (! _init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
         return false;
     }
-    if (!_init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
+    if (! _init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
         return false;
     }
     return true;
