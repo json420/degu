@@ -2284,13 +2284,10 @@ _set_output_headers(PyObject *headers, PyObject *body)
     if (IS_BODY(body)) {
         return _set_content_length(headers, BODY(body)->content_length);
     }
-    if (Py_TYPE(body) == &BodyIterType) {
-        return _set_content_length(headers, ((BodyIter *)body)->content_length);
+    if (IS_BODY_ITER(body)) {
+        return _set_content_length(headers, BODY_ITER(body)->content_length);
     }
-    if (Py_TYPE(body) == &ChunkedBodyType) {
-        return _set_transfer_encoding(headers);
-    }
-    if (Py_TYPE(body) == &ChunkedBodyIterType) {
+    if (IS_CHUNKED_BODY(body) || IS_CHUNKED_BODY_ITER(body)) {
         return _set_transfer_encoding(headers);
     }
     PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);

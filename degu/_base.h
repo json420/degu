@@ -55,18 +55,6 @@
 #define BIT_CONTENT_RANGE 8u
 #define FRAMING_MASK 3u
 
-#define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
-#define BODY(obj) ((Body *)(obj))
-
-#define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
-#define CHUNKED_BODY(obj) ((ChunkedBody *)(obj))
-
-#define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
-#define BODY_ITER(obj) ((BodyIter *)(obj))
-
-#define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
-#define CHUNKED_BODY_ITER(obj) ((ChunkedBodyIter *)(obj))
-
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -669,6 +657,9 @@ static PyTypeObject BodyType = {
     (initproc)Body_init,                /* tp_init */
 };
 
+#define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
+#define BODY(obj) ((Body *)(obj))
+
 
 /******************************************************************************
  * ChunkedBody object.
@@ -747,6 +738,9 @@ static PyTypeObject ChunkedBodyType = {
     (initproc)ChunkedBody_init,         /* tp_init */
 };
 
+#define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
+#define CHUNKED_BODY(obj) ((ChunkedBody *)(obj))
+
 
 /******************************************************************************
  * BodyIter object.
@@ -817,6 +811,9 @@ static PyTypeObject BodyIterType = {
     (initproc)BodyIter_init,                /* tp_init */
 };
 
+#define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
+#define BODY_ITER(obj) ((BodyIter *)(obj))
+
 
 /******************************************************************************
  * ChunkedBodyIter object.
@@ -884,6 +881,9 @@ static PyTypeObject ChunkedBodyIterType = {
     0,                                      /* tp_dictoffset */
     (initproc)ChunkedBodyIter_init,         /* tp_init */
 };
+
+#define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
+#define CHUNKED_BODY_ITER(obj) ((ChunkedBodyIter *)(obj))
 
 
 /******************************************************************************
