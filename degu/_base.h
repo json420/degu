@@ -49,11 +49,11 @@
 #define BODY_CONSUMED 2u
 #define BODY_ERROR 3u
 
-#define BIT_CONTENT_LENGTH 1u
-#define BIT_TRANSFER_ENCODING 2u
-#define BIT_RANGE 4u
-#define BIT_CONTENT_RANGE 8u
-#define FRAMING_MASK 3u
+#define CONTENT_LENGTH_BIT 1u
+#define TRANSFER_ENCODING_BIT 2u
+#define RANGE_BIT 4u
+#define CONTENT_RANGE_BIT 8u
+#define BODY_MASK 3u
 
 
 /******************************************************************************

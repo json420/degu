@@ -1313,7 +1313,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
             goto error;
         }
         dh->content_length = (uint64_t)length;
-        dh->flags |= BIT_CONTENT_LENGTH;
+        dh->flags |= CONTENT_LENGTH_BIT;
         _SET_AND_INC(key, key_content_length)
         _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
     }
@@ -1324,17 +1324,17 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, val_chunked)
-        dh->flags |= BIT_TRANSFER_ENCODING;
+        dh->flags |= TRANSFER_ENCODING_BIT;
     }
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_range(valsrc))
-        dh->flags |= BIT_RANGE;
+        dh->flags |= RANGE_BIT;
     }
     else if (_equal(keysrc, CONTENT_RANGE)) {
         _SET_AND_INC(key, key_content_range)
         _SET(val, _parse_content_range(valsrc))
-        dh->flags |= BIT_CONTENT_RANGE;
+        dh->flags |= CONTENT_RANGE_BIT;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
@@ -1381,15 +1381,15 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
         }
         start = stop + CRLF.len;
     }
-    const uint8_t framing = dh->flags & FRAMING_MASK;
-    if (framing == FRAMING_MASK) {
+    const uint8_t bodyflags = dh->flags & BODY_MASK;
+    if (bodyflags == BODY_MASK) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
     }
-    if (dh->flags & BIT_RANGE) {
-        if (framing) {
+    if (dh->flags & RANGE_BIT) {
+        if (bodyflags) {
             PyErr_SetString(PyExc_ValueError, 
                 "cannot include range header and content-length/transfer-encoding"
             );
@@ -1402,7 +1402,7 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
             goto error; 
         }
     }
-    if ((dh->flags & BIT_CONTENT_RANGE) && !isresponse) {
+    if ((dh->flags & CONTENT_RANGE_BIT) && !isresponse) {
         PyErr_SetString(PyExc_ValueError, 
             "request cannot include a 'content-range' header"
         );
@@ -1417,15 +1417,20 @@ error:
 static bool
 _create_body(PyObject *rfile, DeguHeaders *dh) 
 {
-    const uint8_t bodyflags = (dh->flags & 3);
+    const uint8_t bodyflags = (dh->flags & BODY_MASK);
     if (bodyflags == 0) {
         _SET_AND_INC(dh->body, Py_None)
     }
-    else if (bodyflags == 1) {
+    else if (bodyflags == CONTENT_LENGTH_BIT) {
         _SET(dh->body, _Body_New(rfile, dh->content_length))
     }
-    else if (bodyflags == 2) {
+    else if (bodyflags == TRANSFER_ENCODING_BIT) {
         _SET(dh->body, _ChunkedBody_New(rfile))
+    }
+    else {
+        Py_FatalError(
+            "both CONTENT_LENGTH_BIT and TRANSFER_ENCODING_BIT are set"
+        );
     }
     return true;
 
