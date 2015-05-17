@@ -293,25 +293,25 @@ _init_namedtuple(PyObject *module, const char *name,
                  PyTypeObject *type, PyStructSequence_Desc *desc)
 {
     if (PyStructSequence_InitType2(type, desc) != 0) {
-        return false;
+        goto error;
     }
-    Py_INCREF(type);
-    if (PyModule_AddObject(module, name, (PyObject *)type) != 0) {
-        return false;
-    }
+    _ADD_MODULE_ATTR(module, name, (PyObject *)type)
     return true;
+
+error:
+    return false;
 }
 
 static bool
 _init_all_namedtuples(PyObject *module)
 {
-    if (!_init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
+    if (! _init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
         return false;
     }
-    if (!_init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
+    if (! _init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
         return false;
     }
-    if (!_init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
+    if (! _init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
         return false;
     }
     return true;
@@ -1313,7 +1313,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
             goto error;
         }
         dh->content_length = (uint64_t)length;
-        dh->flags |= BIT_CONTENT_LENGTH;
+        dh->flags |= CONTENT_LENGTH_BIT;
         _SET_AND_INC(key, key_content_length)
         _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
     }
@@ -1324,17 +1324,17 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         }
         _SET_AND_INC(key, key_transfer_encoding)
         _SET_AND_INC(val, val_chunked)
-        dh->flags |= BIT_TRANSFER_ENCODING;
+        dh->flags |= TRANSFER_ENCODING_BIT;
     }
     else if (_equal(keysrc, RANGE)) {
         _SET_AND_INC(key, key_range)
         _SET(val, _parse_range(valsrc))
-        dh->flags |= BIT_RANGE;
+        dh->flags |= RANGE_BIT;
     }
     else if (_equal(keysrc, CONTENT_RANGE)) {
         _SET_AND_INC(key, key_content_range)
         _SET(val, _parse_content_range(valsrc))
-        dh->flags |= BIT_CONTENT_RANGE;
+        dh->flags |= CONTENT_RANGE_BIT;
     }
     else if (_equal(keysrc, CONTENT_TYPE)) {
         _SET_AND_INC(key, key_content_type)
@@ -1381,15 +1381,15 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
         }
         start = stop + CRLF.len;
     }
-    const uint8_t framing = dh->flags & FRAMING_MASK;
-    if (framing == FRAMING_MASK) {
+    const uint8_t bodyflags = dh->flags & BODY_MASK;
+    if (bodyflags == BODY_MASK) {
         PyErr_SetString(PyExc_ValueError, 
             "cannot have both content-length and transfer-encoding headers"
         );
         goto error; 
     }
-    if (dh->flags & BIT_RANGE) {
-        if (framing) {
+    if (dh->flags & RANGE_BIT) {
+        if (bodyflags) {
             PyErr_SetString(PyExc_ValueError, 
                 "cannot include range header and content-length/transfer-encoding"
             );
@@ -1402,7 +1402,7 @@ _parse_headers(DeguSrc src, DeguDst scratch, DeguHeaders *dh,
             goto error; 
         }
     }
-    if ((dh->flags & BIT_CONTENT_RANGE) && !isresponse) {
+    if ((dh->flags & CONTENT_RANGE_BIT) && !isresponse) {
         PyErr_SetString(PyExc_ValueError, 
             "request cannot include a 'content-range' header"
         );
@@ -1417,15 +1417,20 @@ error:
 static bool
 _create_body(PyObject *rfile, DeguHeaders *dh) 
 {
-    const uint8_t bodyflags = (dh->flags & 3);
+    const uint8_t bodyflags = (dh->flags & BODY_MASK);
     if (bodyflags == 0) {
         _SET_AND_INC(dh->body, Py_None)
     }
-    else if (bodyflags == 1) {
+    else if (bodyflags == CONTENT_LENGTH_BIT) {
         _SET(dh->body, _Body_New(rfile, dh->content_length))
     }
-    else if (bodyflags == 2) {
+    else if (bodyflags == TRANSFER_ENCODING_BIT) {
         _SET(dh->body, _ChunkedBody_New(rfile))
+    }
+    else {
+        Py_FatalError(
+            "both CONTENT_LENGTH_BIT and TRANSFER_ENCODING_BIT are set"
+        );
     }
     return true;
 
@@ -1864,24 +1869,29 @@ parse_request(PyObject *self, PyObject *args)
 /******************************************************************************
  * Response parsing - internal C API
  ******************************************************************************/
-static inline PyObject *
-_parse_status(DeguSrc src)
+static inline bool
+_parse_status(DeguSrc src, DeguResponse *dr)
 {
     uint8_t n, err;
-    unsigned long accum;
+    size_t accum;
 
     if (src.len != 3) {
-        _value_error("bad status length: %R", src);
-        return NULL;
+        Py_FatalError("_parse_status(): src.len != 3");
+        goto error; // Just in case the above doesn't kill it with fire
     }
     n = _NUMBER[src.buf[0]];  err  = n;  accum   = n * 100u;
     n = _NUMBER[src.buf[1]];  err |= n;  accum  += n * 10u;
     n = _NUMBER[src.buf[2]];  err |= n;  accum  += n;
     if ((err & 240) != 0 || accum < 100 || accum > 599) {
         _value_error("bad status: %R", src);
-        return NULL;
+        goto error;
     }
-    return PyLong_FromUnsignedLong(accum);
+    dr->s = accum;
+    _SET(dr->status, PyLong_FromSize_t(accum))
+    return true;
+
+error:
+    return false;
 }
 
 static inline PyObject *
@@ -1924,7 +1934,9 @@ _parse_response_line(DeguSrc src, DeguResponse *dr)
      *     "HTTP/1.1 200 OK"[9:12]
      *               ^^^
      */
-    _SET(dr->status, _parse_status(_slice(src, 9, 12)))
+    if (! _parse_status(_slice(src, 9, 12), dr)) {
+        goto error;
+    }
 
     /* reason:
      *     "HTTP/1.1 200 OK"[13:]
