@@ -78,7 +78,7 @@ _max = max(rates)
 _mean = statistics.mean(rates)
 _min = min(rates)
 _stdev = statistics.stdev(rates)
-pyinfo = '{}, {}, {} ({} {})'.format(
+pyinfo = '{}; {}; {} ({} {})'.format(
     platform.python_version(),
     platform.machine(),
     platform.system(),
@@ -114,7 +114,7 @@ width2 = max(len(s) for s in [fastest, mean, slowest, stdev])
 print('')
 print('Degu: {}'.format(degu.__version__))
 print('Python: {}'.format(pyinfo))
-print('Test: {}, {:,} requests per run, {} runs'.format(
+print('Test: {}; {:,} requests per run; {} runs'.format(
     family, args.requests, args.runs)
 )
 print('-' * 72)
