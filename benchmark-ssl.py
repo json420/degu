@@ -36,7 +36,6 @@ but perhaps not enough to justify the switch (something to consider though)::
 import time
 import logging
 import os
-import io
 import math
 
 from degu import IPv6_LOOPBACK
@@ -84,19 +83,15 @@ def bytes10(size):
 
 
 MiB = 1048576
-chunk_size = 8 * MiB
-chunk_count = 64  # 512 MiB
-chunk = os.urandom(chunk_size)
-chunks = b''.join(chunk for i in range(chunk_count))
-content_length = len(chunks)
+chunk_size = MiB
+unique_chunks = tuple(os.urandom(chunk_size) for i in range(8))
+chunks = unique_chunks * 64  # 512 MiB 
+content_length = sum(len(c) for c in chunks)
 
 
 def file_app(session, request, bodies):
-    body = bodies.Body(io.BytesIO(chunks), content_length)
-    headers = {
-        'content-length': content_length,
-        'content-type': 'video/quicktime',
-    }
+    headers = {'content-type': 'video/quicktime'}
+    body = bodies.BodyIter(chunks, content_length)
     return (200, 'OK', headers, body)
 
 

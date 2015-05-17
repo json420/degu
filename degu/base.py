@@ -25,36 +25,31 @@ Common HTTP parser and IO abstractions used by server and client.
 
 try:
     from ._base import (
-        _MAX_LINE_SIZE,  # FIXME: No need to import this
-        BODY_CONSUMED,
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
         Response, ResponseType,
         Range,
         ContentRange,
-        Reader,
-        Writer,
         bodies,
+        handle_requests,
+        Connection,
     )
 except ImportError:
     from ._basepy import (
-        _MAX_LINE_SIZE,  # FIXME: No need to import this
-        BODY_CONSUMED,
         EmptyPreambleError,
         Bodies,   BodiesType,
         Request,  RequestType,
         Response, ResponseType,
         Range,
         ContentRange,
-        Reader,
-        Writer,
         bodies,
+        handle_requests,
+        Connection,
     )
 
 
 __all__ = (
-    '_MAX_LINE_SIZE',
     'EmptyPreambleError',
     'Bodies', 'BodiesType',
     'Request', 'RequestType',
@@ -62,27 +57,16 @@ __all__ = (
     'Range',
     'ContentRange',
     'bodies',
+    'handle_requests',
+    'Connection',
 )
-
 
 MAX_READ_SIZE = 16777216  # 16 MiB
 MAX_CHUNK_SIZE = 16777216  # 16 MiB
-STREAM_BUFFER_SIZE = 65536  # 64 KiB
 IO_SIZE = 1048576  # 1 MiB
 
 # Provide very clear TypeError messages:
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
-
-def _makefiles(sock, bodies):
-    """
-    Create (rfile, wfile) from a socket connection.
-    """
-    return (Reader(sock), Writer(sock))
-
-
-def _isconsumed(body, state=BODY_CONSUMED):
-    return body is None or body.state == state
 
 
 # FIXME: Add optional max_size=None keyword argument
@@ -94,7 +78,7 @@ def read_chunk(rfile):
 
         http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
     """
-    line = rfile.readline(_MAX_LINE_SIZE)
+    line = rfile.readline(4096)
     if line[-2:] != b'\r\n':
         raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
     parts = line[:-2].split(b';')

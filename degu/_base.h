@@ -24,16 +24,25 @@
 #include <Python.h>
 #include <structmember.h>
 #include <stdbool.h>
+#include <sys/socket.h>
 
-#define _MAX_LINE_SIZE 4096
-#define MIN_PREAMBLE 4096
-#define MAX_PREAMBLE 65536
-#define DEFAULT_PREAMBLE 32768
-#define MAX_KEY 32
-#define MAX_CL_LEN 16
-#define MAX_IO_SIZE 16777216
+/* Reader/Writer buf size, also max allowed input/output preamble size */
+#define BUF_LEN 32768u
+
+/* Reader scratch buf size, also max header name size */
+#define SCRATCH_LEN 32u
+
+/* Max length of chunk size line, including CRLF */
+#define MAX_LINE_LEN 4096u
+
+/* Max length of a content-length value */
+#define MAX_CL_LEN 16u
+
+/* Max uint64_t value for a content-length, range start/stop, etc */
 #define MAX_LENGTH 9999999999999999ull
-#define IO_SIZE 1048576
+
+#define IO_SIZE 1048576u
+#define MAX_IO_SIZE 16777216u
 
 #define BODY_READY 0u
 #define BODY_STARTED 1u
@@ -44,7 +53,8 @@
 #define BIT_TRANSFER_ENCODING 2u
 #define BIT_RANGE 4u
 #define BIT_CONTENT_RANGE 8u
-#define FRAMING_MASK (BIT_CONTENT_LENGTH | BIT_TRANSFER_ENCODING)
+#define FRAMING_MASK 3u
+
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -115,6 +125,11 @@ typedef const struct {
 #define _DEGU_SRC_CONSTANT(name, text) \
     static DeguSrc name = {(uint8_t *)text, sizeof(text) - 1};
 
+typedef struct {
+    DeguDst dst;
+    size_t stop;
+} DeguOutput;
+
 
 /******************************************************************************
  * Structures for internal C parsing API.
@@ -142,6 +157,7 @@ typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *status;
     PyObject *reason;
+    size_t s;
 } DeguResponse;
 
 #define NEW_DEGU_HEADERS \
@@ -197,6 +213,10 @@ static PyObject * format_request(PyObject *, PyObject *);
 static PyObject * format_response(PyObject *, PyObject *);
 static PyObject * format_chunk(PyObject *, PyObject *);
 
+static PyObject * render_headers(PyObject *, PyObject *);
+static PyObject * render_request(PyObject *, PyObject *);
+static PyObject * render_response(PyObject *, PyObject *);
+
 /* Misc */
 static PyObject * readchunk(PyObject *, PyObject *);
 static PyObject * write_chunk(PyObject *, PyObject *);
@@ -206,6 +226,9 @@ static PyObject * set_output_headers(PyObject *, PyObject *);
 static PyObject * Bodies(PyObject *, PyObject *);
 static PyObject * Request(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
+
+/* Server and client entry points */
+static PyObject * handle_requests(PyObject *, PyObject *);
 
 static struct PyMethodDef degu_functions[] = {
     /* Header parsing */
@@ -236,6 +259,9 @@ static struct PyMethodDef degu_functions[] = {
     {"format_request", format_request, METH_VARARGS, NULL},
     {"format_response", format_response, METH_VARARGS, NULL},
     {"format_chunk", format_chunk, METH_VARARGS, NULL},
+    {"render_headers", render_headers, METH_VARARGS, NULL},
+    {"render_request", render_request, METH_VARARGS, NULL},
+    {"render_response", render_response, METH_VARARGS, NULL},
 
     /* Misc */
     {"readchunk", readchunk, METH_VARARGS, NULL},
@@ -246,6 +272,9 @@ static struct PyMethodDef degu_functions[] = {
     {"Bodies", Bodies, METH_VARARGS, NULL},
     {"Request", Request, METH_VARARGS, NULL},
     {"Response", Response, METH_VARARGS, NULL},
+
+    /* Server and client entry points */
+    {"handle_requests", handle_requests, METH_VARARGS, NULL},
 
     {NULL, NULL, 0, NULL}
 };
@@ -384,18 +413,15 @@ static PyTypeObject ContentRangeType = {
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
-    bool closed;
     PyObject *recv_into;
-    uint8_t *scratch;
-    uint64_t rawtell;
     uint8_t *buf;
-    size_t len;
+    uint64_t rawtell;
     size_t start;
     size_t stop;
 } Reader;
 
 static bool _Reader_readinto(Reader *, DeguDst);
-static bool _Reader_readchunkline(Reader *, DeguChunk *);
+static bool _Reader_read_chunkline(Reader *, DeguChunk *);
 
 static PyObject * Reader_rawtell(Reader *);
 static PyObject * Reader_tell(Reader *);
@@ -404,8 +430,6 @@ static PyObject * Reader_read_response(Reader *, PyObject *);
 static PyObject * Reader_expose(Reader *);
 static PyObject * Reader_peek(Reader *, PyObject *);
 static PyObject * Reader_read_until(Reader *, PyObject *);
-static PyObject * Reader_readchunk(Reader *);
-static PyObject * Reader_read(Reader *, PyObject *);
 static PyObject * Reader_readinto(Reader *, PyObject *);
 
 static PyMethodDef Reader_methods[] = {
@@ -416,8 +440,6 @@ static PyMethodDef Reader_methods[] = {
     {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
     {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
     {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS, NULL},
-    {"readchunk", (PyCFunction)Reader_readchunk, METH_NOARGS, NULL},
-    {"read", (PyCFunction)Reader_read, METH_VARARGS, NULL},
     {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
     {NULL}
 };
@@ -464,6 +486,18 @@ static PyTypeObject ReaderType = {
     (initproc)Reader_init,        /* tp_init */
 };
 
+#define READER_CLASS ((PyObject *)&ReaderType)
+#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
+#define READER(obj) ((Reader *)(obj))
+
+typedef struct {
+    Reader *reader;
+    PyObject *readinto;
+    PyObject *readline;
+} DeguRObj;
+
+#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
+
 
 /******************************************************************************
  * Writer object.
@@ -471,20 +505,20 @@ static PyTypeObject ReaderType = {
 typedef struct {
     PyObject_HEAD
     PyObject *send;
+    uint8_t *buf;
     uint64_t tell;
+    size_t stop;
 } Writer;
 
 static ssize_t _Writer_write(Writer *, DeguSrc);
 
 static PyObject * Writer_tell(Writer *);
-static PyObject * Writer_write(Writer *, PyObject *);
 static PyObject * Writer_write_output(Writer *, PyObject *);
 static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
 static PyMethodDef Writer_methods[] = {
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
-    {"write", (PyCFunction)Writer_write, METH_VARARGS, NULL},
     {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
@@ -533,6 +567,17 @@ static PyTypeObject WriterType = {
     (initproc)Writer_init,        /* tp_init */
 };
 
+#define WRITER_CLASS ((PyObject *)&WriterType)
+#define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
+#define WRITER(obj) ((Writer *)(obj))
+
+typedef struct {
+    Writer *writer;
+    PyObject *write;
+} DeguWObj;
+
+#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
+
 
 /******************************************************************************
  * Body object.
@@ -540,7 +585,7 @@ static PyTypeObject WriterType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *robj;
+    DeguRObj robj;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -548,7 +593,7 @@ typedef struct {
 } Body;
 
 static PyObject * _Body_New(PyObject *, uint64_t);
-static int64_t _Body_write_to(Body *, PyObject *);
+static int64_t _Body_write_to(Body *, DeguWObj *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
@@ -612,6 +657,9 @@ static PyTypeObject BodyType = {
     (initproc)Body_init,                /* tp_init */
 };
 
+#define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
+#define BODY(obj) ((Body *)(obj))
+
 
 /******************************************************************************
  * ChunkedBody object.
@@ -619,14 +667,13 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    PyObject *robj;
-    PyObject *readline;
+    DeguRObj robj;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
 
 static PyObject * _ChunkedBody_New(PyObject *);
-static int64_t _ChunkedBody_write_to(ChunkedBody *, PyObject *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -691,6 +738,9 @@ static PyTypeObject ChunkedBodyType = {
     (initproc)ChunkedBody_init,         /* tp_init */
 };
 
+#define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
+#define CHUNKED_BODY(obj) ((ChunkedBody *)(obj))
+
 
 /******************************************************************************
  * BodyIter object.
@@ -702,7 +752,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-static int64_t _BodyIter_write_to(BodyIter *, PyObject *);
+static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
@@ -761,6 +811,9 @@ static PyTypeObject BodyIterType = {
     (initproc)BodyIter_init,                /* tp_init */
 };
 
+#define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
+#define BODY_ITER(obj) ((BodyIter *)(obj))
+
 
 /******************************************************************************
  * ChunkedBodyIter object.
@@ -771,7 +824,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, PyObject *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},
@@ -828,4 +881,219 @@ static PyTypeObject ChunkedBodyIterType = {
     0,                                      /* tp_dictoffset */
     (initproc)ChunkedBodyIter_init,         /* tp_init */
 };
+
+#define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
+#define CHUNKED_BODY_ITER(obj) ((ChunkedBodyIter *)(obj))
+
+
+/******************************************************************************
+ * Connection object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *sock;
+    PyObject *base_headers;
+    PyObject *bodies;
+    PyObject *reader;
+    PyObject *writer;
+    PyObject *response_body;
+    bool closed;
+} Connection;
+
+static PyMemberDef Connection_members[] = {
+    {"sock",         T_OBJECT_EX, offsetof(Connection, sock),         READONLY, NULL},
+    {"base_headers", T_OBJECT_EX, offsetof(Connection, base_headers), READONLY, NULL},
+    {"bodies",       T_OBJECT_EX, offsetof(Connection, bodies),       READONLY, NULL},
+    {"closed",       T_BOOL,      offsetof(Connection, closed),       READONLY, NULL},
+    {NULL}
+};
+
+static PyObject * Connection_close(Connection *);
+static PyObject * Connection_request(Connection *, PyObject *);
+static PyObject * Connection_put(Connection *, PyObject *);
+static PyObject * Connection_post(Connection *, PyObject *);
+static PyObject * Connection_get(Connection *, PyObject *);
+static PyObject * Connection_head(Connection *, PyObject *);
+static PyObject * Connection_delete(Connection *, PyObject *);
+static PyObject * Connection_get_range(Connection *, PyObject *);
+
+static PyMethodDef Connection_methods[] = {
+    {"close",     (PyCFunction)Connection_close,     METH_NOARGS,  NULL},
+    {"request",   (PyCFunction)Connection_request,   METH_VARARGS, NULL},
+    {"put",       (PyCFunction)Connection_put,       METH_VARARGS, NULL},
+    {"post",      (PyCFunction)Connection_post,      METH_VARARGS, NULL},
+    {"get",       (PyCFunction)Connection_get,       METH_VARARGS, NULL},
+    {"head",      (PyCFunction)Connection_head,      METH_VARARGS, NULL},
+    {"delete",    (PyCFunction)Connection_delete,    METH_VARARGS, NULL},
+    {"get_range", (PyCFunction)Connection_get_range, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static void _Connection_shutdown(Connection *);
+static void Connection_dealloc(Connection *);
+static int Connection_init(Connection *, PyObject *, PyObject *);
+
+static PyTypeObject ConnectionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Connection",            /* tp_name */
+    sizeof(Connection),                 /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Connection_dealloc,     /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    0,                                  /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_FINALIZE,                 /* tp_flags */
+    "Connection(sock, base_headers)",   /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    Connection_methods,                 /* tp_methods */
+    Connection_members,                 /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Connection_init,          /* tp_init */
+};
+
+
+/***************    BEGIN GENERATED TABLES    *********************************/
+static const uint8_t _NAME[256] = {
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255, 45,255,255, //                           '-'
+     48, 49, 50, 51, 52, 53, 54, 55, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+     56, 57,255,255,255,255,255,255, //  '8'  '9'
+    255, 97, 98, 99,100,101,102,103, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
+    104,105,106,107,108,109,110,111, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+    112,113,114,115,116,117,118,119, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+    120,121,122,255,255,255,255,255, //  'X'  'Y'  'Z'
+    255, 97, 98, 99,100,101,102,103, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+    104,105,106,107,108,109,110,111, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+    112,113,114,115,116,117,118,119, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+    120,121,122,255,255,255,255,255, //  'x'  'y'  'z'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+};
+
+static const uint8_t _NUMBER[256] = {
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+      0,  1,  2,  3,  4,  5,  6,  7, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+      8,  9,255,255,255,255,255,255, //  '8'  '9'
+    255, 26, 27, 28, 29, 30, 31,255, //       'A'  'B'  'C'  'D'  'E'  'F'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255, 26, 27, 28, 29, 30, 31,255, //       'a'  'b'  'c'  'd'  'e'  'f'
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+    255,255,255,255,255,255,255,255,
+};
+
+/*
+ * LOWER  1 00000001  b'-0123456789abcdefghijklmnopqrstuvwxyz'
+ * UPPER  2 00000010  b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+ * URI    4 00000100  b'/?'
+ * PATH   8 00001000  b'+.:_~'
+ * QUERY 16 00010000  b'%&='
+ * SPACE 32 00100000  b' '
+ * VALUE 64 01000000  b'"\'()*,;[]'
+ */
+#define KEY_MASK    254  // 11111110 ~(LOWER)
+#define VAL_MASK    128  // 10000000 ~(LOWER|UPPER|PATH|QUERY|URI|SPACE|VALUE)
+#define URI_MASK    224  // 11100000 ~(LOWER|UPPER|PATH|QUERY|URI)
+#define PATH_MASK   244  // 11110100 ~(LOWER|UPPER|PATH)
+#define QUERY_MASK  228  // 11100100 ~(LOWER|UPPER|PATH|QUERY)
+#define REASON_MASK 220  // 11011100 ~(LOWER|UPPER|SPACE)
+#define EXTKEY_MASK 252  // 11111100 ~(LOWER|UPPER)
+#define EXTVAL_MASK 180  // 10110100 ~(LOWER|UPPER|PATH|VALUE)
+static const uint8_t _FLAG[256] = {
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+     32,128, 64,128,128, 16, 16, 64, //  ' '       '"'            '%'  '&'  "'"
+     64, 64, 64,  8, 64,  1,  8,  4, //  '('  ')'  '*'  '+'  ','  '-'  '.'  '/'
+      1,  1,  1,  1,  1,  1,  1,  1, //  '0'  '1'  '2'  '3'  '4'  '5'  '6'  '7'
+      1,  1,  8, 64,128, 16,128,  4, //  '8'  '9'  ':'  ';'       '='       '?'
+    128,  2,  2,  2,  2,  2,  2,  2, //       'A'  'B'  'C'  'D'  'E'  'F'  'G'
+      2,  2,  2,  2,  2,  2,  2,  2, //  'H'  'I'  'J'  'K'  'L'  'M'  'N'  'O'
+      2,  2,  2,  2,  2,  2,  2,  2, //  'P'  'Q'  'R'  'S'  'T'  'U'  'V'  'W'
+      2,  2,  2, 64,128, 64,128,  8, //  'X'  'Y'  'Z'  '['       ']'       '_'
+    128,  1,  1,  1,  1,  1,  1,  1, //       'a'  'b'  'c'  'd'  'e'  'f'  'g'
+      1,  1,  1,  1,  1,  1,  1,  1, //  'h'  'i'  'j'  'k'  'l'  'm'  'n'  'o'
+      1,  1,  1,  1,  1,  1,  1,  1, //  'p'  'q'  'r'  's'  't'  'u'  'v'  'w'
+      1,  1,  1,128,128,128,  8,128, //  'x'  'y'  'z'                 '~'
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+    128,128,128,128,128,128,128,128,
+};
+/***************    END GENERATED TABLES      *********************************/
 

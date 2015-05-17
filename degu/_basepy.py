@@ -31,18 +31,20 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
+import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
-_MAX_LINE_SIZE = 4096  # Max length of line in HTTP preamble, including CRLF
-MIN_PREAMBLE     =  4096  #  4 KiB
-DEFAULT_PREAMBLE = 32768  # 32 KiB
-MAX_PREAMBLE     = 65536  # 64 KiB
-MAX_IO_SIZE = 16777216  # 16 MiB
-MAX_LENGTH = 9999999999999999
-MAX_READ_SIZE = 16777216  # 16 MiB
+BUF_LEN = 32768  # 32 KiB
+SCRATCH_LEN = 32
+MAX_LINE_LEN = 4096  # Max length of chunk size line, including CRLF
+
+MAX_CL_LEN = 16  # Max length (in bytes) of a content-length/etc
+MAX_LENGTH = 9999999999999999  # Max value for content-length/etc
+
 IO_SIZE = 1048576  # 1 MiB
+MAX_IO_SIZE = 16777216  # 16 MiB
 
 BODY_READY = 0
 BODY_STARTED = 1
@@ -61,7 +63,7 @@ _OK = 'OK'
 
 
 BodiesType = Bodies = namedtuple('Bodies',
-    'Body BodyIter ChunkedBody ChunkedBodyIter'
+    'Body ChunkedBody BodyIter ChunkedBodyIter'
 )
 RequestType = Request = namedtuple('Request',
     'method uri headers body script path query'
@@ -208,7 +210,7 @@ def _write_to(wobj, src):
     if len(src) == 0:
         return 0
     if type(wobj) is Writer:
-        return wobj.write(src)
+        return wobj._write(src)
     return _write(wobj, src)
 
 
@@ -228,8 +230,6 @@ def _get_wobj(wfile):
     if type(wfile) is Writer:
         return wfile
     return _getcallable('wfile', wfile, 'write')
-
-
 
 
 class Range:
@@ -259,47 +259,15 @@ class Range:
     def __str__(self):
         return 'bytes={}-{}'.format(self._start, self._stop - 1)
 
-    def __get_this(self, other):
-        if type(other) is tuple or type(other) is type(self):
-            return (self._start, self._stop)
-        if type(other) is str:
-            return str(self)
-
-    def __lt__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this < other
-
-    def __le__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this <= other
-
     def __eq__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this == other
+        if type(other) is type(self):
+            return self._start == other._start and self._stop == other._stop
+        if type(other) is str:
+            return str(self) == other
+        raise TypeError('cannot compare Range() with {!r}'.format(type(other)))
 
     def __ne__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this != other
-
-    def __gt__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this > other
-
-    def __ge__(self, other):
-        this = self.__get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this >= other
+        return not self.__eq__(other)
 
 
 class ContentRange:
@@ -341,47 +309,20 @@ class ContentRange:
             self._start, self._stop - 1, self._total
         )
 
-    def _get_this(self, other):
-        if type(other) is tuple or type(other) is ContentRange:
-            return (self._start, self._stop, self._total)
-        if type(other) is str:
-            return str(self)
-
-    def __lt__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this < other
-
-    def __le__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this <= other
-
     def __eq__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this == other
+        if type(other) is type(self):
+            return (self._start == other._start
+                and self._stop == other._stop
+                and self._total == other._total
+            )
+        if type(other) is str:
+            return str(self) == other
+        raise TypeError(
+            'cannot compare ContentRange() with {!r}'.format(type(other))
+        )
 
     def __ne__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this != other
-
-    def __gt__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this > other
-
-    def __ge__(self, other):
-        this = self._get_this(other)
-        if this is None:
-            return NotImplemented 
-        return this >= other
+        return not self.__eq__(other)
 
 
 def _parse_key(src):
@@ -496,7 +437,9 @@ def _raise_bad_range(src):
 
 def parse_range(src):
     assert isinstance(src, bytes)
-    if len(src) < 9 or len(src) > 39 or src[0:6] != b'bytes=':
+    if len(src) > 39:
+        raise ValueError('range too long: {!r}...'.format(src[:39]))
+    if len(src) < 9 or src[0:6] != b'bytes=':
         _raise_bad_range(src)
     inner = src[6:]
     parts = inner.split(b'-', 1)
@@ -514,7 +457,9 @@ def _bad_content_range(src):
 
 def parse_content_range(src):
     assert isinstance(src, bytes)
-    if len(src) < 11 or len(src) > 56 or src[0:6] != b'bytes ':
+    if len(src) > 56:
+        raise  ValueError('content-range too long: {!r}...'.format(src[:56]))
+    if len(src) < 11 or src[0:6] != b'bytes ':
         _bad_content_range(src)
     inner = src[6:]
     a = inner.split(b'-', 1)
@@ -771,34 +716,34 @@ def format_response(status, reason, headers):
     return ''.join(lines).encode()
 
 
+def _check_type2(name, obj, _type):
+    if type(obj) is not _type:
+        raise TypeError(
+            '{}: need a {!r}; got a {!r}'.format(name, _type, type(obj))
+        )
+
+def _check_tuple(name, obj, size):
+    _check_type2(name, obj, tuple)
+    if len(obj) != size:
+        raise ValueError(
+            '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
+        )
+    return obj
+
+def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
+    assert max_len <= MAX_IO_SIZE
+    _check_type2(name, obj, bytes)
+    if len(obj) > max_len:
+        raise ValueError(
+            'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
+        )
+
 def _validate_chunk(chunk):
-    if type(chunk) is not tuple:
-        raise TypeError(
-            'chunk must be a {!r}; got a {!r}'.format(tuple, type(chunk))
-        )
-    if len(chunk) != 2:
-        raise ValueError(
-            'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
-        )
+    _check_tuple('chunk', chunk, 2)
     (ext, data) = chunk
-    if type(data) is not bytes:
-        raise TypeError(
-            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, type(data))
-        )
-    if len(data) > MAX_IO_SIZE:
-        raise ValueError(
-            'need len(chunk[1]) <= {}; got {}'.format(MAX_IO_SIZE, len(data))
-        )
-    if ext is None:
-        return chunk
-    if type(ext) is not tuple:
-        raise TypeError(
-            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, type(ext))
-        )
-    if len(ext) != 2:
-        raise ValueError(
-            'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
-        )
+    if ext is not None:
+        _check_tuple('chunk[0]', ext, 2)
+    _check_bytes('chunk[1]', data, MAX_IO_SIZE)
     return chunk
 
 
@@ -817,12 +762,16 @@ def format_chunk(chunk):
     return '{:x};{}={}\r\n'.format(len(data), key, value).encode()
 
 
-def write_chunk(wfile, chunk):
+def _write_chunk(wobj, chunk):
     line = format_chunk(chunk)
-    total = wfile.write(line)
-    total += wfile.write(chunk[1])
-    total += wfile.write(b'\r\n')
+    total =  _write_to(wobj, line)
+    total += _write_to(wobj, chunk[1])
+    total += _write_to(wobj, b'\r\n')
     return total
+
+
+def write_chunk(wfile, chunk):
+    return _write_chunk(_get_wobj(wfile), chunk)
 
 
 ################################################################################
@@ -838,17 +787,10 @@ class Reader:
         '_closed',
     )
 
-    def __init__(self, sock, size=DEFAULT_PREAMBLE):
-        assert isinstance(size, int)
-        if not (MIN_PREAMBLE <= size <= MAX_PREAMBLE):
-            raise ValueError(
-                'need {!r} <= size <= {!r}; got {!r}'.format(
-                    MIN_PREAMBLE, MAX_PREAMBLE, size
-                )
-            )
+    def __init__(self, sock):
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(size))
+        self._rawbuf = memoryview(bytearray(BUF_LEN))
         self._start = 0
         self._buf = b''
         self._closed = False
@@ -1002,17 +944,6 @@ class Reader:
         line = self.read_until(4096, b'\r\n')
         return parse_chunk(line)
 
-    def readchunk(self):
-        line = self.read_until(4096, b'\r\n')
-        (size, ext) = parse_chunk(line)
-        data = self.read(size + 2)
-        if len(data) != size + 2:
-            raise ValueError('underflow: {} < {}'.format(len(data), size + 2))
-        end = data[-2:]
-        if end != b'\r\n':
-            raise ValueError('bad chunk data termination: {!r}'.format(end))
-        return (ext, data[:-2])
-
     def readinto(self, dst):
         dst = memoryview(dst)
         dst_len = len(dst)
@@ -1029,19 +960,6 @@ class Reader:
         assert dst_len == src_len + added
         return dst_len
 
-    def read(self, size):
-        assert isinstance(size, int)
-        if not (0 <= size <= MAX_IO_SIZE):
-            raise ValueError(
-                'need 0 <= size <= {}; got {}'.format(MAX_IO_SIZE, size)
-            )
-        if size == 0:
-            return b''
-        dst = memoryview(bytearray(size))
-        self.readinto(dst)
-        return dst.tobytes()
-
-
 
 ################################################################################
 # Writer:
@@ -1049,7 +967,6 @@ class Reader:
 def set_default_header(headers, key, val):
     assert isinstance(headers, dict)
     assert isinstance(key, str)
-    assert isinstance(val, (str, int))
     cur = headers.setdefault(key, val)
     if val != cur:
         raise ValueError(
@@ -1086,21 +1003,21 @@ class Writer:
     def tell(self):
         return self._tell
 
-    def write(self, buf):
+    def _write(self, buf):
         size = _write(self._sock_send, buf)
         self._tell += size
         return size
 
     def write_output(self, preamble, body):
         if body is None:
-            return self.write(preamble)
+            return self._write(preamble)
         if type(body) is bytes:
-            return self.write(preamble + body)
+            return self._write(preamble + body)
         if type(body) not in bodies:
             raise TypeError(
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
-        self.write(preamble)
+        self._write(preamble)
         orig_tell = self.tell()
         total = _validate_length("total_wrote", body.write_to(self))
         delta = self.tell() - orig_tell
@@ -1236,7 +1153,8 @@ class Body:
             raise
 
     def write_to(self, wfile):
-        total = sum(wfile.write(data) for data in self)
+        wobj = _get_wobj(wfile)
+        total = sum(_write_to(wobj, data) for data in self)
         assert total == self._content_length
         return total
 
@@ -1445,11 +1363,7 @@ class BodyIter:
         try:
             for part in self._source:
                 if type(part) is not bytes:
-                    raise TypeError(
-                        'need a {!r}; source contains a {!r}'.format(
-                            bytes, type(part)
-                        )
-                    )
+                    _check_bytes('BodyIter source item', part)
                 total += _write_to(wobj, part)
                 if total > length:
                     raise ValueError(
@@ -1487,13 +1401,14 @@ class ChunkedBodyIter:
     def write_to(self, wfile):
         _check_body_state('ChunkedBodyIter', self._state, BODY_READY)
         self._state = BODY_STARTED
+        wobj = _get_wobj(wfile)
         empty = False
         total = 0
         try:
             for chunk in self._source:
                 if empty:
                     raise ValueError('additional chunk after empty chunk data')
-                total += write_chunk(wfile, chunk)
+                total += _write_chunk(wobj, chunk)
                 if not chunk[1]:  # Is chunk data empty?
                     empty = True
             if not empty:
@@ -1504,6 +1419,158 @@ class ChunkedBodyIter:
         self._state = BODY_CONSUMED
         return total
 
-
 # Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+bodies = Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter)
+
+
+def _check_dict(name, obj):
+    if type(obj) is not dict:
+        raise TypeError(
+            TYPE_ERROR.format(name, dict, type(obj), obj)
+        )
+
+
+def _body_is_consumed(body):
+    if body is None:
+        return True
+    assert type(body) in (Body, ChunkedBody)
+    return body._state == BODY_CONSUMED
+
+
+def _unpack_response(obj):
+    if type(obj) is Response:
+        return obj
+    return _check_tuple('response', obj, 4)   
+
+def _check_status(status):
+    _validate_int('status', status)
+    if not 100 <= status <= 599:
+        raise ValueError(
+            'need 100 <= status <= 599; got {}'.format(status)
+        )
+
+def handle_requests(app, max_requests, sock, session):
+    reader = Reader(sock)
+    writer = Writer(sock)
+    for count in range(1, max_requests + 1):
+        request = reader.read_request()
+        response = app(session, request, bodies)
+        (status, reason, headers, body) = _unpack_response(response)
+        _check_status(status)
+
+        # Make sure application fully consumed request body:
+        if not _body_is_consumed(request.body):
+            raise ValueError(
+                'request body not consumed: {!r}'.format(request.body)
+            )
+
+        # FIXME: when 200 <= status <= 299, we should consider requiring that
+        # the response body not be None
+
+        # Make sure HEAD requests are properly handled:
+        if request.method == 'HEAD' and body is not None:
+            raise TypeError(
+                'request method is HEAD, but response body is not None: {!r}'.format(
+                    type(body)
+                )
+            )
+            # FIXME: when 200 <= status <= 299, we should consider requiring
+            # a 'content-length' or 'transfer-encoding' header in the response
+            # to a HEAD request
+
+        # Write response:
+        writer.write_response(status, reason, headers, body)
+
+        # Update session counter:
+        session['requests'] = count
+
+        # Possibly close the connection:
+        if status >= 400 and status not in {404, 409, 412}:
+            break
+
+    # Make sure sndbuf gets flushed:
+    sock.close()
+    return count
+
+
+class Connection:
+    __slots__ = (
+        'sock',
+        'base_headers',
+        '_reader',
+        '_writer',
+        '_response_body',
+        '_closed',
+        '_bodies',
+    )
+
+    def __init__(self, sock, base_headers):
+        self._closed = False
+        self.sock = sock
+        if base_headers is not None:
+            _check_dict('base_headers', base_headers)
+        self.base_headers = base_headers
+        self._reader = Reader(sock)
+        self._writer = Writer(sock)
+        self._response_body = None
+        self._closed = False
+        self._bodies = bodies
+
+    @property
+    def closed(self):
+        return self._closed
+
+    @property
+    def bodies(self):
+        return self._bodies
+
+    def __del__(self):
+        self._shutdown()
+
+    def _shutdown(self, how=socket.SHUT_RDWR):
+        if self._closed is not True:
+            self._closed = True
+            try:
+                self.sock.shutdown(how)
+            except:
+                pass
+
+    def close(self):
+        self._shutdown()
+
+    def request(self, method, uri, headers, body):
+        if self._closed is not False:
+            raise ValueError('Connection is closed')
+        try:
+            if not _body_is_consumed(self._response_body):
+                raise ValueError(
+                    'response body not consumed: {!r}'.format(self._response_body)
+                )
+            if self.base_headers:
+                headers.update(self.base_headers)
+            self._writer.write_request(method, uri, headers, body)
+            response = self._reader.read_response(method)
+            self._response_body = response.body
+            return response
+        except Exception:
+            self._shutdown()
+            raise
+
+    def put(self, uri, headers, body):
+        return self.request('PUT', uri, headers, body)
+
+    def post(self, uri, headers, body):
+        return self.request('POST', uri, headers, body)
+
+    def get(self, uri, headers):
+        return self.request('GET', uri, headers, None)
+
+    def head(self, uri, headers):
+        return self.request('HEAD', uri, headers, None)
+
+    def delete(self, uri, headers):
+        return self.request('DELETE', uri, headers, None)
+
+    def get_range(self, uri, headers, start, stop):
+        set_default_header(headers, 'range', Range(start, stop))
+        return self.request('GET', uri, headers, None)

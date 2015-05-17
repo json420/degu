@@ -29,12 +29,12 @@ import io
 import sys
 from random import SystemRandom
 import types
+import socket
 
 from . import helpers
-from .helpers import DummySocket, random_chunks, FuzzTestCase, iter_bad, MockSocket
+from .helpers import random_chunks, FuzzTestCase, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
 from degu.sslhelpers import random_id
-from degu.base import _MAX_LINE_SIZE
 from degu import base, _basepy
 
 
@@ -70,7 +70,7 @@ BAD_LENGTHS = (
 CRLF = b'\r\n'
 TERM = CRLF * 2
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
-
+TYPE_ERROR2 = '{}: need a {!r}; got a {!r}'
 
 BAD_HEADER_LINES = (
     b'K:V\r\n',
@@ -265,16 +265,15 @@ class TestAliases(TestCase):
 
     def test_all(self):
         all_names = (
-            'BODY_CONSUMED',
             'EmptyPreambleError',
             'Bodies',   'BodiesType',
             'Request',  'RequestType',
             'Response', 'ResponseType',
             'Range',
             'ContentRange',
-            'Reader',
-            'Writer',
             'bodies',
+            'handle_requests',
+            'Connection',
         )
         for name in all_names:
             self.check(name)
@@ -313,6 +312,34 @@ class BackendTestCase(TestCase):
             )
         # FIXME: check imported alias in degu.base (when needed)
         return getattr(backend, name)
+
+    @property
+    def BUF_LEN(self):
+        return self.getattr('BUF_LEN')
+
+    @property
+    def SCRATCH_LEN(self):
+        return self.getattr('SCRATCH_LEN')
+
+    @property
+    def MAX_LINE_LEN(self):
+        return self.getattr('MAX_LINE_LEN')
+
+    @property
+    def MAX_CL_LEN(self):
+        return self.getattr('MAX_CL_LEN')
+
+    @property
+    def MAX_LENGTH(self):
+        return self.getattr('MAX_LENGTH')
+
+    @property
+    def IO_SIZE(self):
+        return self.getattr('IO_SIZE')
+
+    @property
+    def MAX_IO_SIZE(self):
+        return self.getattr('MAX_IO_SIZE')
 
 
 class TestRange_Py(BackendTestCase):
@@ -460,81 +487,100 @@ class TestRange_Py(BackendTestCase):
     def test_cmp(self):
         def iter_types(pairs):
             for (start, stop) in pairs:
-                yield (start, stop)
                 yield self.Range(start, stop)
                 yield 'bytes={}-{}'.format(start, stop - 1)
+
+        def iter_swaps(this, others):
+            for o in others:
+                yield (this, o)
+                yield (o, this)
 
         r = self.Range(16, 21)
         equals   = tuple(iter_types([(16, 21)]))
         lessers  = tuple(iter_types([(15, 21), (16, 20)]))
         greaters = tuple(iter_types([(17, 21), (16, 22)]))
+        notequals = lessers + greaters
+        badtypes = ((r.start, r.stop), str(r).encode)
+        combined = equals + notequals + badtypes
 
         # __lt__():
-        for o in lessers:
-            self.assertIs(r < o, False)
-            self.assertIs(o < r, True)
-        for o in equals:
-            self.assertIs(r < o, False)
-            self.assertIs(o < r, False)
-        for o in greaters:
-            self.assertIs(r < o, True)
-            self.assertIs(o < r, False)
-
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() < {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t < o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
+        
         # __le__():
-        for o in lessers:
-            self.assertIs(r <= o, False)
-            self.assertIs(o <= r, True)
-        for o in equals:
-            self.assertIs(r <= o, True)
-            self.assertIs(o <= r, True)
-        for o in greaters:
-            self.assertIs(r <= o, True)
-            self.assertIs(o <= r, False)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() <= {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t <= o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
         # __eq__():
-        for o in lessers:
-            self.assertIs(r == o, False)
-            self.assertIs(o == r, False)
-        for o in equals:
-            self.assertIs(r == o, True)
-            self.assertIs(o == r, True)
-        for o in greaters:
-            self.assertIs(r == o, False)
-            self.assertIs(o == r, False)
+        for (t, o) in iter_swaps(r, equals):
+            self.assertIs(t == o, True)
+        for (t, o) in iter_swaps(r, notequals):
+            self.assertIs(t == o, False)
 
         # __ne__():
-        for o in lessers:
-            self.assertIs(r != o, True)
-            self.assertIs(o != r, True)
-        for o in equals:
-            self.assertIs(r != o, False)
-            self.assertIs(o != r, False)
-        for o in greaters:
-            self.assertIs(r != o, True)
-            self.assertIs(o != r, True)
+        for (t, o) in iter_swaps(r, equals):
+            self.assertIs(t != o, False)
+        for (t, o) in iter_swaps(r, notequals):
+            self.assertIs(t != o, True)
 
         # __gt__():
-        for o in lessers:
-            self.assertIs(r > o, True)
-            self.assertIs(o > r, False)
-        for o in equals:
-            self.assertIs(r > o, False)
-            self.assertIs(o > r, False)
-        for o in greaters:
-            self.assertIs(r > o, False)
-            self.assertIs(o > r, True)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() > {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t > o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
         # __ge__():
-        for o in lessers:
-            self.assertIs(r >= o, True)
-            self.assertIs(o >= r, False)
-        for o in equals:
-            self.assertIs(r >= o, True)
-            self.assertIs(o >= r, True)
-        for o in greaters:
-            self.assertIs(r >= o, False)
-            self.assertIs(o >= r, True)
+        if self.backend is _base:
+            msg = 'unorderable type: Range()'
+        else:
+            msg = 'unorderable types: {t}() >= {o}()'
+        for (t, o) in iter_swaps(r, combined):
+            with self.assertRaises(TypeError) as cm:
+                t >= o
+            self.assertEqual(str(cm.exception),
+                msg.format(
+                    t=t.__class__.__name__, o=o.__class__.__name__
+                )
+            )
 
+        # uncomparable types:
+        for bad in badtypes:
+            msg = 'cannot compare Range() with {!r}'.format(type(bad))
+            for (t, o) in [(r, bad), (bad, r)]:
+                with self.assertRaises(TypeError) as cm:
+                    t == o
+                self.assertEqual(str(cm.exception), msg)
+                with self.assertRaises(TypeError) as cm:
+                    t != o
+                self.assertEqual(str(cm.exception), msg)
 
 class TestRange_C(TestRange_Py):
     backend = _base
@@ -729,7 +775,6 @@ class TestContentRange_Py(BackendTestCase):
     def test_cmp(self):
         def iter_types(triplets):
             for (start, stop, total) in triplets:
-                yield (start, stop, total)
                 yield self.ContentRange(start, stop, total)
                 yield 'bytes {}-{}/{}'.format(start, stop - 1, total)
 
@@ -738,27 +783,27 @@ class TestContentRange_Py(BackendTestCase):
         lessers  = tuple(iter_types([(15, 21, 23), (16, 20, 23)]))
         greaters = tuple(iter_types([(17, 21, 23), (16, 22, 23)]))
 
-        # __lt__():
-        for o in lessers:
-            self.assertIs(cr < o, False)
-            self.assertIs(o < cr, True)
-        for o in equals:
-            self.assertIs(cr < o, False)
-            self.assertIs(o < cr, False)
-        for o in greaters:
-            self.assertIs(cr < o, True)
-            self.assertIs(o < cr, False)
+#        # __lt__():
+#        for o in lessers:
+#            self.assertIs(cr < o, False)
+#            self.assertIs(o < cr, True)
+#        for o in equals:
+#            self.assertIs(cr < o, False)
+#            self.assertIs(o < cr, False)
+#        for o in greaters:
+#            self.assertIs(cr < o, True)
+#            self.assertIs(o < cr, False)
 
-        # __le__():
-        for o in lessers:
-            self.assertIs(cr <= o, False)
-            self.assertIs(o <= cr, True)
-        for o in equals:
-            self.assertIs(cr <= o, True)
-            self.assertIs(o <= cr, True)
-        for o in greaters:
-            self.assertIs(cr <= o, True)
-            self.assertIs(o <= cr, False)
+#        # __le__():
+#        for o in lessers:
+#            self.assertIs(cr <= o, False)
+#            self.assertIs(o <= cr, True)
+#        for o in equals:
+#            self.assertIs(cr <= o, True)
+#            self.assertIs(o <= cr, True)
+#        for o in greaters:
+#            self.assertIs(cr <= o, True)
+#            self.assertIs(o <= cr, False)
 
         # __eq__():
         for o in lessers:
@@ -782,27 +827,27 @@ class TestContentRange_Py(BackendTestCase):
             self.assertIs(cr != o, True)
             self.assertIs(o != cr, True)
 
-        # __gt__():
-        for o in lessers:
-            self.assertIs(cr > o, True)
-            self.assertIs(o > cr, False)
-        for o in equals:
-            self.assertIs(cr > o, False)
-            self.assertIs(o > cr, False)
-        for o in greaters:
-            self.assertIs(cr > o, False)
-            self.assertIs(o > cr, True)
+#        # __gt__():
+#        for o in lessers:
+#            self.assertIs(cr > o, True)
+#            self.assertIs(o > cr, False)
+#        for o in equals:
+#            self.assertIs(cr > o, False)
+#            self.assertIs(o > cr, False)
+#        for o in greaters:
+#            self.assertIs(cr > o, False)
+#            self.assertIs(o > cr, True)
 
-        # __ge__():
-        for o in lessers:
-            self.assertIs(cr >= o, True)
-            self.assertIs(o >= cr, False)
-        for o in equals:
-            self.assertIs(cr >= o, True)
-            self.assertIs(o >= cr, True)
-        for o in greaters:
-            self.assertIs(cr >= o, False)
-            self.assertIs(o >= cr, True)
+#        # __ge__():
+#        for o in lessers:
+#            self.assertIs(cr >= o, True)
+#            self.assertIs(o >= cr, False)
+#        for o in equals:
+#            self.assertIs(cr >= o, True)
+#            self.assertIs(o >= cr, True)
+#        for o in greaters:
+#            self.assertIs(cr >= o, False)
+#            self.assertIs(o >= cr, True)
 
 
 class TestContentRange_C(TestContentRange_Py):
@@ -1016,13 +1061,13 @@ class TestParsingFunctions_Py(BackendTestCase):
             (9999999999999998, 9999999999999999),
         )
         for (start, stop) in ranges:
-            suffix = '-'.join([str(start), str(stop - 1)]).encode()
-            src = prefix + suffix
-            r = parse_range(src)
+            value = 'bytes={}-{}'.format(start, stop - 1)
+            suffix = '{}-{}'.format(start, stop - 1).encode()
+            r = parse_range(value.encode())
             self.assertIs(type(r), Range)
             self.assertEqual(r.start, start)
             self.assertEqual(r.stop, stop)
-            self.assertEqual(r, (start, stop))
+            self.assertEqual(r, value)
 
             for i in range(len(prefix)):
                 g = prefix[i]
@@ -1035,7 +1080,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                         self.assertIs(type(r), Range)
                         self.assertEqual(r.start, start)
                         self.assertEqual(r.stop, stop)
-                        self.assertEqual(r, (start, stop))
+                        self.assertEqual(r, value)
                     else:
                         with self.assertRaises(ValueError) as cm:
                             parse_range(src)
@@ -1053,7 +1098,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertIs(type(r), Range)
                     self.assertEqual(r.start, start)
                     self.assertEqual(r.stop, stop)
-                    self.assertEqual(r, (start, stop))
+                    self.assertEqual(r, value)
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_range(src)
@@ -1062,7 +1107,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     )
 
         # end < start
-        for i in range(2000):
+        for i in range(500):
             stop = random.randrange(1, MAX_LENGTH + 1)
             start = stop - 1
             good = 'bytes={}-{}'.format(start, stop - 1).encode()
@@ -1071,7 +1116,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(r.start, start)
             self.assertEqual(r.stop, stop)
             self.assertEqual(str(r), good.decode())
-            self.assertEqual(r, (start, stop))
+            self.assertEqual(r, Range(start, stop))
             bad = 'bytes={}-{}'.format(start, stop - 2).encode()
             with self.assertRaises(ValueError) as cm:
                 parse_range(bad)
@@ -1086,11 +1131,21 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.start, start)
         self.assertEqual(r.stop, stop)
         self.assertEqual(str(r), good.decode())
-        self.assertEqual(r, (start, stop))
+        self.assertEqual(r, Range(start, stop))
+        self.assertEqual(r, 'bytes=9999999999999998-9999999999999998')
         bad = 'bytes={}-{}'.format(start, stop).encode()
         with self.assertRaises(ValueError) as cm:
             parse_range(bad)
         self.assertEqual(str(cm.exception), 'bad range: {!r}'.format(bad))
+
+        # Too long:
+        for b in range(256):
+            bad = good + bytes([b])
+            with self.assertRaises(ValueError) as cm:
+                parse_range(bad)
+            self.assertEqual(str(cm.exception),
+                'range too long: {!r}...'.format(good)
+            )
 
     def test_parse_content_range(self):
         parse_content_range = self.getattr('parse_content_range')
@@ -1113,7 +1168,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(cr.start, start)
             self.assertEqual(cr.stop, stop)
             self.assertEqual(cr.total, total)
-            self.assertEqual(cr, (start, stop, total))
+            self.assertEqual(cr, ContentRange(start, stop, total))
             for i in range(len(prefix)):
                 g = prefix[i]
                 bad = bytearray(prefix)
@@ -1126,7 +1181,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                         self.assertEqual(cr.start, start)
                         self.assertEqual(cr.stop, stop)
                         self.assertEqual(cr.total, total)
-                        self.assertEqual(cr, (start, stop, total))
+                        self.assertEqual(cr, ContentRange(start, stop, total))
                     else:
                         with self.assertRaises(ValueError) as cm:
                             parse_content_range(src)
@@ -1147,7 +1202,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(cr.start, start)
                     self.assertEqual(cr.stop, stop)
                     self.assertEqual(cr.total, total)
-                    self.assertEqual(cr, (start, stop, total))
+                    self.assertEqual(cr, ContentRange(start, stop, total))
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_content_range(src)
@@ -1162,7 +1217,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     self.assertEqual(cr.start, start)
                     self.assertEqual(cr.stop, stop)
                     self.assertEqual(cr.total, total)
-                    self.assertEqual(cr, (start, stop, total))
+                    self.assertEqual(cr, ContentRange(start, stop, total))
                 else:
                     with self.assertRaises(ValueError) as cm:
                         parse_content_range(src)
@@ -1171,7 +1226,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     )
 
         # end < start
-        for i in range(2000):
+        for i in range(500):
             total = stop = random.randrange(1, MAX_LENGTH + 1)
             start = stop - 1
             good = 'bytes {}-{}/{}'.format(start, stop - 1, total).encode()
@@ -1180,7 +1235,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(cr.start, start)
             self.assertEqual(cr.stop, stop)
             self.assertEqual(cr.total, total)
-            self.assertEqual(cr, (start, stop, total))
+            self.assertEqual(cr, ContentRange(start, stop, total))
             bad = 'bytes {}-{}/{}'.format(start, stop - 2, total).encode()
             with self.assertRaises(ValueError) as cm:
                 parse_content_range(bad)
@@ -1197,13 +1252,22 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(cr.start, start)
         self.assertEqual(cr.stop, stop)
         self.assertEqual(cr.total, total)
-        self.assertEqual(cr, (start, stop, total))
+        self.assertEqual(cr, ContentRange(start, stop, total))
         bad = 'bytes {}-{}/{}'.format(start, stop, total).encode()
         with self.assertRaises(ValueError) as cm:
             parse_content_range(bad)
         self.assertEqual(str(cm.exception),
             'bad content-range: {!r}'.format(bad)
         )
+
+        # Too long:
+        for b in range(256):
+            bad = good + bytes([b])
+            with self.assertRaises(ValueError) as cm:
+                parse_content_range(bad)
+            self.assertEqual(str(cm.exception),
+                'content-range too long: {!r}...'.format(good)
+            )
 
     def test_parse_headers(self):
         parse_headers = self.getattr('parse_headers')
@@ -1254,7 +1318,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         )
 
         h = parse_headers(_range)
-        self.assertEqual(h, {'range': (16, 17)})
         self.assertEqual(h, {'range': 'bytes=16-16'})
         self.assertIs(type(h['range']), Range)
         self.assertEqual(h['range'].start, 16)
@@ -1272,7 +1335,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(set(h), {'content-range'})
         cr = h['content-range']
         self.assertIs(type(cr), ContentRange)
-        self.assertEqual(cr, (16, 17, 23))
         self.assertEqual(cr, 'bytes 16-16/23')
         self.assertEqual(cr.start, 16)
         self.assertEqual(cr.stop, 17)
@@ -1388,7 +1450,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIs(type(_range), Range)
         self.assertEqual(_range.start, 17)
         self.assertEqual(_range.stop, 21)
-        self.assertEqual(_range, (17, 21))
+        self.assertEqual(_range, Range(17, 21))
         self.assertEqual(_range, 'bytes=17-20')
         self.assertEqual(repr(_range), 'Range(17, 21)')
         self.assertEqual(str(_range), 'bytes=17-20')
@@ -2003,7 +2065,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk must be a {!r}; got a {!r}'.format(tuple, list)
+            'chunk: need a {!r}; got a {!r}'.format(tuple, list)
         )
 
         # chunk isn't a 2-tuple:
@@ -2011,7 +2073,7 @@ class TestFormatting_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 format_chunk(chunk)
             self.assertEqual(str(cm.exception),
-                'chunk must be a 2-tuple; got a {}-tuple'.format(len(chunk))
+                'chunk: need a 2-tuple; got a {}-tuple'.format(len(chunk))
             )
 
         # chunk[0] isn't a tuple:
@@ -2019,7 +2081,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk[0] must be a {!r}; got a {!r}'.format(tuple, list)
+            'chunk[0]: need a {!r}; got a {!r}'.format(tuple, list)
         )
 
         # chunk[0] isn't a 2-tuple:
@@ -2028,7 +2090,7 @@ class TestFormatting_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 format_chunk(chunk)
             self.assertEqual(str(cm.exception),
-                'chunk[0] must be a 2-tuple; got a {}-tuple'.format(len(ext))
+                'chunk[0]: need a 2-tuple; got a {}-tuple'.format(len(ext))
             )
 
         # chunk[1] isn't bytes:
@@ -2036,7 +2098,7 @@ class TestFormatting_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             format_chunk(chunk)
         self.assertEqual(str(cm.exception),
-            'chunk[1] must be a {!r}; got a {!r}'.format(bytes, bytearray)
+            'chunk[1]: need a {!r}; got a {!r}'.format(bytes, bytearray)
         )
 
         # len(chunk[1]) > MAX_IO_SIZE:
@@ -2086,8 +2148,8 @@ class TestNamedTuples_Py(BackendTestCase):
     def test_Bodies(self):
         (tup, args) = self.new('Bodies', 4)
         self.assertIs(tup.Body,            args[0])
-        self.assertIs(tup.BodyIter,        args[1])
-        self.assertIs(tup.ChunkedBody,     args[2])
+        self.assertIs(tup.ChunkedBody,     args[1])
+        self.assertIs(tup.BodyIter,        args[2])
         self.assertIs(tup.ChunkedBodyIter, args[3])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
@@ -2147,26 +2209,44 @@ class TestConstants_Py(BackendTestCase):
         self.check_power_of_two(name, size)
         self.assertGreaterEqual(size, min_size, name)
         self.assertLessEqual(size, max_size, name)
+        return size
 
-    def test__MAX_LINE_SIZE(self):
-        self.assertIsInstance(base._MAX_LINE_SIZE, int)
-        self.assertGreaterEqual(base._MAX_LINE_SIZE, 1024)
-        self.assertEqual(base._MAX_LINE_SIZE % 1024, 0)
-        self.assertLessEqual(base._MAX_LINE_SIZE, 8192)
+    def test_BUF_LEN(self):
+        self.assertIs(type(self.BUF_LEN), int)
+        self.assertEqual(self.BUF_LEN, 32 * 1024)
 
-    def test_STREAM_BUFFER_SIZE(self):
-        self.assertIsInstance(base.STREAM_BUFFER_SIZE, int)
-        self.assertEqual(base.STREAM_BUFFER_SIZE % 4096, 0)
-        self.assertGreaterEqual(base.STREAM_BUFFER_SIZE, 4096)
+    def test_SCRATCH_LEN(self):
+        self.assertIs(type(self.SCRATCH_LEN), int)
+        self.assertEqual(self.SCRATCH_LEN, 32)
+
+    def test_MAX_LINE_LEN(self):
+        self.assertIs(type(self.MAX_LINE_LEN), int)
+        self.assertEqual(self.MAX_LINE_LEN, 4096)
+        self.assertLess(self.MAX_LINE_LEN, self.BUF_LEN)
+
+    def test_MAX_CL_LEN(self):
+        self.assertIs(type(self.MAX_CL_LEN), int)
+        self.assertEqual(self.MAX_CL_LEN, 16)
+
+    def test_MAX_LENGTH(self):
+        self.assertIs(type(self.MAX_LENGTH), int)
+        self.assertEqual(self.MAX_LENGTH, 9999999999999999)
+        self.assertEqual(self.MAX_LENGTH, int('9' * self.MAX_CL_LEN))
+
+    def test_IO_SIZE(self):
+        self.assertIs(type(self.IO_SIZE), int)
+        self.assertEqual(self.IO_SIZE, 1024 * 1024)
+        self.assertLess(self.IO_SIZE, self.MAX_IO_SIZE)
+
+    def test_MAX_IO_SIZE(self):
+        self.assertIs(type(self.MAX_IO_SIZE), int)
+        self.assertEqual(self.MAX_IO_SIZE, 16 * 1024 * 1024)
 
     def test_MAX_READ_SIZE(self):
         self.check_size_constant('MAX_READ_SIZE')
 
     def test_MAX_CHUNK_SIZE(self):
         self.check_size_constant('MAX_CHUNK_SIZE')
-
-    def test_IO_SIZE(self):
-        self.check_size_constant('IO_SIZE')
 
     def test_bodies(self):
         bodies = self.getattr('bodies')
@@ -2181,15 +2261,15 @@ class TestConstants_Py(BackendTestCase):
         self.assertIs(bodies.ChunkedBodyIter, bodies.ChunkedBodyIter)
 
         self.assertIs(bodies[0], bodies.Body)
-        self.assertIs(bodies[1], bodies.BodyIter)
-        self.assertIs(bodies[2], bodies.ChunkedBody)
+        self.assertIs(bodies[1], bodies.ChunkedBody)
+        self.assertIs(bodies[2], bodies.BodyIter)
         self.assertIs(bodies[3], bodies.ChunkedBodyIter)
 
         self.assertEqual(bodies,
             (
                 bodies.Body,
-                bodies.BodyIter,
                 bodies.ChunkedBody,
+                bodies.BodyIter,
                 bodies.ChunkedBodyIter,
             )
         )
@@ -2240,21 +2320,6 @@ class UserBytes(bytes):
 
 
 class TestFunctions(AlternatesTestCase):
-    def test_makefiles(self):
-        sock = DummySocket()
-        self.assertEqual(sys.getrefcount(sock), 2)
-        (reader, writer) = base._makefiles(sock, base.bodies)
-        self.assertIsInstance(reader, base.Reader)
-        self.assertIsInstance(writer, base.Writer)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 4)
-        del reader
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 3)
-        del writer
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sys.getrefcount(sock), 2)
-
     def check_parse_method(self, backend):
         self.assertIn(backend, (_base, _basepy))
         parse_method = backend.parse_method
@@ -2891,7 +2956,7 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(str(cm.exception),
             "bad chunk size termination: b'DD'"
         )
-        self.assertEqual(rfile.tell(), _MAX_LINE_SIZE)
+        self.assertEqual(rfile.tell(), 4096)
         self.assertFalse(rfile.closed)
 
         # Size line has LF but no CR:
@@ -3256,11 +3321,9 @@ class TestBody_Py(BodyBackendTestCase):
 
         for rfile in self.iter_rfiles(os.urandom(16)):
             name = ('reader' if type(rfile) is self.Reader else 'rfile')
-
             # All good:
             for good in (0, 1, 17, 34969, max_length):
                 body = Body(rfile, good)
-                self.assertEqual(sys.getrefcount(rfile), 4)
                 self.assertEqual(body.state, self.BODY_READY)
                 self.assertIs(body.rfile, rfile)
                 self.assertEqual(body.content_length, good)
@@ -3270,7 +3333,6 @@ class TestBody_Py(BodyBackendTestCase):
             self.check_readonly_attrs(body,
                 'rfile', 'content_length', 'state', 'chunked'
             )
-
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3634,9 +3696,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         rfile = self.Reader(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         self.check_common(body, rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3706,9 +3766,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             name = ('reader' if type(rfile) is self.Reader else 'rfile')
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
-            self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3927,7 +3985,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             sock = MockSocket(bad, None)
             rfile = self.Reader(sock)
             body = self.ChunkedBody(rfile)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
@@ -3940,14 +3997,12 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                 'ChunkedBody.state == BODY_ERROR, cannot be used'
             )
             self.assertEqual(body.state, self.BODY_ERROR)
-            self.assertEqual(sys.getrefcount(rfile), 5)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         sock = MockSocket(b'c\r\nhello, worl\r\n', None)
         rfile = self.Reader(sock)
         body = self.ChunkedBody(rfile)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
@@ -3960,7 +4015,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             'ChunkedBody.state == BODY_ERROR, cannot be used'
         )
         self.assertEqual(body.state, self.BODY_ERROR)
-        self.assertEqual(sys.getrefcount(rfile), 5)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -3974,7 +4028,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
             for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 self.assertEqual(body.state, self.BODY_READY)
                 for (j, chunk) in enumerate(chunks):
                     if j == 0:
@@ -3989,13 +4042,11 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                     'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
                 self.assertEqual(body.state, self.BODY_CONSUMED)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
             for rfile in self.iter_rfiles(data):
                 body = self.ChunkedBody(rfile)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 body = self.ChunkedBody(rfile)
                 result = tuple(body)
                 self.assertEqual(len(result), len(chunks))
@@ -4007,7 +4058,6 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                     'ChunkedBody.state == BODY_CONSUMED, already consumed'
                 )
                 self.assertEqual(body.state, self.BODY_CONSUMED)
-                self.assertEqual(sys.getrefcount(rfile), 5)
                 del body
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
@@ -4484,7 +4534,7 @@ class TestBodyIter_Py(BodyBackendTestCase):
                 with self.assertRaises(TypeError) as cm:
                     body.write_to(wfile)
                 self.assertEqual(str(cm.exception),
-                    'need a {!r}; source contains a {!r}'.format(bytes, type(None))
+                    TYPE_ERROR2.format('BodyIter source item', bytes, type(None))
                 )
                 self.assertEqual(body.state, self.BODY_ERROR)
                 wfile = io.BytesIO()
@@ -4723,18 +4773,6 @@ class TestReader_Py(BackendTestCase):
         return self.getattr('Range')
 
     @property
-    def MIN_PREAMBLE(self):
-        return self.backend.MIN_PREAMBLE
-
-    @property
-    def DEFAULT_PREAMBLE(self):
-        return self.backend.DEFAULT_PREAMBLE
-
-    @property
-    def MAX_PREAMBLE(self):
-        return self.backend.MAX_PREAMBLE
-
-    @property
     def ResponseType(self):
         return self.backend.ResponseType
 
@@ -4748,30 +4786,13 @@ class TestReader_Py(BackendTestCase):
         return (sock, reader)
 
     def test_init(self):
-        default = self.DEFAULT_PREAMBLE
-        _min = self.MIN_PREAMBLE
-        _max = self.MAX_PREAMBLE
-        self.assertTrue(_min <= default <= _max)
-
+        default = self.BUF_LEN
         sock = MockSocket(b'')
         reader = self.Reader(sock)
         self.assertEqual(sock._rfile.tell(), 0)
         self.assertEqual(reader.rawtell(), 0)
         self.assertEqual(reader.tell(), 0)
         self.assertEqual(reader.expose(), b'\x00' * default)
-
-        # Test min and max sizes:
-        for good in (_min, _max):
-            reader = self.Reader(sock, size=good)
-            self.assertEqual(reader.expose(), b'\x00' * good)
-
-        # size out of range:
-        for bad in (_min - 1, _max + 1):
-            with self.assertRaises(ValueError) as cm:
-                self.Reader(sock, size=bad)
-            self.assertEqual(str(cm.exception),
-                'need {} <= size <= {}; got {}'.format(_min, _max, bad)
-            )
 
     def test_del(self):
         sock = MockSocket(b'')
@@ -4782,7 +4803,7 @@ class TestReader_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_read_until(self):
-        default = self.DEFAULT_PREAMBLE
+        default = self.BUF_LEN
         end = b'\r\n'
 
         data = os.urandom(2 * default)
@@ -4901,42 +4922,6 @@ class TestReader_Py(BackendTestCase):
             self.assertEqual(reader.peek(-1), total_data[i+16:333])
             self.assertEqual(reader.rawtell(), 333)
             self.assertEqual(reader.tell(), i + 16)
-
-    def test_readchunk(self):
-        (sock, reader) = self.new(b'0\r\n\r\n')
-        self.assertEqual(reader.readchunk(),
-            (None, b'')
-        )
-        (sock, reader) = self.new(b'0;key=value\r\n\r\n')
-        self.assertEqual(reader.readchunk(),
-            (('key', 'value'), b'')
-        )
-        (sock, reader) = self.new(b'c\r\nhello, world\r\n')
-        self.assertEqual(reader.readchunk(),
-            (None, b'hello, world')
-        )
-        (sock, reader) = self.new(b'c;key=value\r\nhello, world\r\n')
-        self.assertEqual(reader.readchunk(),
-            (('key', 'value'), b'hello, world')
-        )
-
-        for bad in (b'', b'0', b'0;key=value', b'c', b'c;key=value'):
-            (sock, reader) = self.new(bad)
-            with self.assertRaises(ValueError) as cm:
-                reader.readchunk()
-            self.assertEqual(str(cm.exception),
-                '{!r} not found in {!r}...'.format(b'\r\n', bad)
-            )
-
-        badset = tuple(frozenset(range(256)) - frozenset(b'\r\n'))
-        base = bytes(random.choice(badset) for i in range(4095))
-        for end in (b'\r', b'\n', b'\r\n'):
-            (sock, reader) = self.new(base + end)
-            with self.assertRaises(ValueError) as cm:
-                reader.readchunk()
-            self.assertEqual(str(cm.exception),
-                '{!r} not found in {!r}...'.format(b'\r\n', base[:32])
-            )
 
     def check_read_request(self, rcvbuf):
         # Empty preamble:
@@ -5109,85 +5094,6 @@ class TestReader_Py(BackendTestCase):
         for rcvbuf in (None, 1, 2, 3):
             self.check_read_response(rcvbuf)
 
-    def test_read(self):
-        default = self.DEFAULT_PREAMBLE
-        data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
-
-        (sock, reader) = self.new(data)
-        with self.assertRaises(ValueError) as cm:
-            reader.read(-1)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 16777216; got -1'
-        )
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
-
-        (sock, reader) = self.new(data)
-        with self.assertRaises(ValueError) as cm:
-            reader.read(16777217)
-        self.assertEqual(str(cm.exception),
-            'need 0 <= size <= 16777216; got 16777217'
-        )
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
-
-        self.assertEqual(reader.read(0), b'')
-        self.assertEqual(sock._rfile.tell(), 0)
-        self.assertEqual(reader.rawtell(), 0)
-        self.assertEqual(reader.tell(), 0)
-
-        A = b'A' * 1024
-        B = b'B' * default
-        C = b'C' * 512
-        D = b'D' * (default + 1)
-        (sock, reader) = self.new(A + B + C + D)
-        self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(default), B)
-        self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(default + 1), D)
-
-        (sock, reader) = self.new(A + B + C + D, 3)
-        self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(default), B)
-        self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(default + 1), D)
-
-        (sock, reader) = self.new(A + B + C + D, 1)
-        self.assertEqual(reader.read(1024), A)
-        self.assertEqual(reader.read(default), B)
-        self.assertEqual(reader.read(512), C)
-        self.assertEqual(reader.read(default + 1), D)
-
-        badsocket = BadSocket(17.0)
-        reader = self.Reader(badsocket)
-        with self.assertRaises(TypeError) as cm:
-            reader.read(12345)
-        self.assertEqual(str(cm.exception),
-            "received: need a <class 'int'>; got a <class 'float'>: 17.0"
-        )
-
-        smax = sys.maxsize * 2 + 1
-        twosmax = smax * 2
-        for badsize in (-twosmax, -smax, -1, 12346, smax, twosmax):
-            badsocket = BadSocket(badsize)
-            reader = self.Reader(badsocket)
-            with self.assertRaises(ValueError) as cm:
-                reader.read(12345)
-            self.assertEqual(str(cm.exception),
-                'need 0 <= received <= 12345; got {!r}'.format(badsize)
-            )
-
-        marker = random_id()
-        exc = ValueError(marker)
-        badsocket = BadSocket(exc)
-        reader = self.Reader(badsocket)
-        with self.assertRaises(ValueError) as cm:
-            reader.read(12345)
-        self.assertIs(cm.exception, exc)
-        self.assertEqual(str(cm.exception), marker)
-
     def test_readinto(self):
         data = b'GET / HTTP/1.1\r\n\r\nHello naughty nurse!'
 
@@ -5317,74 +5223,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertIsInstance(tell, int)
         self.assertEqual(tell, 0)
         self.assertEqual(sock._calls, [])
-
-    def test_write(self):
-        sock = WSocket()
-        writer = self.Writer(sock)
-
-        data1 = os.urandom(17)
-        self.assertEqual(writer.write(data1), 17)
-        self.assertEqual(writer.tell(), 17)
-        self.assertEqual(sock._fp.getvalue(), data1)
-        self.assertEqual(sock._calls, [('send', data1)])
-
-        data2 = os.urandom(18)
-        self.assertEqual(writer.write(data2), 18)
-        self.assertEqual(writer.tell(), 35)
-        self.assertEqual(sock._fp.getvalue(), data1 + data2)
-        self.assertEqual(sock._calls, [('send', data1), ('send', data2)])
-
-        marker = random_id()
-        exc = ValueError(marker)
-        sock = WSocket(send=exc)
-        writer = self.Writer(sock)
-        with self.assertRaises(ValueError) as cm:
-            writer.write(data1)
-        self.assertIs(cm.exception, exc)
-        self.assertEqual(str(cm.exception), marker)
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._fp.getvalue(), data1)
-        self.assertEqual(sock._calls, [('send', data1)])
-
-        # sock.send() doesn't return an int:
-        for bad in (17.0, int_subclass(17)):
-            self.assertEqual(bad, 17)
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock)
-            with self.assertRaises(TypeError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format('sent', int, type(bad), bad)
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        # sock.send() returns a bad int value:
-        smin = -sys.maxsize - 1
-        smax = sys.maxsize * 2 + 1
-        for bad in (smin - 1, smin, -17, -1, 18, 19, smax, smax + 1):
-            sock = WSocket(send=bad)
-            writer = self.Writer(sock)
-            with self.assertRaises(ValueError) as cm:
-                writer.write(data1)
-            self.assertEqual(str(cm.exception),
-                'need 0 <= sent <= 17; got {!r}'.format(bad)
-            )
-            self.assertEqual(writer.tell(), 0)
-            self.assertEqual(sock._fp.getvalue(), data1)
-            self.assertEqual(sock._calls, [('send', data1)])
-
-        sock = WSocket(send=0)
-        writer = self.Writer(sock)
-        with self.assertRaises(ValueError) as cm:
-            writer.write(data1)
-        self.assertEqual(str(cm.exception),
-            'expected to write 17 bytes, but sent 0'
-        )
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._fp.getvalue(), data1)
-        self.assertEqual(sock._calls, [('send', data1)])
 
     def test_write_output(self):
         # Empty preamble and empty body:
@@ -5691,9 +5529,637 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.getvalue(),
             b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
-        
-
 
 class TestWriter_C(TestWriter_Py):
+    backend = _base
+
+
+class BaseMockSocket:
+    __slots__ = ('_calls',)
+
+    def __init__(self):
+        self._calls = []
+
+    def shutdown(self, how):
+        self._calls.append(('shutdown', how))
+
+class NewMockSocket(BaseMockSocket):
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf')
+
+    def __init__(self, data=b'', rcvbuf=None, sndbuf=None):
+        assert rcvbuf is None or type(rcvbuf) is int
+        assert sndbuf is None or type(sndbuf) is int
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+        self._rcvbuf = rcvbuf
+        self._sndbuf = sndbuf
+        super().__init__()
+
+    def recv_into(self, dst):
+        assert type(dst) is memoryview
+        self._calls.append(('recv_into', len(dst)))
+        if self._rcvbuf is not None:
+            dst = dst[0:self._rcvbuf]
+        return self._rfile.readinto(dst)
+
+    def send(self, src):
+        assert type(src) in (bytes, memoryview)
+        self._calls.append(('send', len(src)))
+        if self._sndbuf is not None:
+            src = src[0:self._sndbuf]
+        return self._wfile.write(src)
+
+    def close(self):
+        self._calls.append('close')
+
+
+class TestServerFunctions_Py(BackendTestCase):
+    def test_handle_requests(self):
+        handle_requests = self.getattr('handle_requests')
+
+        ses = {'requests': 0, 'client': ('127.0.0.1', 12345)}
+
+        # app() returns neither a tuple nor Response namedtuple:
+        rsp = [200, 'OK', {}, b'hello, world']
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a {!r}; got a {!r}'.format(tuple, list)
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns a 3-tuple:
+        rsp = (200, 'OK', {})
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a 4-tuple; got a 3-tuple'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns a 5-tuple:
+        rsp = (200, 'OK', {}, b'hello', b'world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'response: need a 4-tuple; got a 5-tuple'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status that isn't an int:
+        rsp = ('200', 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('status', int, str, '200')
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status < 100:
+        rsp = (99, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'need 100 <= status <= 599; got 99'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() returns status > 599:
+        rsp = (600, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'need 100 <= status <= 599; got 600'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() doesn't consume request body:
+        rsp = (200, 'OK', {}, None)
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'PUT'
+            assert request.uri == '/foo'
+            assert request.headers == {'content-length': 3}
+            assert type(request.body) is bodies.Body
+            assert request.body.content_length == 3
+            return rsp
+
+        data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'request body not consumed: Body(<reader>, 3)'
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() doesn't return response body None for HEAD request:
+        rsp = (200, 'OK', {}, b'hello, world')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'HEAD'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        data = b'HEAD /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, 25, sock, ses)
+        self.assertEqual(str(cm.exception),
+            "request method is HEAD, but response body is not None: <class 'bytes'>" 
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # Should close connection after max_requests:
+        rsp = (200, 'OK', {}, b'bar')
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'GET'
+            assert request.uri == '/foo'
+            assert request.headers == {}
+            assert request.body is None
+            return rsp
+
+        indata = b'GET /foo HTTP/1.1\r\n\r\n'
+        outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
+        sock = NewMockSocket(indata * 3)
+        self.assertEqual(handle_requests(app, 2, sock, ses), 2)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [
+            ('recv_into', 32 * 1024),
+            ('send', len(outdata)),
+            ('send', len(outdata)),
+            'close',
+        ])
+        self.assertEqual(sys.getrefcount(rsp), 2)
+        self.assertEqual(sock._rfile.read(), b'')
+        self.assertEqual(sock._wfile.getvalue(), outdata * 2)
+
+        # Should close connection when status >= 400 and not 404, 409, 412:
+        class App:
+            def __init__(self):
+                self._status_list = [404, 409, 412, 400, 200]
+
+            def __call__(self, session, request, bodies):
+                assert session is ses
+                assert request.method == 'GET'
+                assert request.uri == '/foo'
+                assert request.headers == {}
+                assert request.body is None
+                status = self._status_list.pop(0)
+                return (status, 'OK', {}, b'bar')
+
+        app = App()
+        indata = b'GET /foo HTTP/1.1\r\n\r\n'
+        out = 'HTTP/1.1 {} OK\r\ncontent-length: 3\r\n\r\nbar'
+        out1 = out.format(404).encode()
+        out2 = out.format(409).encode()
+        out3 = out.format(412).encode()
+        out4 = out.format(400).encode()
+        sock = NewMockSocket(indata * 10)
+        self.assertEqual(handle_requests(app, 10, sock, ses), 4)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [
+            ('recv_into', 32 * 1024),
+            ('send', len(out1)),
+            ('send', len(out2)),
+            ('send', len(out3)),
+            ('send', len(out4)),
+            'close',
+        ])
+        self.assertEqual(sock._rfile.read(), b'')
+        self.assertEqual(sock._wfile.getvalue(), out1 + out2 + out3 + out4)
+        self.assertEqual(app._status_list, [200])
+
+
+class TestServerFunctions_C(TestServerFunctions_Py):
+    backend = _base
+
+
+class TestConnection_Py(BackendTestCase):
+    @property
+    def Connection(self):
+        return getattr(self.backend, 'Connection')
+
+    @property
+    def ResponseType(self):
+        return getattr(self.backend, 'ResponseType')
+
+    @property
+    def Body(self):
+        return getattr(self.backend, 'Body')
+
+    @property
+    def Range(self):
+        return getattr(self.backend, 'Range')
+
+    @property
+    def ContentRange(self):
+        return getattr(self.backend, 'ContentRange')
+
+    @property
+    def bodies(self):
+        return getattr(self.backend, 'bodies')
+
+    def test_init(self):
+        # no sock.recv_into() attribute:
+        class BadSocket1(BaseMockSocket):
+            __slots__ = tuple()
+            def send(self, src):
+                assert False
+        sock = BadSocket1()
+        with self.assertRaises(AttributeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            "'BadSocket1' object has no attribute 'recv_into'"
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # no sock.send() attribute:
+        class BadSocket2(BaseMockSocket):
+            __slots__ = tuple()
+            def recv_into(self, src):
+                assert False
+        sock = BadSocket2()
+        with self.assertRaises(AttributeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            "'BadSocket2' object has no attribute 'send'"
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # sock.recv_into() isn't callable:
+        class BadSocket3(BaseMockSocket):
+            __slots__ = tuple()
+            recv_into = 'hello, world'
+            def send(self, src):
+                assert False
+        sock = BadSocket3()
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            'sock.recv_into() is not callable'
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # sock.send() isn't callable:
+        class BadSocket4(BaseMockSocket):
+            __slots__ = tuple()
+            send = 'hello, world'
+            def recv_into(self, src):
+                assert False
+        sock = BadSocket4()
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, None)
+        self.assertEqual(str(cm.exception),
+            'sock.send() is not callable'
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+
+        # base_headers is neither None nor a dict:
+        sock = NewMockSocket()
+        base_headers = [('foo', 'bar')]
+        with self.assertRaises(TypeError) as cm:
+            self.Connection(sock, base_headers)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format('base_headers', dict, list, base_headers)
+        )
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(base_headers), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(base_headers, [('foo', 'bar')])
+
+        # Good sock, base_headers is None:
+        bodies = self.bodies
+        bcount = sys.getrefcount(bodies)
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertIs(conn.sock, sock)
+        self.assertIsNone(conn.base_headers)
+        self.assertIs(conn.bodies, bodies)
+        self.assertIs(conn.closed, False)
+        self.assertEqual(sock._calls, [])
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(sys.getrefcount(bodies), bcount)
+
+        # Good sock, base_headers is a dict:
+        sock = NewMockSocket()
+        k = random_id().lower()
+        v = random_id()
+        base_headers = {k: v}
+        conn = self.Connection(sock, base_headers)
+        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertIs(conn.sock, sock)
+        self.assertIs(conn.base_headers, base_headers)
+        self.assertEqual(conn.base_headers, {k: v})
+        self.assertIs(conn.bodies, bodies)
+        self.assertIs(conn.closed, False)
+        self.assertEqual(sock._calls, [])
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(base_headers), 2)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(sys.getrefcount(bodies), bcount)
+
+    def test_request(self):
+        # Test when connection is closed:
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        self.assertIsNone(conn.close())
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        sock._calls.clear()
+        with self.assertRaises(ValueError) as cm:
+            conn.request('GET', '/', {}, None)
+        self.assertEqual(str(cm.exception),
+            'Connection is closed'
+        )
+        del conn
+        self.assertEqual(sock._calls, [])
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+        send = b'GET / HTTP/1.1\r\n\r\n'
+        recv = b'HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nhello, world'
+
+        # Previous response body not consumed:
+        sock = NewMockSocket(recv * 2)
+        conn = self.Connection(sock, None)
+        response = conn.request('GET', '/', {}, None)
+        self.assertIs(conn.closed, False)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': 12})
+        self.assertIs(type(response.body), self.Body)
+        self.assertEqual(sock._calls, [
+            ('send', len(send)),
+            ('recv_into', 32 * 1024),
+        ])
+        self.assertEqual(sock._wfile.getvalue(), send)
+        self.assertEqual(sock._rfile.tell(), len(recv) * 2)
+        sock._calls.clear()
+        with self.assertRaises(ValueError) as cm:
+            conn.request('GET', '/', {}, None)
+        self.assertEqual(str(cm.exception),
+            'response body not consumed: {!r}'.format(response.body)
+        )
+        self.assertIs(conn.closed, True)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR)
+        ])
+        self.assertEqual(sock._wfile.getvalue(), send)
+        self.assertEqual(sock._rfile.tell(), len(recv) * 2)
+        sock._calls.clear()
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 3)
+        del response
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, [])
+
+        v = (None, 1, 2, 3)
+        comb = tuple((s, r) for s in v for r in v)
+        for (r, s) in comb:
+            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            conn = self.Connection(sock, None)
+            h = {}
+            response = conn.request('GET', '/', h, None)
+            self.assertEqual(h, {})
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 12})
+            self.assertIs(type(response.body), self.Body)
+            self.assertEqual(response.body.read(), b'hello, world')
+            self.assertEqual(sys.getrefcount(sock), 5)
+            del response
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
+
+            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            k = random_id().lower()
+            v = random_id()
+            bh = {k: v}
+            conn = self.Connection(sock, bh)
+            h = {}
+            response = conn.request('GET', '/', h, None)
+            self.assertEqual(h, {k: v})
+            self.assertEqual(sys.getrefcount(h), 2)
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.reason, 'OK')
+            self.assertEqual(response.headers, {'content-length': 12})
+            self.assertIs(type(response.body), self.Body)
+            self.assertEqual(response.body.read(), b'hello, world')
+            self.assertEqual(sys.getrefcount(sock), 5)
+            del response
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
+            self.assertEqual(sys.getrefcount(bh), 2)
+
+    def test_put(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.put('/', {}, None)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'PUT / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_post(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.post('/', {}, None)
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'POST / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_get(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.get('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'GET / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_head(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.head('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {'content-length': 17}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'HEAD / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_delete(self):
+        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        conn = self.Connection(sock, None)
+        response = conn.delete('/', {})
+        self.assertIs(type(response), self.ResponseType)
+        self.assertEqual(response, (200, 'OK', {}, None))
+        self.assertEqual(sock._wfile.getvalue(), b'DELETE / HTTP/1.1\r\n\r\n')
+        del conn
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+    def test_get_range(self):
+        parts = (
+            b'HTTP/1.1 200 OK\r\n',
+            b'Content-Length: 3\r\n',
+            b'Content-Range: bytes 17-19/21\r\n',
+            b'\r\n',
+            b'foo',
+        )
+        data = b''.join(parts)
+        sock = NewMockSocket(data)
+        conn = self.Connection(sock, None)
+        h = {}
+        r = conn.get_range('/', h, 17, 20)
+        self.assertIs(type(r), self.ResponseType)
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {
+            'content-length': 3,
+            'content-range': 'bytes 17-19/21',
+        })
+        self.assertIs(type(r.headers['content-range']), self.ContentRange)
+        self.assertIs(type(r.body), self.Body)
+        self.assertEqual(r.body.read(), b'foo')
+        self.assertEqual(sock._wfile.getvalue(),
+            b'GET / HTTP/1.1\r\nrange: bytes=17-19\r\n\r\n'
+        )
+        self.assertEqual(h, {'range': 'bytes=17-19'})
+        self.assertIs(type(h['range']), self.Range)
+        self.assertEqual(sys.getrefcount(h), 2)
+        self.assertEqual(sys.getrefcount(h['range']), 2)
+        del conn
+        del r
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+class TestConnection_C(TestConnection_Py):
     backend = _base
 

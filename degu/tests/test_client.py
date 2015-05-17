@@ -24,8 +24,6 @@ Unit tests for the `degu.server` module`
 """
 
 from unittest import TestCase
-import os
-import socket
 import ssl
 
 from .helpers import DummySocket
@@ -54,7 +52,6 @@ GOOD_ADDRESSES = (
     b'\x0000022',
 )
 
-
 # Some bad address permutations:
 BAD_TUPLE_ADDRESSES = (
     ('::1',),
@@ -64,26 +61,6 @@ BAD_TUPLE_ADDRESSES = (
     ('::1', 5678, 0, 0, 0),
     ('127.0.0.1', 5678, 0, 0, 0),
 )
-
-
-class TestClosedConnectionError(TestCase):
-    def test_init(self):
-        conn = random_id()
-        exc = client.ClosedConnectionError(conn)
-        self.assertIs(exc.conn, conn)
-        self.assertEqual(str(exc),
-            'cannot use request() when connection is closed: {!r}'.format(conn)
-        )
-
-
-class TestUnconsumedResponseError(TestCase):
-    def test_init(self):
-        body = random_id()
-        exc = client.UnconsumedResponseError(body)
-        self.assertIs(exc.body, body)
-        self.assertEqual(str(exc),
-            'previous response body not consumed: {!r}'.format(body)
-        )
 
 
 class TestFunctions(TestCase):
@@ -229,167 +206,6 @@ class TestFunctions(TestCase):
             self.assertIs(sslctx.check_hostname, True)
 
 
-class TestConnection(TestCase):
-    def test_init(self):
-        sock = DummySocket()
-        base_headers = {'host': 'www.example.com:80'}
-        inst = client.Connection(sock, base_headers, base.bodies)
-        self.assertIsInstance(inst, client.Connection)
-        self.assertIs(inst.sock, sock)
-        self.assertIs(inst.base_headers, base_headers)
-        self.assertEqual(inst.base_headers, {'host': 'www.example.com:80'})
-        self.assertIs(inst.bodies, base.bodies)
-        self.assertIsInstance(inst._rfile, base.Reader)
-        self.assertIsInstance(inst._wfile, base.Writer)
-        self.assertIsNone(inst._response_body)
-        self.assertIs(inst.closed, False)
-        self.assertEqual(sock._calls, [])
-
-    def test_del(self):
-        class ConnectionSubclass(client.Connection):
-            def __init__(self):
-                self._calls = 0
-
-            def close(self):
-                self._calls += 1
-
-        inst = ConnectionSubclass()
-        self.assertEqual(inst._calls, 0)
-        self.assertIsNone(inst.__del__())
-        self.assertEqual(inst._calls, 1)
-        self.assertIsNone(inst.__del__())
-        self.assertEqual(inst._calls, 2)
-
-    def test_close(self):
-        sock = DummySocket()
-        inst = client.Connection(sock, None, base.bodies)
-        sock._calls.clear()
-
-        # When Connection.closed is False:
-        self.assertIsNone(inst.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(inst.sock)
-        self.assertIsNone(inst._response_body)
-        self.assertIs(inst.closed, True)
-
-        # Now when Connection.closed is True:
-        self.assertIsNone(inst.close())
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(inst.sock)
-        self.assertIsNone(inst._response_body)
-        self.assertIs(inst.closed, True)
-
-    def test_request(self):
-        # Test when the connection has already been closed:
-        sock = DummySocket()
-        conn = client.Connection(sock, None, base.bodies)
-        sock._calls.clear()
-        conn.sock = None
-        with self.assertRaises(client.ClosedConnectionError) as cm:
-            conn.request('GET', '/', {}, None)
-        self.assertIs(cm.exception.conn, conn)
-        self.assertEqual(str(cm.exception),
-            'cannot use request() when connection is closed: {!r}'.format(conn)
-        )
-        self.assertEqual(sock._calls, [])
-        self.assertIsNone(conn.sock)
-        self.assertIsNone(conn._response_body)
-        self.assertIs(conn.closed, True)
-
-        # Test when the previous response body wasn't consumed:
-        class DummyBody:
-            state = 0
-
-        sock = DummySocket()
-        conn = client.Connection(sock, None, base.bodies)
-        sock._calls.clear()
-        conn._response_body = DummyBody
-        with self.assertRaises(client.UnconsumedResponseError) as cm:
-            conn.request('GET', '/', {}, None)
-        self.assertIs(cm.exception.body, DummyBody)
-        self.assertEqual(str(cm.exception),
-            'previous response body not consumed: {!r}'.format(DummyBody)
-        )
-        # Make sure Connection.close() was called:
-        self.assertEqual(sock._calls, [('shutdown', socket.SHUT_RDWR)])
-        self.assertIsNone(conn.sock)
-        self.assertIsNone(conn._response_body)
-        self.assertIs(conn.closed, True)
-
-    def get_subclass(self, marker):
-        class Subclass(client.Connection):
-            def __init__(self, marker):
-                self._marker = marker
-                self._args = None
-                self._kw = None
-
-            def request(self, *args, **kw):
-                assert self._args is None
-                assert self._kw is None
-                self._args = args
-                self._kw = kw
-                return self._marker
-
-        return Subclass(marker)
-
-    def test_put(self):
-        marker = random_id()
-        inst = self.get_subclass(marker)
-        uri = random_id()
-        key = random_id().lower()
-        value = random_id()
-        headers = {key: value}
-        body = os.urandom(16)
-        self.assertIs(inst.put(uri, headers, body), marker)
-        self.assertEqual(inst._args, ('PUT', uri, {key: value}, body))
-        self.assertEqual(inst._kw, {})
-
-    def test_post(self):
-        marker = random_id()
-        inst = self.get_subclass(marker)
-        uri = random_id()
-        key = random_id().lower()
-        value = random_id()
-        headers = {key: value}
-        body = os.urandom(16)
-        self.assertIs(inst.post(uri, headers, body), marker)
-        self.assertEqual(inst._args, ('POST', uri, {key: value}, body))
-        self.assertEqual(inst._kw, {})
-
-    def test_get(self):
-        marker = random_id()
-        inst = self.get_subclass(marker)
-        uri = random_id()
-        key = random_id().lower()
-        value = random_id()
-        headers = {key: value}
-        self.assertIs(inst.get(uri, headers), marker)
-        self.assertEqual(inst._args, ('GET', uri, {key: value}, None))
-        self.assertEqual(inst._kw, {})
-
-    def test_head(self):
-        marker = random_id()
-        inst = self.get_subclass(marker)
-        uri = random_id()
-        key = random_id().lower()
-        value = random_id()
-        headers = {key: value}
-        self.assertIs(inst.head(uri, headers), marker)
-        self.assertEqual(inst._args, ('HEAD', uri, {key: value}, None))
-        self.assertEqual(inst._kw, {})
-
-    def test_delete(self):
-        marker = random_id()
-        inst = self.get_subclass(marker)
-        uri = random_id()
-        key = random_id().lower()
-        value = random_id()
-        headers = {key: value}
-        self.assertIs(inst.delete(uri, headers), marker)
-        self.assertEqual(inst._args, ('DELETE', uri, {key: value}, None))
-        self.assertEqual(inst._kw, {})   
-
-
 class TestClient(TestCase):
     def test_init(self):
         # Bad address type:
@@ -425,7 +241,6 @@ class TestClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `host` option:
@@ -435,7 +250,6 @@ class TestClient(TestCase):
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding `host` option with `None`:
@@ -444,7 +258,6 @@ class TestClient(TestCase):
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `timeout` option:
@@ -456,20 +269,6 @@ class TestClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 17)
-            self.assertIs(inst.bodies, base.bodies)
-            self.assertIsNone(inst.on_connect)
-
-            # Test overriding the `bodies` option:
-            my_bodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
-            inst = client.Client(address, bodies=my_bodies)
-            self.assertIs(inst.address, address)
-            self.assertEqual(inst.options, {'bodies': my_bodies})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(80, *address))
-            else:
-                self.assertIsNone(inst.host)
-            self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, my_bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `on_connect` option:
@@ -479,7 +278,6 @@ class TestClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             with self.assertRaises(TypeError) as cm:
@@ -496,14 +294,12 @@ class TestClient(TestCase):
             else:
                 self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
             # Test overriding all the options together:
             options = {
                 'host': my_host,
                 'timeout': 16.9,
-                'bodies': my_bodies,
                 'on_connect': my_on_connect,
             }
             inst = client.Client(address, **options)
@@ -511,7 +307,6 @@ class TestClient(TestCase):
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, my_host)
             self.assertEqual(inst.timeout, 16.9)
-            self.assertIs(inst.bodies, my_bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
     def test_repr(self):
@@ -529,7 +324,6 @@ class TestClient(TestCase):
             def __init__(self, sock, host, on_connect=None):
                 self.__sock = sock
                 self._base_headers = {'host': host}
-                self.bodies = base.bodies
                 self.on_connect = on_connect
 
             def create_socket(self):
@@ -540,23 +334,17 @@ class TestClient(TestCase):
         inst = ClientSubclass(sock, host)
         self.assertIsNone(inst.on_connect)
         conn = inst.connect()
-        self.assertIsInstance(conn, client.Connection)
+        self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
-        self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIsInstance(conn._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # Should return a new Connection instance each time:
         conn2 = inst.connect()
         self.assertIsNot(conn2, conn)
-        self.assertIsInstance(conn2, client.Connection)
+        self.assertIsInstance(conn2, base.Connection)
         self.assertIs(conn2.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
-        self.assertIsInstance(conn2._rfile, base.Reader)
-        self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # on_connect() returns True:
@@ -567,12 +355,9 @@ class TestClient(TestCase):
         inst = ClientSubclass(sock, host, on_connect_true)
         self.assertIs(inst.on_connect, on_connect_true)
         conn = inst.connect()
-        self.assertIsInstance(conn, client.Connection)
+        self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, inst._base_headers)
-        self.assertIs(conn.bodies, base.bodies)
-        self.assertIsInstance(conn._rfile, base.Reader)
-        self.assertIsInstance(conn2._wfile, base.Writer)
         self.assertEqual(sock._calls, [])
 
         # on_connect() does not return True:
@@ -665,7 +450,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `host` option:
@@ -675,7 +459,6 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `host` option with `None`:
@@ -684,7 +467,6 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `ssl_host` options:
@@ -694,7 +476,6 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {'ssl_host': my_ssl_host})
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `ssl_host` option with `None`:
@@ -703,7 +484,6 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {'ssl_host': None})
             self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `timeout` option:
@@ -717,22 +497,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 17)
-            self.assertIs(inst.bodies, base.bodies)
-            self.assertIsNone(inst.on_connect)
-
-            # Test overriding the `bodies` option:
-            my_bodies = base.Bodies('foo', 'bar', 'stuff', 'junk')
-            inst = client.SSLClient(sslctx, address, bodies=my_bodies)
-            self.assertIs(inst.address, address)
-            self.assertEqual(inst.options, {'bodies': my_bodies})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(443, *address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
-            self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, my_bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `on_connect` option:
@@ -751,7 +515,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
             # Test overriding the `on_connect` option with `None`:
@@ -763,7 +526,6 @@ class TestSSLClient(TestCase):
                 self.assertIsNone(inst.host)
                 self.assertIsNone(inst.ssl_host)
             self.assertEqual(inst.timeout, 60)
-            self.assertIs(inst.bodies, base.bodies)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding all the options together:
@@ -771,7 +533,6 @@ class TestSSLClient(TestCase):
                 'host': my_host,
                 'ssl_host': my_ssl_host,
                 'timeout': 16.9,
-                'bodies': my_bodies,
                 'on_connect': my_on_connect,
             }
             inst = client.SSLClient(sslctx, address, **options)
@@ -780,7 +541,6 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.host, my_host)
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 16.9)
-            self.assertIs(inst.bodies, my_bodies)
             self.assertIs(inst.on_connect, my_on_connect)
 
     def test_repr(self):
@@ -799,3 +559,4 @@ class TestSSLClient(TestCase):
             self.assertEqual(repr(inst),
                 'Custom({!r}, {!r})'.format(sslctx, address)
             )
+

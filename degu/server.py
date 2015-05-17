@@ -28,23 +28,10 @@ import logging
 import threading
 import os
 
-from .base import bodies as default_bodies
-from .base import (
-    _TYPE_ERROR,
-    _makefiles,
-    _isconsumed,
-)
+from .base import handle_requests, _TYPE_ERROR
 
 
 log = logging.getLogger()
-
-
-class UnconsumedRequestError(Exception):
-    def __init__(self, body):
-        self.body = body
-        super().__init__(
-            'previous request body not consumed: {!r}'.format(body)
-        )
 
 
 def build_server_sslctx(sslconfig):
@@ -139,55 +126,8 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def _handle_requests(app, sock, max_requests, session, bodies):
-    (reader, writer) = _makefiles(sock, bodies)
-    assert session['requests'] == 0
-    for count in range(1, max_requests + 1):
-        request = reader.read_request()
-        (status, reason, headers, body) = app(session, request, bodies)
-
-        # Make sure application fully consumed request body:
-        if not _isconsumed(request.body):
-            raise UnconsumedRequestError(request.body)
-
-        # Make sure HEAD requests are properly handled:
-        if request.method == 'HEAD':
-            if body is not None:
-                raise TypeError(
-                    'response body must be None when request method is HEAD'
-                )
-            if 200 <= status < 300:
-                if 'content-length' in headers:
-                    if 'transfer-encoding' in headers:
-                        raise ValueError(
-                            'cannot have both content-length and transfer-encoding headers'
-                        )
-                elif headers.get('transfer-encoding') != 'chunked':
-                    raise ValueError(
-                        'response to HEAD request must include content-length or transfer-encoding'
-                    )
-
-        # Write response:
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
-        writer.write_response(status, reason, headers, body)
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
-
-        # Update session counter:
-        session['requests'] = count
-
-        # Possibly close the connection:
-        if status >= 400 and status not in {404, 409, 412}:
-            log.warning('closing connection to %r after %d %r',
-                session['client'], status, reason
-            )
-            break
-
-    # Make sure sndbuf gets flushed:
-    sock.close()
-
-
 class Server:
-    _allowed_options = ('max_connections', 'max_requests', 'timeout', 'bodies')
+    _allowed_options = ('max_connections', 'max_requests', 'timeout')
 
     def __init__(self, address, app, **options):
         # address:
@@ -235,7 +175,6 @@ class Server:
         self.max_connections = options.get('max_connections', 25)
         self.max_requests = options.get('max_requests', 500)
         self.timeout = options.get('timeout', 30)
-        self.bodies = options.get('bodies', default_bodies)
         assert isinstance(self.max_connections, int) and self.max_connections > 0
         assert isinstance(self.max_requests, int) and self.max_requests > 0 
         assert isinstance(self.timeout, (int, float)) and self.timeout > 0
@@ -255,11 +194,11 @@ class Server:
         semaphore = threading.BoundedSemaphore(self.max_connections)
         max_requests = self.max_requests
         timeout = self.timeout
-        bodies = self.bodies
         listensock = self.sock
         worker = self._worker
         while True:
             (sock, address) = listensock.accept()
+            #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             # Denial of Service note: when we already have max_connections, we
             # should aggressively rate-limit the handling of new connections, so
             # that's why we use `timeout=2` rather than `blocking=False`:
@@ -267,7 +206,7 @@ class Server:
                 sock.settimeout(timeout)
                 thread = threading.Thread(
                     target=worker,
-                    args=(semaphore, max_requests, bodies, sock, address),
+                    args=(semaphore, max_requests, sock, address),
                     daemon=True
                 )
                 thread.start()
@@ -278,11 +217,11 @@ class Server:
                 except OSError:
                     pass
 
-    def _worker(self, semaphore, max_requests, bodies, sock, address):
+    def _worker(self, semaphore, max_requests, sock, address):
         session = {'client': address, 'requests': 0}
         log.info('Connection from %r', address)
         try:
-            self._handler(sock, max_requests, session, bodies)
+            self._handler(sock, max_requests, session)
         except OSError as e:
             log.info('Handled %d requests from %r: %r', 
                 session.get('requests'), address, e
@@ -296,9 +235,10 @@ class Server:
                 pass
             semaphore.release()
 
-    def _handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            _handle_requests(self.app, sock, max_requests, session, bodies)
+            #_handle_requests(self.app, sock, max_requests, session)
+            handle_requests(self.app, max_requests, sock, session)
         else:
             log.warning('rejecting connection: %r', session['client'])
 
@@ -313,11 +253,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def _handler(self, sock, max_requests, session, bodies):
+    def _handler(self, sock, max_requests, session):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
         session.update({
             'ssl_cipher': sock.cipher(),
             'ssl_compression': sock.compression(),
         })
-        super()._handler(sock, max_requests, session, bodies)
+        super()._handler(sock, max_requests, session)
 

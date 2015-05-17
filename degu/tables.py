@@ -405,7 +405,7 @@ class Generated:
         yield self.markers_py.end
 
     def update(self, pkgdir):
-        update(pkgdir, '_base.c', self.markers_c, self.iter_lines_c())
+        update(pkgdir, '_base.h', self.markers_c, self.iter_lines_c())
         update(pkgdir, '_basepy.py', self.markers_py, self.iter_lines_py())
 
 

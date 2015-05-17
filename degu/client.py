@@ -26,14 +26,7 @@ HTTP client.
 import socket
 import os
 
-from .base import bodies as default_bodies
-from .base import (
-    _TYPE_ERROR,
-    _makefiles,
-    Response,
-    Range,
-    _isconsumed,
-)
+from .base import Connection, _TYPE_ERROR, Response
 
 __all__ = (
     'Client',
@@ -42,30 +35,6 @@ __all__ = (
     'Connection',
     'Response',
 )
-
-
-class ClosedConnectionError(Exception):
-    """
-    Raised by `Connection.request()` when connection is already closed.
-    """
-
-    def __init__(self, conn):
-        self.conn = conn
-        super().__init__(
-            'cannot use request() when connection is closed: {!r}'.format(conn)
-        )
-
-
-class UnconsumedResponseError(Exception):
-    """
-    Raised by `Connection.request()` when previous response body not fully read.
-    """
-
-    def __init__(self, body):
-        self.body = body
-        super().__init__(
-            'previous response body not consumed: {!r}'.format(body)
-        )
 
 
 def build_client_sslctx(sslconfig):
@@ -161,80 +130,6 @@ def _validate_client_sslctx(sslctx):
     return sslctx
 
 
-class Connection:
-    """
-    Provides an HTTP client request API atop an arbitrary socket connection.
-
-    A `Connection` is stateful and is *not* thread-safe.
-    """
-
-    __slots__ = (
-        'sock', 'base_headers', 'bodies', '_rfile', '_wfile', '_response_body'
-    )
-
-    def __init__(self, sock, base_headers, bodies):
-        self.sock = sock
-        self.base_headers = base_headers
-        self.bodies = bodies
-        (self._rfile, self._wfile) = _makefiles(sock, bodies)
-        self._response_body = None  # Previous Body(), ChunkedBody(), or None
-
-    def __del__(self):
-        self.close()
-
-    @property
-    def closed(self):
-        return self.sock is None
-
-    def close(self):
-        if self.sock is not None:
-            self._rfile = None
-            self._wfile = None
-            self._response_body = None
-            try:
-                self.sock.shutdown(socket.SHUT_RDWR)
-            except (OSError, TypeError):
-                pass
-            self.sock = None
-
-    def request(self, method, uri, headers, body):
-        if self.sock is None:
-            raise ClosedConnectionError(self)
-        try:
-            if not _isconsumed(self._response_body):
-                raise UnconsumedResponseError(self._response_body)
-            if self.base_headers:
-                headers.update(self.base_headers)
-            #self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
-            self._wfile.write_request(method, uri, headers, body)
-            #self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
-            response = self._rfile.read_response(method)
-            self._response_body = response.body
-            return response
-        except Exception:
-            self.close()
-            raise
-
-    def put(self, uri, headers, body):
-        return self.request('PUT', uri, headers, body)
-
-    def post(self, uri, headers, body):
-        return self.request('POST', uri, headers, body)
-
-    def get(self, uri, headers):
-        return self.request('GET', uri, headers, None)
-
-    def head(self, uri, headers):
-        return self.request('HEAD', uri, headers, None)
-
-    def delete(self, uri, headers):
-        return self.request('DELETE', uri, headers, None)
-
-    def get_range(self, uri, headers, start, stop):
-        headers['range'] = Range(start, stop)
-        return self.request('GET', uri, headers, None)
-
-
 def _build_host(default_port, host, port, *extra):
     """
     Build value for HTTP "host" header.
@@ -297,7 +192,7 @@ class Client:
     """
 
     _default_port = 80  # Needed to contruct the default host header
-    _allowed_options = ('host', 'timeout', 'bodies', 'on_connect')
+    _allowed_options = ('host', 'timeout', 'on_connect')
 
     def __init__(self, address, **options):
         # address:
@@ -334,7 +229,6 @@ class Client:
                 )
             )
         self.options = options
-        self.bodies = options.get('bodies', default_bodies)
         self.host = options.get('host', host)
         self.timeout = options.get('timeout', 60)
         self.on_connect = options.get('on_connect')
@@ -359,10 +253,10 @@ class Client:
         sock.connect(self.address)
         return sock
 
-    def connect(self, bodies=None):
-        if bodies is None:
-            bodies = self.bodies
-        conn = Connection(self.create_socket(), self._base_headers, bodies)
+    def connect(self):
+        sock = self.create_socket()
+        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        conn = Connection(sock, self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
         conn.close()

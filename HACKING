@@ -1,95 +1,73 @@
-Defines
-Globals
-Generated tables
+Python globals:
+    _init_all_globals()
 
-Internal API:
-    Macros:
-        _SET()
-        _SET_AND_INC()
-        _SET_ITEM()
-    Misc:
-        _min()
-        _calloc_buf()
-    DeguBuf:
-        _isempty()
-        _slice()
-        _equal()
-        _find()
-        _tostr()
-        _tobytes()
-        _value_error()
-        _value_error2()
-        _decode()
-    DeguHeaders/DeguRequest/DeguResonse:
-        _clear_degu_headers()
-        _clear_degu_request()
-        _clear_degu_response()
-    Parsing:
-        Headers:
-            _parse_key()
-            _parse_val()
-            _parse_content_length()
-            _parse_header_line()
-            _parse_headers()
-        Request:
-            _parse_method()
-            _parse_path_component()
-            _parse_path()
-            _parse_query()
-            _parse_uri()
-            _parse_request_line()
-            _parse_request()
-        Response:
-            _parse_status()
-            _parse_reason()
-            _parse_response_line()
-            _parse_response()
-    Formatting:
-        _format_headers()
-        _format_request()
-        _format_response()
-    namedtuples:
-        _Response()
+DeguSrc globals
 
-Public API:
-    Parsing:
+namedtuples:
+    Bodies
+    Request
+    Response
+    _init_namedtuple()
+    _init_all_namedtuples()
+
+Python object validation and conversion:
+    _check_type()
+    _check_type2()
+    _check_int()
+    _get_size()
+    _get_read_size()
+    _get_length()
+    _check_tuple()
+    _check_bytes()
+    _get_bytes_len()
+    _getcallable()
+
+Helpers to clear DeguHeaders, DeguRequest, DeguResponse, DeguChunk:
+    _clear_degu_headers()
+    _clear_degu_request()
+    _clear_degu_response()
+    _clear_degu_chunk()
+
+Header parsing:
+    Internal C API:
+        _parse_key()
+        _parse_val()
+        _parse_decimal()
+        _parse_content_length()
+        _parse_range()
+        _parse_content_range()
+        _parse_header_line()
+        _parse_headers()
+        _create_body()
+    Exported Python functions:
+        parse_header_name()
         parse_content_length()
-        parse_header_line()
+        parse_range()
+        parse_content_range()
         parse_headers()
+
+Request parsing:
+    Internal C API:
+        _parse_method()
+        _parse_path_component()
+        _parse_path()
+        _parse_query()
+        _parse_uri()
+        _parse_request_line()
+        _parse_request()
+    Exported Python functions:
         parse_method()
+        parse_uri()
         parse_request_line()
         parse_request()
+
+Response parsing:
+    Internal C API:
+        _parse_status()
+        _parse_reason()
+        _parse_response_line()
+        _parse_response()
+    Exported Python functions:
         parse_response_line()
         parse_response()
-    Formatting:
-        format_headers()
-        format_request()
-        format_response()
-    namedtuples:
-        Response()
-
-Reader:
-    Internal API:
-        _Reader_Body()
-        _Reader_ChunkedBody()
-        _Reader_sock_recv_into()
-        _Reader_peek()
-        _Reader_drain()
-        _Reader_fill_until()
-        _Reader_search()
-    Public API:
-        Reader.close()
-        Reader.Body()
-        Reader.ChunkedBody()
-        Reader.rawtell()
-        Reader.tell()
-        Reader.expose()
-        Reader.peek()
-        Reader.drain()
-        Reader.fill_until()
-        Reader.search()
-        Reader.readline()
-        Reader.read_request()
-        Reader.read_response()
-        Reader.read()
 

@@ -35,7 +35,6 @@ import string
 
 from degu import tables
 from degu.sslhelpers import random_id
-from degu.base import _MAX_LINE_SIZE
 
 
 MAX_IO_SIZE = 16777216  # 16 MiB
@@ -236,13 +235,13 @@ class FuzzTestCase(TestCase):
         should never read more than 4096 bytes.
         """
         for i in range(1000):
-            data = os.urandom(_MAX_LINE_SIZE * 2)
+            data = os.urandom(4096 * 2)
             rfile = io.BytesIO(data)
             self.assertEqual(sys.getrefcount(rfile), 2)
             with self.assertRaises(ValueError):
                 func(rfile, *args)
             self.assertGreaterEqual(rfile.tell(), 1)
-            self.assertLessEqual(rfile.tell(), _MAX_LINE_SIZE)
+            self.assertLessEqual(rfile.tell(), 4096)
             # Make sure refcount is still correct (especially important for
             # testing C extensions):
             self.assertEqual(sys.getrefcount(rfile), 2)

@@ -25,6 +25,10 @@ from degu._base import (
     format_request,
     format_response,
 
+    render_headers,
+    render_request,
+    render_response,
+
     parse_chunk_size,
     parse_chunk,
 )
@@ -43,6 +47,8 @@ headers = {
 headers_src = format_headers(headers).encode()
 request = format_request('POST', '/foo/bar?stuff=junk', headers)[:-4]
 response = format_response(200, 'OK', headers)[:-4]
+
+dst = memoryview(bytearray(4096))
 """
 
 
@@ -60,8 +66,44 @@ def run(statement, K=250):
     print('{:>11,}: {}'.format(rate, statement))
     return rate
 
+def compare(s1, s2, K=100):
+    r1 = run(s1, K)
+    r2 = run(s2, K)
+    percent = (r1 / r2 * 100) - 100
+    print('  [{:.1f}%]\n'.format(percent))
+    return percent
+
+def test0(s):
+    p1 = 'render_headers(dst, '
+    p2 = 'format_headers('
+    return compare(p1 + s, p2 + s)
+
+def test1(s):
+    p1 = 'render_request(dst, '
+    p2 = 'format_request('
+    return compare(p1 + s, p2 + s)
+
+def test2(s, K=250):
+    p1 = 'render_response(dst, '
+    p2 = 'format_response('
+    return compare(p1 + s, p2 + s)
+
 
 print('-' * 80)
+
+test0('headers)')
+test0("{'content-length': 17})")
+test0("{'content-length': 17, 'content-type': 'text/plain'})")
+print('')
+test1("'GET', '/foo', {})")
+test1("'PUT', '/foo', {'content-length': 17})")
+test1("'PUT', '/foo', {'content-length': 17, 'content-type': 'text/plain'})")
+test1("'PUT', '/foo', headers)")
+print('')
+test2("200, 'OK', {})")
+test2("200, 'OK', {'content-length': 17})")
+test2("200, 'OK', {'content-length': 17, 'content-type': 'text/plain'})")
+test2("200, 'OK', headers)")
 
 print('\nHeader parsing:')
 run('parse_headers(headers_src)')
@@ -109,6 +151,7 @@ run("parse_chunk(b'0;key=value')")
 run("parse_chunk(b'1000000;key=value')")
 
 print('\nHeader formating:')
+run('render_headers(dst, headers)')
 run('format_headers(headers)')
 run('format_headers({})')
 run("format_headers({'content-length': 17})")
@@ -118,11 +161,13 @@ print('\nRequest formatting:')
 run("format_request('GET', '/foo', {})")
 run("format_request('PUT', '/foo', {'content-length': 17})")
 run("format_request('PUT', '/foo', headers)")
+run("render_request(dst, 'PUT', '/foo', headers)")
 
 print('\nResponse formatting:')
 run("format_response(200, 'OK', {})")
 run("format_response(200, 'OK', {'content-length': 17})")
 run("format_response(200, 'OK', headers)")
+run("render_response(dst, 200, 'OK', headers)")
 
 
 print('-' * 80)
