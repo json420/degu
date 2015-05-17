@@ -7,6 +7,30 @@ Changelog
 
 `Download Degu 0.13`_
 
+Degu 0.13 has a completely re-written C backend, bringing with it dramatic
+performance improvements.
+
+Compared to Degu 0.12, ``benchmark.py`` (as measured on an Intel i7-4900MQ) is
+now on average:
+
+    *   141% faster for ``AF_UNIX``
+
+    *   118% faster for ``AF_INET6``
+
+These numbers come from a 50-run test where each run made 50,000 sequential
+requests (reusing the same connection).  In this test, Degu achieved an average
+of:
+
+    *   76,899 requests per second over ``AF_UNIX``
+
+    *   53,369 requests per second over ``AF_INET6``
+
+This kind of performance means Degu is perfectly viable for network-transparent
+IPC, which has always been a central design goal.  Build a service atop Degu,
+and both local and remote clients get the same HTTP goodness, even when a local
+client connects over ``AF_UNIX`` for the best performance.
+
+
 Breaking API changes:
 
     *   The RGI *request* argument is now a ``namedtuple`` instead of a 
@@ -79,52 +103,6 @@ Breaking API changes:
         This means that on 32-bit systems, the maximum output body size would
         be limited to 2 GiB, which is clearly insufficient for `Dmedia`_
         considering it already supports files up to 9 PB in size.
-
-
-Performance improvements:
-
-    *   ``benchmark.py`` is now on average around 83% faster for ``AF_UNIX`` and
-        around 68% faster for ``AF_INET6`` (as measured on an Intel i7-4900MQ).
-
-        This substantial performance improvement is due to the new ``Reader``
-        and ``Writer`` classes.
-
-Security improvements:
-
-    *   
-
-Other changes:
-
-    *   :class:`degu.base.Reader` replaces the previous ``io.BufferedReader``
-        plus ``socket.SocketIO`` combo.  In addition to providing a thinner,
-        faster wrapper around a Python ``socket.socket`` or ``ssl.SSLSocket``,
-        the ``Reader`` class provides two high-level preamble parsing methods:
-
-            * :meth:`degu.base.Reader.read_request()`
-
-            * :meth:`degu.base.Reader.read_response()`
-
-        By utilizing internal C API as much as possible, the C implementation of
-        these two methods dramatically reduced the number of Python function and
-        method calls that must be made in the course of reading and parsing a request or response
-        preamble.
-
-        The C implementation of.
-
-        The C implementation of these two methods use internal fast paths to
-        minimize the number of Python function calls that must be made, and to
-        also illiminate the use of itermediate Python objcets.``bytes``
-        objects
-        
-        
-
-        Likewise, :class:`degu.base.Writer` replaces the previous
-        ``io.BufferedWriter`` plus ``socket.SocketIO`` combo.
-        
-        This
-        new class allows reading and parsing to be decoupled: the HTTP preamble
-        is read, and then parsed, where as previous each line was read and then
-        parsed.
 
 
 
