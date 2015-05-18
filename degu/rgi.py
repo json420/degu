@@ -38,7 +38,6 @@ any other `degu` functionality.  With time, assuming RGI gains wider adoption,
 can better act as an independent RGI validation tool.
 """
 
-
 # Provide very clear TypeError messages:
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
@@ -66,6 +65,13 @@ def _getattr(label, obj, name):
     return (label, getattr(obj, name))
 
 
+def _check_type(label, obj, _type):
+    if type(obj) is not type:
+        raise TypeError(
+            TYPE_ERROR.format(label, _type, type(obj), obj) 
+        )
+
+
 def _ensure_attr_is(label, obj, name, expected):
     """
     Raise a ValueError if *obj* attribute *name* is not *expected*.
@@ -79,7 +85,7 @@ def _ensure_attr_is(label, obj, name, expected):
     Traceback (most recent call last):
       ...
     ValueError: request.body.closed must be True; got False
-    
+
     Or when *obj* has no attribute *name*:
 
     >>> _ensure_attr_is('request.body', body, 'chunked', False)
@@ -109,17 +115,17 @@ def _check_dict(label, obj):
 
     For example, when *obj* isn't a `dict`:
 
-    >>> _check_dict('session', [('foo', 'bar')])
+    >>> _check_dict('headers', [('foo', 'bar')])
     Traceback (most recent call last):
       ...
-    TypeError: session: need a <class 'dict'>; got a <class 'list'>: [('foo', 'bar')]
+    TypeError: headers: need a <class 'dict'>; got a <class 'list'>: [('foo', 'bar')]
 
     Or when *obj* contains a non-string key:
 
-    >>> _check_dict('session', {b'foo': 'bar'})
+    >>> _check_dict('headers', {b'foo': 'bar'})
     Traceback (most recent call last):
       ...
-    TypeError: session: keys must be <class 'str'>; got a <class 'bytes'>: b'foo'
+    TypeError: headers: keys must be <class 'str'>; got a <class 'bytes'>: b'foo'
 
     """
     if not isinstance(obj, dict):
@@ -172,15 +178,15 @@ def _check_address(label, address):
     """
     Validate a socket address.
 
-    `_validate_session()` uses this to validate ``session['client']``.
+    `_validate_session()` uses this to validate ``session.address``.
 
     For example:
 
-    >>> _check_address("session['client']", ('::1', 1234, 0, 0))
-    >>> _check_address("session['client']", ('::1', 1234, 0))
+    >>> _check_address('session.address', ('::1', 1234, 0, 0))
+    >>> _check_address('session.address', ('::1', 1234, 0))
     Traceback (most recent call last):
       ...
-    ValueError: session['client']: tuple must have 2 or 4 items; got ('::1', 1234, 0)
+    ValueError: session.address: tuple must have 2 or 4 items; got ('::1', 1234, 0)
 
     """
     if isinstance(address, tuple):
@@ -249,21 +255,25 @@ def _validate_session(session):
     """
     Validate the *session* argument.
     """
-    return
-    _check_dict('session', session)
 
-    # client:
-    (label, value) = _get_path('session', session, 'client')
+    # address:
+    (label, value) = _getattr('session', session, 'address')
     _check_address(label, value)
 
     # requests:
-    (label, value) = _get_path('session', session, 'requests')
+    (label, value) = _getattr('session', session, 'requests')
     if not isinstance(value, int):
         raise TypeError(
             TYPE_ERROR.format(label, int, type(value), value) 
         )
     if value < 0:
         raise ValueError('{} must be >= 0; got {!r}'.format(label, value))
+
+    # store:
+    (label, value) = _getattr('session', session, 'store')
+    _check_dict(label, value)
+
+    # FIXME: Add tests for session.credentials, session.max_requests
 
 
 def _reconstruct_uri(request):

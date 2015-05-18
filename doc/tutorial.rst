@@ -126,9 +126,10 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...         self.client = client
 ... 
 ...     def __call__(self, session, request, bodies):
-...         if '__conn' not in session:
-...             session['__conn'] = self.client.connect()
-...         conn = session['__conn']
+...         conn = session.store.get('conn')
+...         if conn is None:
+...             conn = self.client.connect()
+...             session.store['conn'] = conn
 ...         return conn.request(
 ...             request.method,
 ...             request.uri,

@@ -51,6 +51,11 @@ class MockObject:
             setattr(self, key, value)
 
 
+class Session(MockObject):
+    """
+    Mock class used for RGI *session* argument.
+    """
+
 class Body(MockObject):
     """
     Mock class used for bodies.Body.
@@ -80,13 +85,13 @@ default_bodies = Bodies(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
 
 
 def build_session(**kw):
-    session = {
-        'client': ('127.0.0.1', 52521),
+    base = {
+        'address': ('127.0.0.1', 52521),
         'requests': 0,
+        'store': {},
     }
-    for (key, value) in kw.items():
-        session[key] = value
-    return session
+    base.update(kw)
+    return Session(**base)
 
 
 def build_request(**kw):
@@ -396,71 +401,61 @@ class TestFunctions(TestCase):
             self.assertIsNone(rgi._check_address(label, address))
 
     def test_validate_session(self):
-        # session isn't a `dict`:
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(['hello'])
-        self.assertEqual(str(cm.exception),
-            rgi.TYPE_ERROR.format('session', dict, list, ['hello'])
-        )
-
-        # session has non-str keys:
-        with self.assertRaises(TypeError) as cm:
-            rgi._validate_session({'foo': 'bar', b'hello': 'world'})
-        self.assertEqual(str(cm.exception),
-            "session: keys must be <class 'str'>; got a <class 'bytes'>: b'hello'"
-        )
-
-        # Missing required keys:
+        # Missing required attributes:
         good = {
-            'client': ('127.0.0.1', 52521),
+            'address': ('127.0.0.1', 52521),
             'requests': 0,
+            'store': {},
         }
-        self.assertIsNone(rgi._validate_session(good))
+        sess = Session(**good)
+        self.assertIsNone(rgi._validate_session(sess))
         for key in sorted(good):
             bad = deepcopy(good)
             del bad[key]
+            sess = Session(**bad)
             with self.assertRaises(ValueError) as cm:
-                rgi._validate_session(bad)
+                rgi._validate_session(sess)
             self.assertEqual(str(cm.exception),
-                'session[{!r}] does not exist'.format(key)
+                "session: 'Session' object has no attribute {!r}".format(key)
             )
 
-        # Bad session['client'] type:
+        # Bad session.address type:
         address = ['127.0.0.1', 12345]
         bad = deepcopy(good)
-        bad['client'] = address
+        bad['address'] = address
+        sess = Session(**bad)
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
+            rgi._validate_session(sess)
         self.assertEqual(str(cm.exception),
-            rgi.TYPE_ERROR.format("session['client']", (tuple, str, bytes), list, address)
+            rgi.TYPE_ERROR.format('session.address', (tuple, str, bytes), list, address)
         )
 
-        # session['client'] tuple is wrong length:
+        # session.address tuple is wrong length:
         address = ('::1', 2345, 0, 0, 0)
         bad = deepcopy(good)
-        bad['client'] = address
+        bad['address'] = address
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
+            rgi._validate_session(Session(**bad))
         self.assertEqual(str(cm.exception),
-            "session['client']: tuple must have 2 or 4 items; got ('::1', 2345, 0, 0, 0)"
+            "session.address: tuple must have 2 or 4 items; got ('::1', 2345, 0, 0, 0)"
         )
 
-        # session['requests'] isn't an `int`:
+        # session.requests isn't an `int`:
         bad = deepcopy(good)
         bad['requests'] = 0.0
         with self.assertRaises(TypeError) as cm:
-            rgi._validate_session(bad)
+            rgi._validate_session(Session(**bad))
         self.assertEqual(str(cm.exception),
-            "session['requests']: need a <class 'int'>; got a <class 'float'>: 0.0"
+            "session.requests: need a <class 'int'>; got a <class 'float'>: 0.0"
         )
 
-        # session['requests'] is negative:
+        # session.requests is negative:
         bad = deepcopy(good)
         bad['requests'] = -1
         with self.assertRaises(ValueError) as cm:
-            rgi._validate_session(bad)
+            rgi._validate_session(Session(**bad))
         self.assertEqual(str(cm.exception),
-            "session['requests'] must be >= 0; got -1"
+            'session.requests must be >= 0; got -1'
         )
 
     def test_reconstruct_uri(self):
@@ -1429,13 +1424,13 @@ class TestValidator(TestCase):
         session = build_session()
         self.assertIs(inst.on_connect(session, None), True)
 
-        # app.on_connect() returns True, but session['requests'] != 0:
+        # app.on_connect() returns True, but session.requests != 0:
         inst = rgi.Validator(App(True))
         session = build_session(requests=1)
         with self.assertRaises(ValueError) as cm:
             inst.on_connect(session, None)
         self.assertEqual(str(cm.exception), 
-            "session['requests'] must be 0 when app.on_connect() is called; got 1"
+            'session.requests must be 0 when app.on_connect() is called; got 1'
         )
 
         # app.on_connect() returns False:
@@ -1443,13 +1438,13 @@ class TestValidator(TestCase):
         session = build_session()
         self.assertIs(inst.on_connect(session, None), False)
 
-        # app.on_connect() returns False, but session['requests'] != 0:
+        # app.on_connect() returns False, but session.requests != 0:
         inst = rgi.Validator(App(False))
         session = build_session(requests=3)
         with self.assertRaises(ValueError) as cm:
             inst.on_connect(session, None)
         self.assertEqual(str(cm.exception), 
-            "session['requests'] must be 0 when app.on_connect() is called; got 3"
+            'session.requests must be 0 when app.on_connect() is called; got 3'
         )
 
         # app has no 'on_connect' attribute:
