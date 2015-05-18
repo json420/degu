@@ -5580,6 +5580,27 @@ class TestSession_Py(BackendTestCase):
 
     def test_init(self):
         address = random_id()
+        ncount = sys.getrefcount(None)
+        sess = self.Session(address)
+        self.assertIs(sess.address, address)
+        self.assertIsNone(sess.credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 500)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r})'.format(address)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(None), ncount)
+        self.assertEqual(sys.getrefcount(store), 2)
+    
+        address = random_id()
         credentials = None
         ccount = sys.getrefcount(credentials)
         max_requests = 75000
@@ -5604,7 +5625,6 @@ class TestSession_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(max_requests), mrcount)
         self.assertEqual(sys.getrefcount(store), 2)
 
-        address = random_id()
         credentials = (32181, 1000, 1000)
         ccount = sys.getrefcount(credentials)
         max_requests = 75000

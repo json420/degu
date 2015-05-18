@@ -1467,9 +1467,11 @@ class Session:
         '_store',
     )
 
-    def __init__(self, address, credentials, max_requests):
+    def __init__(self, address, credentials=None, max_requests=None):
         if credentials is not None:
             _check_tuple('credentials', credentials, 3)
+        if max_requests is None:
+            max_requests=500
         self._address = address
         self._credentials = credentials
         self._max_requests = _check_int('max_requests', max_requests, 0, 75000)
