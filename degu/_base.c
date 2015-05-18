@@ -4677,6 +4677,46 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
 
 
 /******************************************************************************
+ * Session object.
+ ******************************************************************************/
+static void
+Session_dealloc(Session *self)
+{
+    Py_CLEAR(self->address);
+    Py_CLEAR(self->credentials);
+    Py_CLEAR(self->store);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Session_init(Session *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"address", "credentials", NULL};
+    PyObject *address = NULL;
+    PyObject *credentials = NULL;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Session", keys,
+            &address, &credentials)) {
+        goto error;
+    }
+    _SET_AND_INC(self->address, address)
+    _SET_AND_INC(self->credentials, credentials)
+    _SET(self->store, PyDict_New())
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+Session_repr(Session *self) {
+    return PyUnicode_FromFormat("Session(%R, %R)",
+        self->address, self->credentials
+    );
+}
+
+
+/******************************************************************************
  * Server-side helpers
  ******************************************************************************/
 static bool
@@ -5103,6 +5143,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "ChunkedBodyIter", (PyObject *)&ChunkedBodyIterType)
+
+    SessionType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&SessionType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Session", (PyObject *)&SessionType)
 
     ConnectionType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ConnectionType) != 0) {

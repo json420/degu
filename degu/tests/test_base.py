@@ -5573,6 +5573,34 @@ class NewMockSocket(BaseMockSocket):
         self._calls.append('close')
 
 
+class TestSession_Py(BackendTestCase):
+    @property
+    def Session(self):
+        return self.getattr('Session')
+
+    def test_init(self):
+        address = random_id()
+        credentials = (32181, 1000, 1000)
+        ccount = sys.getrefcount(credentials)
+        sess = self.Session(address, credentials)
+        self.assertIs(sess.address, address)
+        self.assertIs(sess.credentials, credentials)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r}, {!r})'.format(address, credentials)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(store), 2)
+
+class TestSession_C(TestSession_Py):
+    backend = _base
+
+
 class TestServerFunctions_Py(BackendTestCase):
     def test_handle_requests(self):
         handle_requests = self.getattr('handle_requests')

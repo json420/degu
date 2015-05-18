@@ -1449,6 +1449,29 @@ def _check_status(status):
             'need 100 <= status <= 599; got {}'.format(status)
         )
 
+
+class Session:
+    def __init__(self, address, credentials):
+        self._address = address
+        self._credentials = credentials
+        self._store = {}
+
+    def __repr__(self):
+        return 'Session({!r}, {!r})'.format(self._address, self._credentials)
+
+    @property
+    def address(self):
+        return self._address
+
+    @property
+    def credentials(self):
+        return self._credentials
+
+    @property
+    def store(self):
+        return self._store
+
+
 def handle_requests(app, max_requests, sock, session):
     reader = Reader(sock)
     writer = Writer(sock)
