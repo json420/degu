@@ -5580,11 +5580,42 @@ class TestSession_Py(BackendTestCase):
 
     def test_init(self):
         address = random_id()
-        credentials = (32181, 1000, 1000)
+        credentials = None
         ccount = sys.getrefcount(credentials)
-        sess = self.Session(address, credentials)
+        max_requests = 75000
+        mrcount = sys.getrefcount(max_requests)
+        sess = self.Session(address, credentials, max_requests)
         self.assertIs(sess.address, address)
         self.assertIs(sess.credentials, credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 75000)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r})'.format(address)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+        self.assertEqual(sys.getrefcount(store), 2)
+
+        address = random_id()
+        credentials = (32181, 1000, 1000)
+        ccount = sys.getrefcount(credentials)
+        max_requests = 75000
+        mrcount = sys.getrefcount(max_requests)
+        sess = self.Session(address, credentials, max_requests)
+        self.assertIs(sess.address, address)
+        self.assertIs(sess.credentials, credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 75000)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
         store = sess.store
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
@@ -5595,7 +5626,83 @@ class TestSession_Py(BackendTestCase):
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
         self.assertEqual(sys.getrefcount(store), 2)
+
+        # credentials isn't a tuple:
+        credentials = [32181, 1000, 1000]
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(TypeError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            "credentials: need a <class 'tuple'>; got a <class 'list'>"
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # credentials is a 2-tuple:
+        credentials = (32181, 1000)
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'credentials: need a 3-tuple; got a 2-tuple'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # credentials is a 4-tuple:
+        credentials = (32181, 1000, 1000, 1000)
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'credentials: need a 3-tuple; got a 4-tuple'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        credentials = (12345, 23456, 345678)
+        ccount = sys.getrefcount(credentials)
+
+        # max_requests isn't an int:
+        max_requests = 75000.0
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(TypeError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            "max_requests: need a <class 'int'>; got a <class 'float'>: 75000.0"
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # max_requests < 0:
+        max_requests = -1
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= max_requests <= 75000; got -1'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # max_requests > 75000
+        max_requests = 75001
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= max_requests <= 75000; got 75001'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
 
 class TestSession_C(TestSession_Py):
     backend = _base

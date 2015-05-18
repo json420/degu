@@ -1449,14 +1449,36 @@ def _check_status(status):
             'need 100 <= status <= 599; got {}'.format(status)
         )
 
+def _check_int(name, obj, _min, _max):
+    _validate_int(name, obj)
+    if not _min <= obj <= _max:
+        raise ValueError(
+            'need {} <= {} <= {}; got {}'.format(_min, name, _max, obj)
+        )
+    return obj
+
 
 class Session:
-    def __init__(self, address, credentials):
+    __slots__ = (
+        '_address',
+        '_credentials',
+        '_max_requests',
+        '_requests',
+        '_store',
+    )
+
+    def __init__(self, address, credentials, max_requests):
+        if credentials is not None:
+            _check_tuple('credentials', credentials, 3)
         self._address = address
         self._credentials = credentials
+        self._max_requests = _check_int('max_requests', max_requests, 0, 75000)
+        self._requests = 0
         self._store = {}
 
     def __repr__(self):
+        if self._credentials is None:
+            return 'Session({!r})'.format(self._address)
         return 'Session({!r}, {!r})'.format(self._address, self._credentials)
 
     @property
@@ -1466,6 +1488,14 @@ class Session:
     @property
     def credentials(self):
         return self._credentials
+
+    @property
+    def max_requests(self):
+        return self._max_requests
+
+    @property
+    def requests(self):
+        return self._requests
 
     @property
     def store(self):

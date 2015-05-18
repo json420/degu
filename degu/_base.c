@@ -4691,17 +4691,30 @@ Session_dealloc(Session *self)
 static int
 Session_init(Session *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"address", "credentials", NULL};
+    static char *keys[] = {"address", "credentials", "max_requests", NULL};
     PyObject *address = NULL;
     PyObject *credentials = NULL;
+    PyObject *max_requests = NULL;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Session", keys,
-            &address, &credentials)) {
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOO:Session", keys,
+            &address, &credentials, &max_requests)) {
         goto error;
     }
+    if (credentials != Py_None) {
+        if (! _check_tuple("credentials", credentials, 3)) {
+            goto error;
+        }
+    }
+    const ssize_t size = _get_size("max_requests", max_requests, 0u, 75000u);
+    if (size < 0) {
+        goto error;
+    }
+
     _SET_AND_INC(self->address, address)
     _SET_AND_INC(self->credentials, credentials)
     _SET(self->store, PyDict_New())
+    self->max_requests = (size_t)size;
+    self->requests = 0;
     return 0;
 
 error:
@@ -4710,6 +4723,9 @@ error:
 
 static PyObject *
 Session_repr(Session *self) {
+    if (self->credentials == Py_None) {
+        return PyUnicode_FromFormat("Session(%R)", self->address);
+    }
     return PyUnicode_FromFormat("Session(%R, %R)",
         self->address, self->credentials
     );
