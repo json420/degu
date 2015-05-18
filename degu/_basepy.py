@@ -1502,10 +1502,12 @@ class Session:
         return self._store
 
 
-def handle_requests(app, max_requests, sock, session):
+def handle_requests(app, sock, session):
+    _check_type2('session', session, Session)
+    assert session.requests == session._requests == 0
     reader = Reader(sock)
     writer = Writer(sock)
-    for count in range(1, max_requests + 1):
+    for i in range(session._max_requests):
         request = reader.read_request()
         response = app(session, request, bodies)
         (status, reason, headers, body) = _unpack_response(response)
@@ -1518,7 +1520,7 @@ def handle_requests(app, max_requests, sock, session):
             )
 
         # FIXME: when 200 <= status <= 299, we should consider requiring that
-        # the response body not be None
+        # the response body for a GET request not be None
 
         # Make sure HEAD requests are properly handled:
         if request.method == 'HEAD' and body is not None:
@@ -1534,8 +1536,8 @@ def handle_requests(app, max_requests, sock, session):
         # Write response:
         writer.write_response(status, reason, headers, body)
 
-        # Update session counter:
-        session['requests'] = count
+        # Update requests counter:
+        session._requests += 1
 
         # Possibly close the connection:
         if status >= 400 and status not in {404, 409, 412}:
@@ -1543,7 +1545,6 @@ def handle_requests(app, max_requests, sock, session):
 
     # Make sure sndbuf gets flushed:
     sock.close()
-    return count
 
 
 class Connection:
@@ -1627,3 +1628,4 @@ class Connection:
     def get_range(self, uri, headers, start, stop):
         set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)
+

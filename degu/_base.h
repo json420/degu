@@ -1037,7 +1037,6 @@ static PyTypeObject SessionType = {
     (initproc)Session_init,             /* tp_init */
 };
 
-#define IS_SESSION(obj) (Py_TYPE((obj)) == &SessionType)
 #define SESSION(obj) ((Session *)(obj))
 
 

@@ -29,7 +29,7 @@ import threading
 import os
 import struct
 
-from .base import handle_requests, _TYPE_ERROR
+from .base import Session, handle_requests, _TYPE_ERROR
 
 
 log = logging.getLogger()
@@ -203,58 +203,66 @@ class Server:
         max_requests = self.max_requests
         timeout = self.timeout
         listensock = self.sock
-        unix = (True if listensock.family == socket.AF_UNIX else False)
+        isunix = (True if listensock.family == socket.AF_UNIX else False)
         worker = self._worker
-        while True:
-            (sock, address) = listensock.accept()
-            #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            # Denial of Service note: when we already have max_connections, we
-            # should aggressively rate-limit the handling of new connections, so
-            # that's why we use `timeout=2` rather than `blocking=False`:
-            if semaphore.acquire(timeout=2) is True:
-                sock.settimeout(timeout)
-                if unix is True:
-                    cred = get_peer_credentials(sock, sock)
-                    log.info('Connection from %r %r', address, cred)
-                else:
-                    log.info('Connection from %r', address)
-                    cred = None
-                thread = threading.Thread(
-                    target=worker,
-                    args=(semaphore, max_requests, sock, address, cred),
-                    daemon=True
-                )
-                thread.start()
-            else:
-                log.warning('Rejecting connection from %r', address)
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-
-    def _worker(self, semaphore, max_requests, sock, address, cred):
+        how = socket.SHUT_RDWR
         try:
-            session = {'client': address, 'requests': 0}
-            self._handler(sock, max_requests, session)
+            while True:
+                (sock, address) = listensock.accept()
+                # Denial of Service note: when we already have max_connections,
+                # we should aggressively rate-limit the handling of new
+                # connections, so that's why we use `timeout=2` rather than
+                # `blocking=False`:
+                if semaphore.acquire(timeout=2) is True:
+                    sock.settimeout(timeout)
+                    if isunix:
+                        credentials = get_peer_credentials(sock, sock)
+                        log.info('Connection from %r %r', address, credentials)
+                    else:
+                        log.info('Connection from %r', address)
+                        credentials = None
+                    session = Session(address, credentials, max_requests)
+                    thread = threading.Thread(
+                        target=worker,
+                        args=(semaphore, sock, session),
+                        daemon=True
+                    )
+                    thread.start()
+                else:
+                    log.warning('Rejecting connection from %r', address)
+                    try:
+                        sock.shutdown(how)
+                    except OSError:
+                        pass
+        finally:
+            listensock.shutdown(how)
+
+    def _worker(self, semaphore, sock, session, how=socket.SHUT_RDWR):
+        try:
+            self._handler(sock, session)
+            log.info('Handled %d requests from %r',
+                session.requests, session.address
+            )
         except OSError as e:
-            log.info('Handled %d requests from %r: %r', 
-                session.get('requests'), address, e
+            log.info('Timeout after handling %d requests from %r: %r', 
+                session.requests, session.address, e
             )
         except:
-            log.exception('Client: %r', address)
+            log.exception('Error after handling %r requests from %r',
+                session.requests, session.address
+            )
         finally:
             try:
-                sock.shutdown(socket.SHUT_RDWR)
+                sock.shutdown(how)
             except OSError:
                 pass
             semaphore.release()
 
-    def _handler(self, sock, max_requests, session):
+    def _handler(self, sock, session):
         if self.on_connect is None or self.on_connect(session, sock) is True:
-            #_handle_requests(self.app, sock, max_requests, session)
-            handle_requests(self.app, max_requests, sock, session)
+            handle_requests(self.app, sock, session)
         else:
-            log.warning('rejecting connection: %r', session['client'])
+            log.warning('rejecting connection: %r', session.address)
 
 
 class SSLServer(Server):
@@ -267,11 +275,11 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def _handler(self, sock, max_requests, session):
+    def _handler(self, sock, session):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
-        session.update({
-            'ssl_cipher': sock.cipher(),
-            'ssl_compression': sock.compression(),
-        })
-        super()._handler(sock, max_requests, session)
+#        session.update({
+#            'ssl_cipher': sock.cipher(),
+#            'ssl_compression': sock.compression(),
+#        })
+        super()._handler(sock, session)
 

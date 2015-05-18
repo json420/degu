@@ -4784,12 +4784,10 @@ static PyObject *
 handle_requests(PyObject *self, PyObject *args)
 {
     PyObject *app = NULL;
-    PyObject *max_requests = NULL;
     PyObject *sock = NULL;
     PyObject *session = NULL;
-    PyObject *ret = NULL;
-    ssize_t _max_requests;
     size_t i, status;
+    bool success = true;
 
     /* These 6 all need to be freed */
     PyObject *reader = NULL;
@@ -4805,20 +4803,17 @@ handle_requests(PyObject *self, PyObject *args)
      */
     DeguResponse rsp = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "OOOO:handle_requests",
-            &app, &max_requests, &sock, &session)) {
-        return NULL;
+    if (! PyArg_ParseTuple(args, "OOO:handle_requests", &app, &sock, &session)) {
+        goto error;
     }
-    _max_requests = _get_size("max_requests", max_requests, 1u, 75000u);
-    if (_max_requests < 0) {
-        return NULL;
+    if (! _check_type2("session", session, &SessionType)) {
+        goto error;
     }
-    const size_t count = (size_t)_max_requests;
+    const size_t max_requests = SESSION(session)->max_requests;
     _SET(reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
     _SET(writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
 
-    i = 0;
-    while (i < count) {
+    for (i = 0; i < max_requests; i++) {
         /* Read and parse request, build Request namedtuple */
         if (! _Reader_read_request(READER(reader), &req)) {
             goto error;
@@ -4855,13 +4850,17 @@ handle_requests(PyObject *self, PyObject *args)
         if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
             goto error;
         }
-        i++;
+
+        /* Increment requests counter */
+        SESSION(session)->requests++;
 
         /* Possibly close connection depending on response status */
         status = rsp.s;
         if (status >= 400 && status != 404 && status != 409 && status != 412) {
             break;
         }
+
+        /* Cleanup for next request */
         Py_CLEAR(response);
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
@@ -4869,18 +4868,22 @@ handle_requests(PyObject *self, PyObject *args)
 
     /* Ensure sock is flushed and properly closed before shutdown is called */ 
     _SET(close_result, PyObject_CallMethod(sock, "close", NULL))
-
-    /* Return the number of requests handled */
-    _SET(ret, PyLong_FromSize_t(i))
+    goto cleanup;
 
 error:
+    success = false;
+
+cleanup:
     Py_CLEAR(reader);           /* 1 */
     Py_CLEAR(writer);           /* 2 */
     Py_CLEAR(request);          /* 3 */
     Py_CLEAR(response);         /* 4 */
     Py_CLEAR(close_result);     /* 5 */
     _clear_degu_request(&req);  /* 6 */
-    return ret;
+    if (success) {
+        Py_RETURN_NONE;
+    }
+    return NULL;
 }
 
 

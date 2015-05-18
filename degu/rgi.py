@@ -249,6 +249,7 @@ def _validate_session(session):
     """
     Validate the *session* argument.
     """
+    return
     _check_dict('session', session)
 
     # client:
@@ -541,10 +542,10 @@ class Validator:
 
     def on_connect(self, session, sock):
         _validate_session(session)
-        if session['requests'] != 0:
+        if session.requests != 0:
             raise ValueError(
                 '{} must be 0 when app.on_connect() is called; got {!r}'.format(
-                    "session['requests']", session['requests']
+                    'session.requests', session.requests
                 )
             )
         if self._on_connect is None:
