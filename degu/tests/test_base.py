@@ -1920,6 +1920,24 @@ class int_subclass(int):
     pass
 
 
+class FormatHeaders_Py:
+    def __init__(self, func):
+        self._func = func
+
+    def __call__(self, headers):
+        return self._func(headers).encode('latin_1')
+
+
+class FormatHeaders_C:
+    def __init__(self, func):
+        self._func = func
+        self._dst = memoryview(bytearray(4096))
+
+    def __call__(self, headers):
+        stop = self._func(self._dst, headers)
+        return self._dst[0:stop].tobytes()
+
+
 class TestFormatting_Py(BackendTestCase):
     def test_set_default_header(self):
         set_default_header = self.getattr('set_default_header')
@@ -1977,8 +1995,14 @@ class TestFormatting_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(val2), 2)
         self.assertEqual(sys.getrefcount(val3), 2)
 
+    def get_format_headers(self):
+        if self.backend is _basepy:
+            return FormatHeaders_Py(self.getattr('format_headers'))
+
+        return FormatHeaders_C(self.getattr('render_headers'))
+
     def test_format_headers(self):
-        format_headers = self.getattr('format_headers')
+        format_headers = self.get_format_headers()
 
         # Bad headers type:
         bad = [('foo', 'bar')]
@@ -2045,16 +2069,25 @@ class TestFormatting_Py(BackendTestCase):
                 format_headers(headers)
             self.assertEqual(str(cm.exception), "bad key: 'f\\no'")
 
-        self.assertEqual(format_headers({}), '')
-        self.assertEqual(format_headers({'foo': 17}), 'foo: 17\r\n')
+        self.assertEqual(format_headers({}), b'')
+        self.assertEqual(format_headers({'foo': 17}), b'foo: 17\r\n')
         self.assertEqual(
             format_headers({'foo': 17, 'bar': 18}),
-            'bar: 18\r\nfoo: 17\r\n'
+            b'bar: 18\r\nfoo: 17\r\n'
         )
         self.assertEqual(
             format_headers({'foo': '17', 'bar': '18'}),
-            'bar: 18\r\nfoo: 17\r\n'
+            b'bar: 18\r\nfoo: 17\r\n'
         )
+
+        # Test sorting:
+        headers = dict(
+            ('d' * i, random_id(20)) for i in range(1, 5)
+        )
+        expected = ''.join(
+            '{}: {}\r\n'.format(k, v) for (k, v) in sorted(headers.items())
+        ).encode()
+        self.assertEqual(format_headers(headers), expected)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')

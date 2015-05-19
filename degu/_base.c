@@ -331,7 +331,7 @@ _type_error(const char *name, PyTypeObject *need, PyObject *got)
 
 static bool
 _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
-    if (Py_TYPE(obj) == type) {
+    if (obj != NULL && Py_TYPE(obj) == type) {
         return true;
     }
     PyErr_Format(PyExc_TypeError,
@@ -342,7 +342,7 @@ _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
 
 static bool
 _check_type2(const char *name, PyObject *obj, PyTypeObject *type) {
-    if (Py_TYPE(obj) == type) {
+    if (obj != NULL && Py_TYPE(obj) == type) {
         return true;
     }
     PyErr_Format(PyExc_TypeError,
@@ -485,7 +485,7 @@ _check_str(const char *name, PyObject *obj)
         return false;
     }
     if (PyUnicode_MAX_CHAR_VALUE(obj) != 127) {
-        PyErr_Format(PyExc_ValueError, "%s: contains non-ASCII: %R", name, obj);
+        PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
     return true;
@@ -2327,19 +2327,12 @@ _validate_key(PyObject *key)
     size_t i;
     uint8_t bits;
 
-    if (!PyUnicode_CheckExact(key)) {
-        _type_error("key", &PyUnicode_Type, key);
-        return false;
-    }
-    if (PyUnicode_READY(key) != 0) {
+    if (! _check_str("key", key)) {
         return false;
     }
     if (PyUnicode_GET_LENGTH(key) < 1) {
         PyErr_SetString(PyExc_ValueError, "key is empty");
         return false;
-    }
-    if (PyUnicode_MAX_CHAR_VALUE(key) != 127) {
-        goto bad_key;
     }
     const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
     const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
@@ -2470,30 +2463,66 @@ _copy_into(DeguOutput *o, DeguSrc src)
         goto error; \
     }
 
+static bool
+_copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mask)
+{
+    uint8_t c, bits;
+    size_t i;
+
+    if (mask == 0 || (mask & 1) != 0) {
+        Py_FatalError("_copy_str_into(): bad mask");
+        return false;
+    }
+    DeguSrc src = _src_from_str(name, obj);
+    if (src.buf == NULL) {
+        return false;
+    }
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (src.len > dst.len) {
+        PyErr_Format(PyExc_ValueError,
+            "output too large: %zu > %zu", src.len, o->dst.len
+        );
+        return false;
+    }
+    for (bits = i = 0; i < src.len; i++) {
+        c = dst.buf[i] = src.buf[i];
+        bits |= _FLAG[c];
+    }
+    if ((bits & mask) != 0) {
+        PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
+        return false;
+    }
+    o->stop += src.len;
+    return true;
+}
+
+#define _COPY_STR_INTO(o, name, obj, mask) \
+    if (! _copy_str_into(o, name, obj, mask)) { \
+        goto error; \
+    }
+
 typedef struct {
-    uint8_t *buf;
-    size_t len;
+    PyObject *key;
     PyObject *val;
 } HLine;
-
-#define HMAX 16
 
 static bool
 _render_header_line(DeguOutput *o, HLine *l)
 {
-    DeguSrc key = {l->buf, l->len};
-    PyObject *val_str = NULL;
+    PyObject *val_str = NULL;  /* Must be cleared */
+    PyObject *val = NULL;  /* Just a borrowed reference */
     bool ret = true;
 
-    _COPY_INTO(o, key)
-    _COPY_INTO(o, SEP)
     if (Py_TYPE(l->val) == &PyUnicode_Type) {
-        _COPY_INTO(o, _src_from_str("val", l->val))
+        _SET(val, l->val)
     }
     else {
         _SET(val_str, PyObject_Str(l->val))
-        _COPY_INTO(o, _src_from_str("val", val_str))
+        _SET(val, val_str)
     }
+    _COPY_STR_INTO(o, "key", l->key, KEY_MASK)
+    _COPY_INTO(o, SEP)
+    _COPY_STR_INTO(o, "val", val, VAL_MASK)
     _COPY_INTO(o, CRLF)
     goto cleanup;
 
@@ -2506,12 +2535,27 @@ cleanup:
 }
 
 static int
-_hline_cmp(const void *A, const void *B)
+_hline_cmp(const void *_A, const void *_B)
 {
-    HLine *a = (HLine *)A;
-    HLine *b = (HLine *)B;
-    return memcmp(a->buf, b->buf, _min(a->len, b->len));
-} 
+    /* Warning: this function assumes _check_str() was called on each key */
+    const HLine *A = (HLine *)_A;
+    const HLine *B = (HLine *)_B;
+    DeguSrc a = {
+        PyUnicode_1BYTE_DATA(A->key),
+        (size_t)PyUnicode_GET_LENGTH(A->key)
+    };
+    DeguSrc b = {
+        PyUnicode_1BYTE_DATA(B->key),
+        (size_t)PyUnicode_GET_LENGTH(B->key)
+    };
+    const int cmp = memcmp(a.buf, b.buf, _min(a.len, b.len));
+    if (cmp != 0) {
+        return cmp;
+    }
+    return (int)a.len - (int)b.len;
+}
+
+#define HMAX 20
 
 static bool
 _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
@@ -2533,11 +2577,7 @@ _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
         if (! _check_str("key", key)) {
             return false;
         }
-        lines[i] = (HLine) {
-            PyUnicode_1BYTE_DATA(key),
-            (size_t)PyUnicode_GET_LENGTH(key),
-            val
-        }; 
+        lines[i] = (HLine){key, val};
         i++;
     }
     qsort(lines, count, sizeof(HLine), _hline_cmp);
@@ -2561,11 +2601,7 @@ _render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
         if (! _check_str("key", key)) {
             return false;
         }
-        line = (HLine) {
-            PyUnicode_1BYTE_DATA(key),
-            (size_t)PyUnicode_GET_LENGTH(key),
-            val
-        }; 
+        line = (HLine){key, val};
         if (! _render_header_line(o, &line)) {
             return false;
         } 
