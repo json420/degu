@@ -953,7 +953,7 @@ static PyTypeObject ConnectionType = {
     0,                                  /* tp_getattro */
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_FINALIZE,                 /* tp_flags */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
     "Connection(sock, base_headers)",   /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
@@ -971,6 +971,73 @@ static PyTypeObject ConnectionType = {
     0,                                  /* tp_dictoffset */
     (initproc)Connection_init,          /* tp_init */
 };
+
+
+/******************************************************************************
+ * Session object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *address;
+    PyObject *credentials;
+    PyObject *store;
+    size_t max_requests;
+    size_t requests;
+} Session;
+
+static PyMemberDef Session_members[] = {
+    {"address",      T_OBJECT_EX, offsetof(Session, address),      READONLY, NULL},
+    {"credentials",  T_OBJECT_EX, offsetof(Session, credentials),  READONLY, NULL},
+    {"store",        T_OBJECT_EX, offsetof(Session, store),        READONLY, NULL},
+    {"max_requests", T_PYSSIZET,  offsetof(Session, max_requests), READONLY, NULL},
+    {"requests",     T_PYSSIZET,  offsetof(Session, requests),     READONLY, NULL},
+    {NULL}
+};
+
+static void Session_dealloc(Session *);
+static int Session_init(Session *, PyObject *, PyObject *);
+static PyObject * Session_repr(Session *);
+
+static PyTypeObject SessionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "degu._base.Session",               /* tp_name */
+    sizeof(Session),                    /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)Session_dealloc,        /* tp_dealloc */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_reserved */
+    (reprfunc)Session_repr,             /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash  */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    "Session(sock, base_headers)",      /* tp_doc */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
+    0,                                  /* tp_methods */
+    Session_members,                    /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)Session_init,             /* tp_init */
+};
+
+#define SESSION(obj) ((Session *)(obj))
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/

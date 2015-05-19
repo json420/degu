@@ -1920,6 +1920,24 @@ class int_subclass(int):
     pass
 
 
+class FormatHeaders_Py:
+    def __init__(self, func):
+        self._func = func
+
+    def __call__(self, headers):
+        return self._func(headers).encode('latin_1')
+
+
+class FormatHeaders_C:
+    def __init__(self, func):
+        self._func = func
+        self._dst = memoryview(bytearray(4096))
+
+    def __call__(self, headers):
+        stop = self._func(self._dst, headers)
+        return self._dst[0:stop].tobytes()
+
+
 class TestFormatting_Py(BackendTestCase):
     def test_set_default_header(self):
         set_default_header = self.getattr('set_default_header')
@@ -1977,8 +1995,14 @@ class TestFormatting_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(val2), 2)
         self.assertEqual(sys.getrefcount(val3), 2)
 
+    def get_format_headers(self):
+        if self.backend is _basepy:
+            return FormatHeaders_Py(self.getattr('format_headers'))
+
+        return FormatHeaders_C(self.getattr('render_headers'))
+
     def test_format_headers(self):
-        format_headers = self.getattr('format_headers')
+        format_headers = self.get_format_headers()
 
         # Bad headers type:
         bad = [('foo', 'bar')]
@@ -2045,16 +2069,25 @@ class TestFormatting_Py(BackendTestCase):
                 format_headers(headers)
             self.assertEqual(str(cm.exception), "bad key: 'f\\no'")
 
-        self.assertEqual(format_headers({}), '')
-        self.assertEqual(format_headers({'foo': 17}), 'foo: 17\r\n')
+        self.assertEqual(format_headers({}), b'')
+        self.assertEqual(format_headers({'foo': 17}), b'foo: 17\r\n')
         self.assertEqual(
             format_headers({'foo': 17, 'bar': 18}),
-            'bar: 18\r\nfoo: 17\r\n'
+            b'bar: 18\r\nfoo: 17\r\n'
         )
         self.assertEqual(
             format_headers({'foo': '17', 'bar': '18'}),
-            'bar: 18\r\nfoo: 17\r\n'
+            b'bar: 18\r\nfoo: 17\r\n'
         )
+
+        # Test sorting:
+        headers = dict(
+            ('d' * i, random_id(20)) for i in range(1, 5)
+        )
+        expected = ''.join(
+            '{}: {}\r\n'.format(k, v) for (k, v) in sorted(headers.items())
+        ).encode()
+        self.assertEqual(format_headers(headers), expected)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')
@@ -5573,11 +5606,184 @@ class NewMockSocket(BaseMockSocket):
         self._calls.append('close')
 
 
+class TestSession_Py(BackendTestCase):
+    @property
+    def Session(self):
+        return self.getattr('Session')
+
+    def test_init(self):
+        address = random_id()
+        ncount = sys.getrefcount(None)
+        sess = self.Session(address)
+        self.assertIs(sess.address, address)
+        self.assertIsNone(sess.credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 500)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r})'.format(address)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(None), ncount)
+        self.assertEqual(sys.getrefcount(store), 2)
+    
+        address = random_id()
+        credentials = None
+        ccount = sys.getrefcount(credentials)
+        max_requests = 75000
+        mrcount = sys.getrefcount(max_requests)
+        sess = self.Session(address, credentials, max_requests)
+        self.assertIs(sess.address, address)
+        self.assertIs(sess.credentials, credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 75000)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r})'.format(address)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+        self.assertEqual(sys.getrefcount(store), 2)
+
+        credentials = (32181, 1000, 1000)
+        ccount = sys.getrefcount(credentials)
+        max_requests = 75000
+        mrcount = sys.getrefcount(max_requests)
+        sess = self.Session(address, credentials, max_requests)
+        self.assertIs(sess.address, address)
+        self.assertIs(sess.credentials, credentials)
+        self.assertIs(type(sess.max_requests), int)
+        self.assertEqual(sess.max_requests, 75000)
+        self.assertIs(type(sess.requests), int)
+        self.assertEqual(sess.requests, 0)
+        store = sess.store
+        self.assertIs(type(store), dict)
+        self.assertEqual(sess.store, {})
+        self.assertIs(sess.store, store)
+        self.assertEqual(repr(sess),
+            'Session({!r}, {!r})'.format(address, credentials)
+        )
+        del sess
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+        self.assertEqual(sys.getrefcount(store), 2)
+
+        # credentials isn't a tuple:
+        credentials = [32181, 1000, 1000]
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(TypeError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            "credentials: need a <class 'tuple'>; got a <class 'list'>"
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # credentials is a 2-tuple:
+        credentials = (32181, 1000)
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'credentials: need a 3-tuple; got a 2-tuple'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # credentials is a 4-tuple:
+        credentials = (32181, 1000, 1000, 1000)
+        ccount = sys.getrefcount(credentials)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'credentials: need a 3-tuple; got a 4-tuple'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        credentials = (12345, 23456, 345678)
+        ccount = sys.getrefcount(credentials)
+
+        # max_requests isn't an int:
+        max_requests = 75000.0
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(TypeError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            "max_requests: need a <class 'int'>; got a <class 'float'>: 75000.0"
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # max_requests < 0:
+        max_requests = -1
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= max_requests <= 75000; got -1'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+        # max_requests > 75000
+        max_requests = 75001
+        mrcount = sys.getrefcount(max_requests)
+        with self.assertRaises(ValueError) as cm:
+            self.Session(address, credentials, max_requests)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= max_requests <= 75000; got 75001'
+        )
+        self.assertEqual(sys.getrefcount(address), 2)
+        self.assertEqual(sys.getrefcount(credentials), ccount)
+        self.assertEqual(sys.getrefcount(max_requests), mrcount)
+
+class TestSession_C(TestSession_Py):
+    backend = _base
+
+
 class TestServerFunctions_Py(BackendTestCase):
     def test_handle_requests(self):
         handle_requests = self.getattr('handle_requests')
+        Session = self.getattr('Session')
 
-        ses = {'requests': 0, 'client': ('127.0.0.1', 12345)}
+        # Session isn't a backend.Session instance:
+        def app(session, request, bodies):
+            assert False
+
+        data = b'GET /foo HTTP/1.1\r\n\r\n'
+        sock = NewMockSocket(data)
+        ses = {'client': ('127.0.0.1', 12345)}
+        with self.assertRaises(TypeError) as cm:
+            handle_requests(app, sock, ses)
+        self.assertEqual(str(cm.exception),
+            'session: need a {!r}; got a {!r}'.format(Session, dict)
+        )
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [])
+
+        ses = Session(('127.0.0.1', 12345), None, 25)
 
         # app() returns neither a tuple nor Response namedtuple:
         rsp = [200, 'OK', {}, b'hello, world']
@@ -5592,10 +5798,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'response: need a {!r}; got a {!r}'.format(tuple, list)
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5615,10 +5822,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 3-tuple'
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5638,10 +5846,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 5-tuple'
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5661,10 +5870,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('status', int, str, '200')
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5684,10 +5894,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 99'
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5707,10 +5918,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 600'
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5731,10 +5943,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             'request body not consumed: Body(<reader>, 3)'
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5754,10 +5967,11 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'HEAD /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, 25, sock, ses)
+            handle_requests(app, sock, ses)
         self.assertEqual(str(cm.exception),
             "request method is HEAD, but response body is not None: <class 'bytes'>" 
         )
+        self.assertEqual(ses.requests, 0)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5777,7 +5991,9 @@ class TestServerFunctions_Py(BackendTestCase):
         indata = b'GET /foo HTTP/1.1\r\n\r\n'
         outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
         sock = NewMockSocket(indata * 3)
-        self.assertEqual(handle_requests(app, 2, sock, ses), 2)
+        ses = Session(('127.0.0.1', 12345), None, 2)
+        self.assertIsNone(handle_requests(app, sock, ses), 2)
+        self.assertEqual(ses.requests, 2)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -5813,7 +6029,9 @@ class TestServerFunctions_Py(BackendTestCase):
         out3 = out.format(412).encode()
         out4 = out.format(400).encode()
         sock = NewMockSocket(indata * 10)
-        self.assertEqual(handle_requests(app, 10, sock, ses), 4)
+        ses = Session(('127.0.0.1', 12345), None, 10)
+        self.assertIsNone(handle_requests(app, sock, ses))
+        self.assertEqual(ses.requests, 4)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)

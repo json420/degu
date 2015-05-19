@@ -32,8 +32,9 @@ try:
         Range,
         ContentRange,
         bodies,
-        handle_requests,
         Connection,
+        Session,
+        handle_requests,
     )
 except ImportError:
     from ._basepy import (
@@ -44,8 +45,9 @@ except ImportError:
         Range,
         ContentRange,
         bodies,
-        handle_requests,
         Connection,
+        Session,
+        handle_requests,
     )
 
 
@@ -57,8 +59,9 @@ __all__ = (
     'Range',
     'ContentRange',
     'bodies',
-    'handle_requests',
     'Connection',
+    'Session',
+    'handle_requests',
 )
 
 MAX_READ_SIZE = 16777216  # 16 MiB

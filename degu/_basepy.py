@@ -1449,10 +1449,67 @@ def _check_status(status):
             'need 100 <= status <= 599; got {}'.format(status)
         )
 
-def handle_requests(app, max_requests, sock, session):
+def _check_int(name, obj, _min, _max):
+    _validate_int(name, obj)
+    if not _min <= obj <= _max:
+        raise ValueError(
+            'need {} <= {} <= {}; got {}'.format(_min, name, _max, obj)
+        )
+    return obj
+
+
+class Session:
+    __slots__ = (
+        '_address',
+        '_credentials',
+        '_max_requests',
+        '_requests',
+        '_store',
+    )
+
+    def __init__(self, address, credentials=None, max_requests=None):
+        if credentials is not None:
+            _check_tuple('credentials', credentials, 3)
+        if max_requests is None:
+            max_requests=500
+        self._address = address
+        self._credentials = credentials
+        self._max_requests = _check_int('max_requests', max_requests, 0, 75000)
+        self._requests = 0
+        self._store = {}
+
+    def __repr__(self):
+        if self._credentials is None:
+            return 'Session({!r})'.format(self._address)
+        return 'Session({!r}, {!r})'.format(self._address, self._credentials)
+
+    @property
+    def address(self):
+        return self._address
+
+    @property
+    def credentials(self):
+        return self._credentials
+
+    @property
+    def max_requests(self):
+        return self._max_requests
+
+    @property
+    def requests(self):
+        return self._requests
+
+    @property
+    def store(self):
+        return self._store
+
+
+def handle_requests(app, sock, session):
+    _check_type2('session', session, Session)
+    assert session.requests == session._requests == 0
     reader = Reader(sock)
     writer = Writer(sock)
-    for count in range(1, max_requests + 1):
+    for i in range(session._max_requests):
         request = reader.read_request()
         response = app(session, request, bodies)
         (status, reason, headers, body) = _unpack_response(response)
@@ -1465,7 +1522,7 @@ def handle_requests(app, max_requests, sock, session):
             )
 
         # FIXME: when 200 <= status <= 299, we should consider requiring that
-        # the response body not be None
+        # the response body for a GET request not be None
 
         # Make sure HEAD requests are properly handled:
         if request.method == 'HEAD' and body is not None:
@@ -1481,8 +1538,8 @@ def handle_requests(app, max_requests, sock, session):
         # Write response:
         writer.write_response(status, reason, headers, body)
 
-        # Update session counter:
-        session['requests'] = count
+        # Update requests counter:
+        session._requests += 1
 
         # Possibly close the connection:
         if status >= 400 and status not in {404, 409, 412}:
@@ -1490,7 +1547,6 @@ def handle_requests(app, max_requests, sock, session):
 
     # Make sure sndbuf gets flushed:
     sock.close()
-    return count
 
 
 class Connection:
@@ -1574,3 +1630,4 @@ class Connection:
     def get_range(self, uri, headers, start, stop):
         set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)
+
