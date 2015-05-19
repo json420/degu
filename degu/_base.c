@@ -331,7 +331,11 @@ _type_error(const char *name, PyTypeObject *need, PyObject *got)
 
 static bool
 _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
-    if (obj != NULL && Py_TYPE(obj) == type) {
+    if (obj == NULL) {
+        Py_FatalError("_check_type(): obj == NULL");
+        return false;
+    }
+    if (Py_TYPE(obj) == type) {
         return true;
     }
     PyErr_Format(PyExc_TypeError,
@@ -342,7 +346,11 @@ _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
 
 static bool
 _check_type2(const char *name, PyObject *obj, PyTypeObject *type) {
-    if (obj != NULL && Py_TYPE(obj) == type) {
+    if (obj == NULL) {
+        Py_FatalError("_check_type2(): obj == NULL");
+        return false;
+    }
+    if (Py_TYPE(obj) == type) {
         return true;
     }
     PyErr_Format(PyExc_TypeError,
@@ -2522,7 +2530,7 @@ _render_header_line(DeguOutput *o, HLine *l)
     }
     _COPY_STR_INTO(o, "key", l->key, KEY_MASK)
     _COPY_INTO(o, SEP)
-    _COPY_STR_INTO(o, "val", val, VAL_MASK)
+    _COPY_INTO(o, _src_from_str("val", val)) 
     _COPY_INTO(o, CRLF)
     goto cleanup;
 
