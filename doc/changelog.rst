@@ -8,27 +8,38 @@ Changelog
 `Download Degu 0.13`_
 
 Degu 0.13 has a completely re-written C backend, bringing with it dramatic
-performance improvements.
+performance improvements and much tighter security.
 
-Compared to Degu 0.12, ``benchmark.py`` (as measured on an Intel i7-4900MQ) is
-now on average:
+However, Degu 0.13 also has some breaking API changes, particularly in the
+in the server application API.  The biggest change is that the RGI *request*
+argument is now a ``namedtuple`` intead of a ``dict``, although the same
+*method*, *uri*, *headers*, *body*, *script*, *path*, and *query* items are
+all still available (now as read-only attributes), and their semantics haven't
+changed, so only minimal porting effort should be required.
 
-    *   141% faster for ``AF_UNIX``
 
-    *   118% faster for ``AF_INET6``
+Performance improvements:
 
-These numbers come from a 50-run test where each run made 50,000 sequential
-requests (reusing the same connection).  In this test, Degu achieved an average
-of:
+    *   Compared to Degu 0.12, ``benchmark.py`` (as measured on an Intel
+        i7-4900MQ) is now on average:
 
-    *   76,899 requests per second over ``AF_UNIX``
+            *   141% faster for ``AF_UNIX``
 
-    *   53,369 requests per second over ``AF_INET6``
+            *   118% faster for ``AF_INET6``
 
-This kind of performance means Degu is perfectly viable for network-transparent
-IPC, which has always been a central design goal.  Build a service atop Degu,
-and both local and remote clients get the same HTTP goodness, even when a local
-client connects over ``AF_UNIX`` for the best performance.
+        These numbers come from a 50-run test where each run made 50,000
+        sequential requests (reusing the same connection).  In this test, Degu
+        achieved an average of:
+
+            *   76,899 requests per second over ``AF_UNIX``
+
+            *   53,369 requests per second over ``AF_INET6``
+
+        This kind of performance means Degu is perfectly viable for
+        network-transparent IPC, which has always been a central design goal.
+        If you build a service atop Degu, both local and remote clients get the
+        same, uniform HTTP goodness, even when a local client connects over
+        ``AF_UNIX`` for the best performance.
 
 
 Breaking API changes:
@@ -58,7 +69,7 @@ Breaking API changes:
 
         This change was made for brevity and improved readability in RGI server
         application code.  The 3rd option here is a lot more appealing when
-        you're typing it over and over::
+        you're typing (or reading) it over and over::
 
             environ['PATH_INFO']  # WSGI
             request['path']       # RGI (Degu 0.12)
@@ -69,6 +80,94 @@ Breaking API changes:
         doesn't need to worry about whether the downstream RGI application has
         replaced any of the request attributes when, say, checking the URI
         invariant condition.
+
+        (Note that although the new *request* object itself is immutable, the
+        ``request.script`` and ``request.path`` attributes are still mutable
+        lists, so nothing has changed in terms of how path-shifting is done as
+        a request is dispatched through your application.)
+
+    *   Instead of a ``dict``, the RGI *session* argument is now a custom Python
+        object with read-only attributes.  However, the ``session.store``
+        attribute provides a ``dict`` instance that RGI connection and requests
+        handlers can still use for persistent, per-connection storage.
+
+        For ``app.on_connect()`` connection handlers, port your *session*
+        storage like this::
+
+            session['_key'] --> session.store['_key']
+
+        And for ``app()`` request handlers, port your *session* storage like
+        this::
+
+            session['__key'] --> session.store['key']
+
+        (Note that in Degu 0.13, keys in ``session.store`` will never conflict
+        with any server provided information, so there's no need for request
+        handlers to prefix their keys with ``'__'``; however, as a matter of
+        convention, it's still recommended that connection handlers prefix their
+        keys with ``'_'`` to avoid conflict and confusion with keys added by
+        request handlers.)
+
+        Finally, the server-provided information in the *session* is ported like
+        this::
+
+            session['client'] --> session.address
+            session['requests'] --> session.requests
+
+        (Note that "client" was renamed to "address" as the new *session* object
+        also exposes a *credentials* attribute, which will be a
+        ``(pid,uid,gid)`` 3-tuple for ``AF_UNIX``, and will be ``None`` for
+        ``AF_INET`` or ``AF_INET6``; as there are now two pieces of information
+        provided about the connecting client, the term "client" is ambiguous;
+        also, the meaning of "address" is clearer because it's used consistently
+        elsewhere in the Degu API.)
+
+        This change was primarily made to split the per-connection *session*
+        into two, non-conflicting domains:
+
+            1.  Read-only information provided by the server
+
+            2.  Mutable free-form key/value storage for use by RGI connection
+                and request handlers
+
+        But this change was also made to accommodate API additions that might
+        come later, specifically *session* methods that would allow RGI
+        applications to instruct the server to reject or limit *future*
+        connections from a specific client.
+
+        The use-case for this is denial-of-service attacks.  The server has
+        visibility into the connection-level behavior of a client and could
+        (potentially) take appropriate action when this connection-level
+        behavior is deemed a DOS attack.  But the server is ill equipped to
+        determine that the request-level behavior of a client should be treated
+        as a DOS attack.  Only the RGI application can really do that well, as
+        the reasoning will be very specific to the application.
+
+        Although the ``app.on_connect()`` connection handler does already
+        provide a mechanism by which applications could mitigate DOS attacks on
+        their own (when combined with some cross-thread, process-wide storage),
+        ideally the application could instruct the *server* to temporarily
+        reject or limit connections from a specific client.
+
+        This would allow future connections from malicious clients to be
+        immediately be rejected by the server itself in the main server thread,
+        before consuming the resources needed to spawn a worker thread and
+        establish an SSL connection, both of which would be done prior to
+        calling ``app.on_connect()``.
+
+        The *session* object feels like the right place to expose such API,
+        should it be added.
+
+        Bear in mind that all this is hypothetical and may never be included in
+        Degu, but imagine a *session* method something like::
+
+            Session.reject(for_seconds)
+
+        Which might be used like::
+
+            if <client is behaving badly>:
+                session.reject(120)  # Ban this client for 2 minutes
+                raise Exception('Naughty client!')  # Close current connection
 
     *   A ``bytearray`` can no longer be used as an output body.  This applies
         both to request bodies on the client-side and to response bodies on the
