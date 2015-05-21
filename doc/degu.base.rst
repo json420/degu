@@ -60,35 +60,55 @@ Exceptions
             pass  # Retry?  Give up?  Your choice!
 
 
+Header values
+-------------
 
-Constants
----------
+:class:`Range`
+''''''''''''''
 
-.. data:: MAX_READ_SIZE
+.. class:: Range(start, stop)
 
-    Max total read size (in bytes).
+    Used to represent the value of an HTTP ``'range'`` header.
 
-    >>> from degu import base
-    >>> base.MAX_READ_SIZE  # 16 MiB
-    16777216
+    For example:
 
-.. data:: MAX_CHUNK_SIZE
+    >>> from degu.base import Range
+    >>> value = Range(50, 100)
+    >>> str(value)
+    'bytes=50-99'
 
-    Max total read size (in bytes).
+    .. attribute:: start
 
-    >>> from degu import base
-    >>> base.MAX_CHUNK_SIZE  # 16 MiB
-    16777216
+        The *start* value passed to the constructor.
 
-.. data:: IO_SIZE
+    .. attribute:: stop
 
-    Default IO size for :class:`Body` (in bytes).
-
-    >>> from degu import base
-    >>> base.IO_SIZE  # 1 MiB
-    1048576
+        The *stop* value passed to the constructor.
 
 
+:class:`ContentRange`
+'''''''''''''''''''''
+
+.. class:: ContentRange(start, stop, total)
+
+    Used to represent the value of an HTTP ``'content-range'`` header.
+
+    >>> from degu.base import ContentRange
+    >>> value = ContentRange(50, 100, 200)
+    >>> str(value)
+    'bytes 50-99/200'
+
+    .. attribute:: start
+
+        The *start* value passed to the constructor.
+
+    .. attribute:: stop
+
+        The *stop* value passed to the constructor.
+
+    .. attribute:: total
+
+        The *total* value passed to the constructor.
 
 
 :class:`BodiesAPI`
