@@ -479,7 +479,7 @@ Also see the server :ref:`server-options`.
 :class:`Connection`
 -------------------
 
-.. class:: Connection(sock, base_headers, bodies)
+.. class:: Connection(sock, base_headers)
 
     Provides an HTTP client request API atop an arbitrary socket connection. 
 
@@ -487,31 +487,68 @@ Also see the server :ref:`server-options`.
     likewise directly create one yourself.  For composability, the two are
     completely decoupled.
 
-    The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
-    anything else implementing the needed API.
-
-    The *base_headers* argument must be a ``dict`` providing headers that
-    :meth:`Connection.request()` will include in each request, or it can be
-    ``None``, which is treated the same as ``{}``.
-
-    The *bodies* argument should be a ``namedtuple`` exposing the four standard
-    wrapper classes used to construct HTTP request and response bodies.
-
     :meth:`Connection.request()` allows any supported HTTP request to be fully
     specified via its four arguments, which is important for reverse-proxy
     applications or similar scenarios that need to be abstracted from the
-    specific HTTP request *method* being used.
+    specific HTTP request method being used.
 
-    There are also shortcuts for each of the five supported HTTP request
+    However, there are shortcuts for each of the five supported HTTP request
     methods:
 
-        *   :meth:`Connection.put()`
-        *   :meth:`Connection.post()`
         *   :meth:`Connection.get()`
         *   :meth:`Connection.head()`
+        *   :meth:`Connection.put()`
+        *   :meth:`Connection.post()`
         *   :meth:`Connection.delete()`
 
-    A :class:`Connection` instance is stateful  and is *not* thread-safe.
+    And there is also a shortcut for making HTTP Range requests:
+
+        *   :meth:`Connection.get_range()`
+
+    For brevity, the shortcut methods are recommended (when possible).  There is
+    also a small performance advantage to using them.
+
+    A :class:`Connection` is stateful  and is *not* thread-safe.
+
+    **Arguments**
+
+    The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
+    anything else implementing the needed API.
+
+    Degu currently requires *sock* to have three methods::
+
+        sock.send(src_buf)
+
+        sock.read_into(dst_buf)
+
+        sock.shutdown(how)
+
+    (See the `socket.socket`_ documentation for details.)
+
+    The *base_headers* argument must be a ``dict`` providing headers that
+    :meth:`Connection.request()` should automatically include in each request.
+
+    Optionally, *base_headers* can be ``None``, which is treated the same as an
+    empty ``{}``.
+
+    A ``(key, value)`` in *base_headers* will unconditionally replace the same
+    should it exist in the *headers* provided to :meth:`Connection.request()`,
+    which internally does something like this prior to making the request::
+
+        def request(self, method, uri, headers, body):
+            if self.base_headers:
+                headers.update(self.base_headers)
+            # ...
+
+    :meth:`Client.connect()` uses the *base_headers* argument to automatically
+    include an HTTP ``'host'`` header when appropriate.
+
+    If you add your own items to *base_headers*, do so sparingly as they will be
+    added to every request regardless of the HTTP method.
+
+    Automatically modifying the request headers is generally something best done
+    in application-specific wrappers.  See :ref:`high-level-client-api` for
+    details.
 
     .. attribute:: sock
 
@@ -523,7 +560,16 @@ Also see the server :ref:`server-options`.
 
     .. attribute:: bodies
 
-        The *bodies* argument passed to the constructor.
+        This attribute exposes the :attr:`degu.base.bodies` namedtuple.
+
+        The long-term goal is to standardize the Degu API such that high-level
+        client and server components could transparently use other compatible 
+        implementations.
+
+        To prepare for this scenario, it's best for consumers of the Degu client
+        API to create their request bodies via this attribute rather than
+        directly importing :mod:`degu.base.bodies`, or
+        :class:`degu.base.Body`, etc.
 
     .. attribute:: closed
 
@@ -553,8 +599,8 @@ Also see the server :ref:`server-options`.
 
         The return value is a :class:`Response` namedtuple.
 
-        The *method* must be ``'GET'``, ``'HEAD'``, ``'DELETE'``, ``'PUT'``, or
-        ``'POST'``.
+        The *method* must be ``'GET'``, ``'HEAD'``, ``'PUT'``, ``'POST'``, or
+        ``'DELETE'``.
 
         The *uri* must be an ``str`` starting with ``'/'``, optionally including
         a query string.  For example, these are all valid *uri* values::
@@ -584,26 +630,82 @@ Also see the server :ref:`server-options`.
         ``'HEAD'``, or ``'DELETE'``.
 
         If you want your request body to be directly uploaded from a regular
-        file, simply wrap it in a :class:`degu.base.Body` (or whatever
-        equivalent class is exposed)  It will be uploaded
-        from the current seek position in the file up to the specified
-        *content_length*.  For example, this will upload 76 bytes from the data
-        slice ``[1700:1776]``:
+        file, simply wrap it in a :class:`degu.base.Body` via the
+        :attr:`Connection.bodies` attribute.
+
+        The file will be uploaded from its current seek position up to the
+        specified *content_length*.  For example, this will upload 76 bytes from
+        the from the slice ``[1700:1776]``:
 
         >>> from degu.client import Client
-        >>> from degu.base import bodies
         >>> client = Client(('127.0.0.1', 56789))
         >>> conn = client.connect()  #doctest: +SKIP
         >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
         >>> fp.seek(1700)  #doctest: +SKIP
-        >>> body = bodies.Body(fp, 76)  #doctest: +SKIP
+        >>> body = conn.bodies.Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
+
+    .. method:: get(uri, headers)
+
+        Shortcut for making a ``GET`` request.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'GET'``
+        and a *body* of ``None``.
+
+        These two are equivalent:
+
+        >>> response = conn.get(uri, headers)  #doctest: +SKIP
+        >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
+
+    .. method:: get_range(uri, headers, start, stop)
+
+        Shortcut for making a ``GET`` requests with a ``'range'`` header.
+
+        The *start* and *stop* arguments must both be an ``int`` such that::
+
+            0 <= start < stop
+
+        This method will add a ``'range'`` header to the provided *headers*, and
+        will then call :meth:`Connection.request()` with a *method* of
+        ``'GET'`` and a *body* of ``None``.
+
+        The value of the ``'range'`` header will be a :class:`degu.base.Range`
+        created using the provided *start* and *stop* arguments.
+
+        This:
+
+        >>> response = conn.get_range(uri, headers, 50, 100)  #doctest: +SKIP
+
+        Is equivalent to this:
+    
+        >>> from degu.base import Range
+        >>> headers['range'] = Range(50, 100)  #doctest: +SKIP
+        >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
+
+        Which is likewise equivalent to this:
+
+        >>> headers['range'] = Range(50, 100)  #doctest: +SKIP
+        >>> response = conn.get(uri, headers)  #doctest: +SKIP
+
+        See the :class:`degu.base.Range` documentation for more details.
+
+    .. method:: head(uri, headers)
+
+        Shortcut for making a ``HEAD`` request.
+
+        This calls :meth:`Connection.request()` with a *method* of ``'HEAD'``
+        and a *body* of ``None``.
+
+        These two are equivalent:
+
+        >>> response = conn.head(uri, headers)  #doctest: +SKIP
+        >>> response = conn.request('HEAD', uri, headers, None)  #doctest: +SKIP
 
     .. method:: put(uri, headers, body)
 
-        Shortcut for ``PUT`` requests.
+        Shortcut for making a ``PUT`` request.
 
-        This calls :meth:`Connection.request()` with a *method* of ``'PUT'``.
+        This calls :meth:`Connection.request()` with a *method* of ``'PUT'``
 
         These two are equivalent:
 
@@ -612,44 +714,20 @@ Also see the server :ref:`server-options`.
 
     .. method:: post(uri, headers, body)
 
-        Shortcut for ``POST`` requests.
+        Shortcut for making a ``POST`` request.
 
-        This calls :meth:`Connection.request()` with a *method* of ``'POST'``.
+        This calls :meth:`Connection.request()` with a *method* of ``'POST'``
 
         These two are equivalent:
 
         >>> response = conn.post(uri, headers, body)  #doctest: +SKIP
         >>> response = conn.request('POST', uri, headers, body)  #doctest: +SKIP
 
-    .. method:: get(uri, headers)
-
-        Shortcut for ``GET`` requests.
-
-        This calls :meth:`Connection.request()` with a *method* of ``'GET'``,
-        and a *body* of ``None``.
-
-        These two are equivalent:
-
-        >>> response = conn.get(uri, headers)  #doctest: +SKIP
-        >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
-
-    .. method:: head(uri, headers)
-
-        Shortcut for ``HEAD`` requests.
-
-        This calls :meth:`Connection.request()` with a *method* of ``'HEAD'``,
-        and a *body* of ``None``.
-
-        These two are equivalent:
-
-        >>> response = conn.head(uri, headers)  #doctest: +SKIP
-        >>> response = conn.request('HEAD', uri, headers, None)  #doctest: +SKIP
-
     .. method:: delete(uri, headers)
 
-        Shortcut for ``DELETE`` requests.
+        Shortcut for making a ``DELETE`` request.
 
-        This calls :meth:`Connection.request()` with a *method* of ``'DELETE'``,
+        This calls :meth:`Connection.request()` with a *method* of ``'DELETE'``
         and a *body* of ``None``.
 
         These two are equivalent:
