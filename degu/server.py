@@ -29,8 +29,9 @@ import threading
 import os
 import struct
 
-from .base import Session, handle_requests, _TYPE_ERROR
+from .base import Session, Request, handle_requests, _TYPE_ERROR
 
+__all__ = ('Server', 'SSLServer', 'Session', 'Request')
 
 log = logging.getLogger()
 

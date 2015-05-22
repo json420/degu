@@ -568,6 +568,203 @@ The default values of which are:
     >>> sslctx = build_server_sslctx(pki.server_sslconfig)
 
 
+RGI arguments
+-------------
+
+An RGI request handler is called with three arguments::
+
+    app(session, request, bodies)
+
+The first two will be a :class:`Session` instance and a :class:`Request`
+instance, documented below.  The third argument will be the standard
+:attr:`degu.base.bodies` namedtuple instance exposing the Bodies API.
+
+If your root application has an *on_connect* method, it will be called with
+two arguments::
+
+    app.on_connect(session, sock)
+
+The first argument will again be a :class:`Session` instance.
+
+The second argument will be the `socket.socket`_ instance corresponding to the
+incoming socket connection, specifically the 1st item in the 2-tuple returned by
+`socket.socket.listen()`_.
+
+When the Degu server receives a new incoming connection, it creates a
+corresponding :class:`Session` instance.  If there is an ``app.on_connect()``
+method, the server will call it prior to handling any HTTP requests, providing
+this :class:`Session` instance as the first argument.
+
+Then this exact same :class:`Session` instance will be provided as the first
+argument to your ``app()`` callable for each request made through the lifetime
+of the connection.
+
+
+
+:class:`Session`
+''''''''''''''''
+
+.. class:: Session(address, credentials=None, max_requests=None)
+
+    An object used to represent an incoming socket connection to the server.
+
+    .. note::
+
+        It might seem more natural to call this a "connection", but that term
+        was avoided to prevent confusing the "session" with the actual
+        `socket.socket`_ instance or even a :class:`degu.client.Connection`
+        instance.
+
+    The *address* argument should be the socket address of the connecting
+    client, specifically the 2nd item from the 2-tuple returned by
+    `socket.socket.listen()`_.
+
+    For ``AF_UNIX``, the *credentials* argument should be a ``(pid,uid,gid)``
+    3-tuple containing the process ID, user ID, and group ID of the connecting
+    client.  Otherwise the *credentials* argument should be ``None``.
+
+    The *max_requests* argument, if provided, must be a non-negative ``int``
+    specifying the maximum number of requests Degu will handle before closing
+    the connection.
+
+    Normally you wouldn't create a :class:`Session` yourself as the Degu server
+    provides the session as the first argument when it calls your
+    ``app.on_connect()`` connection handler (if defined) and your ``app()``
+    request handler.
+
+    However, it can be handy to create :class:`Session` instances when unit
+    testing your RGI applications.
+
+    .. attribute:: address
+
+        The socket address of the connecting client.
+
+        This will be the 2nd item from the 2-tuple returned by
+        `socket.socket.listen()`_ when the incoming connection was received.
+
+    .. attribute:: credentials
+
+        The Unix credentials of the connecting client.
+
+        This will be a ``(pid,uid,gid)`` 3-tuple when the connection was
+        received over an ``AF_UNIX`` socket, otherwise this will be ``None``.
+
+    .. method:: __repr__()
+
+        Return a logging-friendly representation of the session.
+
+        For example, the session corresponding to an ``AF_INET`` connection:
+
+        >>> from degu.server import Session
+        >>> session = Session(('127.0.0.1', 12345), None)
+        >>> repr(session)
+        "Session(('127.0.0.1', 12345))"
+
+        (Notice that the *credentials* argument isn't included when ``None``.)
+
+        Or a session corresponding to an ``AF_UNIX`` connection:
+
+        >>> session = Session(b'\x0000222', (23848, 1000, 1000))
+        >>> repr(session)
+        "Session(b'\\x0000222', (23848, 1000, 1000))"
+        
+    
+
+
+
+:class:`Request`
+''''''''''''''''
+
+.. class:: Request(method, uri, headers, body, script, path, query)
+
+    A namedtuple used to represent an HTTP request.
+
+    For example, the Degu server might call your ``app()`` request handler with
+    something like this:
+
+    >>> from degu.server import Request
+    >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
+    Request(method='GET', uri='/foo', headers={}, body=None, script=[], path=['foo'], query=None)
+
+    .. attribute:: method
+
+        A ``str`` containing the HTTP request method. 
+
+        Currently Degu only supports the ``'GET'``, ``'HEAD'``, ``'PUT'``,
+        ``'POST'``, and ``'DELETE'`` methods.
+
+    .. attribute:: uri
+
+        A ``str`` containing the original, unparsed request URI.
+
+    .. attribute:: headers
+
+        A ``dict`` containing the request headers.
+
+    .. attribute:: body
+
+        The HTTP request body.
+
+        This will be ``None`` when there is no request body.
+
+        If the request body has a Content-Length, this will be a
+        :class:`degu.base.Body` instance.
+
+        Finally, if the request body uses "chunked" Transfer-Encoding, this will
+        be a :class:`degu.base.ChunkedBody` instance.
+
+    .. attribute:: script
+
+        A ``list`` containing the previously processed parts of the URI.
+
+        This corresponds to the mount point of the called RGI application or
+        middleware.
+
+        Currently Degu only supports mounting the root application at ``'/'``,
+        so your root application will always be called with a *script* equal to
+        ``[]``.
+
+        However, as a request was routed to the current RGI application or
+        middleware, path components from :attr:`Request.path` may have been
+        shifted to :attr:`Request.script`, for example using
+        :func:`degu.util.shift_path()`.
+
+    .. attribute:: path
+
+        A ``list`` containing the yet-to-be processed parts of the URI.
+
+        This is the portion of the URI that the called RGI application or
+        middleware is expected to handle.  This is initially derived from the
+        URI.
+
+        Some example URI and the resulting initial path::
+
+            '/'        --> []
+            '/foo'     --> ['foo']
+            '/foo/'    --> ['foo', '']
+            '/foo/bar' --> ['foo', 'bar']
+
+        However, as a request was routed to the current RGI application or
+        middleware, path components from :attr:`Request.path` may have been
+        shifted to :attr:`Request.script`, for example using
+        :func:`degu.util.shift_path()`.
+
+    .. attribute:: query
+
+        A ``str`` containing the query portion of the URI, or ``None``.
+
+        Degu differentiates between "no query" vs merely an "empty query".
+
+        When this is ``None``, it means the URI did not contain a ``'?'``.  When
+        this is an empty ``''``, it means the final character in the URI was a
+        ``'?'``.
+
+        Some example URI and the resulting query::
+
+            '/foo'     --> None
+            '/foo?'    --> ''
+            '/foo?bar' --> 'bar'
+            '/foo?k=v' --> 'k=v'
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
@@ -577,6 +774,7 @@ The default values of which are:
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl.SSLSocket
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
+.. _`socket.socket.listen()`: https://docs.python.org/3/library/socket.html#socket.socket.listen
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
