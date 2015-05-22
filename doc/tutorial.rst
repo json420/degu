@@ -474,7 +474,6 @@ An **HTTP output body** can be:
     ==================================  ========  ================
     ``None``                            *n/a*     *n/a*
     ``bytes``                           Length    *n/a*
-    ``bytearray``                       Length    *n/a*
     :class:`degu.base.Body`             Length    File-like object
     :class:`degu.base.BodyIter`         Length    An iterable
     :class:`degu.base.ChunkedBody`      Chunked   File-like object
@@ -490,55 +489,6 @@ client.
 The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
 internally handles the writing.
-
-**Server agnostic RGI applications** are possible.
-
-These four IO wrapper classes are exposed in the RGI *bodies* argument:
-
-    ==========================  ==================================
-    Exposed via                 Degu implementation
-    ==========================  ==================================
-    ``bodies.Body``             :class:`degu.base.Body`
-    ``bodies.BodyIter``         :class:`degu.base.BodyIter`
-    ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
-    ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
-    ==========================  ==================================
-
-If server applications only use these wrapper classes via the *bodies* argument
-(rather than directly importing them from :mod:`degu.base`), they are kept
-abstracted from Degu as an implementation, and could potentially run on other
-HTTP servers that implement the :doc:`rgi`.
-
-The place where this is a bit more complicated is with something like our SSL
-reverse-proxy example.  In this case, you'll want the Degu client to use the
-same IO abstractions as the server, even when that server isn't Degu.
-
-The best way to do this is to pass the *bodies* argument to
-:meth:`degu.client.Client.connect()`.  For example, our original ``ProxyApp``
-needs only a tiny change:
-
->>> class ProxyApp:
-...     def __init__(self, client):
-...         self.client = client
-... 
-...     def __call__(self, session, request, bodies):
-...         if '__conn' not in session:
-...             session['__conn'] = self.client.connect(bodies=bodies)  # Changed
-...         conn = session['__conn']
-...         return conn.request(
-...             request.method,
-...             request.uri,
-...             request.headers,
-...             request.body
-...         )
-... 
-
-A second way is to use the *bodies* keyword option when creating a
-:class:`degu.client.Client`, which will override
-:attr:`degu.client.Client.bodies`.  Although note that this isn't the
-recommended approach, as it's generally best to keep your RGI reverse-proxy
-applications abstracted from the details of how a client was created (by
-providing them with a pre-build client, as done in the above ``ProxyApp``).
 
 
 
