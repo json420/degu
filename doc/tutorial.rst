@@ -272,7 +272,64 @@ network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
 
-Example: Range requests
+
+.. _io-abstractions:
+
+IO abstractions
+---------------
+
+On both the client and server ends, Degu uses the same set of shared IO
+abstractions to represent HTTP request and response bodies.
+
+As the IO *directions* of the request and response are flipped depending on
+whether you're looking at things from a client vs server perspective, it's
+helpful to think in terms of HTTP *input* bodies and HTTP *output* bodies.
+
+An **HTTP input body** will always be one of three types:
+
+    * ``None`` --- meaning no HTTP input body
+
+    * :class:`degu.base.Body` --- an HTTP input body with a content-length
+
+    * :class:`degu.base.ChunkedBody` --- an HTTP input body that uses chunked
+      transfer-encoding
+
+From the client perspective, our input is the HTTP response body received from
+the server.
+
+From the server perspective, our input is the HTTP request body received from
+the client.
+
+When the HTTP input body is not ``None``, the receiving endpoint is responsible
+for reading the entire input body, which must be completed before the another
+request/response sequence can be initiated using that same connection.
+
+An **HTTP output body** can be:
+
+    ==================================  ========  ================
+    Type                                Encoding  Source object
+    ==================================  ========  ================
+    ``None``                            *n/a*     *n/a*
+    ``bytes``                           Length    *n/a*
+    :class:`degu.base.Body`             Length    File-like object
+    :class:`degu.base.BodyIter`         Length    An iterable
+    :class:`degu.base.ChunkedBody`      Chunked   File-like object
+    :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
+    ==================================  ========  ================
+
+From the client perspective, our output is the HTTP request body sent to the
+server.
+
+From the server perspective, our output is the HTTP response body sent to the
+client.
+
+The sending endpoint doesn't directly write the output, but instead only
+*specifies* the output to be written, after which the client or server library
+internally handles the writing.
+
+
+
+Example: range requests
 -----------------------
 
 When the Degu server receives a request with an HTTP Range header, its value is
@@ -433,62 +490,6 @@ Finally, we'll *shut it down*:
 
 >>> conn.close()
 >>> server.terminate()
-
-
-
-.. _io-abstractions:
-
-IO abstractions
----------------
-
-On both the client and server ends, Degu uses the same set of shared IO
-abstractions to represent HTTP request and response bodies.
-
-As the IO *directions* of the request and response are flipped depending on
-whether you're looking at things from a client vs server perspective, it's
-helpful to think in terms of HTTP *input* bodies and HTTP *output* bodies.
-
-An **HTTP input body** will always be one of three types:
-
-    * ``None`` --- meaning no HTTP input body
-
-    * :class:`degu.base.Body` --- an HTTP input body with a content-length
-
-    * :class:`degu.base.ChunkedBody` --- an HTTP input body that uses chunked
-      transfer-encoding
-
-From the client perspective, our input is the HTTP response body received from
-the server.
-
-From the server perspective, our input is the HTTP request body received from
-the client.
-
-When the HTTP input body is not ``None``, the receiving endpoint is responsible
-for reading the entire input body, which must be completed before the another
-request/response sequence can be initiated using that same connection.
-
-An **HTTP output body** can be:
-
-    ==================================  ========  ================
-    Type                                Encoding  Source object
-    ==================================  ========  ================
-    ``None``                            *n/a*     *n/a*
-    ``bytes``                           Length    *n/a*
-    :class:`degu.base.Body`             Length    File-like object
-    :class:`degu.base.BodyIter`         Length    An iterable
-    :class:`degu.base.ChunkedBody`      Chunked   File-like object
-    :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
-    ==================================  ========  ================
-
-From the client perspective, our output is the HTTP request body sent to the
-server.
-
-From the server perspective, our output is the HTTP response body sent to the
-client.
-
-The sending endpoint doesn't directly write the output, but instead only
-*specifies* the output to be written, after which the client or server library
-internally handles the writing.
 
 
 
