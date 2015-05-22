@@ -619,7 +619,6 @@ Also see the server :ref:`server-options`.
             ==================================  ========  ================
             ``None``                            *n/a*     *n/a*
             ``bytes``                           Length    *n/a*
-            ``bytearray``                       Length    *n/a*
             :class:`degu.base.Body`             Length    File-like object
             :class:`degu.base.BodyIter`         Length    An iterable
             :class:`degu.base.ChunkedBody`      Chunked   File-like object
