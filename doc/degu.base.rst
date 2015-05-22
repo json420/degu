@@ -97,7 +97,7 @@ Header values
     >>> r.stop - r.start
     3
 
-    Results in this ``'range'`` header value:
+    Results in this Range header value:
 
     >>> str(r)
     'bytes=2-4'
@@ -119,7 +119,7 @@ Header values
 
     .. method:: __str__()
 
-        Returns the "range" header value as a ``str``.
+        Render the Range header value as a ``str``.
 
         For example:
 
@@ -134,7 +134,11 @@ Header values
 
 .. class:: ContentRange(start, stop, total)
 
-    Used to represent the value of an HTTP ``'content-range'`` header.
+    Used to represent the value of an HTTP Content-Range header.
+
+    The *start*, *stop*, and *total* arguments must all an ``int`` such that::
+
+        0 <= start < stop <= total
 
     >>> from degu.base import ContentRange
     >>> value = ContentRange(50, 100, 200)
@@ -152,6 +156,17 @@ Header values
     .. attribute:: total
 
         The *total* value passed to the constructor.
+
+    .. method:: __str__()
+
+        Render the Content-Range header value as a ``str``.
+
+        For example:
+
+        >>> from degu.base import ContentRange
+        >>> value = ContentRange(50, 100, 200)
+        >>> str(value)
+        'bytes 50-99/200'
 
 
 :class:`BodiesAPI`

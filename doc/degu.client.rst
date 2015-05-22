@@ -674,18 +674,13 @@ Also see the server :ref:`server-options`.
 
         This:
 
-        >>> response = conn.get_range(uri, headers, 50, 100)  #doctest: +SKIP
+        >>> response = conn.get_range(uri, headers, start, stop)  #doctest: +SKIP
 
         Is equivalent to this:
     
         >>> from degu.base import Range
-        >>> headers['range'] = Range(50, 100)  #doctest: +SKIP
+        >>> headers['range'] = Range(start, stop)  #doctest: +SKIP
         >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
-
-        Which is likewise equivalent to this:
-
-        >>> headers['range'] = Range(50, 100)  #doctest: +SKIP
-        >>> response = conn.get(uri, headers)  #doctest: +SKIP
 
         See the :class:`degu.base.Range` documentation for more details.
 
@@ -749,10 +744,6 @@ Also see the server :ref:`server-options`.
     >>> from degu.client import Response
     >>> Response(200, 'OK', {}, None)
     Response(status=200, reason='OK', headers={}, body=None)
-
-    Note that as a namedtuple, :class:`Response` doesn't do any type checking or
-    argument validation itself.  The nature of the following attributes relies
-    solely on the behavior of :meth:`Connection.request()`:
 
     .. attribute :: status
 
@@ -824,8 +815,8 @@ should implement an equivalent to :meth:`Client.connect()`:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
-...     def connect(self, bodies=None):
-...         conn = self.client.connect(bodies=bodies)
+...     def connect(self):
+...         conn = self.client.connect()
 ...         return ConnectionWrapper(conn)
 ...
 
@@ -856,30 +847,15 @@ argument, and should implement an equivalent to :attr:`Connection.closed` and
 ...             )
 ...         return response
 ... 
-...     def put(self, uri, headers, body):
-...         return self.request('PUT', uri, headers, body)
-... 
-...     def post(self, uri, headers, body):
-...         return self.request('POST', uri, headers, body)
-... 
-...     def get(self, uri, headers):
-...         return self.request('GET', uri, headers, None)
-... 
-...     def head(self, uri, headers):
-...         return self.request('HEAD', uri, headers, None)
-... 
-...     def delete(self, uri, headers):
-...         return self.request('DELETE', uri, headers, None)
-... 
 
 The ``ConnectionWrapper.request()`` method above demonstrates a feature that can
 be extremely useful for the end-point client consumer: automatically raising an
 exception when the request didn't return a ``2xx`` HTTP response status.
 
 But it likewise demonstrates why even this seemingly innocent high-level
-behavior is totally inappropriate for the generic Degu client API.  When
-implementing a reverse-proxy, a central focus for Degu, you want to simply relay
-the upstream HTTP response without transformation or interpretation.
+behavior is inappropriate for the generic Degu client API.  When implementing a
+reverse-proxy, a central focus for Degu, you typically want to relay the
+upstream HTTP response without transformation or interpretation.
 
 
 
