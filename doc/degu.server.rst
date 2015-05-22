@@ -571,34 +571,38 @@ The default values of which are:
 RGI arguments
 -------------
 
-An RGI request handler is called with three arguments::
+When the Degu server receives an incoming connection, it creates a new
+:class:`Session` instance that will be associated with that connection for the
+lifetime of the connection.
 
-    app(session, request, bodies)
+Then if your root application has an ``app.on_connect()`` connection handler,
+it will be called with this new :class:`Session` instance as the first
+argument::
 
-The first two will be a :class:`Session` instance and a :class:`Request`
-instance, documented below.  The third argument will be the standard
-:attr:`degu.base.bodies` namedtuple instance exposing the Bodies API.
+    app.on_connect(session, sock) --> True/False
 
-If your root application has an *on_connect* method, it will be called with
-two arguments::
+(The second argument will be the raw `socket.socket`_ or `ssl.SSLSocket`_
+instance corresponding to the incoming connection.)
 
-    app.on_connect(session, sock)
+Finally for each request received through the connection, your ``app()`` request
+handler will be called with still this exact same :class:`Session` instance as
+the first argument::
 
-The first argument will again be a :class:`Session` instance.
+    app(session, request, bodies) --> (status, reason, headers, body)
 
-The second argument will be the `socket.socket`_ instance corresponding to the
-incoming socket connection, specifically the 1st item in the 2-tuple returned by
-`socket.socket.listen()`_.
+(The second argument will be a :class:`Request` namedtuple representing the
+specific request, and the third argument will be the standard
+:attr:`degu.base.bodies` namedtuple instance exposing the Bodies API, which will
+always be the same for all requests and all connections for the lifetime of the
+process.)
 
-When the Degu server receives a new incoming connection, it creates a
-corresponding :class:`Session` instance.  If there is an ``app.on_connect()``
-method, the server will call it prior to handling any HTTP requests, providing
-this :class:`Session` instance as the first argument.
+:class:`Request` instances expose request-level semantics to RGI server
+applications, which is standard for any HTTP server application interface.
 
-Then this exact same :class:`Session` instance will be provided as the first
-argument to your ``app()`` callable for each request made through the lifetime
-of the connection.
+But :class:`Session` instances expose connection-level semantics to RGI server
+applications, which is rather unusual and fairly unique to Degu.
 
+Both are documented below.
 
 
 :class:`Session`
@@ -615,39 +619,76 @@ of the connection.
         `socket.socket`_ instance or even a :class:`degu.client.Connection`
         instance.
 
-    The *address* argument should be the socket address of the connecting
-    client, specifically the 2nd item from the 2-tuple returned by
-    `socket.socket.listen()`_.
+    The three constructor arguments are all exposed as read-only attributes:
 
-    For ``AF_UNIX``, the *credentials* argument should be a ``(pid,uid,gid)``
-    3-tuple containing the process ID, user ID, and group ID of the connecting
-    client.  Otherwise the *credentials* argument should be ``None``.
+        * :attr:`Session.address`
+        * :attr:`Session.credentials`
+        * :attr:`Session.max_requests`
 
-    The *max_requests* argument, if provided, must be a non-negative ``int``
-    specifying the maximum number of requests Degu will handle before closing
-    the connection.
+    A :class:`Session` also exposes two other read-only attributes:
 
-    Normally you wouldn't create a :class:`Session` yourself as the Degu server
-    provides the session as the first argument when it calls your
-    ``app.on_connect()`` connection handler (if defined) and your ``app()``
-    request handler.
+        * :attr:`Session.requests`
+        * :attr:`Session.store`
 
-    However, it can be handy to create :class:`Session` instances when unit
-    testing your RGI applications.
+    Normally you wouldn't directly create a :class:`Session` yourself, but it
+    can be handy to create them when unit testing your RGI applications.
 
     .. attribute:: address
 
         The socket address of the connecting client.
-
-        This will be the 2nd item from the 2-tuple returned by
-        `socket.socket.listen()`_ when the incoming connection was received.
 
     .. attribute:: credentials
 
         The Unix credentials of the connecting client.
 
         This will be a ``(pid,uid,gid)`` 3-tuple when the connection was
-        received over an ``AF_UNIX`` socket, otherwise this will be ``None``.
+        received over an ``AF_UNIX`` socket; otherwise this will be ``None``.
+
+    .. attribute:: max_requests
+
+        The maximum number of requests Degu will handle through this connection.
+
+        Once this limit has been reached, the server will forcibly close the
+        connection.
+
+    ..  attribute:: requests
+
+        The number of requests so far handled through this connection.
+
+        This will initially be ``0``.
+
+        After a request has been completely and successfully handled, the Degu
+        sever will increment this counter (prior to reading the next request
+        and calling your ``app()`` request handler).
+
+    .. attribute:: store
+
+        A ``dict`` that RGI applications can use for per-session storage.
+
+        The go-to use-case for this is that a reverse-proxy application can
+        store its client connection to the upstream HTTP server and reuse it on
+        subsequent requests handled through the same connection (er, session).
+
+        For example:
+
+        >>> class ProxyApp:
+        ...     def __init__(self, client):
+        ...         self.client = client
+        ... 
+        ...     def __call__(self, session, request, bodies):
+        ...         conn = session.store.get('conn')
+        ...         if conn is None:
+        ...             conn = self.client.connect()
+        ...             session.store['conn'] = conn
+        ...         return conn.request(*request[:4])
+        ... 
+
+        Hopefully this example helps make it clear the term "session" was chosen
+        over "connection"... because otherwise things get confusing fast :D
+
+        Although the :attr:`Session.store` attribute itself is read-only, the
+        ``dict`` it returns is mutable and the same ``dict`` instance will be
+        returned every time you access this attribute.
 
     .. method:: __repr__()
 
@@ -774,7 +815,6 @@ of the connection.
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl.SSLSocket
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
-.. _`socket.socket.listen()`: https://docs.python.org/3/library/socket.html#socket.socket.listen
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME

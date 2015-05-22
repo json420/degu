@@ -339,8 +339,8 @@ exposed as a :class:`degu.base.Range` instance:
 >>> parse_headers(b'Range: bytes=3-8')
 {'range': Range(3, 9)}
 
-This is similar to how a Content-Length header is exposed as an ``int`` rather
-than a ``str``:
+This is similar to how the value of Content-Length header is exposed as an
+``int`` rather than a ``str``:
 
 >>> parse_headers(b'Content-Length: 6')
 {'content-length': 6}
@@ -352,7 +352,7 @@ whose value is a :class:`degu.base.Range` instance:
 
 >>> from degu.base import Range
 >>> my_range = Range(3, 9)
->>> my_requset_headers = {'range': my_range}
+>>> my_request_headers = {'range': my_range}
 
 When an outgoing header value isn't already a ``str`` instance, its
 ``__str__()`` method is called to get the string representation that should be
@@ -361,7 +361,7 @@ used in the outgoing HTTP preamble.
 For example, this is done to convert an outgoing Content-Length value from an
 ``int`` to a ``str``.
 
-But :meth:`degu.base.Range.__str__()` has a bit more magic:
+But :meth:`degu.base.Range.__str__()` has a bit more magic to it:
 
 >>> repr(my_range)
 'Range(3, 9)'
@@ -381,7 +381,7 @@ When a Range header is parsed, the reverse conversion is done:
 {'range': Range(0, 1)}
 
 When responding to a valid Range request, a server should include a
-Content-Range in the response headers.
+Content-Range in its response headers.
 
 :class:`degu.base.ContentRange` provides the complement for the response
 headers:
