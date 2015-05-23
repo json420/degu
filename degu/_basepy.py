@@ -1149,17 +1149,13 @@ class Writer:
         self._flush()
         return self._raw_write(src)
 
-    def _render(self, func, *args):
-        assert self._stop == 0
-        size = func(self._buf, *args)
-        assert size > 0
-        self._stop = size
-
-    def _write_body(self, body):
+    def _write_output(self, func, arg1, arg2, headers, body):
         orig_tell = self._tell
-        total = self._stop  # Size of preamble rendered in buffer
-        assert total > 0
+        assert self._stop == 0
 
+        total = func(self._buf, arg1, arg2, headers)
+        assert total > 0
+        self._stop = total
         if type(body) is bytes:
             total += self._write(body)
         elif type(body) in bodies:
@@ -1168,7 +1164,6 @@ class Writer:
             raise TypeError(
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
-
         self._flush()
         assert self._stop == 0
         assert self._tell == orig_tell + total
@@ -1177,13 +1172,15 @@ class Writer:
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
         set_output_headers(headers, body)
-        self._render(render_request, method, uri, headers)
-        return self._write_body(body)
+        return self._write_output(render_request,
+            method, uri, headers, body
+        )
 
     def write_response(self, status, reason, headers, body):
         set_output_headers(headers, body)
-        self._render(render_response, status, reason, headers)
-        return self._write_body(body)
+        return self._write_output(render_response,
+            status, reason, headers, body
+        )
 
 def _check_body_state(name, state, max_state):
     assert max_state < BODY_CONSUMED
