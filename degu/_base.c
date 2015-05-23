@@ -2695,9 +2695,7 @@ static bool
 _render_status(DeguOutput *o, const size_t s)
 {
     if (o->stop + 4 > o->dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", o->stop + 4, o->dst.len
-        );
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
     DeguDst dst = _dst_slice(o->dst, o->stop, o->stop + 4);

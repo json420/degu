@@ -2327,6 +2327,7 @@ class TestFormatting_Py(BackendTestCase):
         render_request = self.getattr('render_request')
 
         dst = memoryview(bytearray(4096))
+        empty = dst.tobytes()
 
         # Bad method type:
         for method in [17, str_subclass('GET'), b'GET']:
@@ -2335,6 +2336,7 @@ class TestFormatting_Py(BackendTestCase):
             self.assertEqual(str(cm.exception),
                 TYPE_ERROR.format('method', str, type(method), method)
             )
+            self.assertEqual(dst.tobytes(), empty)
 
         # Bad method value:
         for method in ['', '¡™', STR256]:
@@ -2343,6 +2345,7 @@ class TestFormatting_Py(BackendTestCase):
             self.assertEqual(str(cm.exception),
                 'bad method: {!r}'.format(method)
             )
+            self.assertEqual(dst.tobytes(), empty)
 
         # Bad uri type:
         for uri in [17, str_subclass('/foo'), b'/foo']:
@@ -2393,6 +2396,108 @@ class TestFormatting_Py(BackendTestCase):
         )
         self.check_render_request('GET', '/', headers)
         self.check_render_request('GET', uri, headers)
+
+    def check_render_response(self, status, reason, headers, dst_len=None):
+        if dst_len is None:
+            dst_len = self.BUF_LEN
+        dst = memoryview(bytearray(dst_len))
+        render_response = self.getattr('render_response')
+
+        lines = ['HTTP/1.1 {} {}'.format(status, reason)]
+        lines.extend(
+            '{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
+        ) 
+        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n'   
+
+        stop = render_response(dst, status, reason, headers.copy())
+        self.assertIs(type(stop), int)
+        self.assertLessEqual(stop, dst_len)
+        got = dst[0:stop].tobytes()
+        self.assertEqual(got, expected)
+
+        for size in range(len(expected)):
+            dst = memoryview(bytearray(size))
+            with self.assertRaises(ValueError) as cm:
+                render_response(dst, status, reason, headers.copy())
+            self.assertEqual(str(cm.exception),
+                'output size exceeds {}'.format(size)
+            )
+
+        return got
+
+    def test_render_response(self):
+        render_response = self.getattr('render_response')
+
+        dst = memoryview(bytearray(4096))
+        empty = dst.tobytes()
+        self.assertEqual(dst.tobytes(), empty)
+
+        # Bad status type:
+        for status in ['200', 200.0, int_subclass(200)]:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, status, 'OK', {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('status', int, type(status), status)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad status value:
+        for status in [-1, 0, 99, 600]:
+            with self.assertRaises(ValueError) as cm:
+                render_response(dst, status, 'OK', {})
+            self.assertEqual(str(cm.exception),
+                'need 100 <= status <= 599; got {}'.format(status)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad reason type:
+        for reason in [17, str_subclass('OK'), b'OK']:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, 200, reason, {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('reason', str, type(reason), reason)
+            )
+
+        # Bad reason value:
+        for reason in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_response(dst, 200, reason, {})
+            self.assertEqual(str(cm.exception),
+                'bad reason: {!r}'.format(reason)
+            )
+
+        # Bad headers type:
+        for headers in [[('foo', 'bar')], dict_subclass({'foo': 'bar'})]:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, 200, 'OK', headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('headers', dict, type(headers), headers)
+            )
+
+        for status in range(200, 600):
+            got = self.check_render_response(status, 'OK', {})
+            self.assertEqual(got,
+                'HTTP/1.1 {} OK\r\n\r\n'.format(status).encode()
+            )
+            key = random_key(32)
+            val = random_val(32)
+            got = self.check_render_response(status, 'OK', {key: val})
+            self.assertEqual(got,
+                'HTTP/1.1 {} OK\r\n{}: {}\r\n\r\n'.format(status, key, val).encode()
+            )
+
+        # long reason:
+        reason = ' '.join(random_id(30) for i in range(50))
+        self.check_render_response(200, reason, {})
+
+        # lots of headers:
+        headers = dict(
+            (random_key(size), random_val(50))
+            for size in range(1, self.MAX_HEADER_COUNT + 1)  
+        )
+        self.check_render_response(200, 'OK', headers)
+        self.check_render_response(200, reason, headers)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')

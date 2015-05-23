@@ -879,6 +879,21 @@ def render_request(dst, method, uri, headers):
     return o.stop
 
 
+def _render_response(o, status, reason, headers):
+    _check_int('status', status, 100, 599)
+    _check_str('reason', reason)
+    line = 'HTTP/1.1 {} {}'.format(status, reason).encode('ascii')
+    o.copy_into(line)
+    _render_headers(o, headers)
+    o.copy_into(b'\r\n\r\n')
+
+
+def render_response(dst, status, reason, headers):
+    o = _Output(dst)
+    _render_response(o, status, reason, headers)
+    return o.stop
+
+
 ################################################################################
 # Reader:
 
