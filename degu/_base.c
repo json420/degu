@@ -463,12 +463,6 @@ _get_bytes_len(const char *name, PyObject *obj, const size_t max_len)
     return (ssize_t)len;
 }
 
-static bool
-_check_headers(PyObject *headers)
-{
-    return _check_dict("headers", headers);
-}
-
 static PyObject *
 _getcallable(const char *label, PyObject *obj, PyObject *name)
 {
@@ -2246,7 +2240,7 @@ cleanup:
 static bool
 _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
 {
-    if (!_check_headers(headers)) {
+    if (! _check_dict("headers", headers)) {
         return false;
     }
     PyObject *cur = PyDict_SetDefault(headers, key, val);
@@ -2503,7 +2497,7 @@ _render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
 static bool
 _render_headers(DeguOutput *o, PyObject *headers)
 {
-    if (! _check_headers(headers)) {
+    if (! _check_dict("headers", headers)) {
         return false;
     }
     const size_t count = (size_t)PyDict_Size(headers);
