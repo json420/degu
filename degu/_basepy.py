@@ -1149,27 +1149,6 @@ class Writer:
         self._flush()
         return self._raw_write(src)
 
-    def write_output(self, preamble, body):
-        if body is None:
-            return self._write(preamble)
-        if type(body) is bytes:
-            return self._write(preamble + body)
-        if type(body) not in bodies:
-            raise TypeError(
-                'bad body type: {!r}: {!r}'.format(type(body), body)
-            )
-        self._write(preamble)
-        orig_tell = self.tell()
-        total = _validate_length("total_wrote", body.write_to(self))
-        delta = self.tell() - orig_tell
-        if delta != total:
-            raise ValueError(
-                '{!r} bytes were written, but write_to() returned {!r}'.format(
-                    delta, total
-                )
-            )
-        return total + len(preamble)
-
     def _render(self, func, *args):
         assert self._stop == 0
         size = func(self._buf, *args)

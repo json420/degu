@@ -515,13 +515,11 @@ typedef struct {
 static ssize_t _Writer_write(Writer *, DeguSrc);
 
 static PyObject * Writer_tell(Writer *);
-static PyObject * Writer_write_output(Writer *, PyObject *);
 static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
 static PyMethodDef Writer_methods[] = {
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
-    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
     {NULL}

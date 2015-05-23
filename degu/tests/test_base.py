@@ -5645,56 +5645,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(tell, 0)
         self.assertEqual(sock._calls, [])
 
-    def test_write_output(self):
-        # Empty preamble and empty body:
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', None), 0)
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
-
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', b''), 0)
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
-
-        # Preamble plus empty body:
-        preamble = os.urandom(34)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, None), 34)
-        self.assertEqual(writer.tell(), 34)
-        self.assertEqual(sock._calls, [('send', preamble)])
-        self.assertEqual(sock._fp.getvalue(), preamble)
-
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, b''), 34)
-        self.assertEqual(writer.tell(), 34)
-        self.assertEqual(sock._calls, [('send', preamble)])
-        self.assertEqual(sock._fp.getvalue(), preamble)
-
-        # body plus empty preamble:
-        body = os.urandom(969)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', body), 969)
-        self.assertEqual(writer.tell(), 969)
-        self.assertEqual(sock._calls, [('send', body)])
-        self.assertEqual(sock._fp.getvalue(), body)
-
-        # Body preamble and body are non-empty:
-        body = os.urandom(969)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, body), 1003)
-        self.assertEqual(writer.tell(), 1003)
-        self.assertEqual(sock._calls, [('send', preamble + body)])
-        self.assertEqual(sock._fp.getvalue(), preamble + body)
-
     def test_write_request(self):
         sock = WSocket()
         writer = self.Writer(sock)

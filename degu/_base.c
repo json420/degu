@@ -3777,71 +3777,9 @@ _Writer_write_body(Writer *self, PyObject *body)
     return -1;
 }
 
-static int64_t
-_Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
-{
-    if (self->stop != 0) {
-        Py_FatalError("_Writer_write_output(): self->stop != 0");
-    }
-
-    const uint64_t origtell = self->tell;
-    uint64_t total = preamble.len;
-    int64_t wrote;
-    DeguDst dst = _Writer_get_dst(self);
-
-    /* Buffer the preamble */
-    self->stop += _copy(dst, preamble);
-
-    /* Write the body */
-    wrote = _Writer_write_body(self, body);
-    if (wrote < 0) {
-        return -1;
-    }
-    total += (uint64_t)wrote;
-
-    if (! _Writer_flush(self)) {
-        return -1;
-    }
-
-    /* Sanity check */
-    if (origtell + total != self->tell) {
-        PyErr_Format(PyExc_ValueError,
-            "%llu + %llu != %llu", origtell, total, self->tell
-        );
-        return -1;
-    }
-    return (int64_t)total;
-}
-
-
-/*******************************************************************************
- * Writer: Public API:
- *     Writer.close()
- *     Writer.tell()
- *     Writer.write()
- */
 static PyObject *
 Writer_tell(Writer *self) {
     return PyLong_FromUnsignedLongLong(self->tell);
-}
-
-static PyObject *
-Writer_write_output(Writer *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *body = NULL;
-    int64_t total;
-
-    if (! PyArg_ParseTuple(args, "y#O", &buf, &len, &body)) {
-        return NULL;
-    }
-    DeguSrc preamble_src = {buf, len};
-    total = _Writer_write_output(self, preamble_src, body);
-    if (total < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(total);
 }
 
 static int64_t
