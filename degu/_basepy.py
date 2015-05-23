@@ -810,15 +810,30 @@ class _Output:
         self.stop += len(src)
 
 
-_OUTGOING_KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')  
+_OUTGOING_KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
 
 def _check_key(key):
     _check_type('key', key, str)
+    if len(key) > SCRATCH_LEN:
+        raise ValueError('key is too long: {!r}'.format(key))
     if key == '' or not _OUTGOING_KEY.issuperset(key):
         raise ValueError(
             'bad key: {!r}'.format(key)
         )
     return key
+
+
+_OUTGOING_VAL = frozenset(chr(i) for i in range(128))
+
+def _check_val(val):
+    if type(val) is not str:
+        val = str(val)
+    assert type(val) is str
+    if val == '' or not _OUTGOING_VAL.issuperset(val):
+        raise ValueError(
+            'bad val: {!r}'.format(val)
+        )
+    return val
 
 
 def _render_headers(o, headers):
@@ -830,7 +845,8 @@ def _render_headers(o, headers):
             )
         )
     lines = [
-        '\r\n{}: {}'.format(_check_key(k), v) for (k, v) in headers.items()
+        '\r\n{}: {}'.format(_check_key(k), _check_val(v))
+        for (k, v) in headers.items()
     ]
     lines.sort()
     src = ''.join(lines).encode('ascii')

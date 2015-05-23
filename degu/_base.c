@@ -492,7 +492,7 @@ _check_str(const char *name, PyObject *obj)
     if (PyUnicode_READY(obj) != 0) {
         return false;
     }
-    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127) {
+    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) <= 0) {
         PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
@@ -2470,7 +2470,8 @@ _copy_into(DeguOutput *o, DeguSrc src)
     }
 
 static bool
-_copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mask)
+_copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
+               const uint8_t mask, const size_t max_len)
 {
     uint8_t c, bits;
     size_t i;
@@ -2479,15 +2480,22 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mas
         Py_FatalError("_copy_str_into(): bad mask");
         return false;
     }
+
     DeguSrc src = _src_from_str(name, obj);
     if (src.buf == NULL) {
         return false;
     }
+    if (src.len > max_len) {
+        PyErr_Format(PyExc_ValueError, "%s is too long: %R", name, obj);
+        return false;
+    }
+
     DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
     if (src.len > dst.len) {
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
+
     for (bits = i = 0; i < src.len; i++) {
         c = dst.buf[i] = src.buf[i];
         bits |= _FLAG[c];
@@ -2500,8 +2508,8 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mas
     return true;
 }
 
-#define _COPY_STR_INTO(o, name, obj, mask) \
-    if (! _copy_str_into(o, name, obj, mask)) { \
+#define _COPY_STR_INTO(o, name, obj, mask, max_len) \
+    if (! _copy_str_into(o, name, obj, mask, max_len)) { \
         goto error; \
     }
 
@@ -2525,7 +2533,7 @@ _render_header_line(DeguOutput *o, HLine *l)
         _SET(val, val_str)
     }
     _COPY_INTO(o, CRLF)
-    _COPY_STR_INTO(o, "key", l->key, KEY_MASK)
+    _COPY_STR_INTO(o, "key", l->key, KEY_MASK, SCRATCH_LEN)
     _COPY_INTO(o, SEP)
     _COPY_INTO(o, _src_from_str("val", val)) 
     goto cleanup;

@@ -123,6 +123,27 @@ GOOD_HEADERS = (
     ),
 )
 
+OUTGOING_KEY = bytes(_basepy.KEY).decode()
+OUTGOING_VAL = bytes(_basepy.VAL).decode()
+STR256 = bytes(range(256)).decode('latin1')
+BAD_OUTGOING_KEY = ''.join(set(STR256) - set(OUTGOING_KEY)) + '¡™'
+
+def random_key(size):
+    return ''.join(random.choice(OUTGOING_KEY) for i in range(size))
+
+def random_val(size):
+    return ''.join(random.choice(OUTGOING_VAL) for i in range(size))
+
+def iter_bad_keys():
+    yield ''
+    yield '¡™'
+    good = random_key(32)
+    for i in range(len(good)):
+        bad = list(good)
+        for b in BAD_OUTGOING_KEY:
+            bad[i] = b
+            yield ''.join(bad)
+
 
 def _permute_remove(method):
     if len(method) <= 1:
@@ -2118,6 +2139,9 @@ class TestFormatting_Py(BackendTestCase):
 
     def test_render_headers(self):
         render_headers = self.getattr('render_headers')
+        Range = self.getattr('Range')
+        ContentRange = self.getattr('ContentRange')
+
         dst = memoryview(bytearray(4096))
         empty = dst.tobytes()
 
@@ -2139,13 +2163,14 @@ class TestFormatting_Py(BackendTestCase):
 
         # Max number of headers:
         headers = bad = dict(
-            (random_id(20).lower(), random_id(60))
+            (random_key(32), random_val(101))
             for i in range(self.MAX_HEADER_COUNT)
         )
         self.check_render_headers(headers)
+        self.assertEqual(dst.tobytes(), empty)
 
         # Add one more:
-        headers[random_id(20).lower()] = random_id(60)
+        headers[random_key(32)] = random_val(101)
         with self.assertRaises(ValueError) as cm:
             render_headers(dst, headers)
         self.assertEqual(str(cm.exception),
@@ -2154,6 +2179,101 @@ class TestFormatting_Py(BackendTestCase):
             )
         )
         self.assertEqual(dst.tobytes(), empty)
+
+        ml = self.MAX_LENGTH
+        good = {
+            'content-length': ml,
+            'range': Range(ml - 1, ml),
+            'content-range': ContentRange(ml - 1, ml, ml),
+        }
+        good.update(
+            (random_key(size), random_val(size))
+            for size in range(1, 10)
+        )
+        self.check_render_headers(good)
+        key = random_key(17)
+        val = random_key(37)
+        alsogood = good.copy()
+        alsogood[key] = val
+        self.check_render_headers(good)
+
+        # bad key type:
+        for bad_key in [key.encode(), str_subclass(key), tuple(key), None, 17]:
+            bad = good.copy()
+            bad[bad_key] = val
+            with self.assertRaises(TypeError) as cm:
+                render_headers(dst, bad)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('key', str, type(bad_key), bad_key)
+            )
+
+        # bad key value:
+        for bad_key in iter_bad_keys():
+            bad = good.copy()
+            bad[bad_key] = val
+            with self.assertRaises(ValueError) as cm:
+                render_headers(dst, bad)
+            self.assertEqual(str(cm.exception),
+                'bad key: {!r}'.format(bad_key)
+            )
+
+        # key is too long:
+        for bad_key in [random_key(33), random_key(34), random_key(101)]:
+            bad = good.copy()
+            bad[bad_key] = val
+            with self.assertRaises(ValueError) as cm:
+                render_headers(dst, bad)
+            self.assertEqual(str(cm.exception),
+                'key is too long: {!r}'.format(bad_key)
+            )
+
+        class ValObj:
+            def __init__(self, strval):
+                self.__strval = strval
+
+            def __str__(self):
+                strval = self.__strval
+                if isinstance(strval, Exception):
+                    raise strval
+                return strval
+
+        # val.__str__() doesn't return str:
+        bad = good.copy()
+        bad_val = ValObj(val.encode())
+        bad[key] = bad_val
+        with self.assertRaises(TypeError) as cm:
+            render_headers(dst, bad)
+        self.assertEqual(str(cm.exception),
+            '__str__ returned non-string (type bytes)'
+        )
+        del bad
+        self.assertEqual(sys.getrefcount(bad_val), 2)
+
+        # val.__str__() raises an exception:
+        marker = random_id(30)
+        exc = ValueError(marker)
+        self.assertEqual(sys.getrefcount(exc), 2)
+        bad = good.copy()
+        bad_val = ValObj(exc)
+        bad[key] = bad_val
+        with self.assertRaises(ValueError) as cm:
+            render_headers(dst, bad)
+        self.assertEqual(str(cm.exception), marker)
+        del bad
+        self.assertEqual(sys.getrefcount(bad_val), 2)
+        del bad_val
+        self.assertEqual(sys.getrefcount(exc), 3)
+
+        # val has codepoints > 127
+        for bad_val in ['', '¡™', STR256]:
+            for valobj in [bad_val, ValObj(bad_val)]:
+                bad = good.copy()
+                bad[key] = bad_val
+                with self.assertRaises(ValueError) as cm:
+                    render_headers(dst, bad)
+                self.assertEqual(str(cm.exception),
+                    'bad val: {!r}'.format(bad_val)
+                )
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')
