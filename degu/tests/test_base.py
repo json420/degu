@@ -123,6 +123,27 @@ GOOD_HEADERS = (
     ),
 )
 
+OUTGOING_KEY = bytes(_basepy.KEY).decode()
+OUTGOING_VAL = bytes(_basepy.VAL).decode()
+STR256 = bytes(range(256)).decode('latin1')
+BAD_OUTGOING_KEY = ''.join(set(STR256) - set(OUTGOING_KEY)) + '¡™'
+
+def random_key(size):
+    return ''.join(random.choice(OUTGOING_KEY) for i in range(size))
+
+def random_val(size):
+    return ''.join(random.choice(OUTGOING_VAL) for i in range(size))
+
+def iter_bad_keys():
+    yield ''
+    yield '¡™'
+    good = random_key(32)
+    for i in range(len(good)):
+        bad = list(good)
+        for b in BAD_OUTGOING_KEY:
+            bad[i] = b
+            yield ''.join(bad)
+
 
 def _permute_remove(method):
     if len(method) <= 1:
@@ -340,6 +361,10 @@ class BackendTestCase(TestCase):
     @property
     def MAX_IO_SIZE(self):
         return self.getattr('MAX_IO_SIZE')
+
+    @property
+    def MAX_HEADER_COUNT(self):
+            return self.getattr('MAX_HEADER_COUNT')
 
 
 class TestRange_Py(BackendTestCase):
@@ -1995,99 +2020,363 @@ class TestFormatting_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(val2), 2)
         self.assertEqual(sys.getrefcount(val3), 2)
 
-    def get_format_headers(self):
-        if self.backend is _basepy:
-            return FormatHeaders_Py(self.getattr('format_headers'))
+    def check_render(self, expected, func, *args):
+        size = len(expected)
 
-        return FormatHeaders_C(self.getattr('render_headers'))
+        # Test when dst has exactly enough space:
+        dst = memoryview(bytearray(size))
+        stop = func(dst, *args)
+        self.assertIs(type(stop), int)
+        self.assertEqual(stop, size)
+        self.assertEqual(dst.tobytes(), expected)
 
-    def test_format_headers(self):
-        format_headers = self.get_format_headers()
+        # Test when dst has extra space:
+        dst = memoryview(bytearray(size + 100))
+        stop = func(dst, *args)
+        self.assertIs(type(stop), int)
+        self.assertEqual(stop, size)
+        self.assertEqual(dst[:size].tobytes(), expected)
+        self.assertEqual(dst[size:], b'\x00' * 100)
+
+        # Test when len(dst) is from zero to size - 1:
+        for toosmall in range(size):
+            dst = memoryview(bytearray(toosmall))
+            with self.assertRaises(ValueError) as cm:
+                func(dst, *args)
+            self.assertEqual(str(cm.exception),
+                'output size exceeds {}'.format(toosmall)
+            )
+
+    def check_render_headers(self, headers):
+        expected = ''.join(
+            '\r\n{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
+        ).encode('ascii')
+        func = self.getattr('render_headers')
+        self.check_render(expected, func, headers)
+        return expected
+
+    def test_render_headers(self):
+        render_headers = self.getattr('render_headers')
+        Range = self.getattr('Range')
+        ContentRange = self.getattr('ContentRange')
+
+        dst = memoryview(bytearray(4096))
+        empty = dst.tobytes()
 
         # Bad headers type:
         bad = [('foo', 'bar')]
         with self.assertRaises(TypeError) as cm:
-            format_headers(bad)
+            render_headers(dst, bad)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('headers', dict, list, bad)
         )
+        self.assertEqual(dst.tobytes(), empty)
         bad = dict_subclass({'foo': 'bar'})
         with self.assertRaises(TypeError) as cm:
-            format_headers(bad)
+            render_headers(dst, bad)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('headers', dict, dict_subclass, bad)
         )
+        self.assertEqual(dst.tobytes(), empty)
 
-        good_items = (
-            None,
-            ('content-length', 17),
-            ('foo', 'bar'),
+        # Empty headers
+        self.assertEqual(render_headers(dst, {}), 0)
+        self.assertEqual(dst.tobytes(), empty)
+
+        # Max number of headers:
+        headers = bad = dict(
+            (random_key(32), random_val(101))
+            for i in range(self.MAX_HEADER_COUNT)
         )
-        good = dict()
-        for item in good_items:
-            if item:
-                (key, value) = item
-                good[key] = value
+        self.check_render_headers(headers)
+        self.assertEqual(dst.tobytes(), empty)
 
-            # Bad key type:
-            headers = {b'foo': 'bar'}
-            headers.update(good)
-            with self.assertRaises(TypeError) as cm:
-                format_headers(headers)
-            self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format('key', str, bytes, b'foo')
+        # Add one more:
+        headers[random_key(32)] = random_val(101)
+        with self.assertRaises(ValueError) as cm:
+            render_headers(dst, headers)
+        self.assertEqual(str(cm.exception),
+            'need len(headers) <= {}; got {}'.format(
+                self.MAX_HEADER_COUNT, self.MAX_HEADER_COUNT + 1
             )
-            headers = {str_subclass('foo'): 'bar'}
-            headers.update(good)
+        )
+        self.assertEqual(dst.tobytes(), empty)
+
+        ml = self.MAX_LENGTH
+        good = {
+            'content-length': ml,
+            'range': Range(ml - 1, ml),
+            'content-range': ContentRange(ml - 1, ml, ml),
+        }
+        good.update(
+            (random_key(size), random_val(size))
+            for size in range(1, 10)
+        )
+        self.check_render_headers(good)
+        key = random_key(17)
+        val = random_key(37)
+        alsogood = good.copy()
+        alsogood[key] = val
+        self.check_render_headers(good)
+
+        # bad key type:
+        for bad_key in [key.encode(), str_subclass(key), tuple(key), None, 17]:
+            bad = good.copy()
+            bad[bad_key] = val
             with self.assertRaises(TypeError) as cm:
-                format_headers(headers)
+                render_headers(dst, bad)
             self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format('key', str, str_subclass, 'foo')
+                TYPE_ERROR.format('key', str, type(bad_key), bad_key)
             )
 
-            # key contains non-ascii codepoints:
-            headers = {'¡': 'bar'}
-            headers.update(good)
+        # bad key value:
+        for bad_key in iter_bad_keys():
+            bad = good.copy()
+            bad[bad_key] = val
             with self.assertRaises(ValueError) as cm:
-                format_headers(headers)
-            self.assertEqual(str(cm.exception), "bad key: '¡'")
-            headers = {'™': 'bar'}
-            headers.update(good)
-            with self.assertRaises(ValueError) as cm:
-                format_headers(headers)
-            self.assertEqual(str(cm.exception), "bad key: '™'")
+                render_headers(dst, bad)
+            self.assertEqual(str(cm.exception),
+                'bad key: {!r}'.format(bad_key)
+            )
 
-            # key is not lowercase:
-            headers = {'Foo': 'bar'}
-            headers.update(good)
+        # key is too long:
+        for bad_key in [random_key(33), random_key(34), random_key(101)]:
+            bad = good.copy()
+            bad[bad_key] = val
             with self.assertRaises(ValueError) as cm:
-                format_headers(headers)
-            self.assertEqual(str(cm.exception), "bad key: 'Foo'")
-            headers = {'f\no': 'bar'}
-            headers.update(good)
-            with self.assertRaises(ValueError) as cm:
-                format_headers(headers)
-            self.assertEqual(str(cm.exception), "bad key: 'f\\no'")
+                render_headers(dst, bad)
+            self.assertEqual(str(cm.exception),
+                'key is too long: {!r}'.format(bad_key)
+            )
 
-        self.assertEqual(format_headers({}), b'')
-        self.assertEqual(format_headers({'foo': 17}), b'foo: 17\r\n')
-        self.assertEqual(
-            format_headers({'foo': 17, 'bar': 18}),
-            b'bar: 18\r\nfoo: 17\r\n'
+        class ValObj:
+            def __init__(self, strval):
+                self.__strval = strval
+
+            def __str__(self):
+                strval = self.__strval
+                if isinstance(strval, Exception):
+                    raise strval
+                return strval
+
+        # val.__str__() doesn't return str:
+        bad = good.copy()
+        bad_val = ValObj(val.encode())
+        bad[key] = bad_val
+        with self.assertRaises(TypeError) as cm:
+            render_headers(dst, bad)
+        self.assertEqual(str(cm.exception),
+            '__str__ returned non-string (type bytes)'
         )
-        self.assertEqual(
-            format_headers({'foo': '17', 'bar': '18'}),
-            b'bar: 18\r\nfoo: 17\r\n'
-        )
+        del bad
+        self.assertEqual(sys.getrefcount(bad_val), 2)
 
-        # Test sorting:
-        headers = dict(
-            ('d' * i, random_id(20)) for i in range(1, 5)
+        # val.__str__() raises an exception:
+        marker = random_id(30)
+        exc = ValueError(marker)
+        self.assertEqual(sys.getrefcount(exc), 2)
+        bad = good.copy()
+        bad_val = ValObj(exc)
+        bad[key] = bad_val
+        with self.assertRaises(ValueError) as cm:
+            render_headers(dst, bad)
+        self.assertEqual(str(cm.exception), marker)
+        del bad
+        self.assertEqual(sys.getrefcount(bad_val), 2)
+        del bad_val
+        self.assertEqual(sys.getrefcount(exc), 3)
+
+        # val has codepoints > 127
+        for bad_val in ['', '¡™', STR256]:
+            for valobj in [bad_val, ValObj(bad_val)]:
+                bad = good.copy()
+                bad[key] = bad_val
+                with self.assertRaises(ValueError) as cm:
+                    render_headers(dst, bad)
+                self.assertEqual(str(cm.exception),
+                    'bad val: {!r}'.format(bad_val)
+                )
+
+        # Test sorting corner case most likely to be problem with C backend:
+        items = tuple(
+            ('d' * i, random_val(10))
+            for i in range(1, self.MAX_HEADER_COUNT + 1)
         )
         expected = ''.join(
-            '{}: {}\r\n'.format(k, v) for (k, v) in sorted(headers.items())
+            '\r\n{}: {}'.format(*kv) for kv in items
         ).encode()
-        self.assertEqual(format_headers(headers), expected)
+        got = self.check_render_headers(dict(items))
+        self.assertEqual(got, expected)
+
+    def check_render_request(self, method, uri, headers):
+        lines = ['{} {} HTTP/1.1'.format(method, uri)]
+        lines.extend(
+            '{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
+        ) 
+        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n'   
+        func = self.getattr('render_request')
+        self.check_render(expected, func, method, uri, headers)
+        return expected
+
+    def test_render_request(self):
+        render_request = self.getattr('render_request')
+
+        dst = memoryview(bytearray(4096))
+        empty = dst.tobytes()
+
+        # Bad method type:
+        for method in [17, str_subclass('GET'), b'GET']:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, method, '/', {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('method', str, type(method), method)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad method value:
+        for method in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_request(dst, method, '/', {})
+            self.assertEqual(str(cm.exception),
+                'bad method: {!r}'.format(method)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad uri type:
+        for uri in [17, str_subclass('/foo'), b'/foo']:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, 'GET', uri, {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('uri', str, type(uri), uri)
+            )
+
+        # Bad uri value:
+        for uri in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_request(dst, 'GET', uri, {})
+            self.assertEqual(str(cm.exception),
+                'bad uri: {!r}'.format(uri)
+            )
+
+        # Bad headers type:
+        for headers in [[('foo', 'bar')], dict_subclass({'foo': 'bar'})]:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, 'GET', '/', headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('headers', dict, type(headers), headers)
+            )
+
+        for method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE'):
+            got = self.check_render_request(method, '/', {})
+            self.assertEqual(got,
+                '{} / HTTP/1.1\r\n\r\n'.format(method).encode()
+            )
+            got = self.check_render_request(method, '/foo?k=v', {})
+            self.assertEqual(got,
+                '{} /foo?k=v HTTP/1.1\r\n\r\n'.format(method).encode()
+            )
+            got = self.check_render_request(method, '/', {'content-type': 'text/plain'})
+            self.assertEqual(got,
+                '{} / HTTP/1.1\r\ncontent-type: text/plain\r\n\r\n'.format(method).encode()
+            )
+
+        # long uri
+        uri = '/' + '/'.join(random_id(30) for i in range(50))
+        self.check_render_request('GET', uri, {})
+
+        # lots of headers
+        headers = dict(
+            (random_key(size), random_val(50))
+            for size in range(1, self.MAX_HEADER_COUNT + 1)  
+        )
+        self.check_render_request('GET', '/', headers)
+        self.check_render_request('GET', uri, headers)
+
+    def check_render_response(self, status, reason, headers):
+        lines = ['HTTP/1.1 {} {}'.format(status, reason)]
+        lines.extend(
+            '{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
+        ) 
+        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n' 
+        func = self.getattr('render_response')  
+        self.check_render(expected, func, status, reason, headers)
+        return expected
+
+    def test_render_response(self):
+        render_response = self.getattr('render_response')
+
+        dst = memoryview(bytearray(4096))
+        empty = dst.tobytes()
+        self.assertEqual(dst.tobytes(), empty)
+
+        # Bad status type:
+        for status in ['200', 200.0, int_subclass(200)]:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, status, 'OK', {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('status', int, type(status), status)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad status value:
+        for status in [-1, 0, 99, 600]:
+            with self.assertRaises(ValueError) as cm:
+                render_response(dst, status, 'OK', {})
+            self.assertEqual(str(cm.exception),
+                'need 100 <= status <= 599; got {}'.format(status)
+            )
+            self.assertEqual(dst.tobytes(), empty)
+
+        # Bad reason type:
+        for reason in [17, str_subclass('OK'), b'OK']:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, 200, reason, {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('reason', str, type(reason), reason)
+            )
+
+        # Bad reason value:
+        for reason in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_response(dst, 200, reason, {})
+            self.assertEqual(str(cm.exception),
+                'bad reason: {!r}'.format(reason)
+            )
+
+        # Bad headers type:
+        for headers in [[('foo', 'bar')], dict_subclass({'foo': 'bar'})]:
+            with self.assertRaises(TypeError) as cm:
+                render_response(dst, 200, 'OK', headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('headers', dict, type(headers), headers)
+            )
+
+        for status in range(200, 600):
+            got = self.check_render_response(status, 'OK', {})
+            self.assertEqual(got,
+                'HTTP/1.1 {} OK\r\n\r\n'.format(status).encode()
+            )
+            key = random_key(32)
+            val = random_val(32)
+            got = self.check_render_response(status, 'OK', {key: val})
+            self.assertEqual(got,
+                'HTTP/1.1 {} OK\r\n{}: {}\r\n\r\n'.format(status, key, val).encode()
+            )
+
+        # long reason:
+        reason = ' '.join(random_id(30) for i in range(50))
+        self.check_render_response(200, reason, {})
+
+        # lots of headers:
+        headers = dict(
+            (random_key(size), random_val(50))
+            for size in range(1, self.MAX_HEADER_COUNT + 1)  
+        )
+        self.check_render_response(200, 'OK', headers)
+        self.check_render_response(200, reason, headers)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')
@@ -2265,6 +2554,10 @@ class TestConstants_Py(BackendTestCase):
         self.assertIs(type(self.MAX_LENGTH), int)
         self.assertEqual(self.MAX_LENGTH, 9999999999999999)
         self.assertEqual(self.MAX_LENGTH, int('9' * self.MAX_CL_LEN))
+
+    def test_MAX_HEADER_COUNT(self):
+        self.assertIs(type(self.MAX_HEADER_COUNT), int)
+        self.assertEqual(self.MAX_HEADER_COUNT, 20)
 
     def test_IO_SIZE(self):
         self.assertIs(type(self.IO_SIZE), int)
@@ -2849,130 +3142,6 @@ class TestFunctions(AlternatesTestCase):
                 ret = func(good)
                 self.assertIsInstance(ret, int)
                 self.assertEqual(ret, goodval)
-
-    def check_format_request(self, backend):
-        # Too few arguments:
-        with self.assertRaises(TypeError):
-            backend.format_request()
-        with self.assertRaises(TypeError):
-            backend.format_request('GET')
-        with self.assertRaises(TypeError):
-            backend.format_request('GET', '/foo')
-
-        # Too many arguments:
-        with self.assertRaises(TypeError):
-            backend.format_request('GET', '/foo', {}, None)
-
-        # No headers:
-        self.assertEqual(
-            backend.format_request('GET', '/foo', {}),
-            b'GET /foo HTTP/1.1\r\n\r\n'
-        )
-
-        # One header:
-        headers = {'content-length': 1776}
-        self.assertEqual(
-            backend.format_request('PUT', '/foo', headers),
-            b'PUT /foo HTTP/1.1\r\ncontent-length: 1776\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked'}
-        self.assertEqual(
-            backend.format_request('POST', '/foo', headers),
-            b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n'
-        )
-
-        # Two headers:
-        headers = {'content-length': 1776, 'a': 'A'}
-        self.assertEqual(
-            backend.format_request('PUT', '/foo', headers),
-            b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked', 'z': 'Z'}
-        self.assertEqual(
-            backend.format_request('POST', '/foo', headers),
-            b'POST /foo HTTP/1.1\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
-        )
-
-        # Three headers:
-        headers = {'content-length': 1776, 'a': 'A', 'z': 'Z'}
-        self.assertEqual(
-            backend.format_request('PUT', '/foo', headers),
-            b'PUT /foo HTTP/1.1\r\na: A\r\ncontent-length: 1776\r\nz: Z\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked', 'z': 'Z', 'a': 'A'}
-        self.assertEqual(
-            backend.format_request('POST', '/foo', headers),
-            b'POST /foo HTTP/1.1\r\na: A\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
-        )
-
-    def test_format_request_py(self):
-        self.check_format_request(_basepy)
-
-    def test_format_request_c(self):
-        self.skip_if_no_c_ext()
-        self.check_format_request(_base)
-
-    def check_format_response(self, backend):
-        # Too few arguments:
-        with self.assertRaises(TypeError):
-            backend.format_response()
-        with self.assertRaises(TypeError):
-            backend.format_response(200)
-        with self.assertRaises(TypeError):
-            backend.format_response(200, 'OK')
-
-        # Too many arguments:
-        with self.assertRaises(TypeError):
-            backend.format_response('200', 'OK', {}, None)
-
-        # No headers:
-        self.assertEqual(
-            backend.format_response(200, 'OK', {}),
-            b'HTTP/1.1 200 OK\r\n\r\n'
-        )
-
-        # One header:
-        headers = {'content-length': 1776}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\ncontent-length: 1776\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked'}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n'
-        )
-
-        # Two headers:
-        headers = {'content-length': 1776, 'a': 'A'}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\na: A\r\ncontent-length: 1776\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked', 'z': 'Z'}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
-        )
-
-        # Three headers:
-        headers = {'content-length': 1776, 'a': 'A', 'z': 'Z'}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\na: A\r\ncontent-length: 1776\r\nz: Z\r\n\r\n'
-        )
-        headers = {'transfer-encoding': 'chunked', 'z': 'Z', 'a': 'A'}
-        self.assertEqual(
-            backend.format_response(200, 'OK', headers),
-            b'HTTP/1.1 200 OK\r\na: A\r\ntransfer-encoding: chunked\r\nz: Z\r\n\r\n'
-        )
-
-    def test_format_response_py(self):
-        self.check_format_response(_basepy)
-
-    def test_format_response_c(self):
-        self.skip_if_no_c_ext()
-        self.check_format_response(_base)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
@@ -5257,56 +5426,6 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(tell, 0)
         self.assertEqual(sock._calls, [])
 
-    def test_write_output(self):
-        # Empty preamble and empty body:
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', None), 0)
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
-
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', b''), 0)
-        self.assertEqual(writer.tell(), 0)
-        self.assertEqual(sock._calls, [])
-        self.assertEqual(sock._fp.getvalue(), b'')
-
-        # Preamble plus empty body:
-        preamble = os.urandom(34)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, None), 34)
-        self.assertEqual(writer.tell(), 34)
-        self.assertEqual(sock._calls, [('send', preamble)])
-        self.assertEqual(sock._fp.getvalue(), preamble)
-
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, b''), 34)
-        self.assertEqual(writer.tell(), 34)
-        self.assertEqual(sock._calls, [('send', preamble)])
-        self.assertEqual(sock._fp.getvalue(), preamble)
-
-        # body plus empty preamble:
-        body = os.urandom(969)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(b'', body), 969)
-        self.assertEqual(writer.tell(), 969)
-        self.assertEqual(sock._calls, [('send', body)])
-        self.assertEqual(sock._fp.getvalue(), body)
-
-        # Body preamble and body are non-empty:
-        body = os.urandom(969)
-        sock = WSocket()
-        writer = self.Writer(sock)
-        self.assertEqual(writer.write_output(preamble, body), 1003)
-        self.assertEqual(writer.tell(), 1003)
-        self.assertEqual(sock._calls, [('send', preamble + body)])
-        self.assertEqual(sock._fp.getvalue(), preamble + body)
-
     def test_write_request(self):
         sock = WSocket()
         writer = self.Writer(sock)
@@ -5388,20 +5507,20 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
-#        # body is bodies.BodyIter:
-#        headers = {}
-#        body = self.bodies.BodyIter((b'hell', b'o'), 5)
-#        sock = WSocket()
-#        writer = self.Writer(sock, self.bodies)
-#        self.assertEqual(
-#            writer.write_request('GET', '/', headers, body),
-#            42
-#        )
-#        self.assertEqual(headers, {'content-length': 5})
-#        self.assertEqual(writer.tell(), 42)
-#        self.assertEqual(sock._fp.getvalue(),
-#            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
-#        )
+        # body is bodies.BodyIter:
+        headers = {}
+        body = self.bodies.BodyIter((b'hell', b'o'), 5)
+        sock = WSocket()
+        writer = self.Writer(sock)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
 
         # body is base.ChunkedBody:
         rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
@@ -6199,6 +6318,16 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(bodies), bcount)
 
     def test_request(self):
+        # Make sure method is validated:
+        for method in BAD_METHODS:
+            sock = NewMockSocket()
+            conn = self.Connection(sock, None)
+            with self.assertRaises(ValueError) as cm:
+                conn.request(method, '/foo', {}, None)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
         # Test when connection is closed:
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
@@ -6293,6 +6422,34 @@ class TestConnection_Py(BackendTestCase):
             del conn
             self.assertEqual(sys.getrefcount(sock), 2)
             self.assertEqual(sys.getrefcount(bh), 2)
+
+        # body must be None when method is 'GET', 'HEAD', or 'DELETE':
+        # Test when connection is closed:
+        def iter_bodies():
+            data = b'hello, world'
+            yield data
+            yield self.bodies.Body(io.BytesIO(data), len(data))
+            yield self.bodies.BodyIter([data], len(data))
+            yield self.bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+            yield self.bodies.ChunkedBodyIter([(None, b'')])
+
+        for method in ('GET', 'HEAD', 'DELETE'):
+            for body in iter_bodies():
+                sock = NewMockSocket()
+                conn = self.Connection(sock, None)
+                h = {}
+                with self.assertRaises(ValueError) as cm:
+                    conn.request(method, '/foo', h, body)
+                self.assertEqual(str(cm.exception),
+                    'when method is {!r}, body must be None; got a {!r}'.format(
+                        method, type(body)   
+                    )
+                )
+                self.assertEqual(h, {})
+                self.assertIs(conn.closed, True)
+                self.assertEqual(sock._calls, [
+                    ('shutdown', socket.SHUT_RDWR)
+                ])
 
     def test_put(self):
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')

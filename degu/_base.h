@@ -41,6 +41,8 @@
 /* Max uint64_t value for a content-length, range start/stop, etc */
 #define MAX_LENGTH 9999999999999999ull
 
+#define MAX_HEADER_COUNT 20
+
 #define IO_SIZE 1048576u
 #define MAX_IO_SIZE 16777216u
 
@@ -208,9 +210,6 @@ static PyObject * parse_chunk(PyObject *, PyObject *);
 
 /* Formatting */
 static PyObject * set_default_header(PyObject *, PyObject *);
-static PyObject * format_headers(PyObject *, PyObject *);
-static PyObject * format_request(PyObject *, PyObject *);
-static PyObject * format_response(PyObject *, PyObject *);
 static PyObject * format_chunk(PyObject *, PyObject *);
 
 static PyObject * render_headers(PyObject *, PyObject *);
@@ -255,9 +254,6 @@ static struct PyMethodDef degu_functions[] = {
 
     /* Formatting */
     {"set_default_header", set_default_header, METH_VARARGS, NULL},
-    {"format_headers", format_headers, METH_VARARGS, NULL},
-    {"format_request", format_request, METH_VARARGS, NULL},
-    {"format_response", format_response, METH_VARARGS, NULL},
     {"format_chunk", format_chunk, METH_VARARGS, NULL},
     {"render_headers", render_headers, METH_VARARGS, NULL},
     {"render_request", render_request, METH_VARARGS, NULL},
@@ -513,13 +509,11 @@ typedef struct {
 static ssize_t _Writer_write(Writer *, DeguSrc);
 
 static PyObject * Writer_tell(Writer *);
-static PyObject * Writer_write_output(Writer *, PyObject *);
 static PyObject * Writer_write_request(Writer *, PyObject *);
 static PyObject * Writer_write_response(Writer *, PyObject *);
 
 static PyMethodDef Writer_methods[] = {
     {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
-    {"write_output", (PyCFunction)Writer_write_output, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
     {NULL}

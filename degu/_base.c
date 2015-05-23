@@ -463,12 +463,6 @@ _get_bytes_len(const char *name, PyObject *obj, const size_t max_len)
     return (ssize_t)len;
 }
 
-static bool
-_check_headers(PyObject *headers)
-{
-    return _check_dict("headers", headers);
-}
-
 static PyObject *
 _getcallable(const char *label, PyObject *obj, PyObject *name)
 {
@@ -492,7 +486,7 @@ _check_str(const char *name, PyObject *obj)
     if (PyUnicode_READY(obj) != 0) {
         return false;
     }
-    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127) {
+    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) <= 0) {
         PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
@@ -687,7 +681,7 @@ _dst_isempty(DeguDst dst)
 static inline DeguDst
 _dst_slice(DeguDst dst, const size_t start, const size_t stop)
 {
-    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (DeguDst){dst.buf + start, stop - start};
@@ -738,7 +732,7 @@ _calloc_dst(const size_t len)
 static DeguDst
 _dst_frompybuf(Py_buffer *pybuf)
 {
-    if (pybuf->buf == NULL || pybuf->len < 1) {
+    if (pybuf->buf == NULL || pybuf->len < 0) {
         Py_FatalError("_frompybuf(): bad internal call");
     }
     if (PyBuffer_IsContiguous(pybuf, 'C') != 1) {
@@ -2243,18 +2237,10 @@ cleanup:
     return ret;
 }
 
-
-/*******************************************************************************
- * Internal API: Formatting:
- *     _set_default_header()
- *     _validate_key()
- *     _format_headers()
- */
-
 static bool
 _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
 {
-    if (!_check_headers(headers)) {
+    if (! _check_dict("headers", headers)) {
         return false;
     }
     PyObject *cur = PyDict_SetDefault(headers, key, val);
@@ -2329,117 +2315,6 @@ set_output_headers(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-static bool
-_validate_key(PyObject *key)
-{
-    size_t i;
-    uint8_t bits;
-
-    if (! _check_str("key", key)) {
-        return false;
-    }
-    if (PyUnicode_GET_LENGTH(key) < 1) {
-        PyErr_SetString(PyExc_ValueError, "key is empty");
-        return false;
-    }
-    const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
-    const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
-    for (bits = i = 0; i < key_len; i++) {
-        bits |= _FLAG[key_buf[i]];
-    }
-    if (bits == 0) {
-        Py_FatalError("_validate_key(): bits == 0");
-    }
-    if ((bits & KEY_MASK) != 0) {
-        goto bad_key;
-    }
-    return true;
-
-bad_key:
-    PyErr_Format(PyExc_ValueError, "bad key: %R", key);
-    return false;
-}
-
-
-static PyObject *
-_format_headers(PyObject *headers)
-{
-    ssize_t pos = 0;
-    ssize_t i = 0;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
-    PyObject *lines = NULL;
-    PyObject *ret = NULL;
-
-    if (!_check_headers(headers)) {
-        goto error;
-    }
-    const ssize_t count = PyDict_Size(headers);
-    if (count < 1) {
-        if (count < 0) {
-            Py_FatalError("_format_headers(): count < 0");
-        }
-        _SET_AND_INC(ret, str_empty);
-    }
-    else if (count == 1) {
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            if (! _validate_key(key)) {
-                goto error;
-            }
-            _SET(ret, PyUnicode_FromFormat("%S: %S\r\n", key, val))
-        }
-    }
-    else {
-        _SET(lines, PyList_New(count))
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            if (! _validate_key(key)) {
-                goto error;
-            }
-            PyList_SET_ITEM(lines, i,
-                PyUnicode_FromFormat("%S: %S\r\n", key, val)
-            );
-            i++;
-            key = val = NULL;
-        }
-        if (PyList_Sort(lines) != 0) {
-            goto error;
-        }
-        _SET(ret, PyUnicode_Join(str_empty, lines))
-    }
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(lines);
-    return  ret;
-}
-
-
-static PyObject *
-_format_request(DeguRequest *dr)
-{
-    PyObject *h = NULL;  /* str containing header lines */
-    PyObject *str = NULL;  /* str version of request preamble */
-    PyObject *ret = NULL;  /* bytes version of request preamble */
-
-    _SET(h, _format_headers(dr->headers))
-    _SET(str,
-        PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S\r\n", dr->method, dr->uri, h)
-    )
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(h);
-    Py_CLEAR(str);
-    return  ret;
-}
-
 static inline ssize_t
 _get_status(PyObject *obj)
 {
@@ -2457,9 +2332,7 @@ _copy_into(DeguOutput *o, DeguSrc src)
         return true;
     }
     if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", src.len, o->dst.len
-        );
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
     o->stop += _copy(dst, src);
@@ -2472,7 +2345,8 @@ _copy_into(DeguOutput *o, DeguSrc src)
     }
 
 static bool
-_copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mask)
+_copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
+               const uint8_t mask, const size_t max_len)
 {
     uint8_t c, bits;
     size_t i;
@@ -2481,17 +2355,22 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mas
         Py_FatalError("_copy_str_into(): bad mask");
         return false;
     }
+
     DeguSrc src = _src_from_str(name, obj);
     if (src.buf == NULL) {
         return false;
     }
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
-    if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", src.len, o->dst.len
-        );
+    if (src.len > max_len) {
+        PyErr_Format(PyExc_ValueError, "%s is too long: %R", name, obj);
         return false;
     }
+
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (src.len > dst.len) {
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
+        return false;
+    }
+
     for (bits = i = 0; i < src.len; i++) {
         c = dst.buf[i] = src.buf[i];
         bits |= _FLAG[c];
@@ -2504,8 +2383,8 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mas
     return true;
 }
 
-#define _COPY_STR_INTO(o, name, obj, mask) \
-    if (! _copy_str_into(o, name, obj, mask)) { \
+#define _COPY_STR_INTO(o, name, obj, mask, max_len) \
+    if (! _copy_str_into(o, name, obj, mask, max_len)) { \
         goto error; \
     }
 
@@ -2528,10 +2407,10 @@ _render_header_line(DeguOutput *o, HLine *l)
         _SET(val_str, PyObject_Str(l->val))
         _SET(val, val_str)
     }
-    _COPY_STR_INTO(o, "key", l->key, KEY_MASK)
+    _COPY_INTO(o, CRLF)
+    _COPY_STR_INTO(o, "key", l->key, KEY_MASK, SCRATCH_LEN)
     _COPY_INTO(o, SEP)
     _COPY_INTO(o, _src_from_str("val", val)) 
-    _COPY_INTO(o, CRLF)
     goto cleanup;
 
 error:
@@ -2563,20 +2442,18 @@ _hline_cmp(const void *_A, const void *_B)
     return (int)a.len - (int)b.len;
 }
 
-#define HMAX 20
-
 static bool
 _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
 {
     ssize_t pos = 0;
     PyObject *key = NULL;
     PyObject *val = NULL;
-    HLine lines[HMAX];
+    HLine lines[MAX_HEADER_COUNT];
     size_t i;
 
-    if (count > HMAX) {
+    if (count > MAX_HEADER_COUNT) {
         PyErr_Format(PyExc_ValueError,
-            "need len(headers) < %zu; got %zu", HMAX, count
+            "need len(headers) <= %zu; got %zu", MAX_HEADER_COUNT, count
         );
         return false;
     }
@@ -2620,7 +2497,7 @@ _render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
 static bool
 _render_headers(DeguOutput *o, PyObject *headers)
 {
-    if (! _check_headers(headers)) {
+    if (! _check_dict("headers", headers)) {
         return false;
     }
     const size_t count = (size_t)PyDict_Size(headers);
@@ -2659,11 +2536,10 @@ _render_request(DeguOutput *o, DeguRequest *r)
     _COPY_INTO(o, SPACE)
     _COPY_INTO(o, _src_from_str("uri", r->uri))
     _COPY_INTO(o, REQUEST_PROTOCOL)
-    _COPY_INTO(o, CRLF)
     if (! _render_headers(o, r->headers)) {
         return false;
     }
-    _COPY_INTO(o, CRLF)
+    _COPY_INTO(o, CRLFCRLF)
     return true;
 
 error:
@@ -2694,9 +2570,7 @@ static bool
 _render_status(DeguOutput *o, const size_t s)
 {
     if (o->stop + 4 > o->dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", o->stop + 4, o->dst.len
-        );
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
     DeguDst dst = _dst_slice(o->dst, o->stop, o->stop + 4);
@@ -2716,11 +2590,10 @@ _render_response(DeguOutput *o, DeguResponse *r)
         return false;
     }
     _COPY_INTO(o, _src_from_str("reason", r->reason))
-    _COPY_INTO(o, CRLF)
     if (! _render_headers(o, r->headers)) {
         return false;
     }
-    _COPY_INTO(o, CRLF)
+    _COPY_INTO(o, CRLFCRLF)
     return true;
 
 error:
@@ -2753,37 +2626,6 @@ render_response(PyObject *self, PyObject *args)
     return ret;
 }
 
-
-static PyObject *
-_format_response(PyObject *status, PyObject *reason, PyObject *headers)
-{
-    PyObject *hstr = NULL;  /* str containing header lines */
-    PyObject *str = NULL;  /* str version of response preamble */
-    PyObject *ret = NULL;  /* bytes version of response preamble */
-
-    _SET(hstr, _format_headers(headers))
-    _SET(str,
-        PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S\r\n", status, reason, hstr)
-    )
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(hstr);
-    Py_CLEAR(str);
-    return  ret;
-}
-
-
-/*******************************************************************************
- * Public API: Formatting:
- *     format_headers()
- *     format_request()
- *     format_response()
- */
 static PyObject *
 set_default_header(PyObject *self, PyObject *args)
 {
@@ -2798,50 +2640,6 @@ set_default_header(PyObject *self, PyObject *args)
         return NULL;
     }
     Py_RETURN_NONE;
-}
-
-static PyObject *
-format_headers(PyObject *self, PyObject *args)
-{
-    PyObject *headers = NULL;
-    if (! PyArg_ParseTuple(args, "O:format_headers", &headers)) {
-        return NULL;
-    }
-    return _format_headers(headers);
-}
-
-static PyObject *
-format_request(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *ret = NULL;
-
-    if (! PyArg_ParseTuple(args, "s#OO:format_request",
-            &buf, &len, &dr.uri, &dr.headers)) {
-        return NULL;
-    }
-    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
-    _SET(ret, _format_request(&dr))
-
-error:
-    Py_CLEAR(dr.method);
-    return ret;
-}
-
-static PyObject *
-format_response(PyObject *self, PyObject *args)
-{
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
-    PyObject *headers = NULL;
-
-    if (! PyArg_ParseTuple(args, "OOO:format_response",
-            &status, &reason, &headers)) {
-        return NULL;
-    }
-    return _format_response(status, reason, headers);
 }
 
 static PyObject *
@@ -3779,71 +3577,9 @@ _Writer_write_body(Writer *self, PyObject *body)
     return -1;
 }
 
-static int64_t
-_Writer_write_output(Writer *self, DeguSrc preamble, PyObject *body)
-{
-    if (self->stop != 0) {
-        Py_FatalError("_Writer_write_output(): self->stop != 0");
-    }
-
-    const uint64_t origtell = self->tell;
-    uint64_t total = preamble.len;
-    int64_t wrote;
-    DeguDst dst = _Writer_get_dst(self);
-
-    /* Buffer the preamble */
-    self->stop += _copy(dst, preamble);
-
-    /* Write the body */
-    wrote = _Writer_write_body(self, body);
-    if (wrote < 0) {
-        return -1;
-    }
-    total += (uint64_t)wrote;
-
-    if (! _Writer_flush(self)) {
-        return -1;
-    }
-
-    /* Sanity check */
-    if (origtell + total != self->tell) {
-        PyErr_Format(PyExc_ValueError,
-            "%llu + %llu != %llu", origtell, total, self->tell
-        );
-        return -1;
-    }
-    return (int64_t)total;
-}
-
-
-/*******************************************************************************
- * Writer: Public API:
- *     Writer.close()
- *     Writer.tell()
- *     Writer.write()
- */
 static PyObject *
 Writer_tell(Writer *self) {
     return PyLong_FromUnsignedLongLong(self->tell);
-}
-
-static PyObject *
-Writer_write_output(Writer *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    PyObject *body = NULL;
-    int64_t total;
-
-    if (! PyArg_ParseTuple(args, "y#O", &buf, &len, &body)) {
-        return NULL;
-    }
-    DeguSrc preamble_src = {buf, len};
-    total = _Writer_write_output(self, preamble_src, body);
-    if (total < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(total);
 }
 
 static int64_t
@@ -5012,6 +4748,15 @@ _Connection_request(Connection *self, DeguRequest *dr)
         return NULL;
     }
 
+    /* Only PUT and POST requests can have a body */
+    if (dr->body != Py_None && dr->method != str_PUT && dr->method != str_POST) {
+        PyErr_Format(PyExc_ValueError,
+            "when method is %R, body must be None; got a %R",
+            dr->method, Py_TYPE(dr->body)
+        );
+        goto error;
+    }
+
     /* Check whether previous response body was consumed */
     if (! _body_is_consumed(self->response_body)) {
         PyErr_Format(PyExc_ValueError,
@@ -5267,6 +5012,8 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_LINE_LEN);
 
     PyModule_AddIntMacro(module, MAX_CL_LEN);
+    
+    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
 
     PyModule_AddIntMacro(module, IO_SIZE);    
     PyModule_AddIntMacro(module, MAX_IO_SIZE);

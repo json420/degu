@@ -35,6 +35,7 @@ import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+TYPE_ERROR2 = '{}: need a {!r}; got a {!r}'
 
 BUF_LEN = 32768  # 32 KiB
 SCRATCH_LEN = 32
@@ -42,6 +43,8 @@ MAX_LINE_LEN = 4096  # Max length of chunk size line, including CRLF
 
 MAX_CL_LEN = 16  # Max length (in bytes) of a content-length/etc
 MAX_LENGTH = 9999999999999999  # Max value for content-length/etc
+
+MAX_HEADER_COUNT = 20
 
 IO_SIZE = 1048576  # 1 MiB
 MAX_IO_SIZE = 16777216  # 16 MiB
@@ -676,51 +679,22 @@ def parse_response(method, preamble, rfile):
 
 
 ################################################################################
-# Formatting:
+# Rendering and formatting:
 
-def format_headers(headers):
-    if type(headers) is not dict:
+def _check_type(name, obj, _type):
+    if type(obj) is not _type:
         raise TypeError(
-            TYPE_ERROR.format('headers', dict, type(headers), headers)
+            TYPE_ERROR.format(name, _type, type(obj), obj)
         )
-    lines = []
-    for (key,  value) in headers.items():
-        if type(key) is not str:
-            raise TypeError(
-                TYPE_ERROR.format('key', str, type(key), key)
-            )
-        if not KEY.issuperset(key.encode()):
-            raise ValueError('bad key: {!r}'.format(key))
-        lines.append('{}: {}\r\n'.format(key, value))
-    lines.sort()
-    return ''.join(lines)
-
-
-def format_request(method, uri, headers):
-    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
-
-
-def format_response(status, reason, headers):
-    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
+    return obj
 
 
 def _check_type2(name, obj, _type):
     if type(obj) is not _type:
         raise TypeError(
-            '{}: need a {!r}; got a {!r}'.format(name, _type, type(obj))
+            TYPE_ERROR2.format(name, _type, type(obj))
         )
+    return obj
 
 def _check_tuple(name, obj, size):
     _check_type2(name, obj, tuple)
@@ -729,6 +703,7 @@ def _check_tuple(name, obj, size):
             '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
         )
     return obj
+
 
 def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
     assert max_len <= MAX_IO_SIZE
@@ -772,6 +747,109 @@ def _write_chunk(wobj, chunk):
 
 def write_chunk(wfile, chunk):
     return _write_chunk(_get_wobj(wfile), chunk)
+
+
+class _Output:
+    __slots__ = ('dst', 'stop')
+
+    def __init__(self, dst):
+        assert isinstance(dst, memoryview)
+        self.dst = dst
+        self.stop = 0
+
+    def copy_into(self, src):
+        assert type(src) is bytes
+        assert self.stop <= len(self.dst)
+        if self.stop + len(src) > len(self.dst):
+            raise ValueError(
+                'output size exceeds {}'.format(len(self.dst))
+            )
+        start = self.stop
+        stop = start + len(src)
+        self.dst[start:stop] = src
+        self.stop += len(src)
+
+
+_OUTGOING_KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')
+
+def _check_key(key):
+    _check_type('key', key, str)
+    if len(key) > SCRATCH_LEN:
+        raise ValueError('key is too long: {!r}'.format(key))
+    if key == '' or not _OUTGOING_KEY.issuperset(key):
+        raise ValueError(
+            'bad key: {!r}'.format(key)
+        )
+    return key
+
+
+_OUTGOING_STR = frozenset(chr(i) for i in range(128))
+
+def _check_str(name, obj):
+    _check_type(name, obj, str)
+    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+        raise ValueError(
+            'bad {}: {!r}'.format(name, obj)
+        )
+    return obj
+
+def _check_val(val):
+    if type(val) is not str:
+        val = str(val)
+    return _check_str('val', val)
+
+
+def _render_headers(o, headers):
+    _check_type('headers', headers, dict)
+    if len(headers) > MAX_HEADER_COUNT:
+        raise ValueError(
+            'need len(headers) <= {}; got {}'.format(
+                MAX_HEADER_COUNT, len(headers)
+            )
+        )
+    for key in headers:
+        _check_key(key)
+    src = ''.join(
+        '\r\n{}: {}'.format(k, _check_val(v))
+        for (k, v) in sorted(headers.items()) 
+    ).encode('ascii')
+    o.copy_into(src)
+
+
+def render_headers(dst, headers):
+    o = _Output(dst)
+    _render_headers(o, headers)
+    return o.stop
+
+
+def _render_request(o, method, uri, headers):
+    _check_str('method', method)
+    _check_str('uri', uri)
+    line = '{} {} HTTP/1.1'.format(method, uri).encode('ascii')
+    o.copy_into(line)
+    _render_headers(o, headers)
+    o.copy_into(b'\r\n\r\n')
+
+
+def render_request(dst, method, uri, headers):
+    o = _Output(dst)
+    _render_request(o, method, uri, headers)
+    return o.stop
+
+
+def _render_response(o, status, reason, headers):
+    _check_int('status', status, 100, 599)
+    _check_str('reason', reason)
+    line = 'HTTP/1.1 {} {}'.format(status, reason).encode('ascii')
+    o.copy_into(line)
+    _render_headers(o, headers)
+    o.copy_into(b'\r\n\r\n')
+
+
+def render_response(dst, status, reason, headers):
+    o = _Output(dst)
+    _render_response(o, status, reason, headers)
+    return o.stop
 
 
 ################################################################################
@@ -994,52 +1072,73 @@ class Writer:
     __slots__ = (
         '_sock_send',
         '_tell',
+        '_buf',
+        '_stop',
     )
 
     def __init__(self, sock):
         self._sock_send = _getcallable('sock', sock, 'send')
         self._tell = 0
+        self._buf = memoryview(bytearray(BUF_LEN))
+        self._stop = 0
 
     def tell(self):
         return self._tell
 
-    def _write(self, buf):
-        size = _write(self._sock_send, buf)
+    def _raw_write(self, src):
+        size = _write(self._sock_send, src)
+        assert size == len(src)
         self._tell += size
         return size
 
-    def write_output(self, preamble, body):
-        if body is None:
-            return self._write(preamble)
+    def _flush(self):
+        assert 0 <= self._stop <= len(self._buf)
+        src = self._buf[0:self._stop]
+        self._raw_write(src)
+        self._stop = 0
+
+    def _write(self, src):
+        if self._stop > 0 and self._stop + len(src) <= len(self._buf):
+            start = self._stop
+            self._stop += len(src)
+            self._buf[start:self._stop] = src
+            self._flush()
+            return len(src)
+        self._flush()
+        return self._raw_write(src)
+
+    def _write_output(self, func, arg1, arg2, headers, body):
+        orig_tell = self._tell
+        assert self._stop == 0
+
+        total = func(self._buf, arg1, arg2, headers)
+        assert total > 0
+        self._stop = total
         if type(body) is bytes:
-            return self._write(preamble + body)
-        if type(body) not in bodies:
+            total += self._write(body)
+        elif type(body) in bodies:
+            total += body.write_to(self)
+        elif body is not None:
             raise TypeError(
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
-        self._write(preamble)
-        orig_tell = self.tell()
-        total = _validate_length("total_wrote", body.write_to(self))
-        delta = self.tell() - orig_tell
-        if delta != total:
-            raise ValueError(
-                '{!r} bytes were written, but write_to() returned {!r}'.format(
-                    delta, total
-                )
-            )
-        return total + len(preamble)
+        self._flush()
+        assert self._stop == 0
+        assert self._tell == orig_tell + total
+        return total
 
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
         set_output_headers(headers, body)
-        preamble = format_request(method, uri, headers)
-        return self.write_output(preamble, body)
+        return self._write_output(render_request,
+            method, uri, headers, body
+        )
 
     def write_response(self, status, reason, headers, body):
         set_output_headers(headers, body)
-        preamble = format_response(status, reason, headers)
-        return self.write_output(preamble, body)
-
+        return self._write_output(render_response,
+            status, reason, headers, body
+        )
 
 def _check_body_state(name, state, max_state):
     assert max_state < BODY_CONSUMED
@@ -1598,6 +1697,12 @@ class Connection:
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
+            if body is not None and method not in ('PUT', 'POST'):
+                raise ValueError(
+                    'when method is {!r}, body must be None; got a {!r}'.format(
+                        method, type(body)
+                    )
+                )
             if not _body_is_consumed(self._response_body):
                 raise ValueError(
                     'response body not consumed: {!r}'.format(self._response_body)
