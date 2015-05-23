@@ -1683,6 +1683,12 @@ class Connection:
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
+            if body is not None and method not in ('PUT', 'POST'):
+                raise ValueError(
+                    'when method is {!r}, body must be None; got a {!r}'.format(
+                        method, type(body)
+                    )
+                )
             if not _body_is_consumed(self._response_body):
                 raise ValueError(
                     'response body not consumed: {!r}'.format(self._response_body)

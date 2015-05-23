@@ -6484,6 +6484,35 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
             self.assertEqual(sys.getrefcount(bh), 2)
 
+        # body must be None when method is 'GET', 'HEAD', or 'DELETE':
+        # Test when connection is closed:
+        bodies = self.getattr('bodies')
+        def iter_bodies():
+            data = b'hello, world'
+            yield data
+            yield bodies.Body(io.BytesIO(data), len(data))
+            yield bodies.BodyIter([data], len(data))
+            yield bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+            yield bodies.ChunkedBodyIter([(None, b'')])
+
+        for method in ('GET', 'HEAD', 'DELETE'):
+            for body in iter_bodies():
+                sock = NewMockSocket()
+                conn = self.Connection(sock, None)
+                h = {}
+                with self.assertRaises(ValueError) as cm:
+                    conn.request(method, '/foo', h, body)
+                self.assertEqual(str(cm.exception),
+                    'when method is {!r}, body must be None; got a {!r}'.format(
+                        method, type(body)   
+                    )
+                )
+                self.assertEqual(h, {})
+                self.assertIs(conn.closed, True)
+                self.assertEqual(sock._calls, [
+                    ('shutdown', socket.SHUT_RDWR)
+                ])
+
     def test_put(self):
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)

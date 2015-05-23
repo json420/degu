@@ -5012,6 +5012,15 @@ _Connection_request(Connection *self, DeguRequest *dr)
         return NULL;
     }
 
+    /* Only PUT and POST requests can have a body */
+    if (dr->body != Py_None && dr->method != str_PUT && dr->method != str_POST) {
+        PyErr_Format(PyExc_ValueError,
+            "when method is %R, body must be None; got a %R",
+            dr->method, Py_TYPE(dr->body)
+        );
+        goto error;
+    }
+
     /* Check whether previous response body was consumed */
     if (! _body_is_consumed(self->response_body)) {
         PyErr_Format(PyExc_ValueError,
