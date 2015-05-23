@@ -2121,13 +2121,15 @@ class TestFormatting_Py(BackendTestCase):
         dst = memoryview(bytearray(dst_len))
         render_headers = self.getattr('render_headers')
         expected = ''.join(
-            '\r\n{}: {}'.format(*kv) for kv in sorted(headers.items())
+            '\r\n{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
         ).encode('ascii')
 
         stop = render_headers(dst, headers.copy())
         self.assertIs(type(stop), int)
         self.assertLessEqual(stop, dst_len)
-        self.assertEqual(dst[0:stop].tobytes(), expected)
+        got = dst[0:stop].tobytes()
+        self.assertEqual(got, expected)
 
         for size in range(len(expected)):
             dst = memoryview(bytearray(size))
@@ -2136,6 +2138,8 @@ class TestFormatting_Py(BackendTestCase):
             self.assertEqual(str(cm.exception),
                 'output size exceeds {}'.format(size)
             )
+
+        return got
 
     def test_render_headers(self):
         render_headers = self.getattr('render_headers')
@@ -2274,6 +2278,17 @@ class TestFormatting_Py(BackendTestCase):
                 self.assertEqual(str(cm.exception),
                     'bad val: {!r}'.format(bad_val)
                 )
+
+        # Test sorting corner case most likely to be problem with C backend:
+        items = tuple(
+            ('d' * i, random_val(10))
+            for i in range(1, self.MAX_HEADER_COUNT + 1)
+        )
+        expected = ''.join(
+            '\r\n{}: {}'.format(*kv) for kv in items
+        ).encode()
+        got = self.check_render_headers(dict(items))
+        self.assertEqual(got, expected)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')

@@ -844,12 +844,12 @@ def _render_headers(o, headers):
                 MAX_HEADER_COUNT, len(headers)
             )
         )
-    lines = [
-        '\r\n{}: {}'.format(_check_key(k), _check_val(v))
-        for (k, v) in headers.items()
-    ]
-    lines.sort()
-    src = ''.join(lines).encode('ascii')
+    for key in headers:
+        _check_key(key)
+    src = ''.join(
+        '\r\n{}: {}'.format(k, _check_val(v))
+        for (k, v) in sorted(headers.items()) 
+    ).encode('ascii')
     o.copy_into(src)
 
 
