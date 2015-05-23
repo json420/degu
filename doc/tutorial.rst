@@ -311,7 +311,6 @@ An **HTTP output body** can be:
     ==================================  ========  ================
     ``None``                            *n/a*     *n/a*
     ``bytes``                           Length    *n/a*
-    ``bytearray``                       Length    *n/a*
     :class:`degu.base.Body`             Length    File-like object
     :class:`degu.base.BodyIter`         Length    An iterable
     :class:`degu.base.ChunkedBody`      Chunked   File-like object
@@ -328,54 +327,169 @@ The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
 internally handles the writing.
 
-**Server agnostic RGI applications** are possible.
 
-These four IO wrapper classes are exposed in the RGI *bodies* argument:
 
-    ==========================  ==================================
-    Exposed via                 Degu implementation
-    ==========================  ==================================
-    ``bodies.Body``             :class:`degu.base.Body`
-    ``bodies.BodyIter``         :class:`degu.base.BodyIter`
-    ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
-    ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
-    ==========================  ==================================
+Example: range requests
+-----------------------
 
-If server applications only use these wrapper classes via the *bodies* argument
-(rather than directly importing them from :mod:`degu.base`), they are kept
-abstracted from Degu as an implementation, and could potentially run on other
-HTTP servers that implement the :doc:`rgi`.
+When the Degu server receives a request with an HTTP Range header, its value is
+exposed as a :class:`degu.base.Range` instance:
 
-The place where this is a bit more complicated is with something like our SSL
-reverse-proxy example.  In this case, you'll want the Degu client to use the
-same IO abstractions as the server, even when that server isn't Degu.
+>>> from degu.base import parse_headers
+>>> parse_headers(b'Range: bytes=3-8')
+{'range': Range(3, 9)}
 
-The best way to do this is to pass the *bodies* argument to
-:meth:`degu.client.Client.connect()`.  For example, our original ``ProxyApp``
-needs only a tiny change:
+This is similar to how the value of Content-Length header is exposed as an
+``int`` rather than a ``str``:
 
->>> class ProxyApp:
-...     def __init__(self, client):
-...         self.client = client
-... 
-...     def __call__(self, session, request, bodies):
-...         if '__conn' not in session:
-...             session['__conn'] = self.client.connect(bodies=bodies)  # Changed
-...         conn = session['__conn']
-...         return conn.request(
-...             request.method,
-...             request.uri,
-...             request.headers,
-...             request.body
-...         )
-... 
+>>> parse_headers(b'Content-Length: 6')
+{'content-length': 6}
 
-A second way is to use the *bodies* keyword option when creating a
-:class:`degu.client.Client`, which will override
-:attr:`degu.client.Client.bodies`.  Although note that this isn't the
-recommended approach, as it's generally best to keep your RGI reverse-proxy
-applications abstracted from the details of how a client was created (by
-providing them with a pre-build client, as done in the above ``ProxyApp``).
+:meth:`degu.client.Connection.get_range()` is the best way to make a Range
+request as it will automatically add the ``'range'`` header for you.  But for
+illustration, your client code could also manually set a ``'range'`` header
+whose value is a :class:`degu.base.Range` instance:
+
+>>> from degu.base import Range
+>>> my_range = Range(3, 9)
+>>> my_request_headers = {'range': my_range}
+
+When an outgoing header value isn't already a ``str`` instance, its
+``__str__()`` method is called to get the string representation that should be
+used in the outgoing HTTP preamble.
+
+For example, this is done to convert an outgoing Content-Length value from an
+``int`` to a ``str``.
+
+But :meth:`degu.base.Range.__str__()` has a bit more magic to it:
+
+>>> repr(my_range)
+'Range(3, 9)'
+>>> str(my_range)
+'bytes=3-8'
+
+Note that :meth:`degu.base.Range.__str__()` automatically converts between
+standard Python slice semantics and the rather odd semantics of the HTTP
+Range header, which uses ``(stop - 1)`` to specify the "end" of a range:
+
+>>> str(Range(0, 1))
+'bytes=0-0'
+
+When a Range header is parsed, the reverse conversion is done:
+
+>>> parse_headers(b'Range: bytes=0-0')
+{'range': Range(0, 1)}
+
+When responding to a valid Range request, a server should include a
+Content-Range in its response headers.
+
+:class:`degu.base.ContentRange` provides the complement for the response
+headers:
+
+>>> from degu.base import ContentRange
+>>> my_content_range = ContentRange(3, 9, 12)
+>>> my_response_headers = {'content-range': my_content_range}
+
+:meth:`degu.base.ContentRange.__str__()` likewise has a bit of magic:
+
+>>> repr(my_content_range)
+'ContentRange(3, 9, 12)'
+>>> str(my_content_range)
+'bytes 3-8/12'
+
+As you might expect, when the Degu client receives a response with an HTTP
+Content-Range header, its value is exposed as a :class:`degu.base.ContentRange`
+instance:
+
+>>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
+{'content-range': ContentRange(3, 9, 12)}
+
+**Live example!**
+
+Let's put all this together in a live example.  First we'll define our server
+application:
+
+>>> def range_app(session, request, bodies):
+...     if request.path != ['example']:
+...         return (404, 'Not Found', {}, None)
+...     if request.method not in {'GET', 'HEAD'}:
+...         return (405, 'Method Not Allowed', {}, None)
+...     body = b'hello, world'
+...     if request.method == 'HEAD':
+...         return (200, 'OK', {'content-length': len(body)}, None)
+...     r = request.headers.get('range')
+...     if r is None:
+...         return (200, 'OK', {}, body)
+...     if r.stop > len(body):
+...         return (416, 'Requested Range Not Satisfiable', {}, None)
+...     cr = ContentRange(r.start, r.stop, len(body))
+...     return (206, 'Partial Content', {'content-range': cr}, body[r.start:r.stop])
+...
+
+Then we'll spin-up a throw-away server instance:
+
+>>> from degu.misc import TempServer
+>>> server = TempServer(('127.0.0.1', 0), range_app)
+
+And create a client for making connections to the above server:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+Now we'll create a connection and make a Range request for the resource slice
+``[3:9]`` with :meth:`degu.client.Connection.get_range()`:
+
+>>> conn = client.connect()
+>>> response = conn.get_range('/example', {}, 3, 9)
+
+Note the response status and reason:
+
+>>> response.status
+206
+>>> response.reason
+'Partial Content'
+
+And the response headers:
+
+>>> sorted(response.headers)
+['content-length', 'content-range']
+>>> response.headers['content-length']
+6
+>>> response.headers['content-range']
+ContentRange(3, 9, 12)
+
+Let's read the response body, and compare it with a standard Python slice:
+
+>>> response.body.read()
+b'lo, wo'
+>>> b'hello, world'[3:9]
+b'lo, wo'
+
+Of course, we can also request the entire resource with
+:meth:`degu.client.Connection.get()`:
+
+>>> conn.get('/example', {}).body.read()
+b'hello, world'
+
+For more fun, let's also request the first 5 bytes:
+
+>>> conn.get_range('/example', {}, 0, 5).body.read()
+b'hello'
+
+And request the final 5 bytes:
+
+>>> conn.get_range('/example', {}, 7, 12).body.read()
+b'world'
+
+But if we use a *stop* value that's greater than the total size of the resource:
+
+>>> conn.get_range('/example', {}, 7, 13)
+Response(status=416, reason='Requested Range Not Satisfiable', headers={}, body=None)
+
+Finally, we'll *shut it down*:
+
+>>> conn.close()
+>>> server.terminate()
 
 
 

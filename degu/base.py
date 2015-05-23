@@ -35,6 +35,7 @@ try:
         Connection,
         Session,
         handle_requests,
+        parse_headers,
     )
 except ImportError:
     from ._basepy import (
@@ -48,6 +49,7 @@ except ImportError:
         Connection,
         Session,
         handle_requests,
+        parse_headers,
     )
 
 
@@ -62,6 +64,7 @@ __all__ = (
     'Connection',
     'Session',
     'handle_requests',
+    'parse_headers',
 )
 
 MAX_READ_SIZE = 16777216  # 16 MiB

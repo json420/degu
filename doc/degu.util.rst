@@ -19,15 +19,18 @@ Functions
 
 .. function:: shift_path(request)
 
-    Shift component from ``'path'`` to ``'script'`` in an RGI *request* argument.
+    Shift component from ``path`` to ``script`` in an RGI *request* argument.
 
     This is an extremely common need when it comes to request routing, and in
     particular for RGI middleware applications that do request routing.
 
+    This function only use the ``path`` and ``script`` attributes from the
+    :class:`degu.server.Request` namedtuple:
+
     >>> from collections import namedtuple
     >>> Request = namedtuple('Request', 'script path')
 
-    For example:
+    Path shifting examples:
 
     >>> from degu.util import shift_path
     >>> request = Request(['foo'], ['bar', 'baz'])

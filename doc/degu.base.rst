@@ -60,35 +60,113 @@ Exceptions
             pass  # Retry?  Give up?  Your choice!
 
 
+Header values
+-------------
 
-Constants
----------
+:class:`Range`
+''''''''''''''
 
-.. data:: MAX_READ_SIZE
+.. class:: Range(start, stop)
 
-    Max total read size (in bytes).
+    Used to represent the value of an HTTP Range header.
 
-    >>> from degu import base
-    >>> base.MAX_READ_SIZE  # 16 MiB
-    16777216
+    The *start* and *stop* arguments must both be an ``int`` such that::
 
-.. data:: MAX_CHUNK_SIZE
+        0 <= start < stop
 
-    Max total read size (in bytes).
+    Note that *start* and *stop* are interpreted as they would be in a Python
+    ``slice()``, with the caveat that for a :class:`Range`, both must always be
+    provided and neither can be negative.
 
-    >>> from degu import base
-    >>> base.MAX_CHUNK_SIZE  # 16 MiB
-    16777216
+    The Content-Length of what's being requesting via a :class:`Range` object
+    is::
 
-.. data:: IO_SIZE
+        content_length = stop - start
 
-    Default IO size for :class:`Body` (in bytes).
+    :meth:`Range.__str__()` will return the rendered Range header value,
+    automatically converting standard ``[start:stop]`` programming semantics to
+    the rather awkward (and arguably incorrect) semantics of the HTTP Range
+    header.
 
-    >>> from degu import base
-    >>> base.IO_SIZE  # 1 MiB
-    1048576
+    For example, a request for ``b'tho'`` in ``b'Python'``:
+
+    >>> from degu.base import Range
+    >>> 'Python'[2:5]
+    'tho'
+    >>> r = Range(2, 5)
+    >>> r.stop - r.start
+    3
+
+    Results in this Range header value:
+
+    >>> str(r)
+    'bytes=2-4'
+
+    On the client-side, :meth:`degu.client.Connection.get_range()` will
+    automatically create a :class:`Range` object for you and add it to your
+    request headers.
+
+    On the server-side, a Range header in the request preamble will
+    automatically be converted to a :class:`Range` object after validation.
+
+    .. attribute:: start
+
+        The *start* value passed to the constructor.
+
+    .. attribute:: stop
+
+        The *stop* value passed to the constructor.
+
+    .. method:: __str__()
+
+        Render the Range header value as a ``str``.
+
+        For example:
+
+        >>> from degu.base import Range
+        >>> value = Range(50, 100)
+        >>> str(value)
+        'bytes=50-99'
 
 
+:class:`ContentRange`
+'''''''''''''''''''''
+
+.. class:: ContentRange(start, stop, total)
+
+    Used to represent the value of an HTTP Content-Range header.
+
+    The *start*, *stop*, and *total* arguments must all an ``int`` such that::
+
+        0 <= start < stop <= total
+
+    >>> from degu.base import ContentRange
+    >>> value = ContentRange(50, 100, 200)
+    >>> str(value)
+    'bytes 50-99/200'
+
+    .. attribute:: start
+
+        The *start* value passed to the constructor.
+
+    .. attribute:: stop
+
+        The *stop* value passed to the constructor.
+
+    .. attribute:: total
+
+        The *total* value passed to the constructor.
+
+    .. method:: __str__()
+
+        Render the Content-Range header value as a ``str``.
+
+        For example:
+
+        >>> from degu.base import ContentRange
+        >>> value = ContentRange(50, 100, 200)
+        >>> str(value)
+        'bytes 50-99/200'
 
 
 :class:`BodiesAPI`
