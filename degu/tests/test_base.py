@@ -6389,6 +6389,16 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(bodies), bcount)
 
     def test_request(self):
+        # Make sure method is validated:
+        for method in BAD_METHODS:
+            sock = NewMockSocket()
+            conn = self.Connection(sock, None)
+            with self.assertRaises(ValueError) as cm:
+                conn.request(method, '/foo', {}, None)
+            self.assertEqual(str(cm.exception),
+                'bad HTTP method: {!r}'.format(method)
+            )
+
         # Test when connection is closed:
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
@@ -6486,14 +6496,13 @@ class TestConnection_Py(BackendTestCase):
 
         # body must be None when method is 'GET', 'HEAD', or 'DELETE':
         # Test when connection is closed:
-        bodies = self.getattr('bodies')
         def iter_bodies():
             data = b'hello, world'
             yield data
-            yield bodies.Body(io.BytesIO(data), len(data))
-            yield bodies.BodyIter([data], len(data))
-            yield bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
-            yield bodies.ChunkedBodyIter([(None, b'')])
+            yield self.bodies.Body(io.BytesIO(data), len(data))
+            yield self.bodies.BodyIter([data], len(data))
+            yield self.bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+            yield self.bodies.ChunkedBodyIter([(None, b'')])
 
         for method in ('GET', 'HEAD', 'DELETE'):
             for body in iter_bodies():
