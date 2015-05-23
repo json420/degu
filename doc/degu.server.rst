@@ -575,7 +575,7 @@ When the Degu server receives an incoming connection, it creates a new
 :class:`Session` instance that will be associated with that connection for the
 lifetime of the connection.
 
-Then if your root application has an ``app.on_connect()`` connection handler,
+If your root application has an ``app.on_connect()`` connection handler,
 it will be called with this new :class:`Session` instance as the first
 argument::
 
@@ -584,7 +584,7 @@ argument::
 (The second argument will be the raw `socket.socket`_ or `ssl.SSLSocket`_
 instance corresponding to the incoming connection.)
 
-Finally for each request received through the connection, your ``app()`` request
+Then for each request received through the connection, your ``app()`` request
 handler will be called with still this exact same :class:`Session` instance as
 the first argument::
 

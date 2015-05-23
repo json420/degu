@@ -44,8 +44,9 @@ Performance improvements:
 
 Breaking API changes:
 
-    *   The RGI *request* argument is now a ``namedtuple`` instead of a 
-        ``dict``.  For example, this Degu 0.12 server application::
+    *   Instead of a ``dict``, the RGI *request* argument is now a
+        :class:`degu.server.Request` ``namedtuple``.  For example, this Degu
+        0.12 server application::
 
             def my_app(session, request, bodies):
                 if request['path'] != []:
@@ -81,15 +82,11 @@ Breaking API changes:
         replaced any of the request attributes when, say, checking the URI
         invariant condition.
 
-        (Note that although the new *request* object itself is immutable, the
-        ``request.script`` and ``request.path`` attributes are still mutable
-        lists, so nothing has changed in terms of how path-shifting is done as
-        a request is dispatched through your application.)
-
-    *   Instead of a ``dict``, the RGI *session* argument is now a custom Python
-        object with read-only attributes.  However, the ``session.store``
-        attribute provides a ``dict`` instance that RGI connection and requests
-        handlers can still use for persistent, per-connection storage.
+    *   Instead of a ``dict``, the RGI *session* argument is now a
+        :class:`degu.server.Session` object with read-only attributes.  However,
+        the :attr:`degu.server.Session.store` attribute provides a ``dict``
+        instance that RGI connection and request handlers can still use for
+        persistent, per-connection storage.
 
         For ``app.on_connect()`` connection handlers, port your *session*
         storage like this::
@@ -131,43 +128,7 @@ Breaking API changes:
                 and request handlers
 
         But this change was also made to accommodate API additions that might
-        come later, specifically *session* methods that would allow RGI
-        applications to instruct the server to reject or limit *future*
-        connections from a specific client.
-
-        The use-case for this is denial-of-service attacks.  The server has
-        visibility into the connection-level behavior of a client and could
-        (potentially) take appropriate action when this connection-level
-        behavior is deemed a DOS attack.  But the server is ill equipped to
-        determine that the request-level behavior of a client should be treated
-        as a DOS attack.  Only the RGI application can really do that well, as
-        the reasoning will be very specific to the application.
-
-        Although the ``app.on_connect()`` connection handler does already
-        provide a mechanism by which applications could mitigate DOS attacks on
-        their own (when combined with some cross-thread, process-wide storage),
-        ideally the application could instruct the *server* to temporarily
-        reject or limit connections from a specific client.
-
-        This would allow future connections from malicious clients to be
-        immediately be rejected by the server itself in the main server thread,
-        before consuming the resources needed to spawn a worker thread and
-        establish an SSL connection, both of which would be done prior to
-        calling ``app.on_connect()``.
-
-        The *session* object feels like the right place to expose such API,
-        should it be added.
-
-        Bear in mind that all this is hypothetical and may never be included in
-        Degu, but imagine a *session* method something like::
-
-            Session.reject(for_seconds)
-
-        Which might be used like::
-
-            if <client is behaving badly>:
-                session.reject(120)  # Ban this client for 2 minutes
-                raise Exception('Naughty client!')  # Close current connection
+        come later.
 
     *   A ``bytearray`` can no longer be used as an output body.  This applies
         both to request bodies on the client-side and to response bodies on the
