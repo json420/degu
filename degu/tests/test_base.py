@@ -2115,31 +2115,41 @@ class TestFormatting_Py(BackendTestCase):
         ).encode()
         self.assertEqual(format_headers(headers), expected)
 
-    def check_render_headers(self, headers, dst_len=None):
-        if dst_len is None:
-            dst_len = self.BUF_LEN
-        dst = memoryview(bytearray(dst_len))
-        render_headers = self.getattr('render_headers')
+    def check_render(self, expected, func, *args):
+        size = len(expected)
+
+        # Test when dst has exactly enough space:
+        dst = memoryview(bytearray(size))
+        stop = func(dst, *args)
+        self.assertIs(type(stop), int)
+        self.assertEqual(stop, size)
+        self.assertEqual(dst.tobytes(), expected)
+
+        # Test when dst has extra space:
+        dst = memoryview(bytearray(size + 100))
+        stop = func(dst, *args)
+        self.assertIs(type(stop), int)
+        self.assertEqual(stop, size)
+        self.assertEqual(dst[:size].tobytes(), expected)
+        self.assertEqual(dst[size:], b'\x00' * 100)
+
+        # Test when len(dst) is from zero to size - 1:
+        for toosmall in range(size):
+            dst = memoryview(bytearray(toosmall))
+            with self.assertRaises(ValueError) as cm:
+                func(dst, *args)
+            self.assertEqual(str(cm.exception),
+                'output size exceeds {}'.format(toosmall)
+            )
+
+    def check_render_headers(self, headers):
         expected = ''.join(
             '\r\n{}: {}'.format(k, headers[k])
             for k in sorted(headers) 
         ).encode('ascii')
-
-        stop = render_headers(dst, headers.copy())
-        self.assertIs(type(stop), int)
-        self.assertLessEqual(stop, dst_len)
-        got = dst[0:stop].tobytes()
-        self.assertEqual(got, expected)
-
-        for size in range(len(expected)):
-            dst = memoryview(bytearray(size))
-            with self.assertRaises(ValueError) as cm:
-                render_headers(dst, headers.copy())
-            self.assertEqual(str(cm.exception),
-                'output size exceeds {}'.format(size)
-            )
-
-        return got
+        func = self.getattr('render_headers')
+        self.check_render(expected, func, headers)
+        return expected
 
     def test_render_headers(self):
         render_headers = self.getattr('render_headers')
@@ -2294,34 +2304,16 @@ class TestFormatting_Py(BackendTestCase):
         got = self.check_render_headers(dict(items))
         self.assertEqual(got, expected)
 
-    def check_render_request(self, method, uri, headers, dst_len=None):
-        if dst_len is None:
-            dst_len = self.BUF_LEN
-        dst = memoryview(bytearray(dst_len))
-        render_request = self.getattr('render_request')
-
+    def check_render_request(self, method, uri, headers):
         lines = ['{} {} HTTP/1.1'.format(method, uri)]
         lines.extend(
             '{}: {}'.format(k, headers[k])
             for k in sorted(headers) 
         ) 
         expected = '\r\n'.join(lines).encode() + b'\r\n\r\n'   
-
-        stop = render_request(dst, method, uri, headers.copy())
-        self.assertIs(type(stop), int)
-        self.assertLessEqual(stop, dst_len)
-        got = dst[0:stop].tobytes()
-        self.assertEqual(got, expected)
-
-        for size in range(len(expected)):
-            dst = memoryview(bytearray(size))
-            with self.assertRaises(ValueError) as cm:
-                render_request(dst, method, uri, headers.copy())
-            self.assertEqual(str(cm.exception),
-                'output size exceeds {}'.format(size)
-            )
-
-        return got
+        func = self.getattr('render_request')
+        self.check_render(expected, func, method, uri, headers)
+        return expected
 
     def test_render_request(self):
         render_request = self.getattr('render_request')
@@ -2397,34 +2389,16 @@ class TestFormatting_Py(BackendTestCase):
         self.check_render_request('GET', '/', headers)
         self.check_render_request('GET', uri, headers)
 
-    def check_render_response(self, status, reason, headers, dst_len=None):
-        if dst_len is None:
-            dst_len = self.BUF_LEN
-        dst = memoryview(bytearray(dst_len))
-        render_response = self.getattr('render_response')
-
+    def check_render_response(self, status, reason, headers):
         lines = ['HTTP/1.1 {} {}'.format(status, reason)]
         lines.extend(
             '{}: {}'.format(k, headers[k])
             for k in sorted(headers) 
         ) 
-        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n'   
-
-        stop = render_response(dst, status, reason, headers.copy())
-        self.assertIs(type(stop), int)
-        self.assertLessEqual(stop, dst_len)
-        got = dst[0:stop].tobytes()
-        self.assertEqual(got, expected)
-
-        for size in range(len(expected)):
-            dst = memoryview(bytearray(size))
-            with self.assertRaises(ValueError) as cm:
-                render_response(dst, status, reason, headers.copy())
-            self.assertEqual(str(cm.exception),
-                'output size exceeds {}'.format(size)
-            )
-
-        return got
+        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n' 
+        func = self.getattr('render_response')  
+        self.check_render(expected, func, status, reason, headers)
+        return expected
 
     def test_render_response(self):
         render_response = self.getattr('render_response')
