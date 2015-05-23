@@ -687,7 +687,7 @@ _dst_isempty(DeguDst dst)
 static inline DeguDst
 _dst_slice(DeguDst dst, const size_t start, const size_t stop)
 {
-    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
         Py_FatalError("_dst_slice(): bad internal call");
     }
     return (DeguDst){dst.buf + start, stop - start};
@@ -738,7 +738,7 @@ _calloc_dst(const size_t len)
 static DeguDst
 _dst_frompybuf(Py_buffer *pybuf)
 {
-    if (pybuf->buf == NULL || pybuf->len < 1) {
+    if (pybuf->buf == NULL || pybuf->len < 0) {
         Py_FatalError("_frompybuf(): bad internal call");
     }
     if (PyBuffer_IsContiguous(pybuf, 'C') != 1) {
@@ -2457,9 +2457,7 @@ _copy_into(DeguOutput *o, DeguSrc src)
         return true;
     }
     if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", src.len, o->dst.len
-        );
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
     o->stop += _copy(dst, src);
@@ -2487,9 +2485,7 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj, const uint8_t mas
     }
     DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
     if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "output too large: %zu > %zu", src.len, o->dst.len
-        );
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
     for (bits = i = 0; i < src.len; i++) {
@@ -2528,10 +2524,10 @@ _render_header_line(DeguOutput *o, HLine *l)
         _SET(val_str, PyObject_Str(l->val))
         _SET(val, val_str)
     }
+    _COPY_INTO(o, CRLF)
     _COPY_STR_INTO(o, "key", l->key, KEY_MASK)
     _COPY_INTO(o, SEP)
     _COPY_INTO(o, _src_from_str("val", val)) 
-    _COPY_INTO(o, CRLF)
     goto cleanup;
 
 error:
@@ -2563,20 +2559,18 @@ _hline_cmp(const void *_A, const void *_B)
     return (int)a.len - (int)b.len;
 }
 
-#define HMAX 20
-
 static bool
 _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
 {
     ssize_t pos = 0;
     PyObject *key = NULL;
     PyObject *val = NULL;
-    HLine lines[HMAX];
+    HLine lines[MAX_HEADER_COUNT];
     size_t i;
 
-    if (count > HMAX) {
+    if (count > MAX_HEADER_COUNT) {
         PyErr_Format(PyExc_ValueError,
-            "need len(headers) < %zu; got %zu", HMAX, count
+            "need len(headers) <= %zu; got %zu", MAX_HEADER_COUNT, count
         );
         return false;
     }
@@ -2659,11 +2653,10 @@ _render_request(DeguOutput *o, DeguRequest *r)
     _COPY_INTO(o, SPACE)
     _COPY_INTO(o, _src_from_str("uri", r->uri))
     _COPY_INTO(o, REQUEST_PROTOCOL)
-    _COPY_INTO(o, CRLF)
     if (! _render_headers(o, r->headers)) {
         return false;
     }
-    _COPY_INTO(o, CRLF)
+    _COPY_INTO(o, CRLFCRLF)
     return true;
 
 error:
@@ -2716,11 +2709,10 @@ _render_response(DeguOutput *o, DeguResponse *r)
         return false;
     }
     _COPY_INTO(o, _src_from_str("reason", r->reason))
-    _COPY_INTO(o, CRLF)
     if (! _render_headers(o, r->headers)) {
         return false;
     }
-    _COPY_INTO(o, CRLF)
+    _COPY_INTO(o, CRLFCRLF)
     return true;
 
 error:
@@ -5267,6 +5259,8 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_LINE_LEN);
 
     PyModule_AddIntMacro(module, MAX_CL_LEN);
+    
+    PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
 
     PyModule_AddIntMacro(module, IO_SIZE);    
     PyModule_AddIntMacro(module, MAX_IO_SIZE);

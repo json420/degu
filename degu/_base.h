@@ -41,6 +41,8 @@
 /* Max uint64_t value for a content-length, range start/stop, etc */
 #define MAX_LENGTH 9999999999999999ull
 
+#define MAX_HEADER_COUNT 20
+
 #define IO_SIZE 1048576u
 #define MAX_IO_SIZE 16777216u
 

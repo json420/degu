@@ -35,6 +35,7 @@ import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
+TYPE_ERROR2 = '{}: need a {!r}; got a {!r}'
 
 BUF_LEN = 32768  # 32 KiB
 SCRATCH_LEN = 32
@@ -42,6 +43,8 @@ MAX_LINE_LEN = 4096  # Max length of chunk size line, including CRLF
 
 MAX_CL_LEN = 16  # Max length (in bytes) of a content-length/etc
 MAX_LENGTH = 9999999999999999  # Max value for content-length/etc
+
+MAX_HEADER_COUNT = 20
 
 IO_SIZE = 1048576  # 1 MiB
 MAX_IO_SIZE = 16777216  # 16 MiB
@@ -716,11 +719,20 @@ def format_response(status, reason, headers):
     return ''.join(lines).encode()
 
 
+def _check_type(name, obj, _type):
+    if type(obj) is not _type:
+        raise TypeError(
+            TYPE_ERROR.format(name, _type, type(obj), obj)
+        )
+    return obj
+
+
 def _check_type2(name, obj, _type):
     if type(obj) is not _type:
         raise TypeError(
-            '{}: need a {!r}; got a {!r}'.format(name, _type, type(obj))
+            TYPE_ERROR2.format(name, _type, type(obj))
         )
+    return obj
 
 def _check_tuple(name, obj, size):
     _check_type2(name, obj, tuple)
@@ -729,6 +741,7 @@ def _check_tuple(name, obj, size):
             '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
         )
     return obj
+
 
 def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
     assert max_len <= MAX_IO_SIZE
@@ -772,6 +785,62 @@ def _write_chunk(wobj, chunk):
 
 def write_chunk(wfile, chunk):
     return _write_chunk(_get_wobj(wfile), chunk)
+
+
+
+################################################################################
+# Rendering:
+
+class _Output:
+    __slots__ = ('dst', 'stop')
+
+    def __init__(self, dst):
+        assert isinstance(dst, memoryview)
+        self.dst = dst
+        self.stop = 0
+
+    def copy_into(self, src):
+        assert isinstance(src, bytes)
+        assert self.stop <= len(self.dst)
+        if self.stop + len(src) > len(self.dst):
+            raise ValueError(
+                'output size exceeds {}'.format(len(self.dst))
+            )
+        self.dst[self.stop:len(src)] = src
+        self.stop += len(src)
+
+
+_OUTGOING_KEY = frozenset('-0123456789abcdefghijklmnopqrstuvwxyz')  
+
+def _check_key(key):
+    _check_type('key', key, str)
+    if key == '' or not _OUTGOING_KEY.issuperset(key):
+        raise ValueError(
+            'bad key: {!r}'.format(key)
+        )
+    return key
+
+
+def _render_headers(o, headers):
+    _check_type('headers', headers, dict)
+    if len(headers) > MAX_HEADER_COUNT:
+        raise ValueError(
+            'need len(headers) <= {}; got {}'.format(
+                MAX_HEADER_COUNT, len(headers)
+            )
+        )
+    lines = [
+        '\r\n{}: {}'.format(_check_key(k), v) for (k, v) in headers.items()
+    ]
+    lines.sort()
+    src = ''.join(lines).encode('ascii')
+    o.copy_into(src)
+
+
+def render_headers(dst, headers):
+    o = _Output(dst)
+    _render_headers(o, headers)
+    return o.stop
 
 
 ################################################################################
