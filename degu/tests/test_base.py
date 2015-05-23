@@ -2165,6 +2165,10 @@ class TestFormatting_Py(BackendTestCase):
         )
         self.assertEqual(dst.tobytes(), empty)
 
+        # Empty headers
+        self.assertEqual(render_headers(dst, {}), 0)
+        self.assertEqual(dst.tobytes(), empty)
+
         # Max number of headers:
         headers = bad = dict(
             (random_key(32), random_val(101))
@@ -2289,6 +2293,106 @@ class TestFormatting_Py(BackendTestCase):
         ).encode()
         got = self.check_render_headers(dict(items))
         self.assertEqual(got, expected)
+
+    def check_render_request(self, method, uri, headers, dst_len=None):
+        if dst_len is None:
+            dst_len = self.BUF_LEN
+        dst = memoryview(bytearray(dst_len))
+        render_request = self.getattr('render_request')
+
+        lines = ['{} {} HTTP/1.1'.format(method, uri)]
+        lines.extend(
+            '{}: {}'.format(k, headers[k])
+            for k in sorted(headers) 
+        ) 
+        expected = '\r\n'.join(lines).encode() + b'\r\n\r\n'   
+
+        stop = render_request(dst, method, uri, headers.copy())
+        self.assertIs(type(stop), int)
+        self.assertLessEqual(stop, dst_len)
+        got = dst[0:stop].tobytes()
+        self.assertEqual(got, expected)
+
+        for size in range(len(expected)):
+            dst = memoryview(bytearray(size))
+            with self.assertRaises(ValueError) as cm:
+                render_request(dst, method, uri, headers.copy())
+            self.assertEqual(str(cm.exception),
+                'output size exceeds {}'.format(size)
+            )
+
+        return got
+
+    def test_render_request(self):
+        render_request = self.getattr('render_request')
+
+        dst = memoryview(bytearray(4096))
+
+        # Bad method type:
+        for method in [17, str_subclass('GET'), b'GET']:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, method, '/', {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('method', str, type(method), method)
+            )
+
+        # Bad method value:
+        for method in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_request(dst, method, '/', {})
+            self.assertEqual(str(cm.exception),
+                'bad method: {!r}'.format(method)
+            )
+
+        # Bad uri type:
+        for uri in [17, str_subclass('/foo'), b'/foo']:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, 'GET', uri, {})
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('uri', str, type(uri), uri)
+            )
+
+        # Bad uri value:
+        for uri in ['', '¡™', STR256]:
+            with self.assertRaises(ValueError) as cm:
+                render_request(dst, 'GET', uri, {})
+            self.assertEqual(str(cm.exception),
+                'bad uri: {!r}'.format(uri)
+            )
+
+        # Bad headers type:
+        for headers in [[('foo', 'bar')], dict_subclass({'foo': 'bar'})]:
+            with self.assertRaises(TypeError) as cm:
+                render_request(dst, 'GET', '/', headers)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('headers', dict, type(headers), headers)
+            )
+
+        for method in ('GET', 'HEAD', 'PUT', 'POST', 'DELETE'):
+            got = self.check_render_request(method, '/', {})
+            self.assertEqual(got,
+                '{} / HTTP/1.1\r\n\r\n'.format(method).encode()
+            )
+            got = self.check_render_request(method, '/foo?k=v', {})
+            self.assertEqual(got,
+                '{} /foo?k=v HTTP/1.1\r\n\r\n'.format(method).encode()
+            )
+            got = self.check_render_request(method, '/', {'content-type': 'text/plain'})
+            self.assertEqual(got,
+                '{} / HTTP/1.1\r\ncontent-type: text/plain\r\n\r\n'.format(method).encode()
+            )
+
+        # long uri
+        uri = '/' + '/'.join(random_id(30) for i in range(50))
+        self.check_render_request('GET', uri, {})
+
+        # lots of headers
+        headers = dict(
+            (random_key(size), random_val(50))
+            for size in range(1, self.MAX_HEADER_COUNT + 1)  
+        )
+        self.check_render_request('GET', '/', headers)
+        self.check_render_request('GET', uri, headers)
 
     def test_format_chunk(self):
         format_chunk = self.getattr('format_chunk')

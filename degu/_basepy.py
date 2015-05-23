@@ -800,13 +800,15 @@ class _Output:
         self.stop = 0
 
     def copy_into(self, src):
-        assert isinstance(src, bytes)
+        assert type(src) is bytes
         assert self.stop <= len(self.dst)
         if self.stop + len(src) > len(self.dst):
             raise ValueError(
                 'output size exceeds {}'.format(len(self.dst))
             )
-        self.dst[self.stop:len(src)] = src
+        start = self.stop
+        stop = start + len(src)
+        self.dst[start:stop] = src
         self.stop += len(src)
 
 
@@ -823,17 +825,20 @@ def _check_key(key):
     return key
 
 
-_OUTGOING_VAL = frozenset(chr(i) for i in range(128))
+_OUTGOING_STR = frozenset(chr(i) for i in range(128))
+
+def _check_str(name, obj):
+    _check_type(name, obj, str)
+    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+        raise ValueError(
+            'bad {}: {!r}'.format(name, obj)
+        )
+    return obj
 
 def _check_val(val):
     if type(val) is not str:
         val = str(val)
-    assert type(val) is str
-    if val == '' or not _OUTGOING_VAL.issuperset(val):
-        raise ValueError(
-            'bad val: {!r}'.format(val)
-        )
-    return val
+    return _check_str('val', val)
 
 
 def _render_headers(o, headers):
@@ -856,6 +861,21 @@ def _render_headers(o, headers):
 def render_headers(dst, headers):
     o = _Output(dst)
     _render_headers(o, headers)
+    return o.stop
+
+
+def _render_request(o, method, uri, headers):
+    _check_str('method', method)
+    _check_str('uri', uri)
+    line = '{} {} HTTP/1.1'.format(method, uri).encode('ascii')
+    o.copy_into(line)
+    _render_headers(o, headers)
+    o.copy_into(b'\r\n\r\n')
+
+
+def render_request(dst, method, uri, headers):
+    o = _Output(dst)
+    _render_request(o, method, uri, headers)
     return o.stop
 
 
