@@ -2416,30 +2416,6 @@ cleanup:
     return  ret;
 }
 
-
-static PyObject *
-_format_request(DeguRequest *dr)
-{
-    PyObject *h = NULL;  /* str containing header lines */
-    PyObject *str = NULL;  /* str version of request preamble */
-    PyObject *ret = NULL;  /* bytes version of request preamble */
-
-    _SET(h, _format_headers(dr->headers))
-    _SET(str,
-        PyUnicode_FromFormat("%S %S HTTP/1.1\r\n%S\r\n", dr->method, dr->uri, h)
-    )
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(h);
-    Py_CLEAR(str);
-    return  ret;
-}
-
 static inline ssize_t
 _get_status(PyObject *obj)
 {
@@ -2806,26 +2782,6 @@ format_headers(PyObject *self, PyObject *args)
         return NULL;
     }
     return _format_headers(headers);
-}
-
-static PyObject *
-format_request(PyObject *self, PyObject *args)
-{
-    const uint8_t *buf = NULL;
-    size_t len = 0;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *ret = NULL;
-
-    if (! PyArg_ParseTuple(args, "s#OO:format_request",
-            &buf, &len, &dr.uri, &dr.headers)) {
-        return NULL;
-    }
-    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
-    _SET(ret, _format_request(&dr))
-
-error:
-    Py_CLEAR(dr.method);
-    return ret;
 }
 
 static PyObject *

@@ -699,16 +699,6 @@ def format_headers(headers):
     return ''.join(lines)
 
 
-def format_request(method, uri, headers):
-    lines = ['{} {} HTTP/1.1\r\n'.format(method, uri)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
-
-
 def format_response(status, reason, headers):
     lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
     if headers:
