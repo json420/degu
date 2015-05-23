@@ -568,6 +568,244 @@ The default values of which are:
     >>> sslctx = build_server_sslctx(pki.server_sslconfig)
 
 
+RGI arguments
+-------------
+
+When the Degu server receives an incoming connection, it creates a new
+:class:`Session` instance that will be associated with that connection for the
+lifetime of the connection.
+
+Then if your root application has an ``app.on_connect()`` connection handler,
+it will be called with this new :class:`Session` instance as the first
+argument::
+
+    app.on_connect(session, sock) --> True/False
+
+(The second argument will be the raw `socket.socket`_ or `ssl.SSLSocket`_
+instance corresponding to the incoming connection.)
+
+Finally for each request received through the connection, your ``app()`` request
+handler will be called with still this exact same :class:`Session` instance as
+the first argument::
+
+    app(session, request, bodies) --> (status, reason, headers, body)
+
+(The second argument will be a :class:`Request` namedtuple representing the
+specific request, and the third argument will be the standard
+:attr:`degu.base.bodies` namedtuple instance exposing the Bodies API, which will
+always be the same for all requests and all connections for the lifetime of the
+process.)
+
+:class:`Request` instances expose request-level semantics to RGI server
+applications, which is standard for any HTTP server application interface.
+
+But :class:`Session` instances expose connection-level semantics to RGI server
+applications, which is rather unusual and fairly unique to Degu.
+
+Both are documented below.
+
+
+:class:`Session`
+''''''''''''''''
+
+.. class:: Session(address, credentials=None, max_requests=None)
+
+    An object used to represent an incoming socket connection to the server.
+
+    .. note::
+
+        It might seem more natural to call this a "connection", but that term
+        was avoided to prevent confusing the "session" with the actual
+        `socket.socket`_ instance or even a :class:`degu.client.Connection`
+        instance.
+
+    The three constructor arguments are all exposed as read-only attributes:
+
+        * :attr:`Session.address`
+        * :attr:`Session.credentials`
+        * :attr:`Session.max_requests`
+
+    A :class:`Session` also exposes two other read-only attributes:
+
+        * :attr:`Session.requests`
+        * :attr:`Session.store`
+
+    Normally you wouldn't directly create a :class:`Session` yourself, but it
+    can be handy to create them when unit testing your RGI applications.
+
+    .. attribute:: address
+
+        The socket address of the connecting client.
+
+    .. attribute:: credentials
+
+        The Unix credentials of the connecting client.
+
+        This will be a ``(pid,uid,gid)`` 3-tuple when the connection was
+        received over an ``AF_UNIX`` socket; otherwise this will be ``None``.
+
+    .. attribute:: max_requests
+
+        The maximum number of requests Degu will handle through this connection.
+
+        Once this limit has been reached, the server will forcibly close the
+        connection.
+
+    ..  attribute:: requests
+
+        The number of requests so far handled through this connection.
+
+        This will initially be ``0``.
+
+        After a request has been completely and successfully handled, the Degu
+        sever will increment this counter (prior to reading the next request
+        and calling your ``app()`` request handler).
+
+    .. attribute:: store
+
+        A ``dict`` that RGI applications can use for per-session storage.
+
+        The go-to use-case for this is that a reverse-proxy application can
+        store its client connection to the upstream HTTP server and reuse it on
+        subsequent requests handled through the same connection (er, session).
+
+        For example:
+
+        >>> class ProxyApp:
+        ...     def __init__(self, client):
+        ...         self.client = client
+        ... 
+        ...     def __call__(self, session, request, bodies):
+        ...         conn = session.store.get('conn')
+        ...         if conn is None:
+        ...             conn = self.client.connect()
+        ...             session.store['conn'] = conn
+        ...         return conn.request(*request[:4])
+        ... 
+
+        Hopefully this example helps make it clear the term "session" was chosen
+        over "connection"... because otherwise things get confusing fast :D
+
+        Although the :attr:`Session.store` attribute itself is read-only, the
+        ``dict`` it returns is mutable and the same ``dict`` instance will be
+        returned every time you access this attribute.
+
+    .. method:: __repr__()
+
+        Return a logging-friendly representation of the session.
+
+        For example, the session corresponding to an ``AF_INET`` connection:
+
+        >>> from degu.server import Session
+        >>> session = Session(('127.0.0.1', 12345), None)
+        >>> repr(session)
+        "Session(('127.0.0.1', 12345))"
+
+        (Notice that the *credentials* argument isn't included when ``None``.)
+
+        Or a session corresponding to an ``AF_UNIX`` connection:
+
+        >>> session = Session(b'\x0000222', (23848, 1000, 1000))
+        >>> repr(session)
+        "Session(b'\\x0000222', (23848, 1000, 1000))"
+        
+    
+
+
+
+:class:`Request`
+''''''''''''''''
+
+.. class:: Request(method, uri, headers, body, script, path, query)
+
+    A namedtuple used to represent an HTTP request.
+
+    For example, the Degu server might call your ``app()`` request handler with
+    something like this:
+
+    >>> from degu.server import Request
+    >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
+    Request(method='GET', uri='/foo', headers={}, body=None, script=[], path=['foo'], query=None)
+
+    .. attribute:: method
+
+        A ``str`` containing the HTTP request method. 
+
+        Currently Degu only supports the ``'GET'``, ``'HEAD'``, ``'PUT'``,
+        ``'POST'``, and ``'DELETE'`` methods.
+
+    .. attribute:: uri
+
+        A ``str`` containing the original, unparsed request URI.
+
+    .. attribute:: headers
+
+        A ``dict`` containing the request headers.
+
+    .. attribute:: body
+
+        The HTTP request body.
+
+        This will be ``None`` when there is no request body.
+
+        If the request body has a Content-Length, this will be a
+        :class:`degu.base.Body` instance.
+
+        Finally, if the request body uses "chunked" Transfer-Encoding, this will
+        be a :class:`degu.base.ChunkedBody` instance.
+
+    .. attribute:: script
+
+        A ``list`` containing the previously processed parts of the URI.
+
+        This corresponds to the mount point of the called RGI application or
+        middleware.
+
+        Currently Degu only supports mounting the root application at ``'/'``,
+        so your root application will always be called with a *script* equal to
+        ``[]``.
+
+        However, as a request was routed to the current RGI application or
+        middleware, path components from :attr:`Request.path` may have been
+        shifted to :attr:`Request.script`, for example using
+        :func:`degu.util.shift_path()`.
+
+    .. attribute:: path
+
+        A ``list`` containing the yet-to-be processed parts of the URI.
+
+        This is the portion of the URI that the called RGI application or
+        middleware is expected to handle.  This is initially derived from the
+        URI.
+
+        Some example URI and the resulting initial path::
+
+            '/'        --> []
+            '/foo'     --> ['foo']
+            '/foo/'    --> ['foo', '']
+            '/foo/bar' --> ['foo', 'bar']
+
+        However, as a request was routed to the current RGI application or
+        middleware, path components from :attr:`Request.path` may have been
+        shifted to :attr:`Request.script`, for example using
+        :func:`degu.util.shift_path()`.
+
+    .. attribute:: query
+
+        A ``str`` containing the query portion of the URI, or ``None``.
+
+        Degu differentiates between "no query" vs merely an "empty query".
+
+        When this is ``None``, it means the URI did not contain a ``'?'``.  When
+        this is an empty ``''``, it means the final character in the URI was a
+        ``'?'``.
+
+        Some example URI and the resulting query::
+
+            '/foo'     --> None
+            '/foo?'    --> ''
+            '/foo?bar' --> 'bar'
+            '/foo?k=v' --> 'k=v'
 
 
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
