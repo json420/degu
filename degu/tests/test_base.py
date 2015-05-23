@@ -5776,20 +5776,20 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
-#        # body is bodies.BodyIter:
-#        headers = {}
-#        body = self.bodies.BodyIter((b'hell', b'o'), 5)
-#        sock = WSocket()
-#        writer = self.Writer(sock, self.bodies)
-#        self.assertEqual(
-#            writer.write_request('GET', '/', headers, body),
-#            42
-#        )
-#        self.assertEqual(headers, {'content-length': 5})
-#        self.assertEqual(writer.tell(), 42)
-#        self.assertEqual(sock._fp.getvalue(),
-#            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
-#        )
+        # body is bodies.BodyIter:
+        headers = {}
+        body = self.bodies.BodyIter((b'hell', b'o'), 5)
+        sock = WSocket()
+        writer = self.Writer(sock)
+        self.assertEqual(
+            writer.write_request('GET', '/', headers, body),
+            42
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(writer.tell(), 42)
+        self.assertEqual(sock._fp.getvalue(),
+            b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
+        )
 
         # body is base.ChunkedBody:
         rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')

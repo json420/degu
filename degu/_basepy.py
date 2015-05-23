@@ -1114,19 +1114,40 @@ class Writer:
     __slots__ = (
         '_sock_send',
         '_tell',
+        '_buf',
+        '_stop',
     )
 
     def __init__(self, sock):
         self._sock_send = _getcallable('sock', sock, 'send')
         self._tell = 0
+        self._buf = memoryview(bytearray(BUF_LEN))
+        self._stop = 0
 
     def tell(self):
         return self._tell
 
-    def _write(self, buf):
-        size = _write(self._sock_send, buf)
+    def _raw_write(self, src):
+        size = _write(self._sock_send, src)
+        assert size == len(src)
         self._tell += size
         return size
+
+    def _flush(self):
+        assert 0 <= self._stop <= len(self._buf)
+        src = self._buf[0:self._stop]
+        self._raw_write(src)
+        self._stop = 0
+
+    def _write(self, src):
+        if self._stop > 0 and self._stop + len(src) <= len(self._buf):
+            start = self._stop
+            self._stop += len(src)
+            self._buf[start:self._stop] = src
+            self._flush()
+            return len(src)
+        self._flush()
+        return self._raw_write(src)
 
     def write_output(self, preamble, body):
         if body is None:
@@ -1149,17 +1170,41 @@ class Writer:
             )
         return total + len(preamble)
 
+    def _render(self, func, *args):
+        assert self._stop == 0
+        size = func(self._buf, *args)
+        assert size > 0
+        self._stop = size
+
+    def _write_body(self, body):
+        orig_tell = self._tell
+        total = self._stop  # Size of preamble rendered in buffer
+        assert total > 0
+
+        if type(body) is bytes:
+            total += self._write(body)
+        elif type(body) in bodies:
+            total += body.write_to(self)
+        elif body is not None:
+            raise TypeError(
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+
+        self._flush()
+        assert self._stop == 0
+        assert self._tell == orig_tell + total
+        return total
+
     def write_request(self, method, uri, headers, body):
         method = parse_method(method)
         set_output_headers(headers, body)
-        preamble = format_request(method, uri, headers)
-        return self.write_output(preamble, body)
+        self._render(render_request, method, uri, headers)
+        return self._write_body(body)
 
     def write_response(self, status, reason, headers, body):
         set_output_headers(headers, body)
-        preamble = format_response(status, reason, headers)
-        return self.write_output(preamble, body)
-
+        self._render(render_response, status, reason, headers)
+        return self._write_body(body)
 
 def _check_body_state(name, state, max_state):
     assert max_state < BODY_CONSUMED
