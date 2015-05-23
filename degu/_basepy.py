@@ -679,25 +679,7 @@ def parse_response(method, preamble, rfile):
 
 
 ################################################################################
-# Formatting:
-
-def format_headers(headers):
-    if type(headers) is not dict:
-        raise TypeError(
-            TYPE_ERROR.format('headers', dict, type(headers), headers)
-        )
-    lines = []
-    for (key,  value) in headers.items():
-        if type(key) is not str:
-            raise TypeError(
-                TYPE_ERROR.format('key', str, type(key), key)
-            )
-        if not KEY.issuperset(key.encode()):
-            raise ValueError('bad key: {!r}'.format(key))
-        lines.append('{}: {}\r\n'.format(key, value))
-    lines.sort()
-    return ''.join(lines)
-
+# Rendering and formatting:
 
 def _check_type(name, obj, _type):
     if type(obj) is not _type:
@@ -766,10 +748,6 @@ def _write_chunk(wobj, chunk):
 def write_chunk(wfile, chunk):
     return _write_chunk(_get_wobj(wfile), chunk)
 
-
-
-################################################################################
-# Rendering:
 
 class _Output:
     __slots__ = ('dst', 'stop')

@@ -2243,14 +2243,6 @@ cleanup:
     return ret;
 }
 
-
-/*******************************************************************************
- * Internal API: Formatting:
- *     _set_default_header()
- *     _validate_key()
- *     _format_headers()
- */
-
 static bool
 _set_default_header(PyObject *headers, PyObject *key, PyObject *val)
 {
@@ -2327,93 +2319,6 @@ set_output_headers(PyObject *self, PyObject *args)
         return NULL;
     }
     Py_RETURN_NONE;
-}
-
-static bool
-_validate_key(PyObject *key)
-{
-    size_t i;
-    uint8_t bits;
-
-    if (! _check_str("key", key)) {
-        return false;
-    }
-    if (PyUnicode_GET_LENGTH(key) < 1) {
-        PyErr_SetString(PyExc_ValueError, "key is empty");
-        return false;
-    }
-    const uint8_t *key_buf = PyUnicode_1BYTE_DATA(key);
-    const size_t key_len = (size_t)PyUnicode_GET_LENGTH(key);
-    for (bits = i = 0; i < key_len; i++) {
-        bits |= _FLAG[key_buf[i]];
-    }
-    if (bits == 0) {
-        Py_FatalError("_validate_key(): bits == 0");
-    }
-    if ((bits & KEY_MASK) != 0) {
-        goto bad_key;
-    }
-    return true;
-
-bad_key:
-    PyErr_Format(PyExc_ValueError, "bad key: %R", key);
-    return false;
-}
-
-
-static PyObject *
-_format_headers(PyObject *headers)
-{
-    ssize_t pos = 0;
-    ssize_t i = 0;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
-    PyObject *lines = NULL;
-    PyObject *ret = NULL;
-
-    if (!_check_headers(headers)) {
-        goto error;
-    }
-    const ssize_t count = PyDict_Size(headers);
-    if (count < 1) {
-        if (count < 0) {
-            Py_FatalError("_format_headers(): count < 0");
-        }
-        _SET_AND_INC(ret, str_empty);
-    }
-    else if (count == 1) {
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            if (! _validate_key(key)) {
-                goto error;
-            }
-            _SET(ret, PyUnicode_FromFormat("%S: %S\r\n", key, val))
-        }
-    }
-    else {
-        _SET(lines, PyList_New(count))
-        while (PyDict_Next(headers, &pos, &key, &val)) {
-            if (! _validate_key(key)) {
-                goto error;
-            }
-            PyList_SET_ITEM(lines, i,
-                PyUnicode_FromFormat("%S: %S\r\n", key, val)
-            );
-            i++;
-            key = val = NULL;
-        }
-        if (PyList_Sort(lines) != 0) {
-            goto error;
-        }
-        _SET(ret, PyUnicode_Join(str_empty, lines))
-    }
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(lines);
-    return  ret;
 }
 
 static inline ssize_t
@@ -2741,16 +2646,6 @@ set_default_header(PyObject *self, PyObject *args)
         return NULL;
     }
     Py_RETURN_NONE;
-}
-
-static PyObject *
-format_headers(PyObject *self, PyObject *args)
-{
-    PyObject *headers = NULL;
-    if (! PyArg_ParseTuple(args, "O:format_headers", &headers)) {
-        return NULL;
-    }
-    return _format_headers(headers);
 }
 
 static PyObject *
