@@ -2727,37 +2727,6 @@ render_response(PyObject *self, PyObject *args)
     return ret;
 }
 
-
-static PyObject *
-_format_response(PyObject *status, PyObject *reason, PyObject *headers)
-{
-    PyObject *hstr = NULL;  /* str containing header lines */
-    PyObject *str = NULL;  /* str version of response preamble */
-    PyObject *ret = NULL;  /* bytes version of response preamble */
-
-    _SET(hstr, _format_headers(headers))
-    _SET(str,
-        PyUnicode_FromFormat("HTTP/1.1 %S %S\r\n%S\r\n", status, reason, hstr)
-    )
-    _SET(ret, PyUnicode_AsASCIIString(str))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    Py_CLEAR(hstr);
-    Py_CLEAR(str);
-    return  ret;
-}
-
-
-/*******************************************************************************
- * Public API: Formatting:
- *     format_headers()
- *     format_request()
- *     format_response()
- */
 static PyObject *
 set_default_header(PyObject *self, PyObject *args)
 {
@@ -2782,20 +2751,6 @@ format_headers(PyObject *self, PyObject *args)
         return NULL;
     }
     return _format_headers(headers);
-}
-
-static PyObject *
-format_response(PyObject *self, PyObject *args)
-{
-    PyObject *status = NULL;
-    PyObject *reason = NULL;
-    PyObject *headers = NULL;
-
-    if (! PyArg_ParseTuple(args, "OOO:format_response",
-            &status, &reason, &headers)) {
-        return NULL;
-    }
-    return _format_response(status, reason, headers);
 }
 
 static PyObject *

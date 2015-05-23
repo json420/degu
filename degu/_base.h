@@ -211,7 +211,6 @@ static PyObject * parse_chunk(PyObject *, PyObject *);
 /* Formatting */
 static PyObject * set_default_header(PyObject *, PyObject *);
 static PyObject * format_headers(PyObject *, PyObject *);
-static PyObject * format_response(PyObject *, PyObject *);
 static PyObject * format_chunk(PyObject *, PyObject *);
 
 static PyObject * render_headers(PyObject *, PyObject *);
@@ -257,7 +256,6 @@ static struct PyMethodDef degu_functions[] = {
     /* Formatting */
     {"set_default_header", set_default_header, METH_VARARGS, NULL},
     {"format_headers", format_headers, METH_VARARGS, NULL},
-    {"format_response", format_response, METH_VARARGS, NULL},
     {"format_chunk", format_chunk, METH_VARARGS, NULL},
     {"render_headers", render_headers, METH_VARARGS, NULL},
     {"render_request", render_request, METH_VARARGS, NULL},

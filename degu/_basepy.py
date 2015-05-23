@@ -699,16 +699,6 @@ def format_headers(headers):
     return ''.join(lines)
 
 
-def format_response(status, reason, headers):
-    lines = ['HTTP/1.1 {} {}\r\n'.format(status, reason)]
-    if headers:
-        header_lines = ['{}: {}\r\n'.format(*kv) for kv in headers.items()]
-        header_lines.sort()
-        lines.extend(header_lines)
-    lines.append('\r\n')
-    return ''.join(lines).encode()
-
-
 def _check_type(name, obj, _type):
     if type(obj) is not _type:
         raise TypeError(
