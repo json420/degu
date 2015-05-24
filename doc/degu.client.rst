@@ -106,12 +106,11 @@ using a connection, although this will likewise be done automatically when a
     :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  You can override *host*, *timeout*, and *bodies*,
-    and their values are exposed via attributes of the same name:
+    configuration defaults.  You can override *host* and *timeout*, the values
+    of which are exposed via attributes of the same name:
 
         * :attr:`Client.host`
         * :attr:`Client.timeout`
-        * :attr:`Client.bodies`
 
     See :ref:`client-options` for details.
 
@@ -191,24 +190,17 @@ using a connection, although this will likewise be done automatically when a
 
         The client socket timeout in seconds, or ``None`` for no timeout.
 
-        The default is ``60`` second, but you can override this using the
+        The default is ``60`` seconds, but you can override this using the
         *timeout* keyword option.
 
         :meth:`Client.create_socket()` sets the socket timeout to
         :attr:`Client.timeout` for all new sockets it creates.
 
-    .. attribute:: bodies
-
-        A namedtuple exposing the IO abstraction API.
-
-        The default is :attr:`degu.base.bodies`, but you can override this using
-        the *bodies* keyword option.
-
     .. method:: create_socket()
 
         Create a new `socket.socket`_ connected to :attr:`Client.address`.
 
-    .. method:: connect(bodies=None)
+    .. method:: connect()
 
         Create a new :class:`Connection` instance.
 
@@ -282,9 +274,6 @@ The following client *options* are supported:
     *   **timeout** --- client socket timeout in seconds; must be a positve
         ``int`` or ``float``, or ``None`` to indicate no timeout
 
-    *   **bodies** --- a ``namedtuple`` exposing the four IO wrapper classes
-        used to construct HTTP request and response bodies
-
 Default values:
 
     ==============  =========================  ==================================
@@ -292,10 +281,7 @@ Default values:
     ==============  =========================  ==================================
     ``host``        :attr:`Client.host`        derived from :ref:`client-address`
     ``timeout``     :attr:`Client.timeout`     ``60``
-    ``bodies``      :attr:`Client.bodies`      :attr:`degu.base.bodies`
     ==============  =========================  ==================================
-
-
 
 Also see the server :ref:`server-options`.
 
@@ -492,8 +478,7 @@ Also see the server :ref:`server-options`.
     applications or similar scenarios that need to be abstracted from the
     specific HTTP request method being used.
 
-    However, there are shortcuts for each of the five supported HTTP request
-    methods:
+    There are also shortcuts for each of the five supported HTTP request methods:
 
         *   :meth:`Connection.get()`
         *   :meth:`Connection.head()`
@@ -501,12 +486,11 @@ Also see the server :ref:`server-options`.
         *   :meth:`Connection.post()`
         *   :meth:`Connection.delete()`
 
-    And there is also a shortcut for making HTTP Range requests:
+    And there is a shortcut for making HTTP Range requests:
 
         *   :meth:`Connection.get_range()`
 
-    For brevity, the shortcut methods are recommended (when possible).  There is
-    also a small performance advantage to using them.
+    For brevity, the shortcut methods are recommended (when possible).
 
     A :class:`Connection` is stateful  and is *not* thread-safe.
 
@@ -636,9 +620,6 @@ Also see the server :ref:`server-options`.
         specified *content_length*.  For example, this will upload 76 bytes from
         the from the slice ``[1700:1776]``:
 
-        >>> from degu.client import Client
-        >>> client = Client(('127.0.0.1', 56789))
-        >>> conn = client.connect()  #doctest: +SKIP
         >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
         >>> fp.seek(1700)  #doctest: +SKIP
         >>> body = conn.bodies.Body(fp, 76)  #doctest: +SKIP
@@ -681,7 +662,7 @@ Also see the server :ref:`server-options`.
         >>> headers['range'] = Range(start, stop)  #doctest: +SKIP
         >>> response = conn.request('GET', uri, headers, None)  #doctest: +SKIP
 
-        See the :class:`degu.base.Range` documentation for more details.
+        (See :ref:`eg-range-requests` in the tutorial.)
 
     .. method:: head(uri, headers)
 
