@@ -295,10 +295,10 @@ An **HTTP input body** will always be one of three types:
       transfer-encoding
 
 From the client perspective, our input is the HTTP response body received from
-the server.
+the server, exposed via :attr:`degu.client.Response.body`.
 
 From the server perspective, our input is the HTTP request body received from
-the client.
+the client, exposed via :attr:`degu.server.Request.body`.
 
 When the HTTP input body is not ``None``, the receiving endpoint is responsible
 for reading the entire input body, which must be completed before the another
@@ -318,10 +318,21 @@ An **HTTP output body** can be:
     ==================================  ========  ================
 
 From the client perspective, our output is the HTTP request body sent to the
-server.
+server, specified via the fourth item in the response 4-tuple::
+
+    (status, reason, headers, body)
 
 From the server perspective, our output is the HTTP response body sent to the
-client.
+client, specified via the fourth argument when calling
+:meth:`degu.client.Connection.request()`:
+
+>>> response = conn.request(method, uri, headers, body)  #doctest: +SKIP
+
+Or via the third argument when calling :meth:`degu.client.Connection.put()` or
+:meth:`degu.client.Connection.post()`:
+
+>>> response = conn.put(uri, headers, body)  #doctest: +SKIP
+>>> response = conn.post(uri, headers, body)  #doctest: +SKIP
 
 The sending endpoint doesn't directly write the output, but instead only
 *specifies* the output to be written, after which the client or server library
@@ -340,7 +351,7 @@ exposed as a :class:`degu.base.Range` instance:
 >>> parse_headers(b'Range: bytes=3-8')
 {'range': Range(3, 9)}
 
-This is similar to how the value of Content-Length header is exposed as an
+This is similar to how the value of a Content-Length header is exposed as an
 ``int`` rather than a ``str``:
 
 >>> parse_headers(b'Content-Length: 6')

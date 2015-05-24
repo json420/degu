@@ -94,8 +94,8 @@ Header values
     >>> 'Python'[2:5]
     'tho'
     >>> r = Range(2, 5)
-    >>> r.stop - r.start
-    3
+    >>> 'Python'[r.start:r.stop]
+    'tho'
 
     Results in this Range header value:
 
@@ -169,28 +169,28 @@ Header values
         'bytes 50-99/200'
 
 
-:class:`BodiesAPI`
-------------------
+:class:`Bodies` namedtuple
+--------------------------
 
-.. class:: BodiesAPI(Body, BodyIter, ChunkedBody, ChunkedBodyIter)
+.. class:: Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter)
 
-    Instances of this namedtuple are used to expose the IO abstraction API.
+    An instances of this namedtuple is used to expose the IO abstraction API.
 
     .. attribute:: Body
 
-        1st argument passed to constructor.
+        The :class:`Body` class.
+        
+    .. attribute:: ChunkedBody
+
+        The :class:`ChunkedBody` class.
 
     .. attribute:: BodyIter
 
-        2nd argument passed to constructor.
-
-    .. attribute:: ChunkedBody
-
-        3rd argument passed to constructor.
+        The :class:`BodyIter` class.
 
     .. attribute:: ChunkedBodyIter
 
-        4th argument passed to constructor.
+        The :class:`ChunkedBodyIter` class.
 
 
 
@@ -200,15 +200,11 @@ Header values
 
 .. data:: bodies
 
-    A :class:`BodiesAPI` instance exposing the standard Degu IO abstraction API.
+    The :class:`Bodies` instance exposing the Degu IO abstraction API.
 
-    This uses the Degu reference implementation of the four IO abstraction
-    classes:
-
-        * :class:`Body`
-        * :class:`BodyIter`
-        * :class:`ChunkedBody`
-        * :class:`ChunkedBodyIter`
+    >>> from degu.base import bodies
+    >>> bodies
+    Bodies(Body=<class 'degu._base.Body'>, ChunkedBody=<class 'degu._base.ChunkedBody'>, BodyIter=<class 'degu._base.BodyIter'>, ChunkedBodyIter=<class 'degu._base.ChunkedBodyIter'>)
 
 
 Input/output bodies
@@ -372,10 +368,10 @@ Output bodies
 -------------
 
 Degu consumers can use a :class:`BodyIter` or a :class:`ChunkedBodyIter` to
-specify an HTTP output body.
+specify an HTTP output body that will be generated from an abritrary iterable
+object.
 
-Also, :class:`ChunkedBodyIter` can be quite handy for unity testing, for
-example:
+:class:`ChunkedBodyIter` can also be quite handy for unit testing, for example:
 
 >>> from io import BytesIO
 >>> from degu.base import bodies
@@ -423,7 +419,7 @@ b'2\r\nmy\r\n6\r\nchunks\r\n0\r\n\r\n'
 
     You can only call :meth:`BodyIter.write_to()` once.  Subsequent calls will
     raise a ``ValueError``:
-    
+
     >>> body.write_to(wfile)  # doctest: -IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
       ...

@@ -194,6 +194,14 @@ Breaking API changes:
         probably justify adding support for arbitrary Python objects that
         support the buffer protocol (eg., also support ``memoryview``, etc.).
 
+    *   :class:`degu.base.Body` and :class:`degu.base.ChunkedBody` now require
+        their *rfile* to have a ``readinto()`` method, no longer use the
+        ``read()`` method.
+
+        However, all most all Python "file-like" objects implement a
+        ``readinto()`` method, so for most folks, this is unlikely to cause any
+        breakage.
+
     *   The ``body.closed`` attribute has been dropped from the four HTTP body
         classes:
 
