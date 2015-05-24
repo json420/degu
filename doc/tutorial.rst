@@ -328,6 +328,7 @@ The sending endpoint doesn't directly write the output, but instead only
 internally handles the writing.
 
 
+.. _eg-range-requests:
 
 Example: range requests
 -----------------------

@@ -87,8 +87,8 @@ Otherwise, please file a bug directly `through the web UI`_.
 
 .. _`Degu`: https://launchpad.net/degu
 .. _`Ubuntu`: http://www.ubuntu.com/
-.. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/stable
-.. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/daily
+.. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/ubuntu/stable
+.. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/ubuntu/daily
 .. _`from Launchpad`: https://launchpad.net/degu/+download
 .. _`bzr trunk`: https://code.launchpad.net/~dmedia/degu/trunk
 .. _`degu Launchpad project`: https://launchpad.net/degu

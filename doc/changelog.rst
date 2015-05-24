@@ -8,14 +8,34 @@ Changelog
 `Download Degu 0.13`_
 
 Degu 0.13 has a completely re-written C backend, bringing with it dramatic
-performance improvements and much tighter security.
+performance improvements.  However, Degu 0.13 also brings a number breaking API
+changes.
 
-However, Degu 0.13 also has some breaking API changes, particularly in the
-in the server application API.  The biggest change is that the RGI *request*
-argument is now a ``namedtuple`` intead of a ``dict``, although the same
-*method*, *uri*, *headers*, *body*, *script*, *path*, and *query* items are
-all still available (now as read-only attributes), and their semantics haven't
-changed, so only minimal porting effort should be required.
+Users of the Degu 0.12 client API are unlikely to be affected by the changes in
+0.13.
+
+But there are two critical changes that affect anyone who implemented RGI server
+applications atop Degu 0.12:
+
+    1. Instead of a ``dict``, the RGI *request* argument is now a namedtuple,
+       requiring the following porting::
+
+            request['method']  --> request.method
+            request['uri']     --> request.uri
+            request['headers'] --> request.headers
+            request['body']    --> request.body
+            request['script']  --> request.script
+            request['path']    --> request.path
+            request['query']   --> request.query
+
+    2. Instead of a ``dict``, the RGI *session* argument is now a custom object
+       with read-only attributes, requiring the following porting::
+
+            session['client']   --> session.address
+            session['requests'] --> session.requests
+            session[my_key]     --> session.store[my_key]
+
+(See below for more details on these breaking API changes.)
 
 
 Performance improvements:
@@ -35,17 +55,18 @@ Performance improvements:
 
             *   53,369 requests per second over ``AF_INET6``
 
-        This kind of performance means Degu is perfectly viable for
-        network-transparent IPC, which has always been a central design goal.
-        If you build a service atop Degu, both local and remote clients get the
-        same, uniform HTTP goodness, even when a local client connects over
-        ``AF_UNIX`` for the best performance.
+        This level of performance means that now more than ever, Degu is
+        perfectly viable for network-transparent IPC.  If you build a service
+        atop Degu, both local and remote clients get the same, uniform HTTP
+        goodness, even when a local client connects over ``AF_UNIX`` for the
+        very best performance.
 
 
 Breaking API changes:
 
-    *   The RGI *request* argument is now a ``namedtuple`` instead of a 
-        ``dict``.  For example, this Degu 0.12 server application::
+    *   Instead of a ``dict``, the RGI *request* argument is now a
+        :class:`degu.server.Request` namedtuple.  For example, this Degu 0.12
+        server application::
 
             def my_app(session, request, bodies):
                 if request['path'] != []:
@@ -81,15 +102,11 @@ Breaking API changes:
         replaced any of the request attributes when, say, checking the URI
         invariant condition.
 
-        (Note that although the new *request* object itself is immutable, the
-        ``request.script`` and ``request.path`` attributes are still mutable
-        lists, so nothing has changed in terms of how path-shifting is done as
-        a request is dispatched through your application.)
-
-    *   Instead of a ``dict``, the RGI *session* argument is now a custom Python
-        object with read-only attributes.  However, the ``session.store``
-        attribute provides a ``dict`` instance that RGI connection and requests
-        handlers can still use for persistent, per-connection storage.
+    *   Instead of a ``dict``, the RGI *session* argument is now a
+        :class:`degu.server.Session` object with read-only attributes.  However,
+        the :attr:`degu.server.Session.store` attribute provides a ``dict``
+        instance that RGI connection and request handlers can still use for
+        persistent, per-connection storage.
 
         For ``app.on_connect()`` connection handlers, port your *session*
         storage like this::
@@ -131,43 +148,31 @@ Breaking API changes:
                 and request handlers
 
         But this change was also made to accommodate API additions that might
-        come later, specifically *session* methods that would allow RGI
-        applications to instruct the server to reject or limit *future*
-        connections from a specific client.
+        come later.
 
-        The use-case for this is denial-of-service attacks.  The server has
-        visibility into the connection-level behavior of a client and could
-        (potentially) take appropriate action when this connection-level
-        behavior is deemed a DOS attack.  But the server is ill equipped to
-        determine that the request-level behavior of a client should be treated
-        as a DOS attack.  Only the RGI application can really do that well, as
-        the reasoning will be very specific to the application.
+    *   When the server receives a request with a Range header, its value is
+        converted to a :class:`degu.base.Range` instance:
 
-        Although the ``app.on_connect()`` connection handler does already
-        provide a mechanism by which applications could mitigate DOS attacks on
-        their own (when combined with some cross-thread, process-wide storage),
-        ideally the application could instruct the *server* to temporarily
-        reject or limit connections from a specific client.
+        >>> from degu.base import parse_headers
+        >>> parse_headers(b'Range: bytes=3-8')
+        {'range': Range(3, 9)}
 
-        This would allow future connections from malicious clients to be
-        immediately be rejected by the server itself in the main server thread,
-        before consuming the resources needed to spawn a worker thread and
-        establish an SSL connection, both of which would be done prior to
-        calling ``app.on_connect()``.
+        And, to tighten up the semantics here, the client will no longer accept
+        a Range header in the response headers (a ``ValueError`` is raised).
 
-        The *session* object feels like the right place to expose such API,
-        should it be added.
+        (See :ref:`eg-range-requests` in the tutorial.)
 
-        Bear in mind that all this is hypothetical and may never be included in
-        Degu, but imagine a *session* method something like::
+    *   When the client receives a response with a Content-Range header, its
+        value is converted to a :class:`degu.base.ContentRange` instance:
 
-            Session.reject(for_seconds)
+        >>> from degu.base import parse_headers
+        >>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
+        {'content-range': ContentRange(3, 9, 12)}
 
-        Which might be used like::
+        Plus the server will no longer accept a Content-Range header in the
+        request headers (a ``ValueError`` is raised).
 
-            if <client is behaving badly>:
-                session.reject(120)  # Ban this client for 2 minutes
-                raise Exception('Naughty client!')  # Close current connection
+        (Again, see :ref:`eg-range-requests` in the tutorial.)
 
     *   A ``bytearray`` can no longer be used as an output body.  This applies
         both to request bodies on the client-side and to response bodies on the
@@ -189,6 +194,47 @@ Breaking API changes:
         probably justify adding support for arbitrary Python objects that
         support the buffer protocol (eg., also support ``memoryview``, etc.).
 
+    *   The ``body.closed`` attribute has been dropped from the four HTTP body
+        classes:
+
+            * :class:`degu.base.Body`
+            * :class:`degu.base.ChunkedBody`
+            * :class:`degu.base.BodyIter`
+            * :class:`degu.base.ChunkedBodyIter`
+
+        The more generic ``body.state`` attribute has replaced ``body.closed``
+        for Degu internal use, but the ``body.state`` attribute isn't yet
+        considered part of the public API and might yet experience breaking
+        changes.
+
+        However, if you relied on the ``closed`` attribute to determine whether
+        a body was fully consumed (say, in unit tests), you can do a stop-gap
+        port to Degu 0.13 with::
+
+            (body.closed is True) --> (body.state == 2)
+
+        Although the ``body.state`` attribute *probably* wont be renamed or
+        removed on the road to Degu 1.0, there is no guarantee yet.  It is
+        documented is its current, non-stable form simply to help you port
+        unit-tests.
+
+        The most likely change between now and 1.0 is that the internal
+        ``BODY_CONSUMED`` constant might not have the value ``2``.
+
+        Once these details are finalized, the ``BODY_CONSUMED`` constant (or
+        whatever its final name is) will be exposed as part of the stable,
+        public API, as it can be quite handy for unit-tests especially.
+
+    *   The optional *io_size* kwarg has been dropped from
+        :meth:`degu.base.Body()`.
+
+        For now the *io_size* is being treated as an internal constant, although
+        it may again be exposed in some fashion after the Degu 1.0 release.
+
+        Note this is only a breaking change if you were specifying the optional
+        *io_size*.  Also, the internal value still matches the previous default
+        value (1 MiB).
+
     *   Although not previously documented, the ``__len__()`` method has been
         dropped from :class:`degu.base.Body` and :class:`degu.base.BodyIter`.
 
@@ -202,6 +248,55 @@ Breaking API changes:
         This means that on 32-bit systems, the maximum output body size would
         be limited to 2 GiB, which is clearly insufficient for `Dmedia`_
         considering it already supports files up to 9 PB in size.
+
+    *   :meth:`degu.client.Client()` and :meth:`degu.server.Server()` no longer
+        accept the *bodies* keyword configuration option.
+
+        Likewise, :meth:`degu.client.Client.connect()` and
+        :meth:`degu.client.Connection()` no longer accept a *bodies* argument.
+
+        This means the Degu client and server are no longer compossible with
+        respect to potential 3rd-party implementations of the RGI bodies API.
+
+        This feature was primarily dropped because it added a lot of complexity
+        for something may never see real-word use.  Should a clear need for this
+        feature arise later, it can be added without breaking backward
+        compatibility, but the reverse isn't true.
+
+        The original motivation for this compossibility was to make it possible
+        to write a server-agnostic RGI reverse-proxy application.  At the time
+        RGI was viewed only as a server-side specification, so the assumption
+        was that an RGI compatible implementation would provide the server-side
+        equivalent of Degu but not the client-side equivalent, 
+
+        But another approach is for RGI to specify the client-side API as well.
+        That way application components could still potentially use other
+        implementations, just not necessarily mix and match the server, client,
+        and bodies of different implementations.
+
+        Most of code Degu is in the common backend, while there is surprisingly
+        little code that is only used by the server or only used by the client.
+        Experience shows that if you've implemented an RGI compatible server,
+        it should be a relatively small step to implement an RGI compatible
+        client (especially if that's your plan from the beginning).
+
+        Although the *bodies* option has been dropped, most of the same guidance
+        from 0.12 still applies for making implementation-agnostic RGI
+        components.
+
+        Rather than directly importing anything from :mod:`degu.base`, server
+        components should use the bodies API via the *bodies* argument provided
+        to their ``app()`` callable
+
+        And Client components should use the bodies API via the
+        :attr:`degu.client.Connection.bodies` attribute.
+
+
+Other changes:
+
+    *   The :meth:`degu.client.Connection.get_range()` method was added.
+
+        See :ref:`eg-range-requests` in the tutorial.
 
 
 
@@ -427,7 +522,7 @@ Breaking API changes:
         option, no longer has the ``Client.Connection`` attribute; the idea
         behind the *Connection* option was so that high-level, domain-specific
         APIs could be implemented via a :class:`degu.client.Connection`
-        subclass, but subclassing severely limits composability; in contrast,
+        subclass, but subclassing severely limits compossibility; in contrast,
         the new approach is inspired by the `io`_ module in the Python standard
         library (see :ref:`high-level-client-API` for details).
 

@@ -211,30 +211,41 @@ Header values
         * :class:`ChunkedBodyIter`
 
 
+Input/output bodies
+-------------------
+
+:class:`Body` and :class:`ChunkedBody` are internally used by Degu to expose
+HTTP input bodies.
+
+Degu consumers can likewise use them to specify an HTTP output body.
+
 
 :class:`Body`
 '''''''''''''
 
-.. class:: Body(rfile, content_length, io_size=IO_SIZE)
+.. class:: Body(rfile, content_length)
 
-    Represents an HTTP request or response body with a content-length.
+    An HTTP input or output body with a content-length.
 
-    This class provides HTTP Content-Length based framing atop an arbitrary
-    buffered binary stream (basically, anything that has a ``read()`` method
-    that returns ``bytes``, and also has a ``close()`` method).
+    The *rfile* argument must have ``readinto()`` method::
 
-    :meth:`Body.read()` is designed to enforce TCP request/response stream-state
-    consistency:
+        rfile.readinto(dst_buf) --> int (number of bytes read)
 
-        * It wont allow reading of data from the underlying *rfile* beyond the
-          specified *content_length*
+    (See `io.RawIOBase.readinto()`_ for details.)
 
-        * If less data than the claimed *content_length* can be read from
-          *rfile*, it will close the underlying *rfile* and raise an exception
+    The *content_length* argument must be a non-negative ``int`` specifying the
+    expected Content-Length.
 
-    The *rfile* can be a normal file created with ``open(filename, 'rb')``, or
-    a file-object returned by `socket.socket.makefile()`_, or any other similar
-    object implementing the needed API.
+    A :class:`Body` wont read more than the specified *content_length* from
+    *rfile*, and will likewise raise a ``ValueError`` is less than the specified
+    *content_length* can be read from *rfile*.
+
+    .. attribute:: chunked
+
+        Always ``False``, indicating this body has a content-length.
+
+        This attribute allows you to determine whether an HTTP input body is
+        chunk-encoded without having to check the exact Python object type.
 
     .. attribute:: rfile
 
@@ -244,37 +255,12 @@ Header values
 
         The *content_length* passed to the constructor.
 
-    .. attribute:: io_size
-
-        Value of optional *io_size* argument passed to the constructor.
-
-        If *io_size* was not provided, it defaults to :data:`IO_SIZE` (1
-        MiB).
-
-    .. attribute:: chunked
-
-        Always ``False``, indicating a normal (non-chunk-encoded) HTTP body.
-
-        This attribute exists so that RGI applications can test whether an HTTP
-        body is chunk-encoded without having to check whether the body is an
-        instance of a particular class.
-
-        This allows the same HTTP body abstraction API to be easily used with
-        any RGI compliant server implementation, not just the Degu reference
-        server.
-
-    .. attribute:: closed
-
-        Initially ``False``, will be ``True`` after entire body has been read.
-
     .. method:: __iter__()
 
         Iterate through all the data in the HTTP body.
 
         This method will yield the entire HTTP body as a series of ``bytes``
-        instances each up to :attr:`Body.io_size` bytes in size.
-
-        Note that you can only iterate through an :class:`Body` instance once.
+        instance.
 
     .. method:: read(size=None)
 
@@ -290,9 +276,116 @@ Header values
 
         Write this entire HTTP body to *wfile*.
 
-        *wfile* must be a Python file-like object with at least
-        ``wfile.write()`` and ``wfile.flush()`` methods.
+        The *wfile* argument must have a ``write()`` method::
 
+            wfile.write(src_buf) --> int (number of bytes written)
+
+        (See `io.RawIOBase.write()`_ for details.)
+
+
+:class:`ChunkedBody`
+''''''''''''''''''''
+
+
+.. class:: ChunkedBody(rfile)
+
+    A chunk-encoded HTTP input or output body.
+
+    The *rfile* argument must have ``readline()`` and ``readinto()`` methods::
+
+        rfile.readline(size)    --> bytes (the line as Python3 bytes)
+        rfile.readinto(dst_buf) --> int   (number of bytes read)
+
+    (See `io.IOBase.readline()`_ and `io.RawIOBase.readinto()`_ for details.)
+
+    If you iterate through a :class:`ChunkedBody` instance, it will yield an
+    ``(extension, data)`` tuple for each chunk in the chunk-encoded stream.  For
+    example:
+
+    >>> from io import BytesIO
+    >>> from degu.base import bodies
+    >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
+    >>> body = bodies.ChunkedBody(rfile)
+    >>> list(body)
+    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
+
+    A :class:`ChunkedBody` will read from *rfile* up till the first empty
+    chunk is encountered, after which the body is considered fully consumed.
+
+    A ``ValueError`` will be raised if any chunks are mall-formed or if at least
+    one chunk with empty data can't be read from *rfile*.
+
+    .. attribute:: chunked
+
+        Always ``True``, indicating this body is chunk-encoded HTTP.
+
+        This attribute allows you to determine whether an HTTP input body is
+        chunk-encoded without having to check the exact Python object type.
+
+    .. attribute:: rfile
+    
+        The *rfile* passed to the constructor
+
+    .. method:: readchunk()
+
+        Read the next chunk from the chunk-encoded HTTP body.
+
+        If all chunks have already been read from the chunk-encoded HTTP body,
+        this method will return an empty ``b''``.
+
+        Note that the final chunk will likewise be an empty ``b''``.
+
+    .. method:: read()
+
+        Read the entire HTTP body.
+
+        This method will return the concatenated chunks from a chunk-encoded
+        HTTP body as a single ``bytes`` instance.
+
+        If the entire HTTP body has already been read, this method will return
+        an empty ``b''``.
+
+    .. method:: __iter__()
+
+        Iterate through chunks in the chunk-encoded HTTP body.
+
+        This method will yield the HTTP body as a series of
+        ``(extension, data)`` tuples for each chunk in the body.
+
+        The final item yielded will always be an empty ``b''`` *data*.
+
+        Note that you can only iterate through a :class:`ChunkedBody` instance
+        once.
+
+    .. method:: write_to(wfile)
+
+        Write this entire HTTP body to *wfile*.
+
+        The *wfile* argument must have a ``write()`` method::
+
+            wfile.write(src_buf) --> int (number of bytes written)
+
+        (See `io.RawIOBase.write()`_ for details.)
+
+
+Output bodies
+-------------
+
+Degu consumers can use a :class:`BodyIter` or a :class:`ChunkedBodyIter` to
+specify an HTTP output body.
+
+Also, :class:`ChunkedBodyIter` can be quite handy for unity testing, for
+example:
+
+>>> from io import BytesIO
+>>> from degu.base import bodies
+>>> source = [(None, b'my'), (None, b'chunks'), (None, b'')]
+>>> body = bodies.ChunkedBodyIter(source)
+>>> wfile = BytesIO()
+>>> body.write_to(wfile)
+23
+>>> wfile.getvalue()
+b'2\r\nmy\r\n6\r\nchunks\r\n0\r\n\r\n'
 
 
 :class:`BodyIter`
@@ -300,7 +393,7 @@ Header values
 
 .. class:: BodyIter(source, content_length)
 
-    Wraps an iterable to construct an HTTP output body with a content-length.
+    An HTTP output body with a content-length.
 
     This class allows an output HTTP body to be piecewise generated on-the-fly,
     but still with an explicit agreement about what the final content-length
@@ -365,111 +458,16 @@ Header values
 
         The *content_length* passed to the constructor.
 
-    .. attribute:: closed
-
-        Initially ``False``, will be ``True`` after body is fully consumed.
-
     .. method:: write_to(wfile)
 
-        Write to *wfile*.
+        Write this entire HTTP body to *wfile*.
 
+        The *wfile* argument must have a ``write()`` method::
 
+            wfile.write(src_buf) --> int (number of bytes written)
 
-:class:`ChunkedBody`
-''''''''''''''''''''
+        (See `io.RawIOBase.write()`_ for details.)
 
-
-.. class:: ChunkedBody(rfile)
-
-    Represents a chunk-encoded HTTP request or response body.
-
-    This class provides HTTP chunked Transfer-Encoding based framing atop an
-    arbitrary buffered binary stream (basically, anything that has ``read()``
-    and ``readline()`` methods that return ``bytes``, and also has a ``close()``
-    method).
-
-    :meth:`ChunkedBody.readchunk()` is designed to enforce TCP request/response
-    stream-state consistency:
-
-        * It wont read data from *rfile* past the end of the final (empty) HTTP
-          chunk-encoded chunk
-
-        * If an improperly encoded chunk is found, or *rfile* can't produce as
-          much data for a chunk as specified by the chunk size line, the
-          underlying *rfile* will be closed and an exception will be raised
-
-    The *rfile* can be a normal file created with ``open(filename, 'rb')``, or
-    a file-object returned by `socket.socket.makefile()`_, or any other similar
-    object implementing the needed API.
-
-    If you iterate through a :class:`ChunkedBody` instance, it will yield a
-    ``(extension, data)`` tuple for each chunk in the chunk-encoded stream.  For
-    example:
-
-    >>> from io import BytesIO
-    >>> from degu.base import bodies
-    >>> rfile = BytesIO(b'5\r\nhello\r\n5;foo=bar\r\nworld\r\n0\r\n\r\n')
-    >>> body = bodies.ChunkedBody(rfile)
-    >>> list(body)
-    [(None, b'hello'), (('foo', 'bar'), b'world'), (None, b'')]
-
-    Note that you can only iterate through a :class:`ChunkedBody` once:
-
-    >>> list(body)  # doctest: -IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-      ...
-    ValueError: ChunkedBody.state == BODY_CONSUMED, already consumed
-
-    .. attribute:: chunked
-
-        Always ``True``, indicating a chunk-encoded HTTP body.
-
-        This attribute exists so that RGI applications can test whether an HTTP
-        body is chunk-encoded without having to check whether the body is an
-        instance of a particular class.
-
-        This allows the same HTTP body abstraction API to be easily used with
-        any RGI compliant server implementation, not just the Degu reference
-        server.
-
-    .. attribute:: closed
-
-        Initially ``False``, will be ``True`` after entire body has been read.
-
-    .. attribute:: rfile
-    
-        The *rfile* passed to the constructor
-
-    .. method:: readchunk()
-
-        Read the next chunk from the chunk-encoded HTTP body.
-
-        If all chunks have already been read from the chunk-encoded HTTP body,
-        this method will return an empty ``b''``.
-
-        Note that the final chunk will likewise be an empty ``b''``.
-
-    .. method:: read()
-
-        Read the entire HTTP body.
-
-        This method will return the concatenated chunks from a chunk-encoded
-        HTTP body as a single ``bytes`` instance.
-
-        If the entire HTTP body has already been read, this method will return
-        an empty ``b''``.
-
-    .. method:: __iter__()
-
-        Iterate through chunks in the chunk-encoded HTTP body.
-
-        This method will yield the HTTP body as a series of
-        ``(extension, data)`` tuples for each chunk in the body.
-
-        The final item yielded will always be an empty ``b''`` *data*.
-
-        Note that you can only iterate through a :class:`ChunkedBody` instance
-        once.
 
 
 :class:`ChunkedBodyIter`
@@ -477,7 +475,7 @@ Header values
 
 .. class:: ChunkedBodyIter(source)
 
-    Wraps an interable to construct a chunk-encoded HTTP output body.
+    A chunk-encoded HTTP output body.
 
     This class allows a chunked-encoded HTTP body to be piecewise generated
     on-the-fly.
@@ -549,13 +547,16 @@ Header values
 
         The *source* iterable passed to the constructor.
 
-    .. attribute:: closed
-
-        Initially ``False``, will be ``True`` after body is fully consumed.
-
     .. method:: write_to(wfile)
 
-        Write to *wfile*.
+        Write this entire HTTP body to *wfile*.
+
+        The *wfile* argument must have a ``write()`` method::
+
+            wfile.write(src_buf) --> int (number of bytes written)
+
+        (See `io.RawIOBase.write()`_ for details.)
+
 
 
 
@@ -623,9 +624,12 @@ Parsing/formatting
     For more details, see `Chunked Transfer Coding`_ in the HTTP/1.1 spec.
 
 
-
-
 .. _`Chunked Transfer Coding`: http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
 .. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
+
+.. _`io.RawIOBase.readinto()`: https://docs.python.org/3/library/io.html#io.RawIOBase.readinto
+.. _`io.RawIOBase.write()`: https://docs.python.org/3/library/io.html#io.RawIOBase.write
+.. _`io.IOBase.readline()`: https://docs.python.org/3/library/io.html#io.IOBase.readline
+

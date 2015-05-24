@@ -787,7 +787,7 @@ implementation, is that they directly expose (and use) the *address* from the
 underlying Python3 `socket API`_.
 
 
-.. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
+.. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia

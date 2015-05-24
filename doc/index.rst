@@ -14,7 +14,7 @@ uncharted territory.
 .. note::
 
     Degu is now *tentatively* API-stable.  So it's a great time to jump in and
-    `give feedback!`_  But there's still a chance that there will be minor
+    `give feedback!`_  But there's still a chance that there will be further
     breaking changes on the way to the API-stable 1.0 release.
 
 Degu includes:
@@ -64,13 +64,13 @@ Contents:
 
 .. _`Degu`: https://launchpad.net/degu
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
-.. _`WSGI`: http://www.python.org/dev/peps/pep-3333/
+.. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
 .. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 
 .. _`LGPLv3+`: http://www.gnu.org/licenses/lgpl-3.0.html
 .. _`Novacut`: https://wiki.ubuntu.com/Novacut
-.. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/stable
-.. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/daily
+.. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/ubuntu/stable
+.. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/ubuntu/daily
 .. _`#novacut`: http://webchat.freenode.net/?channels=novacut
 .. _`Ubuntu`: http://www.ubuntu.com/
 .. _`Python 3.4`: https://docs.python.org/3/
