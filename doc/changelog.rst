@@ -10,12 +10,33 @@ Changelog
 Degu 0.13 has a completely re-written C backend, bringing with it dramatic
 performance improvements and much tighter security.
 
-However, Degu 0.13 also has some breaking API changes, particularly in the
-in the server application API.  The biggest change is that the RGI *request*
-argument is now a ``namedtuple`` intead of a ``dict``, although the same
-*method*, *uri*, *headers*, *body*, *script*, *path*, and *query* items are
-all still available (now as read-only attributes), and their semantics haven't
-changed, so only minimal porting effort should be required.
+However, Degu 0.13 also brings a number breaking API changes.
+
+Users of the Degu 0.12 client API are unlikely to be affected by the changes in
+0.13.
+
+But there are two critical changes that affect anyone who implemented RGI server
+applications atop Degu 0.12:
+
+    1. Instead of a ``dict``, the RGI *request* argument is now a
+       ``namedtuple``, requiring the following porting::
+
+            request['method']  --> request.method
+            request['uri']     --> request.uri
+            request['headers'] --> request.headers
+            request['body']    --> request.body
+            request['script']  --> request.script
+            request['path']    --> request.path
+            request['query']   --> request.query
+
+    2. Instead of a ``dict``, the RGI *session* argument is now a custom object
+       with read-only attributes, requiring the following porting::
+
+            session['client']   --> session.address
+            session['requests'] --> session.requests
+            session[my_key]     --> session.store[my_key]
+
+(See below for more details on these breaking API changes.)
 
 
 Performance improvements:
@@ -35,11 +56,11 @@ Performance improvements:
 
             *   53,369 requests per second over ``AF_INET6``
 
-        This kind of performance means Degu is perfectly viable for
-        network-transparent IPC, which has always been a central design goal.
-        If you build a service atop Degu, both local and remote clients get the
-        same, uniform HTTP goodness, even when a local client connects over
-        ``AF_UNIX`` for the best performance.
+        This level of performance means that now more than ever, Degu is
+        perfectly viable for network-transparent IPC.  If you build a service
+        atop Degu, both local and remote clients get the same, uniform HTTP
+        goodness, even when a local client connects over ``AF_UNIX`` for the
+        very best performance.
 
 
 Breaking API changes:
@@ -204,6 +225,52 @@ Breaking API changes:
         This means that on 32-bit systems, the maximum output body size would
         be limited to 2 GiB, which is clearly insufficient for `Dmedia`_
         considering it already supports files up to 9 PB in size.
+
+    *   :meth:`degu.client.Client()` and :meth:`degu.server.Server()` no longer
+        accept the *bodies* keyword configuration option.
+
+        Likewise, :meth:`degu.client.Client.connect()` and
+        :meth:`degu.client.Connection()` no longer accept a *bodies* argument.
+
+        This means the Degu client and server are no longer compossible with
+        respect to potential 3rd-party implementations of the RGI bodies API.
+
+        This feature was primarily dropped because it added a lot of complexity
+        for something may never see real-word use.  Should a clear need for this
+        feature arise later, it can be added without breaking backward
+        compatibility, but the reverse isn't true.
+
+        The original motivation for this compossibility was to make it possible
+        to write a server-agnostic RGI reverse-proxy application.  At the time
+        RGI was viewed only as a server-side specification, so the assumption
+        was that an RGI compatible implementation would provide the server-side
+        equivalent of Degu but not the client-side equivalent, 
+
+        But another approach is for RGI to specify the client-side API as well.
+        That way application components could still potentially use other
+        implementations, just not necessarily mix and match the server, client,
+        and bodies of different implementations.
+
+        Most of code Degu is in the common backend, while there is surprisingly
+        little code that is only used by the server or only used by the client.
+        Experience shows that if you've implemented an RGI compatible server,
+        it should be a relatively small step to implement an RGI compatible
+        client (especially if that's your plan from the beginning).
+
+        Although the *bodies* option has been dropped, most of the same guidance
+        from 0.12 still applies for making implementation-agnostic RGI
+        components.
+
+        Rather than directly importing anything from :mod:`degu.base`:
+
+            * Server components should use the bodies API via the *bodies*
+              argument provided to their ``app()`` callable
+
+            * Client components should use the bodies API via the
+              :attr:`degu.client.Connection.bodies` attribute
+
+
+        
 
 
 
@@ -429,7 +496,7 @@ Breaking API changes:
         option, no longer has the ``Client.Connection`` attribute; the idea
         behind the *Connection* option was so that high-level, domain-specific
         APIs could be implemented via a :class:`degu.client.Connection`
-        subclass, but subclassing severely limits composability; in contrast,
+        subclass, but subclassing severely limits compossibility; in contrast,
         the new approach is inspired by the `io`_ module in the Python standard
         library (see :ref:`high-level-client-API` for details).
 
