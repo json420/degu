@@ -2,8 +2,8 @@ Changelog
 =========
 
 
-0.13 (unreleased)
------------------
+0.13 (May 2015)
+---------------
 
 `Download Degu 0.13`_
 
@@ -298,6 +298,23 @@ Breaking API changes:
 
         And Client components should use the bodies API via the
         :attr:`degu.client.Connection.bodies` attribute.
+
+    *   The ``chunked`` attributed has been dropped from
+        :class:`degu.base.BodyIter` and :class:`degu.base.ChunkedBodyIter`.
+
+        As these classes are only used to specify HTTP output bodies, and as
+        Degu doesn't interally use this attribute any more, it makes sense to
+        drop it for now.
+
+        However, the ``chunked`` attributed is still available on the two
+        classes used also for HTTP input bodies:
+
+            *   :attr:`degu.base.Body.chunked`
+            *   :attr:`degu.base.ChunkedBody.chunked`
+
+        These attributes allow you to test whether or not an HTTP input body
+        uses chunked Transfer-Encoded, without have to test the exact Python
+        type.
 
 
 Other changes:

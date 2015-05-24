@@ -1,33 +1,26 @@
-:mod:`degu.base` --- Bodies API, parser, formatter
-==================================================
+:mod:`degu.base` --- Shared HTTP backend
+========================================
 
 .. module:: degu.base
-   :synopsis: HTTP bodies API, parser, formatter
+   :synopsis: Shared HTTP backend
 
-:mod:`degu.base` provides IO abstractions used by both :mod:`degu.server` and
-:mod:`degu.client` to represent HTTP request and response bodies.  This API is
-exposed via the :attr:`bodies` attribute, which is a :class:`BodiesAPI`
-instance.
+:mod:`degu.base` exposes the public API from the common HTTP backed used by both
+:mod:`degu.client` and :mod:`degu.server`.
 
-This module also provides the shared HTTP parser and formatter used by the Degu
-server and client.
+As of Degu 0.13, almost everything that happens at a per-request frequency
+is done within the high-performance Degu `C extension`_, with minimal calls to
+Python functions and methods, the exceptions being:
 
-However, aside from :func:`read_chunk()` and :func:`write_chunk()`, the parsing
-and formatting API is still private, for Degu internal use only, with no
-commitment to backward API compatibility.
+    *   Calls to ``sock.recv_into()`` needed to read the HTTP input preamble and
+        the HTTP input body
 
-But the parsing and formatting API isn't something 3rd-party applications need
-to use directly.  It's just something that will *eventually* be exposed as part
-of the stable Degu API, largely because it can be handy for unit testing and, if
-nothing else, helpful in understanding how Degu is implemented.
+    *   Calls to ``sock.send()`` needed to write the HTTP output preamble and the
+        HTTP output body
 
-Some :mod:`degu.base` functionality is already implemented in a high-performance
-`C extension`_, with a pure-Python reference implementation of the same to help
-verify the correctness of the C extension.
+    *   On the server-side, calls to your ``app()`` request handler (of course)
 
-Over time, most (if not all) of :mod:`degu.base` will be implemented in C, again
-with a pure-Python reference implementation to help verify the correctness of
-the C implementation.
+There is also a pure-Python fallback, but this is really just a reference
+implementation aimed at verifying the correctness of the C extension.
 
 
 
@@ -36,7 +29,7 @@ Exceptions
 
 .. exception:: EmptyPreambleError
 
-    Raised when ``b''`` is returned when reading the HTTP preamble.
+    Raised when ``b''`` is returned when reading the HTTP input preamble.
 
     This is a ``ConnectionError`` subclass.  When no data is received when
     trying to read the request or response preamble, this typically means the
@@ -202,9 +195,17 @@ Header values
 
     The :class:`Bodies` instance exposing the Degu IO abstraction API.
 
+    For example:
+
     >>> from degu.base import bodies
-    >>> bodies
-    Bodies(Body=<class 'degu._base.Body'>, ChunkedBody=<class 'degu._base.ChunkedBody'>, BodyIter=<class 'degu._base.BodyIter'>, ChunkedBodyIter=<class 'degu._base.ChunkedBodyIter'>)
+    >>> my_bodies = bodies.BodyIter([b'hello, ', b' world'], 12)
+
+    It's best not to directly import this from :mod:`degu.base`, but instead to
+    use the :attr:`degu.client.Connection.bodies` attribute on the client-side,
+    and to use the *bodies* argument passed to your RGI ``app()`` callable on
+    the server side::
+
+        app(session, request, bodies)
 
 
 Input/output bodies
@@ -558,6 +559,47 @@ b'2\r\nmy\r\n6\r\nchunks\r\n0\r\n\r\n'
 
 Parsing/formatting
 ------------------
+
+
+.. function:: parse_headers(src, isresponse=False)
+
+    Parse headers from the ``bytes`` instance *src*.
+
+    For example:
+
+    >>> from degu.base import parse_headers
+    >>> parse_headers(b'Content-Type: text/plain')
+    {'content-type': 'text/plain'}
+
+    Note that although Degu accepts mixed-case headers in the HTTP input
+    preamble, they are case-folded when parsed, and that outgoing headers must
+    only use lowercase names.
+
+    Because of same details in how the Degu parser works, the function expects
+    separate header lines to be separated by a ``b'\r\n'``, but does not allow
+    a ``b'\r\n'`` termination after the final header:
+
+    >>> parse_headers(b'Foo: Bar\r\nSTUFF: Junk') == {'foo': 'Bar', 'stuff': 'Junk'}
+    True
+
+
+.. function:: format_headers(headers, sort=True)
+
+    Format headers for use as the input to :func:`parse_headers()`.
+
+    Note this is just a simple convenience function and isn't actually what the
+    real Degu backend uses.  In particular, this function does no validation on
+    the header keys, whereas the real backend requires that all keys be lower
+    case.
+
+    Unless you specify ``sort=False``, the headers will be output in sorted
+    order:
+
+    >>> from degu.base import format_headers
+    >>> format_headers({'One': 'two', 'FOO': 'bar'})
+    b'FOO: bar\r\nOne: two'
+    
+
 
 .. function:: read_chunk(rfile)
 
