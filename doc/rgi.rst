@@ -15,6 +15,20 @@ RGI aims to be a worthy interpretation of what WSGI *might* be were it done
 today without concern for backward compatibility, and with a rather narrow focus
 on REST APIs in particular.
 
+.. note::
+
+    This document is currently out of date, but it still provides a good
+    rational for why RGI is designed the way it is.  The big changes not yet
+    reflected here are:
+
+        *   The RGI *session* argument is now a :class:`degu.server.Session`
+            object instead of a ``dict``
+
+        *   The RGI *request* argument is now a :class:`degu.server.Request`
+            namedtuple instead of a ``dict``
+
+    See the Degu 0.13 :doc:`changelog` for details.
+
 
 Big picture
 -----------
