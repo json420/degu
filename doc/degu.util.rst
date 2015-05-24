@@ -110,4 +110,4 @@ Functions
 
 .. _`wsgiref.util`: https://docs.python.org/3/library/wsgiref.html#module-wsgiref.util
 .. _`Degu`: https://launchpad.net/degu
-.. _`WSGI`: http://legacy.python.org/dev/peps/pep-3333/
+.. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
