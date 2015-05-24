@@ -81,13 +81,12 @@ example, to kill the server process we just created:
 
     The keyword-only *options* allow you to override certain server
     configuration defaults.  You can override *max_connections*, *max_requests*,
-    *timeout*, and *bodies*, and their values are exposed via attributes of the
-    same name:
+    and *timeout*, the values of which are exposed via attributes of the same
+    name:
 
         * :attr:`Server.max_connections`
         * :attr:`Server.max_requests`
         * :attr:`Server.timeout`
-        * :attr:`Server.bodies`
 
     See :ref:`server-options` for details.
 
@@ -153,14 +152,7 @@ example, to kill the server process we just created:
 
         Among other things, this timeout controls how long the server will keep
         a TCP connection open while waiting for the client to make an additional
-        HTTP request.  
-
-    .. attribute:: bodies
-
-        A namedtuple exposing the IO abstraction API.
-
-        Default is :attr:`degu.base.bodies`; can be overridden via the *bodies*
-        keyword option.
+        HTTP request.
 
     .. method:: serve_forever()
 
@@ -283,33 +275,41 @@ Your *app* must be a callable object that accepts three arguments, for example:
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
-The *session* argument will be a ``dict`` instance something like this::
+The *session* argument will be a :class:`Session` instance something like this:
 
-    session = {
-        'client': ('127.0.0.1', 12345),
-    }
+>>> from degu.server import Session
+>>> session = Session(('127.0.0.1', 12345))
 
-The *request* argument will be a ``dict`` instance something like this::
+:attr:`Session.address` gives your application access to the address of the
+connecting client:
 
-    request = {
-        'method': 'GET',
-        'uri': '/foo/bar/baz?stuff=junk',
-        'script': ['foo'],
-        'path': ['bar', 'baz'],
-        'query': 'stuff=junk',
-        'headers': {'accept': 'text/plain'},
-        'body': None,
-    }
+>>> session.address
+('127.0.0.1', 12345)
 
-Finally, the *bodies* argument will be a ``namedtuple`` exposing four wrapper
-classes that can be used to specify the HTTP response body:
+And :attr:`Session.store` is a ``dict`` that your application can use to store
+per-connection resources for use when handling subsequent requests through the
+same connection (more on this below):
+
+>>> session.store
+{}
+
+The *request* argument will be a :class:`Request` namedtuple something like
+this:
+
+>>> from degu.server import Request
+>>> Request('GET', '/foo/bar?key=val', {}, None, [], ['foo', 'bar'], 'key=val')
+Request(method='GET', uri='/foo/bar?key=val', headers={}, body=None, script=[], path=['foo', 'bar'], query='key=val')
+
+Finally, the *bodies* argument will be the :attr:`degu.base.bodies` namedtuple
+exposing the four wrapper classes that can be use to specify the your HTTP
+response body:
 
 ==========================  ==================================
-Exposed via                 Degu implementation
+Attribute                   Class
 ==========================  ==================================
 ``bodies.Body``             :class:`degu.base.Body`
-``bodies.BodyIter``         :class:`degu.base.BodyIter`
 ``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
+``bodies.BodyIter``         :class:`degu.base.BodyIter`
 ``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
 ==========================  ==================================
 
@@ -321,6 +321,10 @@ Which in the case of our example was::
 
     (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 
+Optionally, your ``app()`` can directly return a :class:`degu.client.Response`
+namedtuple received from :meth:`degu.client.Connection.request()`, which is
+extremely handy for reverse-proxy applications.
+
 
 **TCP connection handler:**
 
@@ -328,21 +332,17 @@ If your *app* argument itself has a callable ``on_connect`` attribute, it must
 accept two arguments, for example:
 
 >>> class MyApp:
-...     def __call__(self, session, request, bodies):
-...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
-... 
 ...     def on_connect(self, session, sock):
 ...         return True
+... 
+...     def __call__(self, session, request, bodies):
+...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
-The *session* argument will be same ``dict`` instance passed to your
-``app()`` HTTP request handler, something like this::
+The *session* argument will be same :class:`Session` instance that will then
+be passed to your ``app()`` HTTP request handler.
 
-    session = {
-        'client': ('127.0.0.1', 12345),
-    }
-
-Finally, the *sock* argument will be a `socket.socket`_ when running your app in
+And the *sock* argument will be a `socket.socket`_ when running your app in
 a :class:`Server`, or an `ssl.SSLSocket`_ when running your app in an
 :class:`SSLServer`.
 
@@ -351,15 +351,8 @@ accepted, but before any HTTP requests have been handled via that TCP
 connection.
 
 It must return ``True`` when the connection should be accepted, or return
-``False`` when the connection should be rejected.
-
-If your *app* has an ``on_connect`` attribute that is *not* callable, it must be
-``None``.  This allows you to disable the ``app.on_connect()`` handler in a
-subclass, for example:
-
->>> class MyAppSubclass(MyApp):
-...     on_connect = None
-...
+``False`` when the connection should be rejected.  The connection will also be
+rejected if any unhanded exception is raised when calling ``app.on_connect()``.
 
 
 **Persistent per-connection session:**
@@ -372,35 +365,40 @@ argument to store, for example, per-connection resources that will likely be
 used again when handling subsequent HTTP requests made through that same TCP
 connection.
 
+This is a silly example, but :attr:`Session.store` could be used like this: 
+
+>>> def my_app(session, request, bodies):
+...     body = session.store.get('my_body')
+...     if body is None:
+...         body = b'hello, world'
+...         session.store['my_body'] = body
+...     return (200, 'OK', {'content-type': 'text/plain'}, body)
+...
+
 Likewise, this means that your optional ``app.on_connect()`` TCP connection
 handler can use the *session* argument to store, for example,
 application-specific per-connection authentication information.
 
-If your ``app()`` HTTP request handler adds anything to the *session*, it should
-prefix the key with ``'__'`` (double underscore).  For example:
+If your ``app.on_connect()`` TCP connection handler adds anything to
+:attr:`Session.store`, it should prefix the key with ``'_'`` (underscore).
 
->>> def my_app(session, request, bodies):
-...     body = session.get('__body')
-...     if body is None:
-...         body = b'hello, world'
-...         session['__body'] = body
-...     return (200, 'OK', {'content-type': 'text/plain'}, body)
-...
-
-Likewise, if your ``app.on_connect()`` TCP connection handler adds anything to
-the *session*, it should prefix the key with ``'_'`` (underscore).  For example:
+For example:
 
 >>> class MyApp:
 ...     def __call__(self, session, request, bodies):
-...         if session.get('_user') != 'admin':
+...         if session.store.get('_user') != 'admin':
 ...             return (403, 'Forbidden', {}, None)
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 ...     def on_connect(self, sock, session):
-...         # Somehow authenticate the user who made the connection:
-...         session['_user'] = 'admin'
+...         # Somehow authenticate the user who made the connection...
+...         session.store['_user'] = 'admin'
 ...         return True
 ...
+
+(Note the ``'_'`` prefix is just a recommended convention to avoid conflict and
+confusion with keys added by ``app()`` request handlers.  Degu doesn't enforce
+this either way.)
 
 
 
@@ -432,10 +430,6 @@ The following server configuration *options* are supported:
     *   **timeout** --- server socket timeout in seconds; must be a positve
         ``int`` or ``float`` instance
 
-    *   **bodies** --- a namedtuple exposing the four IO wrapper classes used to
-        construct HTTP request and response bodies;
-        see :class:`degu.base.BodiesAPI`
-        
 
 The default values of which are:
 
@@ -445,7 +439,6 @@ The default values of which are:
     :attr:`Server.max_connections`  ``25``
     :attr:`Server.max_requests`     ``500``
     :attr:`Server.timeout`          ``30``
-    :attr:`Server.bodies`           :attr:`degu.base.bodies`
     ==============================  ========================
 
 
