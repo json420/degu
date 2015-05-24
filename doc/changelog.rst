@@ -8,9 +8,8 @@ Changelog
 `Download Degu 0.13`_
 
 Degu 0.13 has a completely re-written C backend, bringing with it dramatic
-performance improvements and much tighter security.
-
-However, Degu 0.13 also brings a number breaking API changes.
+performance improvements.  However, Degu 0.13 also brings a number breaking API
+changes.
 
 Users of the Degu 0.12 client API are unlikely to be affected by the changes in
 0.13.
@@ -18,8 +17,8 @@ Users of the Degu 0.12 client API are unlikely to be affected by the changes in
 But there are two critical changes that affect anyone who implemented RGI server
 applications atop Degu 0.12:
 
-    1. Instead of a ``dict``, the RGI *request* argument is now a
-       ``namedtuple``, requiring the following porting::
+    1. Instead of a ``dict``, the RGI *request* argument is now a namedtuple,
+       requiring the following porting::
 
             request['method']  --> request.method
             request['uri']     --> request.uri
@@ -66,8 +65,8 @@ Performance improvements:
 Breaking API changes:
 
     *   Instead of a ``dict``, the RGI *request* argument is now a
-        :class:`degu.server.Request` ``namedtuple``.  For example, this Degu
-        0.12 server application::
+        :class:`degu.server.Request` namedtuple.  For example, this Degu 0.12
+        server application::
 
             def my_app(session, request, bodies):
                 if request['path'] != []:
@@ -150,6 +149,30 @@ Breaking API changes:
 
         But this change was also made to accommodate API additions that might
         come later.
+
+    *   When the server receives a request with a Range header, its value is
+        converted to a :class:`degu.base.Range` instance:
+
+        >>> from degu.base import parse_headers
+        >>> parse_headers(b'Range: bytes=3-8')
+        {'range': Range(3, 9)}
+
+        And, to tighten up the semantics here, the client will no longer accept
+        a Range header in the response headers (a ``ValueError`` is raised).
+
+        (See :ref:`eg-range-requests` in the tutorial.)
+
+    *   When the client receives a response with a Content-Range header, its
+        value is converted to a :class:`degu.base.ContentRange` instance:
+
+        >>> from degu.base import parse_headers
+        >>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
+        {'content-range': ContentRange(3, 9, 12)}
+
+        Plus the server will no longer accept a Content-Range header in the
+        request headers (a ``ValueError`` is raised).
+
+        (Again, see :ref:`eg-range-requests` in the tutorial.)
 
     *   A ``bytearray`` can no longer be used as an output body.  This applies
         both to request bodies on the client-side and to response bodies on the
@@ -261,16 +284,19 @@ Breaking API changes:
         from 0.12 still applies for making implementation-agnostic RGI
         components.
 
-        Rather than directly importing anything from :mod:`degu.base`:
+        Rather than directly importing anything from :mod:`degu.base`, server
+        components should use the bodies API via the *bodies* argument provided
+        to their ``app()`` callable
 
-            * Server components should use the bodies API via the *bodies*
-              argument provided to their ``app()`` callable
-
-            * Client components should use the bodies API via the
-              :attr:`degu.client.Connection.bodies` attribute
+        And Client components should use the bodies API via the
+        :attr:`degu.client.Connection.bodies` attribute.
 
 
-        
+Other changes:
+
+    *   The :meth:`degu.client.Connection.get_range()` method was added.
+
+        See :ref:`eg-range-requests` in the tutorial.
 
 
 
