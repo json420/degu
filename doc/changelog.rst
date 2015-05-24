@@ -150,6 +150,47 @@ Breaking API changes:
         probably justify adding support for arbitrary Python objects that
         support the buffer protocol (eg., also support ``memoryview``, etc.).
 
+    *   The ``body.closed`` attribute has been dropped from the four HTTP body
+        classes:
+
+            * :class:`degu.base.Body`
+            * :class:`degu.base.ChunkedBody`
+            * :class:`degu.base.BodyIter`
+            * :class:`degu.base.ChunkedBodyIter`
+
+        The more generic ``body.state`` attribute has replaced ``body.closed``
+        for Degu internal use, but the ``body.state`` attribute isn't yet
+        considered part of the public API and might yet experience breaking
+        changes.
+
+        However, if you relied on the ``closed`` attribute to determine whether
+        a body was fully consumed (say, in unit tests), you can do a stop-gap
+        port to Degu 0.13 with::
+
+            (body.closed is True) --> (body.state == 2)
+
+        Although the ``body.state`` attribute *probably* wont be renamed or
+        removed on the road to Degu 1.0, there is no guarantee yet.  It is
+        documented is its current, non-stable form simply to help you port
+        unit-tests.
+
+        The most likely change between now and 1.0 is that the internal
+        ``BODY_CONSUMED`` constant might not have the value ``2``.
+
+        Once these details are finalized, the ``BODY_CONSUMED`` constant (or
+        whatever its final name is) will be exposed as part of the stable,
+        public API, as it can be quite handy for unit-tests especially.
+
+    *   The optional *io_size* kwarg has been dropped from
+        :meth:`degu.base.Body()`.
+
+        For now the *io_size* is being treated as an internal constant, although
+        it may again be exposed in some fashion after the Degu 1.0 release.
+
+        Note this is only a breaking change if you were specifying the optional
+        *io_size*.  Also, the internal value still matches the previous default
+        value (1 MiB).
+
     *   Although not previously documented, the ``__len__()`` method has been
         dropped from :class:`degu.base.Body` and :class:`degu.base.BodyIter`.
 
