@@ -317,13 +317,13 @@ An **HTTP output body** can be:
     :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
     ==================================  ========  ================
 
-From the server perspective, our output is the HTTP request body sent to the
-server, specified via the fourth item in the response 4-tuple::
+From the server perspective, our output is the HTTP response body sent to the
+client, specified via the fourth item in the response 4-tuple::
 
     (status, reason, headers, body)
 
-From the client perspective, our output is the HTTP response body sent to the
-client, specified via the fourth argument when calling
+From the client perspective, our output is the HTTP request body sent to the
+server, specified via the fourth argument when calling
 :meth:`degu.client.Connection.request()`:
 
 >>> response = conn.request(method, uri, headers, body)  #doctest: +SKIP
@@ -483,7 +483,12 @@ Of course, we can also request the entire resource with
 >>> conn.get('/example', {}).body.read()
 b'hello, world'
 
-For more fun, let's also request the first 5 bytes:
+Or make a ``HEAD`` request with :meth:`degu.client.Connection.head()`:
+
+>>> conn.head('/example', {})
+Response(status=200, reason='OK', headers={'content-length': 12}, body=None)
+
+For a few more Range request examples, let's also request the first 5 bytes:
 
 >>> conn.get_range('/example', {}, 0, 5).body.read()
 b'hello'

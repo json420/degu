@@ -117,8 +117,7 @@ Header values
         For example:
 
         >>> from degu.base import Range
-        >>> value = Range(50, 100)
-        >>> str(value)
+        >>> str(Range(50, 100))
         'bytes=50-99'
 
 
@@ -134,9 +133,9 @@ Header values
         0 <= start < stop <= total
 
     >>> from degu.base import ContentRange
-    >>> value = ContentRange(50, 100, 200)
-    >>> str(value)
-    'bytes 50-99/200'
+    >>> cr = ContentRange(2, 5, 7)
+    >>> str(cr)
+    'bytes 2-4/7'
 
     .. attribute:: start
 
@@ -157,8 +156,7 @@ Header values
         For example:
 
         >>> from degu.base import ContentRange
-        >>> value = ContentRange(50, 100, 200)
-        >>> str(value)
+        >>> str(ContentRange(50, 100, 200))
         'bytes 50-99/200'
 
 
@@ -198,7 +196,7 @@ Header values
     For example:
 
     >>> from degu.base import bodies
-    >>> my_bodies = bodies.BodyIter([b'hello, ', b' world'], 12)
+    >>> my_body = bodies.BodyIter([b'hello, ', b' world'], 12)
 
     It's best not to directly import this from :mod:`degu.base`, but instead to
     use the :attr:`degu.client.Connection.bodies` attribute on the client-side,
