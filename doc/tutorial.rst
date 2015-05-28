@@ -278,11 +278,11 @@ local host, but any of which could likewise be running on a remote host.
 IO abstractions
 ---------------
 
-On both the client and server ends, Degu uses the same set of shared IO
+On both the server and client ends, Degu uses the same set of shared IO
 abstractions to represent HTTP request and response bodies.
 
 As the IO *directions* of the request and response are flipped depending on
-whether you're looking at things from a client vs server perspective, it's
+whether you're looking at things from a server vs client perspective, it's
 helpful to think in terms of HTTP *input* bodies and HTTP *output* bodies.
 
 An **HTTP input body** will always be one of three types:
@@ -294,11 +294,11 @@ An **HTTP input body** will always be one of three types:
     * :class:`degu.base.ChunkedBody` --- an HTTP input body that uses chunked
       transfer-encoding
 
-From the client perspective, our input is the HTTP response body received from
-the server, exposed via :attr:`degu.client.Response.body`.
-
 From the server perspective, our input is the HTTP request body received from
 the client, exposed via :attr:`degu.server.Request.body`.
+
+From the client perspective, our input is the HTTP response body received from
+the server, exposed via :attr:`degu.client.Response.body`.
 
 When the HTTP input body is not ``None``, the receiving endpoint is responsible
 for reading the entire input body, which must be completed before the another
@@ -317,26 +317,26 @@ An **HTTP output body** can be:
     :class:`degu.base.ChunkedBodyIter`  Chunked   An iterable
     ==================================  ========  ================
 
-From the client perspective, our output is the HTTP request body sent to the
+From the server perspective, our output is the HTTP request body sent to the
 server, specified via the fourth item in the response 4-tuple::
 
     (status, reason, headers, body)
 
-From the server perspective, our output is the HTTP response body sent to the
+From the client perspective, our output is the HTTP response body sent to the
 client, specified via the fourth argument when calling
 :meth:`degu.client.Connection.request()`:
 
 >>> response = conn.request(method, uri, headers, body)  #doctest: +SKIP
 
-Or via the third argument when calling :meth:`degu.client.Connection.put()` or
-:meth:`degu.client.Connection.post()`:
+Or specified via the third argument when calling
+:meth:`degu.client.Connection.put()` or :meth:`degu.client.Connection.post()`:
 
 >>> response = conn.put(uri, headers, body)  #doctest: +SKIP
 >>> response = conn.post(uri, headers, body)  #doctest: +SKIP
 
 The sending endpoint doesn't directly write the output, but instead only
-*specifies* the output to be written, after which the client or server library
-internally handles the writing.
+*specifies* the output to be written, after which the Degu backend internally
+handles the writing.
 
 
 .. _eg-range-requests:
