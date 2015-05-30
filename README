@@ -58,7 +58,7 @@ Now create a connection and make a request:
 >>> conn.request('PUT', '/hello', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
-Likewise, use the ``client.put()`` shortcut method to make the same ``'PUT'``
+Likewise, use the ``conn.put()`` shortcut method to make the same ``'PUT'``
 request again:
 
 >>> conn.put('/hello', {}, None)
