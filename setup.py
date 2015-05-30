@@ -123,7 +123,7 @@ ext_kw = {
 if os.environ.get('DEGU_INSTRUMENT_BUILD') == 'true':
     ext_kw['extra_compile_args'].append('-fsanitize=address')
     ext_kw['libraries'] = ['asan']
-    if platform.dist() == ('Ubuntu', '15.04', 'vivid'):
+    if platform.dist()[1] >= '15.04':
         ext_kw['extra_compile_args'].extend([
             '-fsanitize=undefined',
             '-fsanitize=shift',
