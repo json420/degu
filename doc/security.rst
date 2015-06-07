@@ -1,68 +1,84 @@
 Security Considerations
 =======================
 
-HTTP preamble
--------------
+Just enough HTTP
+----------------
 
-The HTTP preamble is a hot bed of attack surface!
+A central design goal for Degu is reducing HTTP to a minimal and manageable
+amount of attack surface.
 
-Degu aims to stop questionable input before it makes its way to other Python C
-extensions, upstream HTTP servers, exploitable scenarios in Degu or CPython
-themselves, or exploitable scenarios in 3rd party applications built atop Degu.
+As such, Degu only supports the HTTP feature that are truly needed for its use
+case, and Degu seldom supports alternate ways of expressing the same thing (the
+exception being that incoming HTTP header names can be mixed case, although note
+that outgoing header names must always be lower case).
 
-For this reason, Degu only allows a very constrained of set of bytes to exist in
-the preamble (a subset of ASCII).
+Although Degu is more strict and minimal than most HTTP servers and clients, in
+practice this isn't particularly limiting.  Degu is regularly used in production
+with other HTTP servers and clients.
 
-Note that Python's own codec handling is absolutely *not* secure for this
-purpose!  Regardless of codec, ``bytes.decode()`` (and C API equivalents) will
-happily include NUL bytes in the resulting ``str`` object:
+The goal is to strike the right balance between utility and attack surface.  In
+many ways, Degu provides more utility than many HTTP severs and clients,
+especially because Degu fully exposes HTTP chunked transfer-encoding semantics.
+But if you find that Degu is too strict for your use-case, please `file a bug`_
+and we'll consider relaxing these restrictions to accommodate your use case.
 
->>> b'hello\x00world'.decode('ascii')
-'hello\x00world'
 
-Likewise, ``str.encode()`` (and the C API equivalents) will happily include
-NUL bytes:
+Reading the preamble
+--------------------
 
->>> 'hello\x00world'.encode('ascii')
-b'hello\x00world'
+Degu does no incremental parsing as the HTTP preamble is read.  Instead, Degu
+makes successive calls to `socket.socket.recv_into()`_ till the preamble
+terminator (``b'\r\n\r\n'``) is found or till the maximum preamble size is
+exceeded (currently 32 KiB).
 
-Allowing the NUL byte is probably the most problematic aspect of
-``bytes.decode()``, but there are certainly others as well.
+Assuming the preamble terminator is found within the first 32 KiB, the entire
+preamble (minus the ``b'\r\n\r\n'`` terminator) is passed to the internal
+parsing API as a read-only buffer.
 
-Degu breaks down the preamble into two sets of allowed bytes:
+This approach allows Degu to completely decouple reading the preamble from
+parsing the preamble, which makes the Degu parser easier to reason about and
+easier to exhaustively unit test.  In particular, this approach means that the
+parser itself cannot directly invoke further reads.
 
-    1. ``KEYS`` can contain any of these 63 bytes:
 
-       >>> KEYS = b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-       >>> len(KEYS)
-       63
+Parsing the preamble
+--------------------
 
-    2. ``VALUES`` can contain anything in ``KEYS`` plus anything in these
-       additional 32 bytes (for a total of 95 possible byte values):
+Degu strictly validates what byte values are allowed in each region of the HTTP
+preamble.
 
-       >>> VALUES = KEYS + b' !"#$%&\'()*+,./:;<=>?@[\\]^_`{|}~'
-       >>> len(VALUES)
-       95
+For example, these are the current validation tables used in the pure-Python
+reference implementation::
 
-The ``VALUES`` set applies to the first line in the preamble, and to header
-values.  The more restrictive ``KEYS`` set applies to header names.
+    ################    BEGIN GENERATED TABLES    ##################################
+    NAME = frozenset(
+        b'-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+    )
 
-To explain this more visually, Degu validates the HTTP preamble according to
-this structure::
+    DECIMAL = frozenset(b'0123456789')
+    HEXADECIMAL = frozenset(b'0123456789ABCDEFabcdef')
 
-    VALUES\r\n
-    KEYS: VALUES\r\n
-    KEYS: VALUES\r\n
-    \r\n
+    _LOWER = b'-0123456789abcdefghijklmnopqrstuvwxyz'
+    _UPPER = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    _URI   = b'/?'
+    _PATH  = b'+.:_~'
+    _QUERY = b'%&='
+    _SPACE = b' '
+    _VALUE = b'"\'()*,;[]'
 
-Note that ``VALUES`` doesn't include ``b'\r'`` or ``b'\n'``.
+    KEY    = frozenset(_LOWER)
+    VAL    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)
+    URI    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI)
+    PATH   = frozenset(_LOWER + _UPPER + _PATH)
+    QUERY  = frozenset(_LOWER + _UPPER + _PATH + _QUERY)
+    REASON = frozenset(_LOWER + _UPPER + _SPACE)
+    EXTKEY = frozenset(_LOWER + _UPPER)
+    EXTVAL = frozenset(_LOWER + _UPPER + _PATH + _VALUE)
+    ################    END GENERATED TABLES      ##################################
 
-Note that ``KEYS`` doesn't include ``b':'`` or ``b' '``.
+Also see the equivalent tables in `degu/_base.h`_ used by the C implementation.
 
-The Degu C backend uses a pair of tables to decode and validate in a single
-pass.  Additionally, the table for the KEYS set is constructed such that it
-case-folds the header names as part of that same single pass.
-
+And see `degu/tables.py`_ for details on how these tables are generated.
 
 
 Error handling
@@ -84,4 +100,10 @@ because the TCP stream might be in an inconsistent state.  Under no circumstance
 do we want an error condition to be able to create an inconsistent TCP stream
 state such that some portion of an HTTP request body is read as the next HTTP
 preamble.
+
+
+.. _`file a bug`: https://bugs.launchpad.net/degu
+.. _`socket.socket.recv_into()`: https://docs.python.org/3/library/socket.html#socket.socket.recv_into
+.. _`degu/_base.h`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.h
+.. _`degu/tables.py`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/tables.py
 
