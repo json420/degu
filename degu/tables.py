@@ -30,7 +30,7 @@ Or print the Python tables like this::
 
     $ python3 -m degu.tables --python
 
-Finally, replace the existing tables in the "degu/_base.c" and "degu/_basepy.py"
+Finally, replace the existing tables in the "degu/_base.h" and "degu/_basepy.py"
 files with the tables as currently defined in this module like this::
 
     $ python3 -m degu.tables --update
