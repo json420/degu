@@ -359,7 +359,6 @@ class TestServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -519,7 +518,6 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)

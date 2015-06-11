@@ -169,7 +169,6 @@ class Server:
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
         self.app = app
-        self.on_connect = on_connect
 
         # options:
         if not set(options).issubset(self.__class__._allowed_options):
@@ -249,7 +248,8 @@ class Server:
             semaphore.release()
 
     def _handler(self, sock, session):
-        if self.on_connect is None or self.on_connect(session, sock) is True:
+        on_connect = getattr(self.app, 'on_connect', None)
+        if on_connect is None or on_connect(session, sock) is True:
             handle_requests(self.app, sock, session)
             log.info('Handled %d requests from %r', session.requests, session)
         else:
