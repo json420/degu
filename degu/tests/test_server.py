@@ -1,5 +1,5 @@
 # degu: an embedded HTTP server and client library
-# Copyright (C) 2014 Novacut Inc
+# Copyright (C) 2014-2015 Novacut Inc
 #
 # This file is part of `degu`.
 #
@@ -255,7 +255,7 @@ class TestFunctions(TestCase):
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server._validate_server_sslctx(sslctx), sslctx)
 
-    def test_get_peer_credentials(self):
+    def test_get_credentials(self):
         class MockSocket:
             def __init__(self, cred):
                 self._cred = cred
@@ -270,7 +270,7 @@ class TestFunctions(TestCase):
 
         cred = (9999, 8888, 7777)
         sock = MockSocket(cred)
-        self.assertEqual(server._get_peer_credentials(sock), cred)
+        self.assertEqual(server._get_credentials(sock), cred)
         size = struct.calcsize('3i')
         self.assertEqual(sock._calls, [
             ('setsockopt', socket.SOL_SOCKET, socket.SO_PASSCRED, 1),
