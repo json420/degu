@@ -227,6 +227,7 @@ class Server:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
+                sock.close()
 
     def _worker(self, semaphore, sock, session):
         try:
@@ -245,6 +246,7 @@ class Server:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+            sock.close()
             semaphore.release()
 
     def _handler(self, sock, session):
