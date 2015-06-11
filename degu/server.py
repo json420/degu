@@ -137,6 +137,7 @@ def _get_credentials(sock):
 
 class Server:
     _allowed_options = ('max_connections', 'max_requests', 'timeout')
+    __slots__ = ('address', 'app', 'options', 'sock') + _allowed_options
 
     def __init__(self, address, app, **options):
         # address:
@@ -171,12 +172,11 @@ class Server:
         self.app = app
 
         # options:
-        if not set(options).issubset(self.__class__._allowed_options):
-            cls = self.__class__
-            unsupported = sorted(set(options) - set(cls._allowed_options))
+        if not set(options).issubset(self._allowed_options):
+            unsupported = sorted(set(options) - set(self._allowed_options))
             raise TypeError(
                 'unsupported {} **options: {}'.format(
-                    cls.__name__, ', '.join(unsupported)
+                    self.__class__.__name__, ', '.join(unsupported)
                 )
             )
         self.options = options
@@ -259,6 +259,8 @@ class Server:
 
 
 class SSLServer(Server):
+    __slots__ = ('sslctx',)
+
     def __init__(self, sslctx, address, app, **options):
         self.sslctx = _validate_server_sslctx(sslctx)
         super().__init__(address, app, **options)
