@@ -233,7 +233,7 @@ class Server:
         try:
             log.info('Connection from %r', session)
             self._handler(sock, session)
-        except OSError as e:
+        except (socket.timeout, ConnectionError) as e:
             log.info('Timeout after handling %d requests from %r: %r',
                 session.requests, session, e
             )
