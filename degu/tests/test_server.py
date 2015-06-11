@@ -34,6 +34,7 @@ import socket
 import ssl
 import json
 from hashlib import sha1
+import struct
 
 from .helpers import TempDir
 import degu
@@ -253,6 +254,28 @@ class TestFunctions(TestCase):
         # All good:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server._validate_server_sslctx(sslctx), sslctx)
+
+    def test_get_peer_credentials(self):
+        class MockSocket:
+            def __init__(self, cred):
+                self._cred = cred
+                self._calls = []
+
+            def setsockopt(self, *args):
+                self._calls.append(('setsockopt',) + args)
+
+            def getsockopt(self, *args):
+                self._calls.append(('getsockopt',) + args)
+                return struct.pack('3i', *self._cred)
+
+        cred = (9999, 8888, 7777)
+        sock = MockSocket(cred)
+        self.assertEqual(server._get_peer_credentials(sock), cred)
+        size = struct.calcsize('3i')
+        self.assertEqual(sock._calls, [
+            ('setsockopt', socket.SOL_SOCKET, socket.SO_PASSCRED, 1),
+            ('getsockopt', socket.SOL_SOCKET, socket.SO_PEERCRED, size)
+        ])       
 
 
 class BadApp:

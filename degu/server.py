@@ -128,7 +128,7 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
-def get_peer_credentials(sock, address):
+def _get_peer_credentials(sock):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
     size = struct.calcsize('3i')
     data = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size)
@@ -217,7 +217,7 @@ class Server:
                 if semaphore.acquire(timeout=2) is True:
                     sock.settimeout(timeout)
                     if isunix:
-                        credentials = get_peer_credentials(sock, sock)
+                        credentials = _get_peer_credentials(sock)
                         log.info('Connection from %r %r', address, credentials)
                     else:
                         log.info('Connection from %r', address)
