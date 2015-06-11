@@ -380,7 +380,7 @@ class TestSSLClient(TestCase):
         self.assertEqual(str(cm.exception), 'sslctx must be an ssl.SSLContext')
 
         # Bad SSL protocol version:
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         with self.assertRaises(ValueError) as cm:
             client.SSLClient(sslctx, None)
         self.assertEqual(str(cm.exception),
