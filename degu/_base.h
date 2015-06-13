@@ -975,16 +975,20 @@ typedef struct {
     PyObject *address;
     PyObject *credentials;
     PyObject *store;
+    PyObject *message;
     size_t max_requests;
     size_t requests;
+    bool closed;
 } Session;
 
 static PyMemberDef Session_members[] = {
-    {"address",      T_OBJECT_EX, offsetof(Session, address),      READONLY, NULL},
-    {"credentials",  T_OBJECT_EX, offsetof(Session, credentials),  READONLY, NULL},
-    {"store",        T_OBJECT_EX, offsetof(Session, store),        READONLY, NULL},
-    {"max_requests", T_PYSSIZET,  offsetof(Session, max_requests), READONLY, NULL},
-    {"requests",     T_PYSSIZET,  offsetof(Session, requests),     READONLY, NULL},
+    {"address",      T_OBJECT,   offsetof(Session, address),      READONLY, NULL},
+    {"credentials",  T_OBJECT,   offsetof(Session, credentials),  READONLY, NULL},
+    {"store",        T_OBJECT,   offsetof(Session, store),        READONLY, NULL},
+    {"message",      T_OBJECT,   offsetof(Session, message),      READONLY, NULL},
+    {"max_requests", T_PYSSIZET, offsetof(Session, max_requests), READONLY, NULL},
+    {"requests",     T_PYSSIZET, offsetof(Session, requests),     READONLY, NULL},
+    {"closed",       T_BOOL,     offsetof(Session, closed),       READONLY, NULL},
     {NULL}
 };
 

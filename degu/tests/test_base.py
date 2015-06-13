@@ -5744,6 +5744,8 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
@@ -5768,6 +5770,8 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
@@ -5792,6 +5796,8 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r}, {!r})'.format(address, credentials)
         )

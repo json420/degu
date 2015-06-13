@@ -1564,6 +1564,8 @@ class Session:
         '_max_requests',
         '_requests',
         '_store',
+        '_closed',
+        '_message',
     )
 
     def __init__(self, address, credentials=None, max_requests=None):
@@ -1576,6 +1578,8 @@ class Session:
         self._max_requests = _check_int('max_requests', max_requests, 0, 75000)
         self._requests = 0
         self._store = {}
+        self._closed = False
+        self._message = None
 
     def __repr__(self):
         if self._credentials is None:
@@ -1601,6 +1605,19 @@ class Session:
     @property
     def store(self):
         return self._store
+
+    @property
+    def closed(self):
+        return self._closed
+
+    @property
+    def message(self):
+        return self._message
+
+    def close(self, message):
+        self._closed = True
+        if self._message is None:
+            self._message = message
 
 
 def handle_requests(app, sock, session):
