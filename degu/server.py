@@ -225,7 +225,7 @@ class Server:
                 session = Session(address, credentials, max_requests)
                 thread = threading.Thread(
                     target=worker,
-                    args=(semaphore, sock, session),
+                    args=(semaphore, session, sock),
                     daemon=True,
                 )
                 thread.start()
@@ -233,10 +233,10 @@ class Server:
                 log.warning('Too many connections, rejecting %r', address)
                 _shutdown_and_close(sock)
 
-    def _worker(self, semaphore, sock, session):
+    def _worker(self, semaphore, session, sock):
         try:
             log.info('Connection from %r', session)
-            self._handler(sock, session)
+            self._handle_connection(session, sock)
         except:
             log.exception('Error after handling %d requests from %r:',
                 session.requests, session
@@ -245,7 +245,7 @@ class Server:
         finally:
             semaphore.release()
 
-    def _handler(self, sock, session):
+    def _handle_connection(self, session, sock):
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
             _handle_requests(self.app, sock, session)
@@ -269,7 +269,7 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def _handler(self, sock, session):
+    def _handle_connection(self, session, sock):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
-        super()._handler(sock, session)
+        super()._handle_connection(session, sock)
 
