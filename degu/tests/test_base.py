@@ -6127,7 +6127,6 @@ class TestServerFunctions_Py(BackendTestCase):
             ('recv_into', 32 * 1024),
             ('send', len(outdata)),
             ('send', len(outdata)),
-            'close',
         ])
         self.assertEqual(sys.getrefcount(rsp), 2)
         self.assertEqual(sock._rfile.read(), b'')
@@ -6167,7 +6166,6 @@ class TestServerFunctions_Py(BackendTestCase):
             ('send', len(out2)),
             ('send', len(out3)),
             ('send', len(out4)),
-            'close',
         ])
         self.assertEqual(sock._rfile.read(), b'')
         self.assertEqual(sock._wfile.getvalue(), out1 + out2 + out3 + out4)

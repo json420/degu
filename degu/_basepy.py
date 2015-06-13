@@ -1661,9 +1661,6 @@ def _handle_requests(app, sock, session):
         if status >= 400 and status not in {404, 409, 412}:
             break
 
-    # Make sure sndbuf gets flushed:
-    sock.close()
-
 
 class Connection:
     __slots__ = (

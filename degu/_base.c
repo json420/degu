@@ -4603,12 +4603,11 @@ _handle_requests(PyObject *self, PyObject *args)
     PyObject *session = NULL;
     bool success = true;
 
-    /* These 6 all need to be freed */
+    /* These 5 all need to be freed */
     PyObject *reader = NULL;
     PyObject *writer = NULL;
     PyObject *request = NULL;
     PyObject *response = NULL;
-    PyObject *close_result = NULL;
     DeguRequest req = NEW_DEGU_REQUEST;
 
     /* We don't need to call _clear_degu_response(rsp) because
@@ -4672,9 +4671,6 @@ _handle_requests(PyObject *self, PyObject *args)
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
     }
-
-    /* Ensure sock is flushed and properly closed before shutdown is called */ 
-    _SET(close_result, PyObject_CallMethod(sock, "close", NULL))
     goto cleanup;
 
 error:
@@ -4685,8 +4681,7 @@ cleanup:
     Py_CLEAR(writer);           /* 2 */
     Py_CLEAR(request);          /* 3 */
     Py_CLEAR(response);         /* 4 */
-    Py_CLEAR(close_result);     /* 5 */
-    _clear_degu_request(&req);  /* 6 */
+    _clear_degu_request(&req);  /* 5 */
     if (success) {
         Py_RETURN_NONE;
     }

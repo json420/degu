@@ -135,6 +135,14 @@ def _get_credentials(sock):
     return struct.unpack('3i', data)
 
 
+def _shutdown_and_close(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    sock.close()
+
+
 class Server:
     _allowed_options = ('max_connections', 'max_requests', 'timeout')
     __slots__ = ('address', 'app', 'options', 'sock') + _allowed_options
@@ -223,39 +231,30 @@ class Server:
                 thread.start()
             else:
                 log.warning('Too many connections, rejecting %r', address)
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-                sock.close()
+                _shutdown_and_close(sock)
 
     def _worker(self, semaphore, sock, session):
         try:
             log.info('Connection from %r', session)
             self._handler(sock, session)
-        except (socket.timeout, ConnectionError) as e:
-            log.info('Timeout after handling %d requests from %r: %r',
-                session.requests, session, e
-            )
         except:
-            log.exception('Error after handling %d requests from %r',
+            log.exception('Error after handling %d requests from %r:',
                 session.requests, session
             )
+            _shutdown_and_close(sock)
         finally:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            sock.close()
             semaphore.release()
 
     def _handler(self, sock, session):
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
             _handle_requests(self.app, sock, session)
-            log.info('Handled %d requests from %r', session.requests, session)
+            log.info('Handled %d requests from %r: %s',
+                session.requests, session, session.message
+            )
         else:
             log.warning('app.on_connect() rejected %r', session)
+        sock.close()
 
 
 class SSLServer(Server):
