@@ -248,7 +248,7 @@ class Server:
     def _handle_connection(self, session, sock):
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
-            _handle_requests(self.app, sock, session)
+            _handle_requests(self.app, session, sock)
             log.info('%r: handled %d requests: %s',
                 session, session.requests, session.message
             )

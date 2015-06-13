@@ -5900,7 +5900,7 @@ class TestServerFunctions_Py(BackendTestCase):
         sock = NewMockSocket(data)
         ses = {'client': ('127.0.0.1', 12345)}
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'session: need a {!r}; got a {!r}'.format(Session, dict)
         )
@@ -5924,7 +5924,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a {!r}; got a {!r}'.format(tuple, list)
         )
@@ -5948,7 +5948,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 3-tuple'
         )
@@ -5972,7 +5972,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 5-tuple'
         )
@@ -5996,7 +5996,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('status', int, str, '200')
         )
@@ -6020,7 +6020,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 99'
         )
@@ -6044,7 +6044,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 600'
         )
@@ -6069,7 +6069,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'request body not consumed: Body(<reader>, 3)'
         )
@@ -6093,7 +6093,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'HEAD /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             "request method is HEAD, but response body is not None: <class 'bytes'>" 
         )
@@ -6118,7 +6118,7 @@ class TestServerFunctions_Py(BackendTestCase):
         outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
         sock = NewMockSocket(indata * 3)
         ses = Session(('127.0.0.1', 12345), None, 2)
-        self.assertIsNone(handle_requests(app, sock, ses), 2)
+        self.assertIsNone(handle_requests(app, ses, sock), 2)
         self.assertEqual(ses.requests, 2)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
@@ -6155,7 +6155,7 @@ class TestServerFunctions_Py(BackendTestCase):
         out4 = out.format(400).encode()
         sock = NewMockSocket(indata * 10)
         ses = Session(('127.0.0.1', 12345), None, 10)
-        self.assertIsNone(handle_requests(app, sock, ses))
+        self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 4)
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)

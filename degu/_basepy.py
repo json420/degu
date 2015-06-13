@@ -1627,7 +1627,7 @@ class Session:
             self.close('max_requests')
 
 
-def _handle_requests(app, sock, session):
+def _handle_requests(app, session, sock):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
     reader = Reader(sock)

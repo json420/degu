@@ -4626,7 +4626,7 @@ _handle_requests(PyObject *self, PyObject *args)
      */
     DeguResponse rsp = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "OOO:_handle_requests", &app, &sock, &session)) {
+    if (! PyArg_ParseTuple(args, "OOO:_handle_requests", &app, &session, &sock)) {
         goto error;
     }
     if (! _check_type2("session", session, &SessionType)) {
