@@ -29,7 +29,7 @@ import threading
 import os
 import struct
 
-from .base import Session, Request, handle_requests, _TYPE_ERROR
+from .base import Session, Request, _handle_requests, _TYPE_ERROR
 
 
 __all__ = ('Server', 'SSLServer', 'Session', 'Request')
@@ -85,7 +85,7 @@ def build_server_sslctx(sslconfig):
             )
         if {'ca_file', 'ca_path'}.intersection(sslconfig):
             raise ValueError(
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
         return sslctx
     if not {'ca_file', 'ca_path'}.intersection(sslconfig):
@@ -116,6 +116,8 @@ def _validate_server_sslctx(sslctx):
     if sslctx.verify_mode == ssl.CERT_OPTIONAL:
         raise ValueError('sslctx.verify_mode cannot be ssl.CERT_OPTIONAL')
     assert sslctx.verify_mode in (ssl.CERT_REQUIRED, ssl.CERT_NONE)
+    if sslctx.verify_mode != ssl.CERT_REQUIRED:
+        log.warning('Security concern: sslctx allows unauthenticated clients!')
 
     # Check the options:
     if not (sslctx.options & ssl.OP_NO_COMPRESSION):
@@ -135,8 +137,17 @@ def _get_credentials(sock):
     return struct.unpack('3i', data)
 
 
+def _shutdown_and_close(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    sock.close()
+
+
 class Server:
     _allowed_options = ('max_connections', 'max_requests', 'timeout')
+    __slots__ = ('address', 'app', 'options', 'sock') + _allowed_options
 
     def __init__(self, address, app, **options):
         # address:
@@ -169,20 +180,18 @@ class Server:
         if not (on_connect is None or callable(on_connect)):
             raise TypeError('app.on_connect: not callable: {!r}'.format(app))
         self.app = app
-        self.on_connect = on_connect
 
         # options:
-        if not set(options).issubset(self.__class__._allowed_options):
-            cls = self.__class__
-            unsupported = sorted(set(options) - set(cls._allowed_options))
+        if not set(options).issubset(self._allowed_options):
+            unsupported = sorted(set(options) - set(self._allowed_options))
             raise TypeError(
                 'unsupported {} **options: {}'.format(
-                    cls.__name__, ', '.join(unsupported)
+                    self.__class__.__name__, ', '.join(unsupported)
                 )
             )
         self.options = options
-        self.max_connections = options.get('max_connections', 25)
-        self.max_requests = options.get('max_requests', 500)
+        self.max_connections = options.get('max_connections', 50)
+        self.max_requests = options.get('max_requests', 1000)
         self.timeout = options.get('timeout', 30)
         assert isinstance(self.max_connections, int) and self.max_connections > 0
         assert isinstance(self.max_requests, int) and self.max_requests > 0 
@@ -200,7 +209,10 @@ class Server:
         )
 
     def serve_forever(self):
-        log.info('Degu %s at %r', self.__class__.__name__, self.address)
+        log.info('Starting Degu %s @ %r', self.__class__.__name__, self.address)
+        log.info('[timeout=%r, max_connections=%r, max_requests=%r]',
+            self.timeout, self.max_connections, self.max_requests
+        )
         listensock = self.sock
         unix = (True if listensock.family == socket.AF_UNIX else False)
         semaphore = threading.BoundedSemaphore(self.max_connections)
@@ -218,45 +230,45 @@ class Server:
                 session = Session(address, credentials, max_requests)
                 thread = threading.Thread(
                     target=worker,
-                    args=(semaphore, sock, session),
+                    args=(semaphore, session, sock),
                     daemon=True,
                 )
                 thread.start()
             else:
                 log.warning('Too many connections, rejecting %r', address)
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+                _shutdown_and_close(sock)
 
-    def _worker(self, semaphore, sock, session):
+    def _worker(self, semaphore, session, sock):
         try:
-            log.info('Connection from %r', session)
-            self._handler(sock, session)
-        except OSError as e:
-            log.info('Timeout after handling %d requests from %r: %r',
-                session.requests, session, e
+            log.info('+ %s New connection', session)
+            self._handle_connection(session, sock)
+        except (socket.timeout, ConnectionError) as e:
+            log.info('- %s Handled %d requests: %r',
+                session, session.requests, e
             )
         except:
-            log.exception('Error after handling %d requests from %r',
-                session.requests, session
+            log.exception('- %s Error after handling %d requests:',
+                session, session.requests
             )
         finally:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
+            _shutdown_and_close(sock)
             semaphore.release()
 
-    def _handler(self, sock, session):
-        if self.on_connect is None or self.on_connect(session, sock) is True:
-            handle_requests(self.app, sock, session)
-            log.info('Handled %d requests from %r', session.requests, session)
+    def _handle_connection(self, session, sock):
+        on_connect = getattr(self.app, 'on_connect', None)
+        if on_connect is None or on_connect(session, sock) is True:
+            _handle_requests(self.app, session, sock)
+            sock.close()
+            log.info('- %s Handled %d requests: %s',
+                session, session.requests, session.message
+            )
         else:
-            log.warning('app.on_connect() rejected %r', session)
+            log.warning('- %s Rejected by app.on_connect()', session)
 
 
 class SSLServer(Server):
+    __slots__ = ('sslctx',)
+
     def __init__(self, sslctx, address, app, **options):
         self.sslctx = _validate_server_sslctx(sslctx)
         super().__init__(address, app, **options)
@@ -266,7 +278,7 @@ class SSLServer(Server):
             self.__class__.__name__, self.sslctx, self.address, self.app
         )
 
-    def _handler(self, sock, session):
+    def _handle_connection(self, session, sock):
         sock = self.sslctx.wrap_socket(sock, server_side=True)
-        super()._handler(sock, session)
+        super()._handle_connection(session, sock)
 

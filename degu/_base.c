@@ -60,6 +60,7 @@ static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
+static PyObject *msg_max_requests      = NULL;  //
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
@@ -106,6 +107,7 @@ _init_all_globals(PyObject *module)
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_empty,  PyUnicode_FromString(""))
+    _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
@@ -4465,6 +4467,7 @@ Session_dealloc(Session *self)
     Py_CLEAR(self->address);
     Py_CLEAR(self->credentials);
     Py_CLEAR(self->store);
+    Py_CLEAR(self->message);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -4499,10 +4502,48 @@ Session_init(Session *self, PyObject *args, PyObject *kw)
     _SET_AND_INC(self->credentials, credentials)
     _SET(self->store, PyDict_New())
     self->requests = 0;
+    self->closed = false;
+    self->message = NULL;
     return 0;
 
 error:
     return -1;
+}
+
+static void
+_Session_close(Session *self, PyObject *msg)
+{
+    self->closed = true;
+    if (msg == NULL) {
+         Py_FatalError("_Session_close(): msg == NULL");
+         return;
+    }
+    if (self->message == NULL) {
+        self->message = msg;
+        Py_INCREF(self->message);
+    }
+}
+
+static bool
+_Session_response_complete(Session *self, DeguResponse *rsp)
+{
+    /* Possibly close connection depending on response status */
+    const size_t status = rsp->s;
+    if (status >= 400 && status != 404 && status != 409 && status != 412) {
+        PyObject *msg = PyUnicode_FromFormat("%S %S", rsp->status, rsp->reason);
+        if (msg == NULL) {
+            return false;
+        }
+        _Session_close(self, msg);
+        Py_CLEAR(msg);
+    }
+
+    /* Increment request counter, close if max_requests has been reached */
+    self->requests++;
+    if (self->requests >= self->max_requests) {
+        _Session_close(self, msg_max_requests);
+    }
+    return true;
 }
 
 static PyObject *
@@ -4513,6 +4554,14 @@ Session_repr(Session *self) {
     return PyUnicode_FromFormat("Session(%R, %R)",
         self->address, self->credentials
     );
+}
+
+static PyObject *
+Session_str(Session *self) {
+    if (self->credentials == Py_None) {
+        return PyObject_Repr(self->address);
+    }
+    return PyUnicode_FromFormat("%R %R", self->address, self->credentials);
 }
 
 
@@ -4565,20 +4614,18 @@ error:
 }
 
 static PyObject *
-handle_requests(PyObject *self, PyObject *args)
+_handle_requests(PyObject *self, PyObject *args)
 {
     PyObject *app = NULL;
     PyObject *sock = NULL;
     PyObject *session = NULL;
-    size_t i, status;
     bool success = true;
 
-    /* These 6 all need to be freed */
+    /* These 5 all need to be freed */
     PyObject *reader = NULL;
     PyObject *writer = NULL;
     PyObject *request = NULL;
     PyObject *response = NULL;
-    PyObject *close_result = NULL;
     DeguRequest req = NEW_DEGU_REQUEST;
 
     /* We don't need to call _clear_degu_response(rsp) because
@@ -4587,17 +4634,16 @@ handle_requests(PyObject *self, PyObject *args)
      */
     DeguResponse rsp = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "OOO:handle_requests", &app, &sock, &session)) {
+    if (! PyArg_ParseTuple(args, "OOO:_handle_requests", &app, &session, &sock)) {
         goto error;
     }
     if (! _check_type2("session", session, &SessionType)) {
         goto error;
     }
-    const size_t max_requests = SESSION(session)->max_requests;
     _SET(reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
     _SET(writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
 
-    for (i = 0; i < max_requests; i++) {
+    while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
         if (! _Reader_read_request(READER(reader), &req)) {
             goto error;
@@ -4636,12 +4682,8 @@ handle_requests(PyObject *self, PyObject *args)
         }
 
         /* Increment requests counter */
-        SESSION(session)->requests++;
-
-        /* Possibly close connection depending on response status */
-        status = rsp.s;
-        if (status >= 400 && status != 404 && status != 409 && status != 412) {
-            break;
+        if (! _Session_response_complete(SESSION(session), &rsp)) {
+            goto error;
         }
 
         /* Cleanup for next request */
@@ -4649,9 +4691,6 @@ handle_requests(PyObject *self, PyObject *args)
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
     }
-
-    /* Ensure sock is flushed and properly closed before shutdown is called */ 
-    _SET(close_result, PyObject_CallMethod(sock, "close", NULL))
     goto cleanup;
 
 error:
@@ -4662,8 +4701,7 @@ cleanup:
     Py_CLEAR(writer);           /* 2 */
     Py_CLEAR(request);          /* 3 */
     Py_CLEAR(response);         /* 4 */
-    Py_CLEAR(close_result);     /* 5 */
-    _clear_degu_request(&req);  /* 6 */
+    _clear_degu_request(&req);  /* 5 */
     if (success) {
         Py_RETURN_NONE;
     }

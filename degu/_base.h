@@ -227,7 +227,7 @@ static PyObject * Request(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
 /* Server and client entry points */
-static PyObject * handle_requests(PyObject *, PyObject *);
+static PyObject * _handle_requests(PyObject *, PyObject *);
 
 static struct PyMethodDef degu_functions[] = {
     /* Header parsing */
@@ -270,7 +270,7 @@ static struct PyMethodDef degu_functions[] = {
     {"Response", Response, METH_VARARGS, NULL},
 
     /* Server and client entry points */
-    {"handle_requests", handle_requests, METH_VARARGS, NULL},
+    {"_handle_requests", _handle_requests, METH_VARARGS, NULL},
 
     {NULL, NULL, 0, NULL}
 };
@@ -975,22 +975,27 @@ typedef struct {
     PyObject *address;
     PyObject *credentials;
     PyObject *store;
+    PyObject *message;
     size_t max_requests;
     size_t requests;
+    bool closed;
 } Session;
 
 static PyMemberDef Session_members[] = {
-    {"address",      T_OBJECT_EX, offsetof(Session, address),      READONLY, NULL},
-    {"credentials",  T_OBJECT_EX, offsetof(Session, credentials),  READONLY, NULL},
-    {"store",        T_OBJECT_EX, offsetof(Session, store),        READONLY, NULL},
-    {"max_requests", T_PYSSIZET,  offsetof(Session, max_requests), READONLY, NULL},
-    {"requests",     T_PYSSIZET,  offsetof(Session, requests),     READONLY, NULL},
+    {"address",      T_OBJECT,   offsetof(Session, address),      READONLY, NULL},
+    {"credentials",  T_OBJECT,   offsetof(Session, credentials),  READONLY, NULL},
+    {"store",        T_OBJECT,   offsetof(Session, store),        READONLY, NULL},
+    {"message",      T_OBJECT,   offsetof(Session, message),      READONLY, NULL},
+    {"max_requests", T_PYSSIZET, offsetof(Session, max_requests), READONLY, NULL},
+    {"requests",     T_PYSSIZET, offsetof(Session, requests),     READONLY, NULL},
+    {"closed",       T_BOOL,     offsetof(Session, closed),       READONLY, NULL},
     {NULL}
 };
 
 static void Session_dealloc(Session *);
 static int Session_init(Session *, PyObject *, PyObject *);
 static PyObject * Session_repr(Session *);
+static PyObject * Session_str(Session *);
 
 static PyTypeObject SessionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -1008,7 +1013,7 @@ static PyTypeObject SessionType = {
     0,                                  /* tp_as_mapping */
     0,                                  /* tp_hash  */
     0,                                  /* tp_call */
-    0,                                  /* tp_str */
+    (reprfunc)Session_str,              /* tp_str */
     0,                                  /* tp_getattro */
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */

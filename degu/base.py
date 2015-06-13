@@ -34,7 +34,7 @@ try:
         bodies,
         Connection,
         Session,
-        handle_requests,
+        _handle_requests,
         parse_headers,
     )
 except ImportError:
@@ -48,7 +48,7 @@ except ImportError:
         bodies,
         Connection,
         Session,
-        handle_requests,
+        _handle_requests,
         parse_headers,
     )
 
@@ -63,7 +63,7 @@ __all__ = (
     'bodies',
     'Connection',
     'Session',
-    'handle_requests',
+    '_handle_requests',
     'parse_headers',
 )
 

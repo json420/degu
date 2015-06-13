@@ -293,7 +293,8 @@ class TestAliases(TestCase):
             'Range',
             'ContentRange',
             'bodies',
-            'handle_requests',
+            '_handle_requests',
+            'parse_headers',
             'Connection',
         )
         for name in all_names:
@@ -364,7 +365,11 @@ class BackendTestCase(TestCase):
 
     @property
     def MAX_HEADER_COUNT(self):
-            return self.getattr('MAX_HEADER_COUNT')
+        return self.getattr('MAX_HEADER_COUNT')
+
+    @property
+    def EmptyPreambleError(self):
+        return self.getattr('EmptyPreambleError')
 
 
 class TestRange_Py(BackendTestCase):
@@ -5744,9 +5749,12 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
+        self.assertEqual(str(sess), repr(address))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(None), ncount)
@@ -5768,9 +5776,12 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
+        self.assertEqual(str(sess), repr(address))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(credentials), ccount)
@@ -5792,9 +5803,12 @@ class TestSession_Py(BackendTestCase):
         self.assertIs(type(store), dict)
         self.assertEqual(sess.store, {})
         self.assertIs(sess.store, store)
+        self.assertIs(sess.closed, False)
+        self.assertIsNone(sess.message)
         self.assertEqual(repr(sess),
             'Session({!r}, {!r})'.format(address, credentials)
         )
+        self.assertEqual(str(sess), '{!r} {!r}'.format(address, credentials))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(credentials), ccount)
@@ -5882,7 +5896,7 @@ class TestSession_C(TestSession_Py):
 
 class TestServerFunctions_Py(BackendTestCase):
     def test_handle_requests(self):
-        handle_requests = self.getattr('handle_requests')
+        handle_requests = self.getattr('_handle_requests')
         Session = self.getattr('Session')
 
         # Session isn't a backend.Session instance:
@@ -5893,7 +5907,7 @@ class TestServerFunctions_Py(BackendTestCase):
         sock = NewMockSocket(data)
         ses = {'client': ('127.0.0.1', 12345)}
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'session: need a {!r}; got a {!r}'.format(Session, dict)
         )
@@ -5917,7 +5931,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a {!r}; got a {!r}'.format(tuple, list)
         )
@@ -5941,7 +5955,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 3-tuple'
         )
@@ -5965,7 +5979,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'response: need a 4-tuple; got a 5-tuple'
         )
@@ -5989,7 +6003,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             TYPE_ERROR.format('status', int, str, '200')
         )
@@ -6013,7 +6027,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 99'
         )
@@ -6037,7 +6051,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'GET /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'need 100 <= status <= 599; got 600'
         )
@@ -6062,7 +6076,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
         sock = NewMockSocket(data)
         with self.assertRaises(ValueError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             'request body not consumed: Body(<reader>, 3)'
         )
@@ -6086,7 +6100,7 @@ class TestServerFunctions_Py(BackendTestCase):
         data = b'HEAD /foo HTTP/1.1\r\n\r\n'
         sock = NewMockSocket(data)
         with self.assertRaises(TypeError) as cm:
-            handle_requests(app, sock, ses)
+            handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
             "request method is HEAD, but response body is not None: <class 'bytes'>" 
         )
@@ -6096,6 +6110,46 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(ses), 2)
         self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
         self.assertEqual(sys.getrefcount(rsp), 2)
+
+        # app() raises an exception:
+        marker = random_id()
+        exc = ValueError(marker)
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'PUT'
+            assert request.uri == '/foo'
+            assert request.headers == {'content-length': 3}
+            assert type(request.body) is bodies.Body
+            assert request.body.content_length == 3
+            raise exc
+
+        data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, ses, sock)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(ses.requests, 0)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
+
+        # EmptyPreambleError:
+        def app(session, request, bodies):
+            assert False
+
+        sock = NewMockSocket(b'')
+        with self.assertRaises(self.EmptyPreambleError) as cm:
+            handle_requests(app, ses, sock)
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+        self.assertEqual(ses.requests, 0)
+        self.assertIs(ses.closed, False)
+        self.assertIsNone(ses.message)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
 
         # Should close connection after max_requests:
         rsp = (200, 'OK', {}, b'bar')
@@ -6111,8 +6165,10 @@ class TestServerFunctions_Py(BackendTestCase):
         outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
         sock = NewMockSocket(indata * 3)
         ses = Session(('127.0.0.1', 12345), None, 2)
-        self.assertIsNone(handle_requests(app, sock, ses), 2)
+        self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 2)
+        self.assertIs(ses.closed, True)
+        self.assertEqual(ses.message, 'max_requests')
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -6120,7 +6176,6 @@ class TestServerFunctions_Py(BackendTestCase):
             ('recv_into', 32 * 1024),
             ('send', len(outdata)),
             ('send', len(outdata)),
-            'close',
         ])
         self.assertEqual(sys.getrefcount(rsp), 2)
         self.assertEqual(sock._rfile.read(), b'')
@@ -6149,8 +6204,10 @@ class TestServerFunctions_Py(BackendTestCase):
         out4 = out.format(400).encode()
         sock = NewMockSocket(indata * 10)
         ses = Session(('127.0.0.1', 12345), None, 10)
-        self.assertIsNone(handle_requests(app, sock, ses))
+        self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 4)
+        self.assertIs(ses.closed, True)
+        self.assertEqual(ses.message, '400 OK')
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -6160,7 +6217,6 @@ class TestServerFunctions_Py(BackendTestCase):
             ('send', len(out2)),
             ('send', len(out3)),
             ('send', len(out4)),
-            'close',
         ])
         self.assertEqual(sock._rfile.read(), b'')
         self.assertEqual(sock._wfile.getvalue(), out1 + out2 + out3 + out4)

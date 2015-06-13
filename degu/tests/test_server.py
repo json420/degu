@@ -152,14 +152,14 @@ class TestFunctions(TestCase):
             with self.assertRaises(ValueError) as cm:
                 func(sslconfig)
             self.assertEqual(str(cm.exception),
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
         sslconfig['ca_path'] = sslconfig.pop('ca_file')
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
                 func(sslconfig)
             self.assertEqual(str(cm.exception),
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
 
         # True is only allowed value for allow_unauthenticated_clients:
@@ -275,7 +275,46 @@ class TestFunctions(TestCase):
         self.assertEqual(sock._calls, [
             ('setsockopt', socket.SOL_SOCKET, socket.SO_PASSCRED, 1),
             ('getsockopt', socket.SOL_SOCKET, socket.SO_PEERCRED, size)
-        ])       
+        ])
+
+    def test_shutdown_and_close(self):
+        class MockSocket:
+            def __init__(self, exc=None):
+                self._exc = exc
+                self._calls = []
+
+            def shutdown(self, how):
+                self._calls.append(('shutdown', how))
+                if self._exc is not None:
+                    raise self._exc
+
+            def close(self):
+                self._calls.append('close')
+
+        sock = MockSocket()
+        self.assertIsNone(server._shutdown_and_close(sock))
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
+
+        sock = MockSocket(ConnectionError(random_id()))
+        self.assertIsNone(server._shutdown_and_close(sock))
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
+
+        marker = random_id()
+        exc = ValueError(marker)
+        sock = MockSocket(exc)
+        with self.assertRaises(ValueError) as cm:
+            server._shutdown_and_close(sock)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+        ]) 
 
 
 class BadApp:
@@ -359,7 +398,6 @@ class TestServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -406,6 +444,35 @@ class TestServer(TestCase):
         self.assertEqual(inst.address, inst.sock.getsockname())
         self.assertIsInstance(inst.address, bytes)
         self.assertIs(inst.app, good_app)
+
+        # Test options:
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(inst.timeout, 30)
+        self.assertEqual(inst.max_connections, 50)
+        self.assertEqual(inst.max_requests, 1000)
+        self.assertEqual(inst.options, {})
+        options = {
+            'timeout': 1,
+            'max_connections': 2,
+            'max_requests': 3,  
+        }
+        for (key, val) in options.items():
+            kw = {key: val}
+            inst = server.Server(degu.IPv6_LOOPBACK, good_app, **kw)
+            self.assertEqual(getattr(inst, key), val)
+            self.assertEqual(inst.options, kw)
+
+        # Test unsupported options:
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, good_app, foo=17)
+        self.assertEqual(str(cm.exception),
+            'unsupported Server **options: foo'
+        )
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
+        self.assertEqual(str(cm.exception),
+            'unsupported Server **options: bar, foo'
+        )  
 
     def test_repr(self):
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -519,7 +586,6 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('::1', port, 0, 0))
         self.assertIs(inst.app, app)
-        self.assertEqual(inst.on_connect, app.on_connect)
 
         # IPv6 loopback:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
@@ -552,6 +618,35 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
         self.assertIs(inst.app, good_app)
+
+        # Test options:
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(inst.timeout, 30)
+        self.assertEqual(inst.max_connections, 50)
+        self.assertEqual(inst.max_requests, 1000)
+        self.assertEqual(inst.options, {})
+        options = {
+            'timeout': 1,
+            'max_connections': 2,
+            'max_requests': 3,  
+        }
+        for (key, val) in options.items():
+            kw = {key: val}
+            inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, **kw)
+            self.assertEqual(getattr(inst, key), val)
+            self.assertEqual(inst.options, kw)
+
+        # Test unsupported options:
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17)
+        self.assertEqual(str(cm.exception),
+            'unsupported SSLServer **options: foo'
+        )
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
+        self.assertEqual(str(cm.exception),
+            'unsupported SSLServer **options: bar, foo'
+        )  
 
     def test_repr(self):
         pki = TempPKI()
