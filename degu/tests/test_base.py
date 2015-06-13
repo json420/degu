@@ -5754,6 +5754,7 @@ class TestSession_Py(BackendTestCase):
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
+        self.assertEqual(str(sess), repr(address))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(None), ncount)
@@ -5780,6 +5781,7 @@ class TestSession_Py(BackendTestCase):
         self.assertEqual(repr(sess),
             'Session({!r})'.format(address)
         )
+        self.assertEqual(str(sess), repr(address))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(credentials), ccount)
@@ -5806,6 +5808,7 @@ class TestSession_Py(BackendTestCase):
         self.assertEqual(repr(sess),
             'Session({!r}, {!r})'.format(address, credentials)
         )
+        self.assertEqual(str(sess), '{!r} {!r}'.format(address, credentials))
         del sess
         self.assertEqual(sys.getrefcount(address), 2)
         self.assertEqual(sys.getrefcount(credentials), ccount)

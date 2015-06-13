@@ -683,7 +683,7 @@ Both are documented below.
         ``dict`` it returns is mutable and the same ``dict`` instance will be
         returned every time you access this attribute.
 
-    .. method:: __repr__()
+    .. method:: __str__()
 
         Return a logging-friendly representation of the session.
 
@@ -691,18 +691,17 @@ Both are documented below.
 
         >>> from degu.server import Session
         >>> session = Session(('127.0.0.1', 12345), None)
-        >>> repr(session)
-        "Session(('127.0.0.1', 12345))"
+        >>> str(session)
+        "('127.0.0.1', 12345)"
 
-        (Notice that the *credentials* argument isn't included when ``None``.)
+        (Note that the *credentials* argument isn't included when ``None``.)
 
         Or a session corresponding to an ``AF_UNIX`` connection:
 
         >>> session = Session(b'\x0000222', (23848, 1000, 1000))
-        >>> repr(session)
-        "Session(b'\\x0000222', (23848, 1000, 1000))"
-        
-    
+        >>> str(session)
+        "b'\\x0000222' (23848, 1000, 1000)"
+
 
 
 

@@ -995,6 +995,7 @@ static PyMemberDef Session_members[] = {
 static void Session_dealloc(Session *);
 static int Session_init(Session *, PyObject *, PyObject *);
 static PyObject * Session_repr(Session *);
+static PyObject * Session_str(Session *);
 
 static PyTypeObject SessionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -1012,7 +1013,7 @@ static PyTypeObject SessionType = {
     0,                                  /* tp_as_mapping */
     0,                                  /* tp_hash  */
     0,                                  /* tp_call */
-    0,                                  /* tp_str */
+    (reprfunc)Session_str,              /* tp_str */
     0,                                  /* tp_getattro */
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */

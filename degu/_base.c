@@ -4556,6 +4556,14 @@ Session_repr(Session *self) {
     );
 }
 
+static PyObject *
+Session_str(Session *self) {
+    if (self->credentials == Py_None) {
+        return PyObject_Repr(self->address);
+    }
+    return PyUnicode_FromFormat("%R %R", self->address, self->credentials);
+}
+
 
 /******************************************************************************
  * Server-side helpers

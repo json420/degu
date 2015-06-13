@@ -1586,6 +1586,11 @@ class Session:
             return 'Session({!r})'.format(self._address)
         return 'Session({!r}, {!r})'.format(self._address, self._credentials)
 
+    def __str__(self):
+        if self._credentials is None:
+            return repr(self._address)
+        return '{!r} {!r}'.format(self._address, self._credentials)
+
     @property
     def address(self):
         return self._address
