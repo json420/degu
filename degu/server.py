@@ -116,6 +116,8 @@ def _validate_server_sslctx(sslctx):
     if sslctx.verify_mode == ssl.CERT_OPTIONAL:
         raise ValueError('sslctx.verify_mode cannot be ssl.CERT_OPTIONAL')
     assert sslctx.verify_mode in (ssl.CERT_REQUIRED, ssl.CERT_NONE)
+    if sslctx.verify_mode != ssl.CERT_REQUIRED:
+        log.warning('Security concern: sslctx allows unauthenticated clients!')
 
     # Check the options:
     if not (sslctx.options & ssl.OP_NO_COMPRESSION):
@@ -208,6 +210,9 @@ class Server:
 
     def serve_forever(self):
         log.info('Starting Degu %s @ %r', self.__class__.__name__, self.address)
+        log.info('[timeout=%r, max_connections=%r, max_requests=%r]',
+            self.timeout, self.max_connections, self.max_requests
+        )
         listensock = self.sock
         unix = (True if listensock.family == socket.AF_UNIX else False)
         semaphore = threading.BoundedSemaphore(self.max_connections)
