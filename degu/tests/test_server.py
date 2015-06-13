@@ -445,6 +445,35 @@ class TestServer(TestCase):
         self.assertIsInstance(inst.address, bytes)
         self.assertIs(inst.app, good_app)
 
+        # Test options:
+        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(inst.timeout, 30)
+        self.assertEqual(inst.max_connections, 50)
+        self.assertEqual(inst.max_requests, 1000)
+        self.assertEqual(inst.options, {})
+        options = {
+            'timeout': 1,
+            'max_connections': 2,
+            'max_requests': 3,  
+        }
+        for (key, val) in options.items():
+            kw = {key: val}
+            inst = server.Server(degu.IPv6_LOOPBACK, good_app, **kw)
+            self.assertEqual(getattr(inst, key), val)
+            self.assertEqual(inst.options, kw)
+
+        # Test unsupported options:
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, good_app, foo=17)
+        self.assertEqual(str(cm.exception),
+            'unsupported Server **options: foo'
+        )
+        with self.assertRaises(TypeError) as cm:
+            server.Server(degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
+        self.assertEqual(str(cm.exception),
+            'unsupported Server **options: bar, foo'
+        )  
+
     def test_repr(self):
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
@@ -589,6 +618,35 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
         self.assertIs(inst.app, good_app)
+
+        # Test options:
+        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
+        self.assertEqual(inst.timeout, 30)
+        self.assertEqual(inst.max_connections, 50)
+        self.assertEqual(inst.max_requests, 1000)
+        self.assertEqual(inst.options, {})
+        options = {
+            'timeout': 1,
+            'max_connections': 2,
+            'max_requests': 3,  
+        }
+        for (key, val) in options.items():
+            kw = {key: val}
+            inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, **kw)
+            self.assertEqual(getattr(inst, key), val)
+            self.assertEqual(inst.options, kw)
+
+        # Test unsupported options:
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17)
+        self.assertEqual(str(cm.exception),
+            'unsupported SSLServer **options: foo'
+        )
+        with self.assertRaises(TypeError) as cm:
+            server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
+        self.assertEqual(str(cm.exception),
+            'unsupported SSLServer **options: bar, foo'
+        )  
 
     def test_repr(self):
         pki = TempPKI()

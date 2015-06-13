@@ -190,8 +190,8 @@ class Server:
                 )
             )
         self.options = options
-        self.max_connections = options.get('max_connections', 25)
-        self.max_requests = options.get('max_requests', 500)
+        self.max_connections = options.get('max_connections', 50)
+        self.max_requests = options.get('max_requests', 1000)
         self.timeout = options.get('timeout', 30)
         assert isinstance(self.max_connections, int) and self.max_connections > 0
         assert isinstance(self.max_requests, int) and self.max_requests > 0 

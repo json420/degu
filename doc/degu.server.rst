@@ -385,15 +385,15 @@ If your ``app.on_connect()`` TCP connection handler adds anything to
 For example:
 
 >>> class MyApp:
+...     def on_connect(self, session, sock):
+...         # Somehow authenticate the user who made the connection...
+...         session.store['_user'] = 'admin'
+...         return True
+...
 ...     def __call__(self, session, request, bodies):
 ...         if session.store.get('_user') != 'admin':
 ...             return (403, 'Forbidden', {}, None)
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
-...
-...     def on_connect(self, sock, session):
-...         # Somehow authenticate the user who made the connection...
-...         session.store['_user'] = 'admin'
-...         return True
 ...
 
 (Note the ``'_'`` prefix is just a recommended convention to avoid conflict and
@@ -436,8 +436,8 @@ The default values of which are:
     ==============================  ========================
     Option/Attribute                Default
     ==============================  ========================
-    :attr:`Server.max_connections`  ``25``
-    :attr:`Server.max_requests`     ``500``
+    :attr:`Server.max_connections`  ``50``
+    :attr:`Server.max_requests`     ``1000``
     :attr:`Server.timeout`          ``30``
     ==============================  ========================
 
@@ -453,11 +453,10 @@ The default values of which are:
     >>> def my_app(session, request, bodies):
     ...     return (200, 'OK', {}, b'hello, world')
     ...
-    >>> from degu.server import SSLServer, build_server_sslctx
+    >>> from degu.server import SSLServer
     >>> from degu.misc import TempPKI
     >>> pki = TempPKI()
-    >>> sslctx = build_server_sslctx(pki.server_sslconfig)
-    >>> server = SSLServer(sslctx, ('127.0.0.1', 0), my_app)
+    >>> server = SSLServer(pki.server_sslconfig, ('127.0.0.1', 0), my_app)
 
     This subclass inherits all attributes and methods from :class:`Server`.
 
