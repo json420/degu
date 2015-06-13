@@ -152,14 +152,14 @@ class TestFunctions(TestCase):
             with self.assertRaises(ValueError) as cm:
                 func(sslconfig)
             self.assertEqual(str(cm.exception),
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
         sslconfig['ca_path'] = sslconfig.pop('ca_file')
         for func in server_sslctx_funcs:
             with self.assertRaises(ValueError) as cm:
                 func(sslconfig)
             self.assertEqual(str(cm.exception),
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
 
         # True is only allowed value for allow_unauthenticated_clients:

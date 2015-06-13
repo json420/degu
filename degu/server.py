@@ -85,7 +85,7 @@ def build_server_sslctx(sslconfig):
             )
         if {'ca_file', 'ca_path'}.intersection(sslconfig):
             raise ValueError(
-                'cannot include ca_file/ca_path allow_unauthenticated_clients'
+                'ca_file/ca_path with allow_unauthenticated_clients'
             )
         return sslctx
     if not {'ca_file', 'ca_path'}.intersection(sslconfig):
