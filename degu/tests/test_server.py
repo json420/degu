@@ -275,7 +275,46 @@ class TestFunctions(TestCase):
         self.assertEqual(sock._calls, [
             ('setsockopt', socket.SOL_SOCKET, socket.SO_PASSCRED, 1),
             ('getsockopt', socket.SOL_SOCKET, socket.SO_PEERCRED, size)
-        ])       
+        ])
+
+    def test_shutdown_and_close(self):
+        class MockSocket:
+            def __init__(self, exc=None):
+                self._exc = exc
+                self._calls = []
+
+            def shutdown(self, how):
+                self._calls.append(('shutdown', how))
+                if self._exc is not None:
+                    raise self._exc
+
+            def close(self):
+                self._calls.append('close')
+
+        sock = MockSocket()
+        self.assertIsNone(server._shutdown_and_close(sock))
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
+
+        sock = MockSocket(ConnectionError(random_id()))
+        self.assertIsNone(server._shutdown_and_close(sock))
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
+
+        marker = random_id()
+        exc = ValueError(marker)
+        sock = MockSocket(exc)
+        with self.assertRaises(ValueError) as cm:
+            server._shutdown_and_close(sock)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+        ]) 
 
 
 class BadApp:

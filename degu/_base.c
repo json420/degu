@@ -60,7 +60,7 @@ static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
-static PyObject *msg_max_requests      = NULL;  //  'max requests reached'
+static PyObject *msg_max_requests      = NULL;  //
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
@@ -107,7 +107,7 @@ _init_all_globals(PyObject *module)
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_empty,  PyUnicode_FromString(""))
-    _SET(msg_max_requests,  PyUnicode_FromString("max requests reached"))
+    _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
@@ -4511,22 +4511,31 @@ error:
 }
 
 static void
-_Session_close(Session *self, PyObject *message)
+_Session_close(Session *self, PyObject *msg)
 {
     self->closed = true;
+    if (msg == NULL) {
+         Py_FatalError("_Session_close(): msg == NULL");
+         return;
+    }
     if (self->message == NULL) {
-        self->message = message;
-        Py_XINCREF(self->message);
+        self->message = msg;
+        Py_INCREF(self->message);
     }
 }
 
-static void
+static bool
 _Session_response_complete(Session *self, DeguResponse *rsp)
 {
     /* Possibly close connection depending on response status */
     const size_t status = rsp->s;
     if (status >= 400 && status != 404 && status != 409 && status != 412) {
-        _Session_close(self, NULL);
+        PyObject *msg = PyUnicode_FromFormat("%S %S", rsp->status, rsp->reason);
+        if (msg == NULL) {
+            return false;
+        }
+        _Session_close(self, msg);
+        Py_CLEAR(msg);
     }
 
     /* Increment request counter, close if max_requests has been reached */
@@ -4534,6 +4543,7 @@ _Session_response_complete(Session *self, DeguResponse *rsp)
     if (self->requests >= self->max_requests) {
         _Session_close(self, msg_max_requests);
     }
+    return true;
 }
 
 static PyObject *
@@ -4628,7 +4638,15 @@ _handle_requests(PyObject *self, PyObject *args)
     while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
         if (! _Reader_read_request(READER(reader), &req)) {
-            goto error;
+            PyObject *err_type = NULL;
+            PyObject *err_value = NULL;
+            PyObject *err_traceback = NULL;
+            PyErr_Fetch(&err_type, &err_value, &err_traceback);
+            _Session_close(SESSION(session), err_value);
+            Py_CLEAR(err_type);
+            Py_CLEAR(err_value);
+            Py_CLEAR(err_traceback);
+            break;
         }
         _SET(request, _Request(&req))
 
@@ -4664,7 +4682,9 @@ _handle_requests(PyObject *self, PyObject *args)
         }
 
         /* Increment requests counter */
-        _Session_response_complete(SESSION(session), &rsp);
+        if (! _Session_response_complete(SESSION(session), &rsp)) {
+            goto error;
+        }
 
         /* Cleanup for next request */
         Py_CLEAR(response);

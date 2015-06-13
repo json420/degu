@@ -1619,13 +1619,20 @@ class Session:
         if self._message is None:
             self._message = message
 
+    def _response_complete(self, status, reason):
+        if status >= 400 and status not in (404, 409, 412):
+            self.close('{} {}'.format(status, reason))
+        self._requests += 1
+        if self._requests >= self._max_requests:
+            self.close('max_requests')
+
 
 def _handle_requests(app, sock, session):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
     reader = Reader(sock)
     writer = Writer(sock)
-    for i in range(session._max_requests):
+    while not session._closed:
         request = reader.read_request()
         response = app(session, request, bodies)
         (status, reason, headers, body) = _unpack_response(response)
@@ -1654,12 +1661,8 @@ def _handle_requests(app, sock, session):
         # Write response:
         writer.write_response(status, reason, headers, body)
 
-        # Update requests counter:
-        session._requests += 1
-
-        # Possibly close the connection:
-        if status >= 400 and status not in {404, 409, 412}:
-            break
+        # Update request counter, possibly close based on status:
+        session._response_complete(status, reason)
 
 
 class Connection:

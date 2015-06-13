@@ -207,7 +207,7 @@ class Server:
         )
 
     def serve_forever(self):
-        log.info('Degu %s at %r', self.__class__.__name__, self.address)
+        log.info('Starting Degu %s @ %r', self.__class__.__name__, self.address)
         listensock = self.sock
         unix = (True if listensock.family == socket.AF_UNIX else False)
         semaphore = threading.BoundedSemaphore(self.max_connections)
@@ -249,11 +249,11 @@ class Server:
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
             _handle_requests(self.app, sock, session)
-            log.info('Handled %d requests from %r: %s',
-                session.requests, session, session.message
+            log.info('%r: handled %d requests: %s',
+                session, session.requests, session.message
             )
         else:
-            log.warning('app.on_connect() rejected %r', session)
+            log.warning('%r: rejected by app.on_connect()', session)
         sock.close()
 
 
