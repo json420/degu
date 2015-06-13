@@ -1620,7 +1620,7 @@ class Session:
             self._message = message
 
 
-def handle_requests(app, sock, session):
+def _handle_requests(app, sock, session):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
     reader = Reader(sock)

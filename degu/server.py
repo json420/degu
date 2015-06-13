@@ -29,7 +29,7 @@ import threading
 import os
 import struct
 
-from .base import Session, Request, handle_requests, _TYPE_ERROR
+from .base import Session, Request, _handle_requests, _TYPE_ERROR
 
 
 __all__ = ('Server', 'SSLServer', 'Session', 'Request')
@@ -252,7 +252,7 @@ class Server:
     def _handler(self, sock, session):
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
-            handle_requests(self.app, sock, session)
+            _handle_requests(self.app, sock, session)
             log.info('Handled %d requests from %r', session.requests, session)
         else:
             log.warning('app.on_connect() rejected %r', session)

@@ -4596,7 +4596,7 @@ error:
 }
 
 static PyObject *
-handle_requests(PyObject *self, PyObject *args)
+_handle_requests(PyObject *self, PyObject *args)
 {
     PyObject *app = NULL;
     PyObject *sock = NULL;
@@ -4617,7 +4617,7 @@ handle_requests(PyObject *self, PyObject *args)
      */
     DeguResponse rsp = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "OOO:handle_requests", &app, &sock, &session)) {
+    if (! PyArg_ParseTuple(args, "OOO:_handle_requests", &app, &sock, &session)) {
         goto error;
     }
     if (! _check_type2("session", session, &SessionType)) {

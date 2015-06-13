@@ -293,7 +293,8 @@ class TestAliases(TestCase):
             'Range',
             'ContentRange',
             'bodies',
-            'handle_requests',
+            '_handle_requests',
+            'parse_headers',
             'Connection',
         )
         for name in all_names:
@@ -5888,7 +5889,7 @@ class TestSession_C(TestSession_Py):
 
 class TestServerFunctions_Py(BackendTestCase):
     def test_handle_requests(self):
-        handle_requests = self.getattr('handle_requests')
+        handle_requests = self.getattr('_handle_requests')
         Session = self.getattr('Session')
 
         # Session isn't a backend.Session instance:

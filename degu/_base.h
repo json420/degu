@@ -227,7 +227,7 @@ static PyObject * Request(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
 /* Server and client entry points */
-static PyObject * handle_requests(PyObject *, PyObject *);
+static PyObject * _handle_requests(PyObject *, PyObject *);
 
 static struct PyMethodDef degu_functions[] = {
     /* Header parsing */
@@ -270,7 +270,7 @@ static struct PyMethodDef degu_functions[] = {
     {"Response", Response, METH_VARARGS, NULL},
 
     /* Server and client entry points */
-    {"handle_requests", handle_requests, METH_VARARGS, NULL},
+    {"_handle_requests", _handle_requests, METH_VARARGS, NULL},
 
     {NULL, NULL, 0, NULL}
 };
