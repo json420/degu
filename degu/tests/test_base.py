@@ -365,7 +365,11 @@ class BackendTestCase(TestCase):
 
     @property
     def MAX_HEADER_COUNT(self):
-            return self.getattr('MAX_HEADER_COUNT')
+        return self.getattr('MAX_HEADER_COUNT')
+
+    @property
+    def EmptyPreambleError(self):
+        return self.getattr('EmptyPreambleError')
 
 
 class TestRange_Py(BackendTestCase):
@@ -6104,6 +6108,46 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
+        # app() raises an exception:
+        marker = random_id()
+        exc = ValueError(marker)
+        def app(session, request, bodies):
+            assert session is ses
+            assert request.method == 'PUT'
+            assert request.uri == '/foo'
+            assert request.headers == {'content-length': 3}
+            assert type(request.body) is bodies.Body
+            assert request.body.content_length == 3
+            raise exc
+
+        data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
+        sock = NewMockSocket(data)
+        with self.assertRaises(ValueError) as cm:
+            handle_requests(app, ses, sock)
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(ses.requests, 0)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
+
+        # EmptyPreambleError:
+        def app(session, request, bodies):
+            assert False
+
+        sock = NewMockSocket(b'')
+        with self.assertRaises(self.EmptyPreambleError) as cm:
+            handle_requests(app, ses, sock)
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+        self.assertEqual(ses.requests, 0)
+        self.assertIs(ses.closed, False)
+        self.assertIsNone(ses.message)
+        self.assertEqual(sys.getrefcount(app), 2)
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sys.getrefcount(ses), 2)
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
+
         # Should close connection after max_requests:
         rsp = (200, 'OK', {}, b'bar')
         def app(session, request, bodies):
@@ -6118,8 +6162,10 @@ class TestServerFunctions_Py(BackendTestCase):
         outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
         sock = NewMockSocket(indata * 3)
         ses = Session(('127.0.0.1', 12345), None, 2)
-        self.assertIsNone(handle_requests(app, ses, sock), 2)
+        self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 2)
+        self.assertIs(ses.closed, True)
+        self.assertEqual(ses.message, 'max_requests')
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
@@ -6157,6 +6203,8 @@ class TestServerFunctions_Py(BackendTestCase):
         ses = Session(('127.0.0.1', 12345), None, 10)
         self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 4)
+        self.assertIs(ses.closed, True)
+        self.assertEqual(ses.message, '400 OK')
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)

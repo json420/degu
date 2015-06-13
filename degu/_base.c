@@ -4638,15 +4638,7 @@ _handle_requests(PyObject *self, PyObject *args)
     while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
         if (! _Reader_read_request(READER(reader), &req)) {
-            PyObject *err_type = NULL;
-            PyObject *err_value = NULL;
-            PyObject *err_traceback = NULL;
-            PyErr_Fetch(&err_type, &err_value, &err_traceback);
-            _Session_close(SESSION(session), err_value);
-            Py_CLEAR(err_type);
-            Py_CLEAR(err_value);
-            Py_CLEAR(err_traceback);
-            break;
+            goto error;
         }
         _SET(request, _Request(&req))
 

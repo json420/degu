@@ -237,24 +237,28 @@ class Server:
         try:
             log.info('Connection from %r', session)
             self._handle_connection(session, sock)
-        except:
-            log.exception('Error after handling %d requests from %r:',
-                session.requests, session
+        except (socket.timeout, ConnectionError) as e:
+            log.info('%s: handled %d requests: %r',
+                session, session.requests, e
             )
-            _shutdown_and_close(sock)
+        except:
+            log.exception('%r: Error after handling %d requests:',
+                session, session.requests
+            )
         finally:
+            _shutdown_and_close(sock)
             semaphore.release()
 
     def _handle_connection(self, session, sock):
         on_connect = getattr(self.app, 'on_connect', None)
         if on_connect is None or on_connect(session, sock) is True:
             _handle_requests(self.app, session, sock)
+            sock.close()
             log.info('%r: handled %d requests: %s',
                 session, session.requests, session.message
             )
         else:
             log.warning('%r: rejected by app.on_connect()', session)
-        sock.close()
 
 
 class SSLServer(Server):
