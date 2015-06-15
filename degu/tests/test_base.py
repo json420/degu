@@ -6375,13 +6375,22 @@ class TestConnection_Py(BackendTestCase):
 
     def test_request(self):
         # Make sure method is validated:
-        for method in BAD_METHODS:
+        for method in GOOD_METHODS:
+            bad = method.encode()
+            sock = NewMockSocket()
+            conn = self.Connection(sock, None)
+            with self.assertRaises(TypeError) as cm:
+                conn.request(bad, '/foo', {}, None)
+            self.assertEqual(str(cm.exception),
+                TYPE_ERROR.format('method', str, bytes, bad)
+            )
+            bad = method.lower()
             sock = NewMockSocket()
             conn = self.Connection(sock, None)
             with self.assertRaises(ValueError) as cm:
-                conn.request(method, '/foo', {}, None)
+                conn.request(bad, '/foo', {}, None)
             self.assertEqual(str(cm.exception),
-                'bad HTTP method: {!r}'.format(method)
+                'bad method: {!r}'.format(bad)
             )
 
         # Test when connection is closed:

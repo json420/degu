@@ -713,6 +713,11 @@ def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
             'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
         )
 
+def _check_method(method):
+    _check_type('method', method, str)
+    if method not in {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}:
+        raise ValueError('bad method: {!r}'.format(method))
+
 def _validate_chunk(chunk):
     _check_tuple('chunk', chunk, 2)
     (ext, data) = chunk
@@ -1719,7 +1724,8 @@ class Connection:
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
-            if body is not None and method not in ('PUT', 'POST'):
+            _check_method(method)
+            if body is not None and method not in {'PUT', 'POST'}:
                 raise ValueError(
                     'when method is {!r}, body must be None; got a {!r}'.format(
                         method, type(body)
