@@ -1,5 +1,5 @@
 # degu: an embedded HTTP server and client library
-# Copyright (C) 2014 Novacut Inc
+# Copyright (C) 2014-2015 Novacut Inc
 #
 # This file is part of `degu`.
 #
@@ -26,15 +26,10 @@ HTTP client.
 import socket
 import os
 
-from .base import Connection, _TYPE_ERROR, Response
+from .base import Connection, Response, _TYPE_ERROR
 
-__all__ = (
-    'Client',
-    'SSLClient',
-    'build_client_sslctx',
-    'Connection',
-    'Response',
-)
+
+__all__ = ('Client', 'SSLClient', 'Connection', 'Response')
 
 
 def build_client_sslctx(sslconfig):
@@ -176,8 +171,6 @@ def _build_host(default_port, host, port, *extra):
         return host
     return '{}:{}'.format(host, port)
 
-#setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-#setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
 
 class Client:
     """
@@ -257,7 +250,6 @@ class Client:
 
     def connect(self):
         sock = self.create_socket()
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         conn = Connection(sock, self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
