@@ -549,14 +549,13 @@ class TestSSLClient(TestCase):
 
         pki = TempPKI()
         sslctx = client.build_client_sslctx(pki.client_sslconfig)
-
         for address in GOOD_ADDRESSES:
             inst = client.SSLClient(sslctx, address)
             self.assertEqual(repr(inst),
-                'SSLClient({!r}, {!r})'.format(sslctx, address)
+                'SSLClient(<sslctx>, {!r})'.format(address)
             )
             inst = Custom(sslctx, address)
             self.assertEqual(repr(inst),
-                'Custom({!r}, {!r})'.format(sslctx, address)
+                'Custom(<sslctx>, {!r})'.format(address)
             )
 

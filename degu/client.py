@@ -184,7 +184,7 @@ class Client:
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    _default_port = 80  # Needed to contruct the default host header
+    _default_port = 80  # Needed to construct the default host header
     _allowed_options = ('host', 'timeout', 'on_connect')
 
     def __init__(self, address, **options):
@@ -269,7 +269,7 @@ class SSLClient(Client):
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    _default_port = 443  # Needed to contruct the default host header
+    _default_port = 443  # Needed to construct the default host header
     _allowed_options = Client._allowed_options + ('ssl_host',)
 
     def __init__(self, sslctx, address, **options):
@@ -279,8 +279,8 @@ class SSLClient(Client):
         self.ssl_host = options.get('ssl_host', ssl_host)
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.sslctx, self.address
+        return '{}(<sslctx>, {!r})'.format(
+            self.__class__.__name__, self.address
         )
 
     def create_socket(self):
