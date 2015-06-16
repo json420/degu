@@ -466,12 +466,12 @@ class TestServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.Server(degu.IPv6_LOOPBACK, good_app, foo=17)
         self.assertEqual(str(cm.exception),
-            'unsupported Server **options: foo'
+            'unsupported Server() **options: foo'
         )
         with self.assertRaises(TypeError) as cm:
             server.Server(degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
-            'unsupported Server **options: bar, foo'
+            'unsupported Server() **options: bar, foo'
         )
 
     def test_repr(self):
@@ -640,12 +640,12 @@ class TestSSLServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17)
         self.assertEqual(str(cm.exception),
-            'unsupported SSLServer **options: foo'
+            'unsupported SSLServer() **options: foo'
         )
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
-            'unsupported SSLServer **options: bar, foo'
+            'unsupported SSLServer() **options: bar, foo'
         )
 
     def test_repr(self):

@@ -185,7 +185,7 @@ class Server:
         if not set(options).issubset(self._allowed_options):
             unsupported = sorted(set(options) - set(self._allowed_options))
             raise TypeError(
-                'unsupported {} **options: {}'.format(
+                'unsupported {}() **options: {}'.format(
                     self.__class__.__name__, ', '.join(unsupported)
                 )
             )
