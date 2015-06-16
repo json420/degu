@@ -309,6 +309,18 @@ class TestClient(TestCase):
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
 
+            # Test unsupported options:
+            with self.assertRaises(TypeError) as cm:
+                client.Client(address, foo=17)
+            self.assertEqual(str(cm.exception),
+                'unsupported Client() **options: foo'
+            )
+            with self.assertRaises(TypeError) as cm:
+                client.Client(address, foo=17, bar=18)
+            self.assertEqual(str(cm.exception),
+                'unsupported Client() **options: bar, foo'
+            )
+
     def test_repr(self):
         class Custom(client.Client):
             pass
@@ -542,6 +554,18 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
+
+            # Test unsupported options:
+            with self.assertRaises(TypeError) as cm:
+                client.SSLClient(sslctx, address, foo=17)
+            self.assertEqual(str(cm.exception),
+                'unsupported SSLClient() **options: foo'
+            )
+            with self.assertRaises(TypeError) as cm:
+                client.SSLClient(sslctx, address, foo=17, bar=18)
+            self.assertEqual(str(cm.exception),
+                'unsupported SSLClient() **options: bar, foo'
+            )
 
     def test_repr(self):
         class Custom(client.SSLClient):

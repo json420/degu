@@ -472,7 +472,7 @@ class TestServer(TestCase):
             server.Server(degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
             'unsupported Server **options: bar, foo'
-        )  
+        )
 
     def test_repr(self):
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
@@ -646,7 +646,7 @@ class TestSSLServer(TestCase):
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
             'unsupported SSLServer **options: bar, foo'
-        )  
+        )
 
     def test_repr(self):
         pki = TempPKI()

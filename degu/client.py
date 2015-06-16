@@ -213,12 +213,11 @@ class Client:
         self.address = address
 
         # options:
-        if not set(options).issubset(self.__class__._allowed_options):
-            cls = self.__class__
-            unsupported = sorted(set(options) - set(cls._allowed_options))
+        if not set(options).issubset(self._allowed_options):
+            unsupported = sorted(set(options) - set(self._allowed_options))
             raise TypeError(
-                'unsupported {} **options: {}'.format(
-                    cls.__name__, ', '.join(unsupported)
+                'unsupported {}() **options: {}'.format(
+                    self.__class__.__name__, ', '.join(unsupported)
                 )
             )
         self.options = options
