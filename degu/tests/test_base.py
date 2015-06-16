@@ -2975,7 +2975,7 @@ class TestFunctions(AlternatesTestCase):
         # Empty bytes:
         with self.assertRaises(ValueError) as cm:
             parse_content_length(b'')
-        self.assertEqual(str(cm.exception), 'content-length is empty')
+        self.assertEqual(str(cm.exception), "bad content-length: b''")
 
         # Too long:
         good = b'1111111111111111'
@@ -2996,7 +2996,9 @@ class TestFunctions(AlternatesTestCase):
                 with self.assertRaises(ValueError) as cm:
                     parse_content_length(buf)
                 if size == 0:
-                    self.assertEqual(str(cm.exception), 'content-length is empty')
+                    self.assertEqual(str(cm.exception),
+                        "bad content-length: b''"
+                    )
                 else:
                     self.assertEqual(str(cm.exception),
                         "content-length too long: b'1111111111111111'..."
@@ -3034,11 +3036,10 @@ class TestFunctions(AlternatesTestCase):
             with self.assertRaises(ValueError) as cm:
                 parse_content_length(bad)
             self.assertEqual(str(cm.exception),
-                'content-length has leading zero: {!r}'.format(bad)
+                'bad content-length: {!r}'.format(bad)
             )
 
-        # Netative values and spaces should be reported with the 'bad bytes'
-        # ValueError message:
+        # Netative values and spaces are nope:
         somebad = (
             b'-1',
             b'-17',
@@ -3051,7 +3052,7 @@ class TestFunctions(AlternatesTestCase):
             with self.assertRaises(ValueError) as cm:
                 parse_content_length(bad)
             self.assertEqual(str(cm.exception),
-                'bad bytes in content-length: {!r}'.format(bad)
+                'bad content-length: {!r}'.format(bad)
             )
 
         # Start with a know good value, then for each possible bad byte value,
@@ -3069,7 +3070,7 @@ class TestFunctions(AlternatesTestCase):
                 with self.assertRaises(ValueError) as cm:
                     parse_content_length(bad)
                 self.assertEqual(str(cm.exception),
-                    'bad bytes in content-length: {!r}'.format(bad)
+                    'bad content-length: {!r}'.format(bad)
                 )
 
         good_values = (
@@ -3089,7 +3090,7 @@ class TestFunctions(AlternatesTestCase):
                 with self.assertRaises(ValueError) as cm:
                     parse_content_length(bad)
                 self.assertEqual(str(cm.exception),
-                    'bad bytes in content-length: {!r}'.format(bad)
+                    'bad content-length: {!r}'.format(bad)
                 )
         for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
             for also_good in helpers.iter_good(good, b'123456789'):
@@ -3110,7 +3111,7 @@ class TestFunctions(AlternatesTestCase):
         for i in range(1000):
             bad = os.urandom(16)
             for func in functions:
-                exc = 'bad bytes in content-length: {!r}'.format(bad)
+                exc = 'bad content-length: {!r}'.format(bad)
                 with self.assertRaises(ValueError) as cm:
                     func(bad)
                 self.assertEqual(str(cm.exception), exc, func.__module__)
@@ -3121,7 +3122,7 @@ class TestFunctions(AlternatesTestCase):
                     func(bad2)
                 self.assertEqual(str(cm.exception), exc, func.__module__)
         for i in range(5000):
-            goodval = random.randint(0, 9007199254740992)
+            goodval = random.randint(0, 9999999999999999)
             good = str(goodval).encode()
             for func in functions:
                 ret = func(good)

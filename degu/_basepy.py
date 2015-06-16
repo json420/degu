@@ -355,25 +355,6 @@ def _parse_val(src):
     raise ValueError('bad bytes in header value: {!r}'.format(src))
 
 
-def parse_content_length(src):
-    assert isinstance(src, bytes)
-    if len(src) < 1:
-        raise ValueError('content-length is empty')
-    if len(src) > 16:
-        raise ValueError(
-            'content-length too long: {!r}...'.format(src[:16])
-        )
-    if not DECIMAL.issuperset(src):
-        raise ValueError(
-            'bad bytes in content-length: {!r}'.format(src)
-        )
-    if src[0:1] == b'0' and src != b'0':
-        raise ValueError(
-            'content-length has leading zero: {!r}'.format(src)
-        )
-    return int(src)
-
-
 def parse_chunk_size(src):
     L = len(src)
     if (L > 7):
@@ -429,9 +410,21 @@ def _parse_decimal(src):
         return -1
     if not DECIMAL.issuperset(src):
         return -1
-    if src[0:1] == b'0' and src != b'0':
+    if len(src) > 1 and src[0:1] == b'0':
         return -1
     return int(src)
+
+
+def parse_content_length(src):
+    assert isinstance(src, bytes)
+    if len(src) > 16:
+        raise ValueError(
+            'content-length too long: {!r}...'.format(src[:16])
+        )
+    value = _parse_decimal(src)
+    if value < 0:
+        raise ValueError('bad content-length: {!r}'.format(src))
+    return value
 
 
 def _raise_bad_range(src):
