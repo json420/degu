@@ -274,8 +274,8 @@ class SSLServer(Server):
         super().__init__(address, app, **options)
 
     def __repr__(self):
-        return '{}({!r}, {!r}, {!r})'.format(
-            self.__class__.__name__, self.sslctx, self.address, self.app
+        return '{}(<sslctx>, {!r}, {!r})'.format(
+            self.__class__.__name__, self.address, self.app
         )
 
     def _handle_connection(self, session, sock):

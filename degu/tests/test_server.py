@@ -653,7 +653,7 @@ class TestSSLServer(TestCase):
         sslctx = server.build_server_sslctx(pki.server_sslconfig)
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
-            'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+            'SSLServer(<sslctx>, {!r}, {!r})'.format(inst.address, good_app)
         )
 
         class Custom(server.SSLServer):
@@ -661,7 +661,7 @@ class TestSSLServer(TestCase):
 
         inst = Custom(sslctx, degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(repr(inst),
-            'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
+            'Custom(<sslctx>, {!r}, {!r})'.format(inst.address, good_app)
         )
 
 
