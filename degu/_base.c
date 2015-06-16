@@ -1567,36 +1567,58 @@ cleanup:
 /******************************************************************************
  * Request parsing - internal C API
  ******************************************************************************/
+
+static PyObject *
+_match_method(DeguSrc src)
+{
+    if (src.buf == NULL) {
+        Py_FatalError("_match_method(): src.buf == NULL");
+        return NULL;
+    }
+    if (_equal(src, GET)) {
+        return str_GET;
+    }
+    if (_equal(src, PUT)) {
+        return str_PUT;
+    }
+    if (_equal(src, POST)) {
+        return str_POST;
+    }
+    if (_equal(src, HEAD)) {
+        return str_HEAD;
+    }
+    if (_equal(src, DELETE)) {
+        return str_DELETE;
+    }
+    return NULL;
+}
+
 static PyObject *
 _parse_method(DeguSrc src)
 {
-    PyObject *method = NULL;
-
-    if (src.len == 3) {
-        if (_equal(src, GET)) {
-            method = str_GET;
-        }
-        else if (_equal(src, PUT)) {
-            method = str_PUT;
-        }
-    }
-    else if (src.len == 4) {
-        if (_equal(src, POST)) {
-            method = str_POST;
-        }
-        else if (_equal(src, HEAD)) {
-            method = str_HEAD;
-        }
-    }
-    else if (_equal(src, DELETE)) {
-        method = str_DELETE;
-    }
-
+    PyObject *method = _match_method(src);
     if (method == NULL) {
         _value_error("bad HTTP method: %R", src);
     }
     else {
         Py_INCREF(method);
+    }
+    return method;
+}
+
+static PyObject *
+_check_method(PyObject *o)
+{
+    if (o == str_GET || o == str_PUT || o == str_POST || o == str_HEAD || o == str_DELETE) {
+        return o;
+    }
+    DeguSrc src = _src_from_str("method", o);
+    if (src.buf == NULL) {
+        return NULL;
+    }
+    PyObject *method = _match_method(src);
+    if (method == NULL) {
+        PyErr_Format(PyExc_ValueError, "bad method: %R", o);
     }
     return method;
 }
@@ -1740,7 +1762,7 @@ _parse_request_line(DeguSrc line, DeguRequest *dr)
 
     /* _parse_method(), _parse_uri() handle the rest */
     _SET(dr->method, _parse_method(method_src))
-    if (!_parse_uri(uri_src, dr)) {
+    if (! _parse_uri(uri_src, dr)) {
         goto error;
     }
     return true;
@@ -2020,24 +2042,25 @@ done:
 static PyObject *
 parse_response(PyObject *self, PyObject *args)
 {
-    const uint8_t *method_buf = NULL;
-    size_t method_len = 0;
+    PyObject *method = NULL;
     const uint8_t *buf = NULL;
     size_t len = 0;
     PyObject *rfile = NULL;
-    PyObject *method = NULL;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "s#y#O:parse_response",
-            &method_buf, &method_len, &buf, &len, &rfile)) {
+    if (! PyArg_ParseTuple(args, "Oy#O:parse_response",
+            &method, &buf, &len, &rfile)) {
+        return NULL;
+    }
+    method = _check_method(method);
+    if (method == NULL) {
         return NULL;
     }
     DeguDst scratch = _calloc_dst(SCRATCH_LEN);
     if (scratch.buf == NULL) {
         return NULL;
     }
-    _SET(method, _parse_method((DeguSrc){method_buf, method_len}))
     DeguSrc src = {buf, len};
     if (_parse_response(method, src, rfile, scratch, &dr)) {
         _SET(ret, _Response(&dr))
@@ -2045,7 +2068,6 @@ parse_response(PyObject *self, PyObject *args)
 
 error:
     free(scratch.buf);
-    Py_CLEAR(method);
     _clear_degu_response(&dr);
     return ret;
 }
@@ -3386,22 +3408,20 @@ _Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
 static PyObject *
 Reader_read_response(Reader *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    PyObject *arg = NULL;
     PyObject *method = NULL;
     PyObject *ret = NULL;
     DeguResponse dr = NEW_DEGU_RESPONSE;
 
-    if (! PyArg_ParseTuple(args, "s#:read_response", &buf, &len)) {
+    if (! PyArg_ParseTuple(args, "O:read_response", &arg)) {
         return NULL;
     }
-    _SET(method, _parse_method((DeguSrc){buf, len}))
+    _SET(method, _check_method(arg))
     if (_Reader_read_response(self, method, &dr)) {
         _SET(ret, _Response(&dr))
     }
 
 error:
-    Py_CLEAR(method);
     _clear_degu_response(&dr);
     return ret;
 }
@@ -3633,16 +3653,15 @@ _Writer_write_response(Writer *self, DeguResponse *dr)
 static PyObject *
 Writer_write_request(Writer *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
     int64_t wrote = -2;
 
-    if (! PyArg_ParseTuple(args, "s#UOO:",
-            &buf, &len, &dr.uri, &dr.headers, &dr.body)) {
+    if (! PyArg_ParseTuple(args, "OOOO:write_request",
+            &method, &dr.uri, &dr.headers, &dr.body)) {
         return NULL;
     }
-    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
+    _SET(dr.method, _check_method(method))
     wrote = _Writer_write_request(self, &dr);
     goto cleanup;
 
@@ -3650,7 +3669,6 @@ error:
     wrote = -1;
 
 cleanup:
-    Py_CLEAR(dr.method);
     if (wrote < 0) {
         return NULL;
     }
@@ -4835,23 +4853,22 @@ cleanup:
     return response;
 }
 
+
 static PyObject *
 Connection_request(Connection *self, PyObject *args)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *response = NULL;
 
-    if (! PyArg_ParseTuple(args, "s#OOO:request",
-            &buf, &len, &dr.uri, &dr.headers, &dr.body)) {
+    if (! PyArg_ParseTuple(args, "OOOO:request",
+            &method, &dr.uri, &dr.headers, &dr.body)) {
         goto error;
     }
-    _SET(dr.method, _parse_method((DeguSrc){buf, len}))
+    _SET(dr.method, _check_method(method))
     _SET(response, _Connection_request(self, &dr))
 
 error:
-    Py_CLEAR(dr.method);
     return response;
 }
 

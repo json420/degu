@@ -1,5 +1,5 @@
 # degu: an embedded HTTP server and client library
-# Copyright (C) 2014 Novacut Inc
+# Copyright (C) 2014-2015 Novacut Inc
 #
 # This file is part of `degu`.
 #
@@ -309,6 +309,18 @@ class TestClient(TestCase):
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
 
+            # Test unsupported options:
+            with self.assertRaises(TypeError) as cm:
+                client.Client(address, foo=17)
+            self.assertEqual(str(cm.exception),
+                'unsupported Client() **options: foo'
+            )
+            with self.assertRaises(TypeError) as cm:
+                client.Client(address, foo=17, bar=18)
+            self.assertEqual(str(cm.exception),
+                'unsupported Client() **options: bar, foo'
+            )
+
     def test_repr(self):
         class Custom(client.Client):
             pass
@@ -543,20 +555,31 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
 
+            # Test unsupported options:
+            with self.assertRaises(TypeError) as cm:
+                client.SSLClient(sslctx, address, foo=17)
+            self.assertEqual(str(cm.exception),
+                'unsupported SSLClient() **options: foo'
+            )
+            with self.assertRaises(TypeError) as cm:
+                client.SSLClient(sslctx, address, foo=17, bar=18)
+            self.assertEqual(str(cm.exception),
+                'unsupported SSLClient() **options: bar, foo'
+            )
+
     def test_repr(self):
         class Custom(client.SSLClient):
             pass
 
         pki = TempPKI()
         sslctx = client.build_client_sslctx(pki.client_sslconfig)
-
         for address in GOOD_ADDRESSES:
             inst = client.SSLClient(sslctx, address)
             self.assertEqual(repr(inst),
-                'SSLClient({!r}, {!r})'.format(sslctx, address)
+                'SSLClient(<sslctx>, {!r})'.format(address)
             )
             inst = Custom(sslctx, address)
             self.assertEqual(repr(inst),
-                'Custom({!r}, {!r})'.format(sslctx, address)
+                'Custom(<sslctx>, {!r})'.format(address)
             )
 

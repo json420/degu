@@ -1,5 +1,5 @@
 # degu: an embedded HTTP server and client library
-# Copyright (C) 2014 Novacut Inc
+# Copyright (C) 2014-2015 Novacut Inc
 #
 # This file is part of `degu`.
 #
@@ -23,18 +23,13 @@
 HTTP client.
 """
 
-import socket
 import os
+import socket
 
-from .base import Connection, _TYPE_ERROR, Response
+from .base import Connection, Response, _TYPE_ERROR
 
-__all__ = (
-    'Client',
-    'SSLClient',
-    'build_client_sslctx',
-    'Connection',
-    'Response',
-)
+
+__all__ = ('Client', 'SSLClient', 'Connection', 'Response')
 
 
 def build_client_sslctx(sslconfig):
@@ -176,8 +171,6 @@ def _build_host(default_port, host, port, *extra):
         return host
     return '{}:{}'.format(host, port)
 
-#setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-#setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 1)
 
 class Client:
     """
@@ -191,8 +184,9 @@ class Client:
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    _default_port = 80  # Needed to contruct the default host header
-    _allowed_options = ('host', 'timeout', 'on_connect')
+    _default_port = 80  # Needed to construct the default host header
+    _options = ('host', 'timeout', 'on_connect')
+    __slots__ = ('address', 'options', '_family', '_base_headers') + _options
 
     def __init__(self, address, **options):
         # address:
@@ -220,12 +214,11 @@ class Client:
         self.address = address
 
         # options:
-        if not set(options).issubset(self.__class__._allowed_options):
-            cls = self.__class__
-            unsupported = sorted(set(options) - set(cls._allowed_options))
+        if not set(options).issubset(self.__class__._options):
+            unsupported = sorted(set(options) - set(self.__class__._options))
             raise TypeError(
-                'unsupported {} **options: {}'.format(
-                    cls.__name__, ', '.join(unsupported)
+                'unsupported {}() **options: {}'.format(
+                    self.__class__.__name__, ', '.join(unsupported)
                 )
             )
         self.options = options
@@ -257,7 +250,6 @@ class Client:
 
     def connect(self):
         sock = self.create_socket()
-        #sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         conn = Connection(sock, self._base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
@@ -277,8 +269,9 @@ class SSLClient(Client):
     To make HTTP requests, create a Connection using Client.connect().
     """
 
-    _default_port = 443  # Needed to contruct the default host header
-    _allowed_options = Client._allowed_options + ('ssl_host',)
+    _default_port = 443  # Needed to construct the default host header
+    _options = Client._options + ('ssl_host',)
+    __slots__ = ('sslctx', 'ssl_host')
 
     def __init__(self, sslctx, address, **options):
         self.sslctx = _validate_client_sslctx(sslctx)
@@ -287,8 +280,8 @@ class SSLClient(Client):
         self.ssl_host = options.get('ssl_host', ssl_host)
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.sslctx, self.address
+        return '{}(<sslctx>, {!r})'.format(
+            self.__class__.__name__, self.address
         )
 
     def create_socket(self):

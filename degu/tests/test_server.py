@@ -466,27 +466,33 @@ class TestServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.Server(degu.IPv6_LOOPBACK, good_app, foo=17)
         self.assertEqual(str(cm.exception),
-            'unsupported Server **options: foo'
+            'unsupported Server() **options: foo'
         )
         with self.assertRaises(TypeError) as cm:
             server.Server(degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
-            'unsupported Server **options: bar, foo'
-        )  
+            'unsupported Server() **options: bar, foo'
+        )
 
     def test_repr(self):
-        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Server({!r}, {!r})'.format(inst.address, good_app)
+        pairs = (
+            (good_app, 'degu.tests.test_server.good_app'),
+            (rgi.Validator, 'degu.rgi.Validator'),
+            (rgi.Validator(good_app), 'degu.rgi.Validator(<...>)'),
         )
 
         class Custom(server.Server):
-            pass
+            pass    
 
-        inst = Custom(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Custom({!r}, {!r})'.format(inst.address, good_app)
-        )
+        for (app, fqname) in pairs:
+            inst = server.Server(degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Server({!r}, {})'.format(inst.address, fqname)
+            )
+            inst = Custom(degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Custom({!r}, {})'.format(inst.address, fqname)
+            )
 
 
 class TestSSLServer(TestCase):
@@ -640,29 +646,35 @@ class TestSSLServer(TestCase):
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17)
         self.assertEqual(str(cm.exception),
-            'unsupported SSLServer **options: foo'
+            'unsupported SSLServer() **options: foo'
         )
         with self.assertRaises(TypeError) as cm:
             server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app, foo=17, bar=19)
         self.assertEqual(str(cm.exception),
-            'unsupported SSLServer **options: bar, foo'
-        )  
+            'unsupported SSLServer() **options: bar, foo'
+        )
 
     def test_repr(self):
+        pairs = (
+            (good_app, 'degu.tests.test_server.good_app'),
+            (rgi.Validator, 'degu.rgi.Validator'),
+            (rgi.Validator(good_app), 'degu.rgi.Validator(<...>)'),
+        )
         pki = TempPKI()
         sslctx = server.build_server_sslctx(pki.server_sslconfig)
-        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'SSLServer({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
-        )
 
         class Custom(server.SSLServer):
-            pass
+            pass    
 
-        inst = Custom(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Custom({!r}, {!r}, {!r})'.format(sslctx, inst.address, good_app)
-        )
+        for (app, fqname) in pairs:
+            inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'SSLServer(<sslctx>, {!r}, {})'.format(inst.address, fqname)
+            )
+            inst = Custom(sslctx, degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Custom(<sslctx>, {!r}, {})'.format(inst.address, fqname)
+            )
 
 
 CHUNKS = []

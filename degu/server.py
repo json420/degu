@@ -23,11 +23,11 @@
 HTTP server.
 """
 
-import socket
-import logging
-import threading
 import os
+import socket
+import threading
 import struct
+import logging
 
 from .base import Session, Request, _handle_requests, _TYPE_ERROR
 
@@ -130,6 +130,13 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
+def _fq_name(app):
+    if hasattr(app, '__qualname__'):
+        return '{}.{}'.format(app.__module__, app.__qualname__)
+    cls = app.__class__
+    return '{}.{}(<...>)'.format(cls.__module__, cls.__qualname__)
+
+
 def _get_credentials(sock):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
     size = struct.calcsize('3i')
@@ -146,8 +153,8 @@ def _shutdown_and_close(sock):
 
 
 class Server:
-    _allowed_options = ('max_connections', 'max_requests', 'timeout')
-    __slots__ = ('address', 'app', 'options', 'sock') + _allowed_options
+    _options = ('max_connections', 'max_requests', 'timeout')
+    __slots__ = ('address', 'app', 'options', 'sock') + _options
 
     def __init__(self, address, app, **options):
         # address:
@@ -182,10 +189,10 @@ class Server:
         self.app = app
 
         # options:
-        if not set(options).issubset(self._allowed_options):
-            unsupported = sorted(set(options) - set(self._allowed_options))
+        if not set(options).issubset(self.__class__._options):
+            unsupported = sorted(set(options) - set(self.__class__._options))
             raise TypeError(
-                'unsupported {} **options: {}'.format(
+                'unsupported {}() **options: {}'.format(
                     self.__class__.__name__, ', '.join(unsupported)
                 )
             )
@@ -204,8 +211,8 @@ class Server:
         self.sock.listen(5)
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.address, self.app
+        return '{}({!r}, {})'.format(
+            self.__class__.__name__, self.address, _fq_name(self.app)
         )
 
     def serve_forever(self):
@@ -274,8 +281,8 @@ class SSLServer(Server):
         super().__init__(address, app, **options)
 
     def __repr__(self):
-        return '{}({!r}, {!r}, {!r})'.format(
-            self.__class__.__name__, self.sslctx, self.address, self.app
+        return '{}(<sslctx>, {!r}, {})'.format(
+            self.__class__.__name__, self.address, _fq_name(self.app)
         )
 
     def _handle_connection(self, session, sock):

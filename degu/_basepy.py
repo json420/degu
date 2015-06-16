@@ -661,7 +661,7 @@ def parse_response_line(src):
 
 
 def parse_response(method, preamble, rfile):
-    method = parse_method(method)
+    _check_method(method)
     if preamble == b'':
         raise EmptyPreambleError('response preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
@@ -704,7 +704,6 @@ def _check_tuple(name, obj, size):
         )
     return obj
 
-
 def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
     assert max_len <= MAX_IO_SIZE
     _check_type2(name, obj, bytes)
@@ -712,6 +711,21 @@ def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
         raise ValueError(
             'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
         )
+
+_OUTGOING_STR = frozenset(chr(i) for i in range(128))
+
+def _check_str(name, obj):
+    _check_type(name, obj, str)
+    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+        raise ValueError(
+            'bad {}: {!r}'.format(name, obj)
+        )
+    return obj
+
+def _check_method(method):
+    _check_str('method', method)
+    if method not in {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}:
+        raise ValueError('bad method: {!r}'.format(method))
 
 def _validate_chunk(chunk):
     _check_tuple('chunk', chunk, 2)
@@ -782,16 +796,6 @@ def _check_key(key):
         )
     return key
 
-
-_OUTGOING_STR = frozenset(chr(i) for i in range(128))
-
-def _check_str(name, obj):
-    _check_type(name, obj, str)
-    if obj == '' or not _OUTGOING_STR.issuperset(obj):
-        raise ValueError(
-            'bad {}: {!r}'.format(name, obj)
-        )
-    return obj
 
 def _check_val(val):
     if type(val) is not str:
@@ -1014,7 +1018,7 @@ class Reader:
         return parse_request(preamble, self)
 
     def read_response(self, method):
-        method = parse_method(method)
+        _check_method(method)
         preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
         return parse_response(method, preamble, self)
 
@@ -1128,7 +1132,7 @@ class Writer:
         return total
 
     def write_request(self, method, uri, headers, body):
-        method = parse_method(method)
+        _check_method(method)
         set_output_headers(headers, body)
         return self._write_output(render_request,
             method, uri, headers, body
@@ -1719,7 +1723,8 @@ class Connection:
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
-            if body is not None and method not in ('PUT', 'POST'):
+            _check_method(method)
+            if body is not None and method not in {'PUT', 'POST'}:
                 raise ValueError(
                     'when method is {!r}, body must be None; got a {!r}'.format(
                         method, type(body)
