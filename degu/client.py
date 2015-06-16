@@ -23,8 +23,8 @@
 HTTP client.
 """
 
-import socket
 import os
+import socket
 
 from .base import Connection, Response, _TYPE_ERROR
 
