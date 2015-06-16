@@ -475,18 +475,24 @@ class TestServer(TestCase):
         )
 
     def test_repr(self):
-        inst = server.Server(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Server({!r}, {!r})'.format(inst.address, good_app)
+        pairs = (
+            (good_app, 'degu.tests.test_server.good_app'),
+            (rgi.Validator, 'degu.rgi.Validator'),
+            (rgi.Validator(good_app), 'degu.rgi.Validator(<...>)'),
         )
 
         class Custom(server.Server):
-            pass
+            pass    
 
-        inst = Custom(degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Custom({!r}, {!r})'.format(inst.address, good_app)
-        )
+        for (app, fqname) in pairs:
+            inst = server.Server(degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Server({!r}, {})'.format(inst.address, fqname)
+            )
+            inst = Custom(degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Custom({!r}, {})'.format(inst.address, fqname)
+            )
 
 
 class TestSSLServer(TestCase):
@@ -649,20 +655,26 @@ class TestSSLServer(TestCase):
         )
 
     def test_repr(self):
+        pairs = (
+            (good_app, 'degu.tests.test_server.good_app'),
+            (rgi.Validator, 'degu.rgi.Validator'),
+            (rgi.Validator(good_app), 'degu.rgi.Validator(<...>)'),
+        )
         pki = TempPKI()
         sslctx = server.build_server_sslctx(pki.server_sslconfig)
-        inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'SSLServer(<sslctx>, {!r}, {!r})'.format(inst.address, good_app)
-        )
 
         class Custom(server.SSLServer):
-            pass
+            pass    
 
-        inst = Custom(sslctx, degu.IPv6_LOOPBACK, good_app)
-        self.assertEqual(repr(inst),
-            'Custom(<sslctx>, {!r}, {!r})'.format(inst.address, good_app)
-        )
+        for (app, fqname) in pairs:
+            inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'SSLServer(<sslctx>, {!r}, {})'.format(inst.address, fqname)
+            )
+            inst = Custom(sslctx, degu.IPv6_LOOPBACK, app)
+            self.assertEqual(repr(inst),
+                'Custom(<sslctx>, {!r}, {})'.format(inst.address, fqname)
+            )
 
 
 CHUNKS = []

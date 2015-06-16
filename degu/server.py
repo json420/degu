@@ -23,11 +23,11 @@
 HTTP server.
 """
 
-import socket
-import logging
-import threading
 import os
+import socket
+import threading
 import struct
+import logging
 
 from .base import Session, Request, _handle_requests, _TYPE_ERROR
 
@@ -130,6 +130,13 @@ def _validate_server_sslctx(sslctx):
     return sslctx
 
 
+def _fq_name(app):
+    if hasattr(app, '__qualname__'):
+        return '{}.{}'.format(app.__module__, app.__qualname__)
+    cls = app.__class__
+    return '{}.{}(<...>)'.format(cls.__module__, cls.__qualname__)
+
+
 def _get_credentials(sock):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
     size = struct.calcsize('3i')
@@ -204,8 +211,8 @@ class Server:
         self.sock.listen(5)
 
     def __repr__(self):
-        return '{}({!r}, {!r})'.format(
-            self.__class__.__name__, self.address, self.app
+        return '{}({!r}, {})'.format(
+            self.__class__.__name__, self.address, _fq_name(self.app)
         )
 
     def serve_forever(self):
@@ -274,8 +281,8 @@ class SSLServer(Server):
         super().__init__(address, app, **options)
 
     def __repr__(self):
-        return '{}(<sslctx>, {!r}, {!r})'.format(
-            self.__class__.__name__, self.address, self.app
+        return '{}(<sslctx>, {!r}, {})'.format(
+            self.__class__.__name__, self.address, _fq_name(self.app)
         )
 
     def _handle_connection(self, session, sock):
