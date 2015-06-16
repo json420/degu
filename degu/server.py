@@ -153,8 +153,8 @@ def _shutdown_and_close(sock):
 
 
 class Server:
-    _allowed_options = ('max_connections', 'max_requests', 'timeout')
-    __slots__ = ('address', 'app', 'options', 'sock') + _allowed_options
+    _options = ('max_connections', 'max_requests', 'timeout')
+    __slots__ = ('address', 'app', 'options', 'sock') + _options
 
     def __init__(self, address, app, **options):
         # address:
@@ -189,8 +189,8 @@ class Server:
         self.app = app
 
         # options:
-        if not set(options).issubset(self._allowed_options):
-            unsupported = sorted(set(options) - set(self._allowed_options))
+        if not set(options).issubset(self.__class__._options):
+            unsupported = sorted(set(options) - set(self.__class__._options))
             raise TypeError(
                 'unsupported {}() **options: {}'.format(
                     self.__class__.__name__, ', '.join(unsupported)

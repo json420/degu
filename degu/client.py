@@ -185,7 +185,8 @@ class Client:
     """
 
     _default_port = 80  # Needed to construct the default host header
-    _allowed_options = ('host', 'timeout', 'on_connect')
+    _options = ('host', 'timeout', 'on_connect')
+    __slots__ = ('address', 'options', '_family', '_base_headers') + _options
 
     def __init__(self, address, **options):
         # address:
@@ -213,8 +214,8 @@ class Client:
         self.address = address
 
         # options:
-        if not set(options).issubset(self._allowed_options):
-            unsupported = sorted(set(options) - set(self._allowed_options))
+        if not set(options).issubset(self.__class__._options):
+            unsupported = sorted(set(options) - set(self.__class__._options))
             raise TypeError(
                 'unsupported {}() **options: {}'.format(
                     self.__class__.__name__, ', '.join(unsupported)
@@ -269,7 +270,8 @@ class SSLClient(Client):
     """
 
     _default_port = 443  # Needed to construct the default host header
-    _allowed_options = Client._allowed_options + ('ssl_host',)
+    _options = Client._options + ('ssl_host',)
+    __slots__ = ('sslctx', 'ssl_host')
 
     def __init__(self, sslctx, address, **options):
         self.sslctx = _validate_client_sslctx(sslctx)
