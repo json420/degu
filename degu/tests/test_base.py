@@ -6356,15 +6356,15 @@ class TestConnection_Py(BackendTestCase):
     def test_request(self):
         # Make sure method is validated:
         for method in GOOD_METHODS:
-            bad = method.encode()
-            sock = NewMockSocket()
-            conn = self.Connection(sock, None)
-            with self.assertRaises(TypeError) as cm:
-                conn.request(bad, '/foo', {}, None)
-            self.assertEqual(str(cm.exception),
-                TYPE_ERROR.format('method', str, bytes, bad)
-            )
-            bad = method.lower()
+            for bad in (method.encode(), str_subclass(method)):
+                sock = NewMockSocket()
+                conn = self.Connection(sock, None)
+                with self.assertRaises(TypeError) as cm:
+                    conn.request(bad, '/foo', {}, None)
+                self.assertEqual(str(cm.exception),
+                    TYPE_ERROR.format('method', str, type(bad), bad)
+                )
+        for bad in BAD_METHODS:
             sock = NewMockSocket()
             conn = self.Connection(sock, None)
             with self.assertRaises(ValueError) as cm:
