@@ -181,19 +181,27 @@ GOOD_METHODS = (
     'PUT',
     'DELETE',
 )
-_functions = (_permute_remove, _permute_replace, _permute_insert)
 BAD_METHODS = [
-    b'',
-    b'TRACE',
-    b'OPTIONS',
-    b'CONNECT',
-    b'PATCH',
+    '',
+    'TRACE',
+    'OPTIONS',
+    'CONNECT',
+    'PATCH',
+    'GOT',
+    'POT',
+    'PUSH',
+    'HELL',
+    'REPEAT',
 ]
-BAD_METHODS.extend(m.encode().lower() for m in GOOD_METHODS)
-for func in _functions:
+BAD_METHODS.extend(m.lower() for m in GOOD_METHODS)
+BAD_METHODS = tuple(BAD_METHODS)
+
+BAD_METHODS_BYTES = []
+for func in (_permute_remove, _permute_replace, _permute_insert):
     for m in GOOD_METHODS:
-        BAD_METHODS.extend(func(m.encode()))
-BAD_METHODS = tuple(sorted(set(BAD_METHODS)))
+        BAD_METHODS_BYTES.extend(func(m.encode()))
+BAD_METHODS_BYTES.extend(m.encode() for m in BAD_METHODS)
+BAD_METHODS_BYTES = tuple(sorted(set(BAD_METHODS_BYTES)))
 
 
 # Pre-build bad preamble termination permutations:
@@ -1560,12 +1568,12 @@ class TestParsingFunctions_Py(BackendTestCase):
             parse_response('GET', b'', rfile)
         self.assertEqual(str(cm.exception), 'response preamble is empty')
 
-        r = parse_response('GET', b'HTTP/1.1 200 OK', rfile)
-        self.assertIs(type(r), ResponseType)
-        self.assertEqual(r.status, 200)
-        self.assertEqual(r.reason, 'OK')
-        self.assertEqual(r.headers, {})
-        self.assertIsNone(r.body)
+        for method in BAD_METHODS:
+            with self.assertRaises(ValueError) as cm:    
+                parse_response(method, b'HTTP/1.1 200 OK', rfile)
+            self.assertEqual(str(cm.exception),
+                'bad method: {!r}'.format(method)
+            )
 
         body_methods = ('GET', 'PUT', 'POST', 'DELETE')
         length = b'HTTP/1.1 200 OK\r\nContent-Length: 17'
@@ -2682,36 +2690,8 @@ class TestFunctions(AlternatesTestCase):
                 'bad HTTP method: {!r}'.format(method.lower().encode())
             )
 
-        # Static bad methods:
-        bad_methods = (
-            'OPTIONS',
-            'TRACE',
-            'CONNECT',
-            'FOO',
-            'BAR',
-            'COPY',
-            'FOUR',
-            'SIXSIX',
-            'FOOBAR',
-            '',
-        )
-        for bad in bad_methods:
-            # Bad str:
-            with self.assertRaises(ValueError) as cm:
-                parse_method(bad)
-            self.assertEqual(str(cm.exception),
-                'bad HTTP method: {!r}'.format(bad.encode())
-            )
-
-            # Bad bytes:
-            with self.assertRaises(ValueError) as cm:
-                parse_method(bad.encode())
-            self.assertEqual(str(cm.exception),
-                'bad HTTP method: {!r}'.format(bad.encode())
-            )
-
         # Pre-generated bad method permutations:
-        for bad in BAD_METHODS:
+        for bad in BAD_METHODS_BYTES:
             with self.assertRaises(ValueError) as cm:
                 parse_method(bad)
             self.assertEqual(str(cm.exception),
@@ -5200,7 +5180,7 @@ class TestReader_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 reader.read_response(method)
             self.assertEqual(str(cm.exception),
-                'bad HTTP method: {!r}'.format(method)
+                'bad method: {!r}'.format(method)
             )
 
         # Test when exact b'\r\n\r\n' preamble termination is missing:
@@ -5438,7 +5418,7 @@ class TestWriter_Py(BackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 writer.write_request(method, '/', {}, None)
             self.assertEqual(str(cm.exception),
-                'bad HTTP method: {!r}'.format(method)
+                'bad method: {!r}'.format(method)
             )
 
         # Empty headers, no body:
