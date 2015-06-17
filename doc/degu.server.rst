@@ -800,6 +800,8 @@ Both are documented below.
 
 
 
+.. _server-logging:
+
 Logging
 -------
 

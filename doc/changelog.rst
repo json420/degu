@@ -5,6 +5,14 @@ Changelog
 0.14 (unreleased)
 -----------------
 
+Documentation improvements:
+
+    *   :ref:`eg-routing` has been added to the tutorial, demonstrating RGI
+        request routing using :func:`degu.util.shift_path()`
+
+    *   A new :ref:`server-logging` section has been added in the
+        :mod:`degu.server` documentation, providing details on the
+        per-connection logging done by the Degu server
 
 
 0.13 (May 2015)
