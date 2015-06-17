@@ -31,10 +31,14 @@ import tempfile
 import os
 import shutil
 import multiprocessing
+import logging
 
 from .base import _TYPE_ERROR
 from .sslhelpers import PKI as _PKI
 from .server import Server, SSLServer
+
+
+log = logging.getLogger(__name__)
 
 
 class TempPKI(_PKI):
@@ -170,4 +174,16 @@ class TempSSLServer(_TempProcess):
         return '{}(<sslconfig>, {!r}, {!r})'.format(
             self.__class__.__name__, self.address, self.app
         )
+
+
+class RequestLogger:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, session, request, bodies):
+        response = self.app(session, request, bodies)
+        log.info('[%d] %s %s --> %s %s', session.requests,
+            request.method, request.uri, response[0], response[1]
+        )
+        return response
 
