@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # degu: an embedded HTTP server and client library
-# Copyright (C) 2014 Novacut Inc
+# Copyright (C) 2014-2015 Novacut Inc
 #
 # This file is part of `degu`.
 #

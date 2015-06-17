@@ -1132,34 +1132,10 @@ _parse_decimal(DeguSrc src)
     if ((err & 240) != 0) {
         return -2;
     }
-    if (src.buf[0] == 48 && src.len != 1) {
+    if (src.len > 1 && src.buf[0] == 48) {
         return -3;
     }
     return (int64_t)accum;
-}
-
-static void
-_set_content_length_error(DeguSrc src, const int64_t value)
-{
-    if (value == -1) {
-        if (src.len < 1) {
-            PyErr_SetString(PyExc_ValueError, "content-length is empty");
-        }
-        else {
-            _value_error("content-length too long: %R...",
-                _slice(src, 0, MAX_CL_LEN)
-            );
-        }
-    }
-    else if (value == -2) {
-        _value_error("bad bytes in content-length: %R", src);
-    }
-    else if (value == -3) {
-        _value_error("content-length has leading zero: %R", src);
-    }
-    else {
-        Py_FatalError("_set_content_length_error(): bad internal call");
-    }
 }
 
 static int64_t
@@ -1167,7 +1143,14 @@ _parse_content_length(DeguSrc src)
 {
     const int64_t value = _parse_decimal(src);
     if (value < 0) {
-        _set_content_length_error(src, value);
+        if (src.len > MAX_CL_LEN) {
+            _value_error("content-length too long: %R...",
+                _slice(src, 0, MAX_CL_LEN)
+            );
+        }
+        else {
+            _value_error("bad content-length: %R", src);
+        }
     }
     return value;
 }

@@ -799,6 +799,98 @@ Both are documented below.
             '/foo?k=v' --> 'k=v'
 
 
+
+.. _server-logging:
+
+Logging
+-------
+
+:class:`Server` and :class:`SSLServer` do per-connection logging using the
+standard Python `logging`_ module.
+
+If you want to configure the Degu server logging differently than you configure
+your application root logger, obtain the ``Logger`` instance with the name
+``'degu.server'`` and configure it as needed, for example:
+
+>>> import logging
+>>> log = logging.getLogger('degu.server')
+>>> log.setLevel(logging.INFO)
+
+(Note that currently :mod:`degu.server` only uses the ``logging.INFO``,
+``logging.WARNING``, and ``logging.ERROR`` logging levels.)
+
+The Degu server will log when a new connection is received and will likewise
+log when that same connection is closed, with some summary information about
+how many requests were handled and why the connection was closed.
+
+For example, if you run the ``benchmark.py`` script from within the source tree,
+you'll see logging like this::
+
+    INFO	Thread-5	+ ('::1', 40682, 0, 0) New connection
+    INFO	Thread-5	- ('::1', 40682, 0, 0) Handled 10000 requests: max_requests
+
+Or if you run ``./benchmark.py --unix``, you'll see logging like this::
+
+    INFO	Thread-3	+ b'\x000024c' (32256, 1000, 1000) New connection
+    INFO	Thread-3	- b'\x000024c' (32256, 1000, 1000) Handled 10000 requests: max_requests
+
+(Note that ``(32256, 1000, 1000)`` above is the ``(pid,uid,gid)`` 3-tuple
+containing the unix credentials of the connecting client, which your application
+can access via :attr:`Session.credentials`.)
+
+As the Degu server is primarily aimed at scenarios where many thousands of
+high-frequency requests often will be made through the same connection, it does
+no per-request logging, only per-connection logging.  In such a use-case,
+per-request logging would add significant performance and disk-usage overhead,
+while not always being useful to all types of applications.
+
+This is quite different from the use-case of a typical webserver, where often
+only one request is made per connection (and likely at most a few dozen requests
+will be made through the same connection).  In the typical webserver scenario,
+it does generally makes sense to log each request.
+
+However, although the Degu server itself only does per-connection logging, your
+application can of course do its own per-request logging, whether using the
+standard Python `logging`_ module or some other mechanism.
+
+Per-request logging can be especially handy in RGI debugging middleware, for
+example:
+
+>>> import logging
+>>> log = logging.getLogger(__name__)
+>>> class RequestLogger:
+...     def __init__(self, app):
+...         self.app = app
+... 
+...     def __call__(self, session, request, bodies):
+...         (status, reason, headers, body) = self.app(session, request, bodies)
+...         log.info('%s %s --> %s %s', request.method, request.uri, status, reason)
+...         return (status, reason, headers, body)
+... 
+
+Or for even more verbose logging, you could log the complete details of each
+request and response (minus the actual content of the request and response
+bodies):
+
+>>> class RequestLogger:
+...     def __init__(self, app):
+...         self.app = app
+... 
+...     def __call__(self, session, request, bodies):
+...         log.info('--> %s %s %r %r', *request[:4])
+...         (status, reason, headers, body) = self.app(session, request, bodies)
+...         if isinstance(body, bytes):
+...             body_repr = '<bytes: {}>'.format(len(body))
+...         else:
+...             body_repr = repr(body)
+...         log.info('<-- %s %s %r %s', status, reason, headers, body_repr)
+...         return (status, reason, headers, body)
+... 
+
+The above example middleware are unlikely suitable for production use, but they
+could prove invaluable for debugging.
+
+
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket`: https://docs.python.org/3/library/socket.html
 .. _`socket.socket.bind()`: https://docs.python.org/3/library/socket.html#socket.socket.bind
@@ -810,4 +902,5 @@ Both are documented below.
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
 .. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
 .. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
+.. _`logging`: https://docs.python.org/3/library/logging.html
 
