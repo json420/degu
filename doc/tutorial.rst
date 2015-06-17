@@ -273,6 +273,92 @@ local host, but any of which could likewise be running on a remote host.
 
 
 
+Example: RGI routing
+--------------------
+
+As a request is routed through RGI middleware to the RGI leaf application that
+will generate the response, components should be shifted from
+:attr:`degu.server.Request.path` to :attr:`degu.server.Request.script`.
+
+:func:`degu.util.shift_path()` is the recommended way to do this, the exact
+implementation of which is:
+
+>>> def shift_path(request):
+...     next = request.path.pop(0)
+...     request.script.append(next)
+...     return next
+... 
+
+For example, say we have these two RGI leaf applications:
+
+>>> def foo_app(session, request, bodies):
+...     assert request.script == ['foo']
+...     if request.path != []:
+...         return (404, 'Not Found', {}, None)
+...     return (200, 'OK', {}, b'FOO this')
+... 
+>>> def bar_app(session, request, bodies):
+...     assert request.script == ['bar']
+...     if request.path != []:
+...         return (404, 'Not Found', {}, None)
+...     return (200, 'OK', {}, b'BAR that')
+... 
+
+And this RGI middleware, which will be our root application:
+
+>>> def root_app(session, request, bodies):
+...     if request.method != 'GET':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request.path == []:
+...         return (200, 'OK', {}, b'ROOT here')
+...     next = shift_path(request)
+...     if next == 'foo':
+...         return foo_app(session, request, bodies)
+...     if next == 'bar':
+...         return bar_app(session, request, bodies)
+...     return (404, 'Not Found', {}, None)
+... 
+
+As before, we'll run our application in a :class:`degu.misc.TempServer`:
+
+>>> from degu.misc import TempServer
+>>> server = TempServer(('127.0.0.1', 0), root_app)
+
+And create a :class:`degu.client.Client` for making connections to the above
+server:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+Now we'll create a :class:`degu.client.Connection`:
+
+>>> conn = client.connect()
+
+And use it to make some requests so we can see the RGI routing in action:
+
+>>> conn.get('/', {}).body.read()
+b'ROOT here'
+>>> conn.get('/foo', {}).body.read()
+b'FOO this'
+>>> conn.get('/bar', {}).body.read()
+b'BAR that'
+
+But if we request a resource the server doesn't have:
+
+>>> conn.get('/baz', {})
+Response(status=404, reason='Not Found', headers={}, body=None)
+>>> conn.get('/foo/bar', {})
+Response(status=404, reason='Not Found', headers={}, body=None)
+
+(Make sure you understand why that final request also returned a ``404`` error.)
+
+Finally, we'll *shut it down*:
+
+>>> conn.close()
+>>> server.terminate()
+
+
+
 .. _io-abstractions:
 
 IO abstractions
