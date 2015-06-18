@@ -92,7 +92,7 @@ _URI   = b'/?'
 _PATH  = b'+.:_~'
 _QUERY = b'%&='
 _SPACE = b' '
-_VALUE = b'"\'()*,;[]'
+_VALUE = b'"\'()*,;<>[]'
 
 KEY    = frozenset(_LOWER)
 VAL    = frozenset(_LOWER + _UPPER + _PATH + _QUERY + _URI + _SPACE + _VALUE)

@@ -78,7 +78,7 @@ BIT_FLAGS_DEF = (
     ('PATH',  b'+.:_~'),
     ('QUERY', b'%&='),
     ('SPACE', b' '),
-    ('VALUE', b'"\'()*,;[]'),   
+    ('VALUE', b'"\'()*,;<>[]'),   
 )
 
 # The above can be combined to produce a number of validation masks:
