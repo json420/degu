@@ -1708,6 +1708,10 @@ class Connection:
                 self.sock.shutdown(how)
             except:
                 pass
+            try:
+                self.sock.close()
+            except:
+                pass
 
     def close(self):
         self._shutdown()

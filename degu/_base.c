@@ -4733,11 +4733,12 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
     PyObject *sock = NULL;
     PyObject *base_headers = NULL;
 
+    self->closed = false;
+    self->sock = NULL;
     if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Connection", keys,
             &sock, &base_headers)) {
         goto error;
     }
-    self->closed = false;
     _SET_AND_INC(self->sock, sock)
     if (base_headers != Py_None && !_check_dict("base_headers", base_headers)) {
         goto error;
@@ -4764,6 +4765,8 @@ _Connection_shutdown(Connection *self)
     self->closed = true;
     PyErr_Fetch(&err_type, &err_value, &err_traceback);
     result = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
+    Py_CLEAR(result);
+    result = PyObject_CallMethod(self->sock, "close", NULL);
     Py_CLEAR(result);
     PyErr_Restore(err_type, err_value, err_traceback);
 }

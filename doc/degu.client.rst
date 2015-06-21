@@ -499,13 +499,15 @@ Also see the server :ref:`server-options`.
     The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
     anything else implementing the needed API.
 
-    Degu currently requires *sock* to have three methods::
+    Degu currently requires *sock* to have four methods::
 
         sock.send(src_buf)
 
         sock.read_into(dst_buf)
 
         sock.shutdown(how)
+
+        sock.close()
 
     (See the `socket.socket`_ documentation for details.)
 

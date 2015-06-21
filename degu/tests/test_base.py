@@ -5681,6 +5681,10 @@ class BaseMockSocket:
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
 
+    def close(self):
+        self._calls.append('close')
+
+
 class NewMockSocket(BaseMockSocket):
     __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf')
 
@@ -5706,9 +5710,6 @@ class NewMockSocket(BaseMockSocket):
         if self._sndbuf is not None:
             src = src[0:self._sndbuf]
         return self._wfile.write(src)
-
-    def close(self):
-        self._calls.append('close')
 
 
 class TestSession_Py(BackendTestCase):
@@ -6247,7 +6248,8 @@ class TestConnection_Py(BackendTestCase):
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
 
         # no sock.send() attribute:
@@ -6263,7 +6265,8 @@ class TestConnection_Py(BackendTestCase):
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
 
         # sock.recv_into() isn't callable:
@@ -6280,7 +6283,8 @@ class TestConnection_Py(BackendTestCase):
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
 
         # sock.send() isn't callable:
@@ -6297,7 +6301,8 @@ class TestConnection_Py(BackendTestCase):
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
 
         # base_headers is neither None nor a dict:
@@ -6311,7 +6316,8 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(base_headers), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
         self.assertEqual(base_headers, [('foo', 'bar')])
 
@@ -6329,7 +6335,8 @@ class TestConnection_Py(BackendTestCase):
         del conn
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
         self.assertEqual(sys.getrefcount(bodies), bcount)
 
@@ -6350,9 +6357,30 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(base_headers), 2)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
         self.assertEqual(sys.getrefcount(bodies), bcount)
+
+    def test_close(self):
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        self.assertIs(conn.closed, False)
+        self.assertIsNone(conn.close())
+        self.assertIs(conn.closed, True)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
+
+        # Calling Connection.close() again shouldn't call sock.shutdown(),
+        # sock.close():
+        self.assertIsNone(conn.close())
+        self.assertIs(conn.closed, True)
+        self.assertEqual(sock._calls, [
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
+        ])
 
     def test_request(self):
         # Make sure method is validated:
@@ -6379,7 +6407,8 @@ class TestConnection_Py(BackendTestCase):
         conn = self.Connection(sock, None)
         self.assertIsNone(conn.close())
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
         sock._calls.clear()
         with self.assertRaises(ValueError) as cm:
@@ -6418,7 +6447,8 @@ class TestConnection_Py(BackendTestCase):
         )
         self.assertIs(conn.closed, True)
         self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR)
+            ('shutdown', socket.SHUT_RDWR),
+            'close',
         ])
         self.assertEqual(sock._wfile.getvalue(), send)
         self.assertEqual(sock._rfile.tell(), len(recv) * 2)
@@ -6494,7 +6524,8 @@ class TestConnection_Py(BackendTestCase):
                 self.assertEqual(h, {})
                 self.assertIs(conn.closed, True)
                 self.assertEqual(sock._calls, [
-                    ('shutdown', socket.SHUT_RDWR)
+                    ('shutdown', socket.SHUT_RDWR),
+                    'close',
                 ])
 
     def test_put(self):
