@@ -216,6 +216,12 @@ class Server:
         )
 
     def serve_forever(self):
+        try:
+            self._serve_forever()
+        finally:
+            _shutdown_and_close(self.sock)
+
+    def _serve_forever(self):
         log.info('Starting Degu %s @ %r', self.__class__.__name__, self.address)
         log.info('[timeout=%r, max_connections=%r, max_requests=%r]',
             self.timeout, self.max_connections, self.max_requests
