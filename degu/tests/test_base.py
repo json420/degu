@@ -5471,6 +5471,18 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
+        # body is bytes longer than MAX_IO_SIZE:
+        MAX_IO_SIZE = self.MAX_IO_SIZE
+        sock = WSocket()
+        writer = self.Writer(sock)
+        headers = {}
+        body = os.urandom(MAX_IO_SIZE + 1)
+        with self.assertRaises(ValueError) as cm:
+            writer.write_request('GET', '/', headers, body)
+        self.assertEqual(str(cm.exception),
+            'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
+        )
+
         # body is bodies.Body:
         headers = {}
         rfile = io.BytesIO(b'hello')
@@ -5591,6 +5603,18 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.tell(), 43)
         self.assertEqual(sock._fp.getvalue(),
             b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytes longer than MAX_IO_SIZE:
+        MAX_IO_SIZE = self.MAX_IO_SIZE
+        sock = WSocket()
+        writer = self.Writer(sock)
+        headers = {}
+        body = os.urandom(MAX_IO_SIZE + 1)
+        with self.assertRaises(ValueError) as cm:
+            writer.write_response(200, 'OK', headers, body)
+        self.assertEqual(str(cm.exception),
+            'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
         )
 
         # body is base.BodyIter:

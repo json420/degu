@@ -1112,6 +1112,12 @@ class Writer:
         assert total > 0
         self._stop = total
         if type(body) is bytes:
+            if len(body) > MAX_IO_SIZE:
+                raise ValueError(
+                    'need len(body) <= {}; got {}'.format(
+                        MAX_IO_SIZE, len(body)
+                    )
+                )
             total += self._write(body)
         elif type(body) in bodies:
             total += body.write_to(self)
