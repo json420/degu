@@ -3555,6 +3555,19 @@ _Writer_write(Writer *self, DeguSrc src)
 }
 
 static int64_t
+_Writer_write_bytes_body(Writer *self, PyObject *body)
+{
+    DeguSrc src = _frombytes(body);
+    if (src.len > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need len(body) <= %zu; got %zu", MAX_IO_SIZE, src.len
+        );
+        return -1;
+    }
+    return _Writer_write(self, src);
+}
+
+static int64_t
 _Writer_write_body(Writer *self, PyObject *body)
 {
     DeguWObj w = {self, NULL};
@@ -3563,7 +3576,7 @@ _Writer_write_body(Writer *self, PyObject *body)
         return 0;
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write(self, _frombytes(body));
+        return _Writer_write_bytes_body(self, body);
     }
     if (IS_BODY(body)) {
         return _Body_write_to(BODY(body), &w);

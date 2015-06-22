@@ -914,176 +914,162 @@ CRLF_PERMUTATIONS = tuple(_iter_crlf_permutations())
 
 
 class TestParsingFunctions_Py(BackendTestCase):
-    def test_parse_chunk_size(self):
-        parse_chunk_size  = self.getattr('parse_chunk_size')
-        HEX = b'0123456789ABCDEFabcdef'
-        for num in range(256):
-            lcase = '{:x}'.format(num).encode()
-            ucase = '{:X}'.format(num).encode()
-            self.assertEqual(lcase, lcase.lower())
-            self.assertEqual(ucase, ucase.upper())
-            for src in (lcase, ucase):
-                n = parse_chunk_size(src)
-                self.assertIs(type(n), int)
-                self.assertEqual(n, num)
-                for i in range(len(src)):
-                    tmp = bytearray(src)
-                    for b in range(256):
-                        tmp[i] = b
-                        new = bytes(tmp)
-                        if b in HEX and (new[0] != 48 or len(new) == 1):
-                            n = parse_chunk_size(new)
-                            self.assertIs(type(n), int)
-                            self.assertEqual(n, int(new, 16))
-                        else:
-                            with self.assertRaises(ValueError) as cm:
-                                parse_chunk_size(new)
-                            self.assertEqual(str(cm.exception),
-                                'bad chunk_size: {!r}'.format(new)
-                            )
+    def test_parse_content_length(self):
+        parse_content_length = self.getattr('parse_content_length')
 
-        diff = 100
-        iomax = 16 * 1024 * 1024
-        for num in range(iomax - diff, iomax + diff):
-            src = '{:x}'.format(num).encode()
-            if num > iomax:
+        # Empty bytes:
+        with self.assertRaises(ValueError) as cm:
+            parse_content_length(b'')
+        self.assertEqual(str(cm.exception), "bad content-length: b''")
+
+        # Too long:
+        good = b'1111111111111111'
+        bad =  b'11111111111111112'
+        self.assertEqual(parse_content_length(good), 1111111111111111)
+        with self.assertRaises(ValueError) as cm:
+            parse_content_length(bad)
+        self.assertEqual(str(cm.exception),
+            "content-length too long: b'1111111111111111'..."
+        )
+
+        # Too short, just right, too long:
+        for size in range(50):
+            buf = b'1' * size
+            if 1 <= size <= 16:
+                self.assertEqual(parse_content_length(buf), int(buf))
+            else:
                 with self.assertRaises(ValueError) as cm:
-                    parse_chunk_size(src)
-                self.assertEqual(str(cm.exception),
-                    'need chunk_size <= {}; got {}'.format(iomax, num)
-                )
-            else:
-                n = parse_chunk_size(src)
-                self.assertIs(type(n), int)
-                self.assertEqual(n, num)
+                    parse_content_length(buf)
+                if size == 0:
+                    self.assertEqual(str(cm.exception),
+                        "bad content-length: b''"
+                    )
+                else:
+                    self.assertEqual(str(cm.exception),
+                        "content-length too long: b'1111111111111111'..."
+                    )
 
-        hmax = int(b'f' * 7, 16)
-        self.assertEqual(hmax, 268435455)
-        self.assertEqual(len('{:x}'.format(hmax)), 7)
-        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
-        for num in range(hmax - diff, hmax + diff):
-            src = '{:x}'.format(num).encode()
+        # b'0' should work fine:
+        self.assertEqual(parse_content_length(b'0'), 0)
+
+        # Non-leading zeros should work fine:
+        somegood = (
+            b'10',
+            b'100',
+            b'101',
+            b'909',
+            b'1000000000000000',
+            b'1000000000000001',
+            b'9000000000000000',
+            b'9000000000000009',
+        )
+        for good in somegood:
+            self.assertEqual(parse_content_length(good), int(good))
+
+        # But leading zeros should raise a ValueError:
+        somebad = (
+            b'01',
+            b'09',
+            b'011',
+            b'099',
+            b'0111111111111111',
+            b'0999999999999999',
+            b'0000000000000001',
+            b'0000000000000009',
+        )
+        for bad in somebad:
             with self.assertRaises(ValueError) as cm:
-                parse_chunk_size(src)
-            if num > hmax:
-                self.assertEqual(str(cm.exception),
-                    'chunk_size is too long: {!r}...'.format(src[:7])
-                )
-            else:
-                self.assertEqual(str(cm.exception),
-                    'need chunk_size <= {}; got {}'.format(iomax, num)
-                )
-
-    def test_parse_chunk_extension(self):
-        parse_chunk_extension = self.getattr('parse_chunk_extension')
-        EXTKEY = _basepy.EXTKEY
-        EXTVAL = _basepy.EXTVAL
-        self.assertEqual(parse_chunk_extension(b'k=v'), ('k', 'v'))
-        self.assertEqual(parse_chunk_extension(b'key=value'), ('key', 'value'))
-
-        for bad in (b'', b'k', b'kv', b'kev', b'keyvalue', b'k=', b'=v'):
-            with self.assertRaises(ValueError) as cm:
-                parse_chunk_extension(bad)
+                parse_content_length(bad)
             self.assertEqual(str(cm.exception),
-                'bad chunk extension: {!r}'.format(bad)
+                'bad content-length: {!r}'.format(bad)
             )
 
-        def random_allowed(allowed, min_len, max_len):
-            assert type(allowed) is frozenset
-            assert type(min_len) is int and min_len > 0
-            assert type(max_len) is int and max_len > min_len
-            for size in range(min_len, max_len):
-                yield bytes(random.sample(allowed, size))
+        # Netative values and spaces are nope:
+        somebad = (
+            b'-1',
+            b'-17',
+            b' 1',
+            b'1 ',
+            b'              -1',
+            b'-900719925474099',
+        )
+        for bad in somebad:
+            with self.assertRaises(ValueError) as cm:
+                parse_content_length(bad)
+            self.assertEqual(str(cm.exception),
+                'bad content-length: {!r}'.format(bad)
+            )
 
-        keys = tuple(random_allowed(EXTKEY, 1, 16))
-        vals = tuple(random_allowed(EXTVAL, 1, 16))
-        for key in keys:
-            k = key.decode()
-            for val in vals:
-                v = val.decode()
-                good = key + b'=' + val
-                self.assertEqual(parse_chunk_extension(good), (k, v))
-                for b in range(256):
-                    sep = bytes([b])
-                    bad = key + sep + val
-                    if b == 61:
-                        self.assertEqual(bad, good)
-                        continue
-                    with self.assertRaises(ValueError) as cm:
-                        parse_chunk_extension(bad)
-                    self.assertEqual(str(cm.exception),
-                        'bad chunk extension: {!r}'.format(bad)
-                    )
-
-        ALL = frozenset(range(256))
-        badkey = ALL - EXTKEY
-        badval = ALL - EXTVAL
-        for (key, val) in [(b'k', b'v'), (b'key', b'value')]:
-            for i in range(len(key)):
-                tmp = bytearray(key)
-                for b in badkey:
-                    tmp[i] = b
-                    bad = bytes(tmp)
-                    ext = b'='.join([bad, val])
-                    with self.assertRaises(ValueError) as cm:
-                        parse_chunk_extension(ext)
-                    if b == 61:
-                        if i > 0:
-                            self.assertEqual(str(cm.exception),
-                                'bad chunk extension value: {!r}'.format(
-                                    ext[i+1:]
-                                )
-                            )
-                        else:
-                            self.assertEqual(str(cm.exception),
-                                'bad chunk extension: {!r}'.format(ext)
-                            ) 
-                    else:
-                        self.assertEqual(str(cm.exception),
-                            'bad chunk extension key: {!r}'.format(bad)
-                        )
-            for i in range(len(val)):
-                tmp = bytearray(val)
-                for b in badval:
-                    tmp[i] = b
-                    bad = bytes(tmp)
-                    ext = b'='.join([key, bad])
-                    with self.assertRaises(ValueError) as cm:
-                        parse_chunk_extension(ext)
-                    self.assertEqual(str(cm.exception),
-                        'bad chunk extension value: {!r}'.format(bad)
-                    )
-
-    def test_parse_chunk(self):
-        parse_chunk = self.getattr('parse_chunk')
-        self.assertEqual(parse_chunk(b'0'), (0, None))
-        self.assertEqual(parse_chunk(b'0;k=v'), (0, ('k', 'v')))
-
-        self.assertEqual(parse_chunk(b'1000000'), (16777216, None))
-        self.assertEqual(parse_chunk(b'1000000;k=v'), (16777216, ('k', 'v')))
-
-        with self.assertRaises(ValueError) as cm:
-            parse_chunk(b'')
-        self.assertEqual(str(cm.exception), "b'\\r\\n' not found in b''...")
-        with self.assertRaises(ValueError) as cm:
-            parse_chunk(b';k=v')
-        self.assertEqual(str(cm.exception), "bad chunk_size: b''")
-        with self.assertRaises(ValueError) as cm:
-            parse_chunk(b'0;')
-        self.assertEqual(str(cm.exception), "bad chunk extension: b''")
-
-        tmp = bytearray(b'0;k=v')
-        for b in range(256):
-            tmp[1] = b
-            src = bytes(tmp)
-            if b == 59:
-                self.assertEqual(parse_chunk(src), (0, ('k', 'v')))
-            else:
+        # Start with a know good value, then for each possible bad byte value,
+        # copy the good value and make it bad by replacing a good byte with a
+        # bad byte at each possible index:
+        goodset = frozenset(b'0123456789')
+        badset = frozenset(range(256)) - goodset
+        good = b'9007199254740992'
+        self.assertEqual(parse_content_length(good), 9007199254740992)
+        for b in badset:
+            for i in range(len(good)):
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
                 with self.assertRaises(ValueError) as cm:
-                    parse_chunk(src)
+                    parse_content_length(bad)
                 self.assertEqual(str(cm.exception),
-                    'bad chunk_size: {!r}'.format(src)
+                    'bad content-length: {!r}'.format(bad)
                 )
+
+        good_values = (
+            b'0',
+            b'1',
+            b'9',
+            b'11',
+            b'99',
+            b'1111111111111111',
+            b'9007199254740992',
+            b'9999999999999999',
+        )
+        for good in good_values:
+            self.assertEqual(parse_content_length(good), int(good))
+            self.assertEqual(str(int(good)).encode(), good)
+            for bad in iter_bad(good, b'0123456789'):
+                with self.assertRaises(ValueError) as cm:
+                    parse_content_length(bad)
+                self.assertEqual(str(cm.exception),
+                    'bad content-length: {!r}'.format(bad)
+                )
+        for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
+            for also_good in helpers.iter_good(good, b'123456789'):
+                self.assertEqual(
+                    parse_content_length(also_good),
+                    int(also_good)
+                )
+
+        # Remaining tests only apply to C backend
+        if self.backend is not _base:
+            return
+
+        # Compare C to Python implementations with the same random values:
+        functions = (_base.parse_content_length, _basepy.parse_content_length)
+        for i in range(1000):
+            bad = os.urandom(16)
+            for func in functions:
+                exc = 'bad content-length: {!r}'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+            bad2 = bad + b'1'
+            for func in functions:
+                exc = 'content-length too long: {!r}...'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad2)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+        for i in range(5000):
+            goodval = random.randint(0, 9999999999999999)
+            good = str(goodval).encode()
+            for func in functions:
+                ret = func(good)
+                self.assertIsInstance(ret, int)
+                self.assertEqual(ret, goodval)
 
     def test_parse_range(self):
         parse_range = self.getattr('parse_range')
@@ -1613,6 +1599,176 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertIs(type(r.body), bodies.ChunkedBody)
             self.assertIs(r.body.rfile, rfile)
 
+    def test_parse_chunk_size(self):
+        parse_chunk_size  = self.getattr('parse_chunk_size')
+        HEX = b'0123456789ABCDEFabcdef'
+        for num in range(256):
+            lcase = '{:x}'.format(num).encode()
+            ucase = '{:X}'.format(num).encode()
+            self.assertEqual(lcase, lcase.lower())
+            self.assertEqual(ucase, ucase.upper())
+            for src in (lcase, ucase):
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+                for i in range(len(src)):
+                    tmp = bytearray(src)
+                    for b in range(256):
+                        tmp[i] = b
+                        new = bytes(tmp)
+                        if b in HEX and (new[0] != 48 or len(new) == 1):
+                            n = parse_chunk_size(new)
+                            self.assertIs(type(n), int)
+                            self.assertEqual(n, int(new, 16))
+                        else:
+                            with self.assertRaises(ValueError) as cm:
+                                parse_chunk_size(new)
+                            self.assertEqual(str(cm.exception),
+                                'bad chunk_size: {!r}'.format(new)
+                            )
+
+        diff = 100
+        iomax = 16 * 1024 * 1024
+        for num in range(iomax - diff, iomax + diff):
+            src = '{:x}'.format(num).encode()
+            if num > iomax:
+                with self.assertRaises(ValueError) as cm:
+                    parse_chunk_size(src)
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+            else:
+                n = parse_chunk_size(src)
+                self.assertIs(type(n), int)
+                self.assertEqual(n, num)
+
+        hmax = int(b'f' * 7, 16)
+        self.assertEqual(hmax, 268435455)
+        self.assertEqual(len('{:x}'.format(hmax)), 7)
+        self.assertEqual(len('{:x}'.format(hmax + 1)), 8)
+        for num in range(hmax - diff, hmax + diff):
+            src = '{:x}'.format(num).encode()
+            with self.assertRaises(ValueError) as cm:
+                parse_chunk_size(src)
+            if num > hmax:
+                self.assertEqual(str(cm.exception),
+                    'chunk_size is too long: {!r}...'.format(src[:7])
+                )
+            else:
+                self.assertEqual(str(cm.exception),
+                    'need chunk_size <= {}; got {}'.format(iomax, num)
+                )
+
+    def test_parse_chunk_extension(self):
+        parse_chunk_extension = self.getattr('parse_chunk_extension')
+        EXTKEY = _basepy.EXTKEY
+        EXTVAL = _basepy.EXTVAL
+        self.assertEqual(parse_chunk_extension(b'k=v'), ('k', 'v'))
+        self.assertEqual(parse_chunk_extension(b'key=value'), ('key', 'value'))
+
+        for bad in (b'', b'k', b'kv', b'kev', b'keyvalue', b'k=', b'=v'):
+            with self.assertRaises(ValueError) as cm:
+                parse_chunk_extension(bad)
+            self.assertEqual(str(cm.exception),
+                'bad chunk extension: {!r}'.format(bad)
+            )
+
+        def random_allowed(allowed, min_len, max_len):
+            assert type(allowed) is frozenset
+            assert type(min_len) is int and min_len > 0
+            assert type(max_len) is int and max_len > min_len
+            for size in range(min_len, max_len):
+                yield bytes(random.sample(allowed, size))
+
+        keys = tuple(random_allowed(EXTKEY, 1, 16))
+        vals = tuple(random_allowed(EXTVAL, 1, 16))
+        for key in keys:
+            k = key.decode()
+            for val in vals:
+                v = val.decode()
+                good = key + b'=' + val
+                self.assertEqual(parse_chunk_extension(good), (k, v))
+                for b in range(256):
+                    sep = bytes([b])
+                    bad = key + sep + val
+                    if b == 61:
+                        self.assertEqual(bad, good)
+                        continue
+                    with self.assertRaises(ValueError) as cm:
+                        parse_chunk_extension(bad)
+                    self.assertEqual(str(cm.exception),
+                        'bad chunk extension: {!r}'.format(bad)
+                    )
+
+        ALL = frozenset(range(256))
+        badkey = ALL - EXTKEY
+        badval = ALL - EXTVAL
+        for (key, val) in [(b'k', b'v'), (b'key', b'value')]:
+            for i in range(len(key)):
+                tmp = bytearray(key)
+                for b in badkey:
+                    tmp[i] = b
+                    bad = bytes(tmp)
+                    ext = b'='.join([bad, val])
+                    with self.assertRaises(ValueError) as cm:
+                        parse_chunk_extension(ext)
+                    if b == 61:
+                        if i > 0:
+                            self.assertEqual(str(cm.exception),
+                                'bad chunk extension value: {!r}'.format(
+                                    ext[i+1:]
+                                )
+                            )
+                        else:
+                            self.assertEqual(str(cm.exception),
+                                'bad chunk extension: {!r}'.format(ext)
+                            ) 
+                    else:
+                        self.assertEqual(str(cm.exception),
+                            'bad chunk extension key: {!r}'.format(bad)
+                        )
+            for i in range(len(val)):
+                tmp = bytearray(val)
+                for b in badval:
+                    tmp[i] = b
+                    bad = bytes(tmp)
+                    ext = b'='.join([key, bad])
+                    with self.assertRaises(ValueError) as cm:
+                        parse_chunk_extension(ext)
+                    self.assertEqual(str(cm.exception),
+                        'bad chunk extension value: {!r}'.format(bad)
+                    )
+
+    def test_parse_chunk(self):
+        parse_chunk = self.getattr('parse_chunk')
+        self.assertEqual(parse_chunk(b'0'), (0, None))
+        self.assertEqual(parse_chunk(b'0;k=v'), (0, ('k', 'v')))
+
+        self.assertEqual(parse_chunk(b'1000000'), (16777216, None))
+        self.assertEqual(parse_chunk(b'1000000;k=v'), (16777216, ('k', 'v')))
+
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b'')
+        self.assertEqual(str(cm.exception), "b'\\r\\n' not found in b''...")
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b';k=v')
+        self.assertEqual(str(cm.exception), "bad chunk_size: b''")
+        with self.assertRaises(ValueError) as cm:
+            parse_chunk(b'0;')
+        self.assertEqual(str(cm.exception), "bad chunk extension: b''")
+
+        tmp = bytearray(b'0;k=v')
+        for b in range(256):
+            tmp[1] = b
+            src = bytes(tmp)
+            if b == 59:
+                self.assertEqual(parse_chunk(src), (0, ('k', 'v')))
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    parse_chunk(src)
+                self.assertEqual(str(cm.exception),
+                    'bad chunk_size: {!r}'.format(src)
+                )
 
 class TestParsingFunctions_C(TestParsingFunctions_Py):
     backend = _base
@@ -2967,167 +3123,6 @@ class TestFunctions(AlternatesTestCase):
     def test_parse_request_line_c(self):
         self.skip_if_no_c_ext()
         self.check_parse_request_line(_base)
-
-    def check_parse_content_length(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_content_length = backend.parse_content_length
-
-        # Empty bytes:
-        with self.assertRaises(ValueError) as cm:
-            parse_content_length(b'')
-        self.assertEqual(str(cm.exception), "bad content-length: b''")
-
-        # Too long:
-        good = b'1111111111111111'
-        bad =  b'11111111111111112'
-        self.assertEqual(parse_content_length(good), 1111111111111111)
-        with self.assertRaises(ValueError) as cm:
-            parse_content_length(bad)
-        self.assertEqual(str(cm.exception),
-            "content-length too long: b'1111111111111111'..."
-        )
-
-        # Too short, just right, too long:
-        for size in range(50):
-            buf = b'1' * size
-            if 1 <= size <= 16:
-                self.assertEqual(parse_content_length(buf), int(buf))
-            else:
-                with self.assertRaises(ValueError) as cm:
-                    parse_content_length(buf)
-                if size == 0:
-                    self.assertEqual(str(cm.exception),
-                        "bad content-length: b''"
-                    )
-                else:
-                    self.assertEqual(str(cm.exception),
-                        "content-length too long: b'1111111111111111'..."
-                    )
-
-        # b'0' should work fine:
-        self.assertEqual(parse_content_length(b'0'), 0)
-
-        # Non-leading zeros should work fine:
-        somegood = (
-            b'10',
-            b'100',
-            b'101',
-            b'909',
-            b'1000000000000000',
-            b'1000000000000001',
-            b'9000000000000000',
-            b'9000000000000009',
-        )
-        for good in somegood:
-            self.assertEqual(parse_content_length(good), int(good))
-
-        # But leading zeros should raise a ValueError:
-        somebad = (
-            b'01',
-            b'09',
-            b'011',
-            b'099',
-            b'0111111111111111',
-            b'0999999999999999',
-            b'0000000000000001',
-            b'0000000000000009',
-        )
-        for bad in somebad:
-            with self.assertRaises(ValueError) as cm:
-                parse_content_length(bad)
-            self.assertEqual(str(cm.exception),
-                'bad content-length: {!r}'.format(bad)
-            )
-
-        # Netative values and spaces are nope:
-        somebad = (
-            b'-1',
-            b'-17',
-            b' 1',
-            b'1 ',
-            b'              -1',
-            b'-900719925474099',
-        )
-        for bad in somebad:
-            with self.assertRaises(ValueError) as cm:
-                parse_content_length(bad)
-            self.assertEqual(str(cm.exception),
-                'bad content-length: {!r}'.format(bad)
-            )
-
-        # Start with a know good value, then for each possible bad byte value,
-        # copy the good value and make it bad by replacing a good byte with a
-        # bad byte at each possible index:
-        goodset = frozenset(b'0123456789')
-        badset = frozenset(range(256)) - goodset
-        good = b'9007199254740992'
-        self.assertEqual(parse_content_length(good), 9007199254740992)
-        for b in badset:
-            for i in range(len(good)):
-                bad = bytearray(good)
-                bad[i] = b
-                bad = bytes(bad)
-                with self.assertRaises(ValueError) as cm:
-                    parse_content_length(bad)
-                self.assertEqual(str(cm.exception),
-                    'bad content-length: {!r}'.format(bad)
-                )
-
-        good_values = (
-            b'0',
-            b'1',
-            b'9',
-            b'11',
-            b'99',
-            b'1111111111111111',
-            b'9007199254740992',
-            b'9999999999999999',
-        )
-        for good in good_values:
-            self.assertEqual(parse_content_length(good), int(good))
-            self.assertEqual(str(int(good)).encode(), good)
-            for bad in iter_bad(good, b'0123456789'):
-                with self.assertRaises(ValueError) as cm:
-                    parse_content_length(bad)
-                self.assertEqual(str(cm.exception),
-                    'bad content-length: {!r}'.format(bad)
-                )
-        for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
-            for also_good in helpers.iter_good(good, b'123456789'):
-                self.assertEqual(
-                    parse_content_length(also_good),
-                    int(also_good)
-                )
-
-    def test_parse_content_length_py(self):
-        self.check_parse_content_length(_basepy)
-
-    def test_parse_content_length_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_content_length(_base)
-
-        # Compare C to Python implementations with the same random values:
-        functions = (_base.parse_content_length, _basepy.parse_content_length)
-        for i in range(1000):
-            bad = os.urandom(16)
-            for func in functions:
-                exc = 'bad content-length: {!r}'.format(bad)
-                with self.assertRaises(ValueError) as cm:
-                    func(bad)
-                self.assertEqual(str(cm.exception), exc, func.__module__)
-            bad2 = bad + b'1'
-            for func in functions:
-                exc = 'content-length too long: {!r}...'.format(bad)
-                with self.assertRaises(ValueError) as cm:
-                    func(bad2)
-                self.assertEqual(str(cm.exception), exc, func.__module__)
-        for i in range(5000):
-            goodval = random.randint(0, 9999999999999999)
-            good = str(goodval).encode()
-            for func in functions:
-                ret = func(good)
-                self.assertIsInstance(ret, int)
-                self.assertEqual(ret, goodval)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
@@ -5476,6 +5471,18 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
+        # body is bytes longer than MAX_IO_SIZE:
+        MAX_IO_SIZE = self.MAX_IO_SIZE
+        sock = WSocket()
+        writer = self.Writer(sock)
+        headers = {}
+        body = os.urandom(MAX_IO_SIZE + 1)
+        with self.assertRaises(ValueError) as cm:
+            writer.write_request('GET', '/', headers, body)
+        self.assertEqual(str(cm.exception),
+            'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
+        )
+
         # body is bodies.Body:
         headers = {}
         rfile = io.BytesIO(b'hello')
@@ -5596,6 +5603,18 @@ class TestWriter_Py(BackendTestCase):
         self.assertEqual(sock._fp.tell(), 43)
         self.assertEqual(sock._fp.getvalue(),
             b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytes longer than MAX_IO_SIZE:
+        MAX_IO_SIZE = self.MAX_IO_SIZE
+        sock = WSocket()
+        writer = self.Writer(sock)
+        headers = {}
+        body = os.urandom(MAX_IO_SIZE + 1)
+        with self.assertRaises(ValueError) as cm:
+            writer.write_response(200, 'OK', headers, body)
+        self.assertEqual(str(cm.exception),
+            'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
         )
 
         # body is base.BodyIter:
