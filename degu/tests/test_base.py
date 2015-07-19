@@ -3252,9 +3252,15 @@ class TestFunctions(AlternatesTestCase):
         rfile = io.BytesIO(b'1e61;foo\r\ndata\r\n')
         with self.assertRaises(ValueError) as cm:
             base.read_chunk(rfile)
-        self.assertEqual(str(cm.exception),
-            'need more than 1 value to unpack'
-        )
+        if sys.version_info < (3, 5):
+            # ValueError format has changed for Python >= 3.5:
+            self.assertEqual(str(cm.exception),
+                'need more than 1 value to unpack'
+            )
+        else:
+            self.assertEqual(str(cm.exception),
+                'not enough values to unpack (expected 2, got 1)'
+            )
         self.assertEqual(rfile.tell(), 10)
         self.assertEqual(rfile.read(), b'data\r\n')
 
