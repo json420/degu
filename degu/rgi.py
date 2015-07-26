@@ -277,7 +277,7 @@ def _validate_session(session):
 
 
 def _reconstruct_uri(request):
-    uri = '/' + '/'.join(request.script + request.path)
+    uri = '/' + '/'.join(request.mount + request.path)
     if request.query is None:
         return uri
     return '?'.join([uri, request.query])
@@ -316,8 +316,8 @@ def _validate_request(bodies, request):
             TYPE_ERROR.format(label, str, type(value), value) 
         )
 
-    # request.script:
-    (label, value) = _getattr('request', request, 'script')
+    # request.mount:
+    (label, value) = _getattr('request', request, 'mount')
     if not isinstance(value, list):
         raise TypeError(
             TYPE_ERROR.format(label, list, type(value), value) 

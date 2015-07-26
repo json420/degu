@@ -98,7 +98,7 @@ def build_request(**kw):
     request = {
         'method': 'POST',
         'uri': '/foo/bar?stuff=junk',
-        'script': ['foo'],
+        'mount': ['foo'],
         'path': ['bar'],
         'query': 'stuff=junk',
         'headers': {},
@@ -459,105 +459,105 @@ class TestFunctions(TestCase):
         )
 
     def test_reconstruct_uri(self):
-        # script, path, and query are all empty:
-        kw = {'script': [], 'path': [], 'query': None}
+        # mount, path, and query are all empty:
+        kw = {'mount': [], 'path': [], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, [])
 
-        # only script:
-        kw = {'script': ['foo'], 'path': [], 'query': None}
+        # only mount:
+        kw = {'mount': ['foo'], 'path': [], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo')
-        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.mount, ['foo'])
         self.assertEqual(request.path, [])
 
-        kw = {'script': ['foo', ''], 'path': [], 'query': None}
+        kw = {'mount': ['foo', ''], 'path': [], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
-        self.assertEqual(request.script, ['foo', ''])
+        self.assertEqual(request.mount, ['foo', ''])
         self.assertEqual(request.path, [])
 
-        kw = {'script': ['foo', 'bar'], 'path': [], 'query': None}
+        kw = {'mount': ['foo', 'bar'], 'path': [], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
-        self.assertEqual(request.script, ['foo', 'bar'])
+        self.assertEqual(request.mount, ['foo', 'bar'])
         self.assertEqual(request.path, [])
 
-        kw = {'script': ['foo', 'bar', ''], 'path': [], 'query': None}
+        kw = {'mount': ['foo', 'bar', ''], 'path': [], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
-        self.assertEqual(request.script, ['foo', 'bar', ''])
+        self.assertEqual(request.mount, ['foo', 'bar', ''])
         self.assertEqual(request.path, [])
 
         # only path:
-        kw = {'script': [], 'path': ['foo'], 'query': None}
+        kw = {'mount': [], 'path': ['foo'], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, ['foo'])
 
-        kw = {'script': [], 'path': ['foo', ''], 'query': None}
+        kw = {'mount': [], 'path': ['foo', ''], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, ['foo', ''])
 
-        kw = {'script': [], 'path': ['foo', 'bar'], 'query': None}
+        kw = {'mount': [], 'path': ['foo', 'bar'], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, ['foo', 'bar'])
 
-        kw = {'script': [], 'path': ['foo', 'bar', ''], 'query': None}
+        kw = {'mount': [], 'path': ['foo', 'bar', ''], 'query': None}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, ['foo', 'bar', ''])
 
         # only query:
-        kw = {'script': [], 'path': [], 'query': 'hello'}
+        kw = {'mount': [], 'path': [], 'query': 'hello'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/?hello')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, [])
 
-        kw = {'script': [], 'path': [], 'query': 'stuff=junk'}
+        kw = {'mount': [], 'path': [], 'query': 'stuff=junk'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/?stuff=junk')
-        self.assertEqual(request.script, [])
+        self.assertEqual(request.mount, [])
         self.assertEqual(request.path, [])
 
         # All of the above:
-        kw = {'script': ['foo'], 'path': ['bar'], 'query': 'hello'}
+        kw = {'mount': ['foo'], 'path': ['bar'], 'query': 'hello'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?hello')
-        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.mount, ['foo'])
         self.assertEqual(request.path, ['bar'])
 
-        kw = {'script': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
+        kw = {'mount': ['foo'], 'path': ['bar', ''], 'query': 'hello'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?hello')
-        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.mount, ['foo'])
         self.assertEqual(request.path, ['bar', ''])
 
-        kw = {'script': ['foo'], 'path': ['bar'], 'query': 'one=two'}
+        kw = {'mount': ['foo'], 'path': ['bar'], 'query': 'one=two'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar?one=two')
-        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.mount, ['foo'])
         self.assertEqual(request.path, ['bar'])
 
-        kw = {'script': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
+        kw = {'mount': ['foo'], 'path': ['bar', ''], 'query': 'one=two'}
         request = MockObject(**kw)
         self.assertEqual(rgi._reconstruct_uri(request), '/foo/bar/?one=two')
-        self.assertEqual(request.script, ['foo'])
+        self.assertEqual(request.mount, ['foo'])
         self.assertEqual(request.path, ['bar', ''])
 
     def test_check_uri_invariant(self):
         good = {
             'uri': '/foo/bar/baz?stuff=junk',
-            'script': [],
+            'mount': [],
             'path': ['foo', 'bar', 'baz'],
             'query': 'stuff=junk',
         }
@@ -566,7 +566,7 @@ class TestFunctions(TestCase):
 
         bad = {
             'uri': '/foo/bar/baz?stuff=junk',
-            'script': ['foo'],
+            'mount': ['foo'],
             'path': ['baz'],
             'query': 'stuff=junk',
         }
@@ -582,7 +582,7 @@ class TestFunctions(TestCase):
         good = {
             'method': 'POST',
             'uri': '/foo/bar?stuff=junk',
-            'script': ['foo'],
+            'mount': ['foo'],
             'path': ['bar'],
             'query': 'stuff=junk',
             'headers': {},
@@ -620,34 +620,34 @@ class TestFunctions(TestCase):
             "request.uri: need a <class 'str'>; got a <class 'bytes'>: b'/foo/bar?stuff=junk'"
         )
 
-        # Bad request.script type:
+        # Bad request.mount type:
         bad = deepcopy(good)
-        bad['script'] = ('foo',)
+        bad['mount'] = ('foo',)
         request = MockObject(**bad)
         with self.assertRaises(TypeError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.script: need a <class 'list'>; got a <class 'tuple'>: ('foo',)"
+            "request.mount: need a <class 'list'>; got a <class 'tuple'>: ('foo',)"
         )
 
-        # Bad request.script[0] type:
+        # Bad request.mount[0] type:
         bad = deepcopy(good)
-        bad['script'] = [b'foo']
+        bad['mount'] = [b'foo']
         request = MockObject(**bad)
         with self.assertRaises(TypeError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.script[0]: need a <class 'str'>; got a <class 'bytes'>: b'foo'"
+            "request.mount[0]: need a <class 'str'>; got a <class 'bytes'>: b'foo'"
         )
 
-        # Bad request.script[1] type:
+        # Bad request.mount[1] type:
         bad = deepcopy(good)
-        bad['script'] = ['foo', b'baz']
+        bad['mount'] = ['foo', b'baz']
         request = MockObject(**bad)
         with self.assertRaises(TypeError) as cm:
             rgi._validate_request(default_bodies, request)
         self.assertEqual(str(cm.exception),
-            "request.script[1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
+            "request.mount[1]: need a <class 'str'>; got a <class 'bytes'>: b'baz'"
         )
 
         # Bad request.path type:

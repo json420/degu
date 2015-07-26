@@ -692,7 +692,7 @@ del wfile
 
 def chunked_request_app(session, request, bodies):
     assert request.method == 'POST'
-    assert request.script == []
+    assert request.mount == []
     assert request.path == []
     assert isinstance(request.body, bodies.ChunkedBody)
     assert request.headers['transfer-encoding'] == 'chunked'
@@ -706,7 +706,7 @@ def chunked_request_app(session, request, bodies):
 
 def chunked_response_app(session, request, bodies):
     assert request.method == 'GET'
-    assert request.script == []
+    assert request.mount == []
     assert request.body is None
     headers = {'transfer-encoding': 'chunked'}
     if request.path == ['foo']:
@@ -726,7 +726,7 @@ DATA = DATA1 + DATA2
 
 def response_app(session, request, bodies):
     assert request.method == 'GET'
-    assert request.script == []
+    assert request.mount == []
     assert request.body is None
     if request.path == ['foo']:
         body = bodies.Body(io.BytesIO(DATA), len(DATA))
@@ -740,7 +740,7 @@ def response_app(session, request, bodies):
 
 def timeout_app(session, request, bodies):
     assert request.method == 'POST'
-    assert request.script == []
+    assert request.mount == []
     assert request.body is None
     if request.path == ['foo']:
         # Used to test timeout on server side:
@@ -1059,7 +1059,7 @@ def ssl_app(session, request, bodies):
 #    )
 #    assert session['ssl_compression'] is None
     assert request.method == 'GET'
-    assert request.script == []
+    assert request.mount == []
     assert request.body is None
     return (200, 'OK', {}, None)
 
