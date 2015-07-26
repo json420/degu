@@ -150,7 +150,7 @@ typedef struct {
     DEGU_HEADERS_HEAD
     PyObject *method;
     PyObject *uri;
-    PyObject *script;
+    PyObject *mount;
     PyObject *path;
     PyObject *query;
 } DeguRequest;

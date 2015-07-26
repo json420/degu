@@ -32,27 +32,27 @@ standard library:
 
 def shift_path(request):
     """
-    Shift path to script in an RGI *request* argument.
+    Shift path to mount in an RGI *request* argument.
 
-    This function only uses the `script` and `path` attributes from the
+    This function only uses the `mount` and `path` attributes from the
     *request* namedtuple:
 
     >>> from collections import namedtuple
-    >>> Request = namedtuple('Request', 'script path')
+    >>> Request = namedtuple('Request', 'mount path')
     >>> request = Request(['foo'], ['bar', 'baz'])
     >>> shift_path(request)
     'bar'
 
     And you can see *request* was updated in place:
 
-    >>> request.script
+    >>> request.mount
     ['foo', 'bar']
     >>> request.path
     ['baz']
 
     """
     next = request.path.pop(0)
-    request.script.append(next)
+    request.mount.append(next)
     return next
 
 
@@ -84,7 +84,7 @@ def relative_uri(request):
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
-    Note that ``request.script`` is ignored by this function.
+    Note that ``request.mount`` is ignored by this function.
     """
     uri = '/' + '/'.join(request.path)
     if request.query is None:
@@ -96,11 +96,11 @@ def absolute_uri(request):
     """
     Reconstruct an absolute URI from an RGI *request* argument.
 
-    This function uses the `script`, `path`, and `query` attributes from the
+    This function uses the `mount`, `path`, and `query` attributes from the
     *request* namedtuple:
 
     >>> from collections import namedtuple
-    >>> Request = namedtuple('Request', 'script path query')
+    >>> Request = namedtuple('Request', 'mount path query')
 
     For example, when there is no query:
 
@@ -121,7 +121,7 @@ def absolute_uri(request):
     '/foo/bar/baz?stuff=junk'
 
     """
-    uri = '/' + '/'.join(request.script + request.path)
+    uri = '/' + '/'.join(request.mount + request.path)
     if request.query is None:
         return uri
     return '?'.join([uri, request.query])

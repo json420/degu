@@ -215,7 +215,7 @@ static PyStructSequence_Field RequestFields[] = {
     {"uri", NULL},
     {"headers", NULL},
     {"body", NULL},
-    {"script", NULL},
+    {"mount", NULL},
     {"path", NULL},
     {"query", NULL},
     {NULL},
@@ -231,7 +231,7 @@ _Request(DeguRequest *dr)
         _SET_NAMEDTUPLE_ITEM(ret, 1, dr->uri)
         _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
         _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
-        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->script)
+        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->mount)
         _SET_NAMEDTUPLE_ITEM(ret, 5, dr->path)
         _SET_NAMEDTUPLE_ITEM(ret, 6, dr->query)
     }
@@ -244,7 +244,7 @@ Request(PyObject *self, PyObject *args)
     DeguRequest dr = NEW_DEGU_REQUEST;
     if (! PyArg_ParseTuple(args, "OOOOOOO:Request",
             &dr.method, &dr.uri, &dr.headers, &dr.body,
-            &dr.script, &dr.path, &dr.query)) {
+            &dr.mount, &dr.path, &dr.query)) {
         return NULL;
     }
     return _Request(&dr);
@@ -1049,7 +1049,7 @@ _clear_degu_request(DeguRequest *dr)
     _clear_degu_headers((DeguHeaders *)dr);
     Py_CLEAR(dr->method);
     Py_CLEAR(dr->uri);
-    Py_CLEAR(dr->script);
+    Py_CLEAR(dr->mount);
     Py_CLEAR(dr->path);
     Py_CLEAR(dr->query);
 }
@@ -1683,7 +1683,7 @@ _parse_uri(DeguSrc src, DeguRequest *dr)
     }
     path_stop = _search(src, QMARK);
     _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
-    _SET(dr->script, PyList_New(0))
+    _SET(dr->mount, PyList_New(0))
     _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
     if (path_stop < src.len) {
         query_start = path_stop + QMARK.len;
@@ -1809,7 +1809,7 @@ parse_uri(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(ret,
-        PyTuple_Pack(4, dr.uri, dr.script, dr.path, dr.query)
+        PyTuple_Pack(4, dr.uri, dr.mount, dr.path, dr.query)
     )
     goto cleanup;
 
@@ -1836,7 +1836,7 @@ parse_request_line(PyObject *self, PyObject *args)
         goto error;
     }
     _SET(ret,
-        PyTuple_Pack(5, dr.method, dr.uri, dr.script, dr.path, dr.query)
+        PyTuple_Pack(5, dr.method, dr.uri, dr.mount, dr.path, dr.query)
     )
     goto cleanup;
 

@@ -19,16 +19,16 @@ Functions
 
 .. function:: shift_path(request)
 
-    Shift component from ``path`` to ``script`` in an RGI *request* argument.
+    Shift component from ``path`` to ``mount`` in an RGI *request* argument.
 
     This is an extremely common need when it comes to request routing, and in
     particular for RGI middleware applications that do request routing.
 
-    This function only use the ``path`` and ``script`` attributes from the
+    This function only use the ``path`` and ``mount`` attributes from the
     :class:`degu.server.Request` namedtuple:
 
     >>> from collections import namedtuple
-    >>> Request = namedtuple('Request', 'script path')
+    >>> Request = namedtuple('Request', 'mount path')
 
     Path shifting examples:
 
@@ -40,14 +40,14 @@ Functions
     As you can see *request* was updated in place:
 
     >>> request
-    Request(script=['foo', 'bar'], path=['baz'])
+    Request(mount=['foo', 'bar'], path=['baz'])
 
     An ``IndexError is raised if ``request.path`` is empty:
 
     >>> shift_path(request)
     'baz'
     >>> request
-    Request(script=['foo', 'bar', 'baz'], path=[])
+    Request(mount=['foo', 'bar', 'baz'], path=[])
     >>> shift_path(request)
     Traceback (most recent call last):
       ...
@@ -77,7 +77,7 @@ Functions
     >>> relative_uri(request)
     '/bar/baz?stuff=junk'
 
-    Note that if present, ``request.script`` is ignored by this function.
+    Note that if present, ``request.mount`` is ignored by this function.
     If you need the original, absolute request URI, please use
     :func:`absolute_uri()`.
 
@@ -87,7 +87,7 @@ Functions
     Create an absolute URI from an RGI *request* argument.
 
     >>> from collections import namedtuple
-    >>> Request = namedtuple('Request', 'script path query')
+    >>> Request = namedtuple('Request', 'mount path query')
 
     For example, when there is no query:
 

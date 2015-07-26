@@ -69,7 +69,7 @@ BodiesType = Bodies = namedtuple('Bodies',
     'Body ChunkedBody BodyIter ChunkedBodyIter'
 )
 RequestType = Request = namedtuple('Request',
-    'method uri headers body script path query'
+    'method uri headers body mount path query'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
@@ -589,7 +589,7 @@ def parse_uri(src):
         query = None
     else:
         query = _parse_query(parts[1])
-    # (uri, script, path, query):
+    # (uri, mount, path, query):
     return (uri, [], path, query)
 
 
@@ -603,15 +603,15 @@ def parse_request_line(line):
     if len(items) < 2:
         raise ValueError('bad request line: {!r}'.format(line))
     method = _parse_method(items[0])
-    (uri, script, path, query) = parse_uri(b'/' + items[1])
-    return (method, uri, script, path, query)
+    (uri, mount, path, query) = parse_uri(b'/' + items[1])
+    return (method, uri, mount, path, query)
 
 
 def parse_request(preamble, rfile):
     if preamble == b'':
         raise EmptyPreambleError('request preamble is empty')
     (first_line, *header_lines) = preamble.split(b'\r\n')
-    (method, uri, script, path, query) = parse_request_line(first_line)
+    (method, uri, mount, path, query) = parse_request_line(first_line)
     headers = _parse_header_lines(header_lines)
     if 'content-length' in headers:
         body = Body(rfile, headers['content-length'])
@@ -619,7 +619,7 @@ def parse_request(preamble, rfile):
         body = ChunkedBody(rfile)
     else:
         body = None
-    return Request(method, uri, headers, body, script, path, query)
+    return Request(method, uri, headers, body, mount, path, query)
 
 
 
