@@ -298,7 +298,7 @@ this:
 
 >>> from degu.server import Request
 >>> Request('GET', '/foo/bar?key=val', {}, None, [], ['foo', 'bar'], 'key=val')
-Request(method='GET', uri='/foo/bar?key=val', headers={}, body=None, script=[], path=['foo', 'bar'], query='key=val')
+Request(method='GET', uri='/foo/bar?key=val', headers={}, body=None, mount=[], path=['foo', 'bar'], query='key=val')
 
 Finally, the *bodies* argument will be the :attr:`degu.base.bodies` namedtuple
 exposing the four wrapper classes that can be use to specify the your HTTP
@@ -707,7 +707,7 @@ Both are documented below.
 :class:`Request`
 ''''''''''''''''
 
-.. class:: Request(method, uri, headers, body, script, path, query)
+.. class:: Request(method, uri, headers, body, mount, path, query)
 
     A namedtuple used to represent an HTTP request.
 
@@ -716,7 +716,7 @@ Both are documented below.
 
     >>> from degu.server import Request
     >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
-    Request(method='GET', uri='/foo', headers={}, body=None, script=[], path=['foo'], query=None)
+    Request(method='GET', uri='/foo', headers={}, body=None, mount=[], path=['foo'], query=None)
 
     .. attribute:: method
 
@@ -745,7 +745,7 @@ Both are documented below.
         Finally, if the request body uses "chunked" Transfer-Encoding, this will
         be a :class:`degu.base.ChunkedBody` instance.
 
-    .. attribute:: script
+    .. attribute:: mount
 
         A ``list`` containing the previously processed parts of the URI.
 
@@ -753,12 +753,12 @@ Both are documented below.
         middleware.
 
         Currently Degu only supports mounting the root application at ``'/'``,
-        so your root application will always be called with a *script* equal to
+        so your root application will always be called with a *mount* equal to
         ``[]``.
 
         However, as a request was routed to the current RGI application or
         middleware, path components from :attr:`Request.path` may have been
-        shifted to :attr:`Request.script`, for example using
+        shifted to :attr:`Request.mount`, for example using
         :func:`degu.util.shift_path()`.
 
     .. attribute:: path
@@ -778,7 +778,7 @@ Both are documented below.
 
         However, as a request was routed to the current RGI application or
         middleware, path components from :attr:`Request.path` may have been
-        shifted to :attr:`Request.script`, for example using
+        shifted to :attr:`Request.mount`, for example using
         :func:`degu.util.shift_path()`.
 
     .. attribute:: query
@@ -823,7 +823,7 @@ The Degu server will log when a new connection is received and will likewise
 log when that same connection is closed, with some summary information about
 how many requests were handled and why the connection was closed.
 
-For example, if you run the ``benchmark.py`` script from within the source tree,
+For example, if you run the ``benchmark.py`` mount from within the source tree,
 you'll see logging like this::
 
     INFO	Thread-5	+ ('::1', 40682, 0, 0) New connection

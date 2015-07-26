@@ -347,27 +347,27 @@ Example: RGI routing
 
 As a request is routed through RGI middleware to the RGI leaf application that
 will generate the response, components should be shifted from
-:attr:`degu.server.Request.path` to :attr:`degu.server.Request.script`.
+:attr:`degu.server.Request.path` to :attr:`degu.server.Request.mount`.
 
 :func:`degu.util.shift_path()` is the recommended way to do this, the exact
 implementation of which is:
 
 >>> def shift_path(request):
 ...     next = request.path.pop(0)
-...     request.script.append(next)
+...     request.mount.append(next)
 ...     return next
 ... 
 
 For example, say we have these two RGI leaf applications:
 
 >>> def foo_app(session, request, bodies):
-...     assert request.script == ['foo']
+...     assert request.mount == ['foo']
 ...     if request.path != []:
 ...         return (404, 'Not Found Foo', {}, None)
 ...     return (200, 'OK', {}, b'FOO this')
 ... 
 >>> def bar_app(session, request, bodies):
-...     assert request.script == ['bar']
+...     assert request.mount == ['bar']
 ...     if request.path != []:
 ...         return (404, 'Not Found Bar', {}, None)
 ...     return (200, 'OK', {}, b'BAR that')
