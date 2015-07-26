@@ -251,6 +251,14 @@ class Server:
                 log.warning('Too many connections, rejecting %r', address)
                 _shutdown_and_close(sock)
 
+    def serve_one(self):
+        unix = (True if self.sock.family == socket.AF_UNIX else False)
+        (sock, address) = self.sock.accept()
+        sock.settimeout(self.timeout)
+        credentials = (_get_credentials(sock) if unix is True else None)
+        session = Session(address, credentials, self.max_requests)
+        self._worker(None, session, sock)
+
     def _worker(self, semaphore, session, sock):
         try:
             log.info('+ %s New connection', session)
@@ -265,7 +273,8 @@ class Server:
             )
         finally:
             _shutdown_and_close(sock)
-            semaphore.release()
+            if semaphore is not None:
+                semaphore.release()
 
     def _handle_connection(self, session, sock):
         on_connect = getattr(self.app, 'on_connect', None)
