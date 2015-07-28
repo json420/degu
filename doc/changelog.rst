@@ -5,6 +5,36 @@ Changelog
 0.14 (unreleased)
 -----------------
 
+Breaking API changes:
+
+    *   The ``Request.script`` attribute on the :class:`degu.server.Request`
+        namedtuple has been renamed to :attr:`degu.server.Request.mount`.  
+
+        .. note::
+
+            This is only a breaking API change if you were directly using the
+            former ``Request.script`` attribute.  If you were doing your path
+            shifting via :func:`degu.util.shift_path()`, no change is needed in
+            your RGI server applications.  Likewise, if you were rebuilding an
+            absolute URI via :func:`degu.util.absolute_uri()`, no change is
+            needed.
+
+        The ``Request.script`` attribute was so name as to be a familiar
+        equivalent to the WSGI ``environ['SCRIPT_NAME']`` item.  However, even
+        with WSGI, for which CGI compatibility was a design requirement, the
+        name was something of an anachronism as it only made sense for the the
+        CGI script "mount" point and was a rather awkward name considering the
+        path-shifting that might be done after the HTTP request handling entered
+        the WSGI domain.
+
+        Considering that in Degu the former ``Request.script`` attribute is
+        seldom used directly, this change is easy to justify as "mount''``
+        does a better job of conveying a generic meaning applicable to both the
+        "script" mount point and the path-shifting that might be done after
+        entering the RGI domain.  (Even more so because CGI compatibility isn't
+        a design requirement for Degu/RGI).
+
+
 Documentation improvements:
 
     *   :ref:`eg-routing` has been added to the tutorial, demonstrating RGI
@@ -13,6 +43,11 @@ Documentation improvements:
     *   A new :ref:`server-logging` section has been added in the
         :mod:`degu.server` documentation, providing details on the
         per-connection logging done by the Degu server
+
+Other changes:
+
+    *   Update a number of unit tests for Python 3.5 compatibility.
+
 
 
 0.13 (May 2015)
