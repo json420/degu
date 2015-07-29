@@ -25,3 +25,6 @@ override_dh_auto_test:
 		$$python -Werror setup.py test; \
 	done
 
+override_dh_compress:
+	dh_compress -Xchangelog.html
+
