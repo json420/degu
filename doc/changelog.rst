@@ -28,8 +28,8 @@ Breaking API changes:
         the WSGI domain.
 
         Considering that in Degu the former ``Request.script`` attribute is
-        seldom used directly, this change is easy to justify as "mount''``
-        does a better job of conveying a generic meaning applicable to both the
+        seldom used directly, this change is easy to justify as "mount" does a
+        better job of conveying a generic meaning applicable to both the
         "script" mount point and the path-shifting that might be done after
         entering the RGI domain.  (Even more so because CGI compatibility isn't
         a design requirement for Degu/RGI).

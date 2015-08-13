@@ -13,9 +13,9 @@ your vehicle into bold, uncharted territory.
 
 Degu is licensed `LGPLv3+`_ and requires `Python 3.4`_ or newer.
 
-Other noteworthy features:
+Some noteworthy features:
 
-    *   Degu fully exposes HTTP "chunked" transfer-encoding semantics, including
+    *   Degu fully exposes HTTP chunked transfer-encoding semantics, including
         the optional per-chunk *extension*
 
     *   Degu fully exposes IPv6 address semantics, including the *scopeid*
@@ -28,6 +28,40 @@ Other noteworthy features:
     *   Degu provides a safe and opinionated API for using TLSv1.2, with a
         particular focus on using client certificates to authenticate incoming
         TCP connections
+
+
+Degu resources
+--------------
+
+    *   `Documentation`_
+    *   `Report a bug`_
+    *   `Browse the source`_
+    *   `Launchpad project`_
+
+
+Performance
+-----------
+
+The Degu server and client use a shared HTTP backend implemented in C.  Degu
+is optimized for low-latency and high-throughput when operating at modest
+concurrency.
+
+When both endpoints are running on the localhost, a Degu client+server duo is
+impressively quick for small request/response sent sequentially through the same
+connection.
+
+On an Intel i7-4900MQ CPU running Ubuntu 14.04 LTS (64-bit), Degu can achieve an
+average of:
+
+    *   Over 76k request/response round-trips per second over ``AF_UNIX`` (less
+        than 13.2μs per round-trip)
+
+    *   Over 53k request/response round-trips per second over ``AF_INET6`` (less
+        than 18.9μs per round-trip)
+
+This level of performance makes HTTP perfectly viable for Inter Process
+Communication (IPC), with the added bonus that you get the same REST API
+goodness whether the server is running locally or remotely.
 
 
 Examples
@@ -63,15 +97,6 @@ request again:
 
 >>> conn.put('/hello', {}, None)
 Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
-
-
-Degu resources
------------------
-
-    *   `Documentation`_
-    *   `Report a bug`_
-    *   `Browse the source`_
-    *   `Launchpad project`_
 
 
 A Novacut component
