@@ -16,10 +16,12 @@ override_dh_auto_build:
 	dh_auto_build
 	sphinx-build -EW -b html doc/ doc/_build/html/
 
+# FIXME: for now, build without DEGU_INSTRUMENT_BUILD=true as somehow it's
+# making scan-build unhappy with Python 3.5rc1 on Wily:
 override_dh_auto_test:
 	set -ex; for python in $(shell py3versions -r); do \
 		$$python -Werror setup.py test; \
-		DEGU_INSTRUMENT_BUILD=true scan-build --status-bugs -analyze-headers \
+		scan-build --status-bugs -analyze-headers \
 			$$python setup.py build_ext -i; \
 		$$python -c "from degu import _base"; \
 		$$python -Werror setup.py test; \
