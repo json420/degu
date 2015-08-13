@@ -41,7 +41,7 @@ from degu.tests.run import run_tests
 
 
 TREE = path.dirname(path.abspath(__file__))
-with open(path.join(TREE, 'README'), 'r') as fp:
+with open(path.join(TREE, 'README'), 'r', encoding='utf-8') as fp:
     LONG_DESCRIPTION = fp.read()
 
 
