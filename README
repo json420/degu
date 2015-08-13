@@ -47,7 +47,7 @@ is optimized for low-latency and high-throughput when operating at modest
 concurrency.
 
 When both endpoints are running on the localhost, a Degu client+server duo is
-impressively quick for small request/response sent sequentially through the same
+impressively quick for small request/response made sequentially through the same
 connection.
 
 On an Intel i7-4900MQ CPU running Ubuntu 14.04 LTS (64-bit), Degu can achieve an
