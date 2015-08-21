@@ -251,7 +251,7 @@ class Server:
                 log.warning('Too many connections, rejecting %r', address)
                 _shutdown_and_close(sock)
 
-    def serve_one(self):
+    def _serve_one(self):
         unix = (True if self.sock.family == socket.AF_UNIX else False)
         (sock, address) = self.sock.accept()
         sock.settimeout(self.timeout)
