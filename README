@@ -11,7 +11,8 @@ Degu is especially well suited for implementing REST APIs for device-to-device
 communication (Internet of Things).  It's a building block for future stuff,
 your vehicle into bold, uncharted territory.
 
-Degu is licensed `LGPLv3+`_ and requires `Python 3.4`_ or newer.
+Degu is licensed `LGPLv3+`_, requires `Python 3.4`_ or newer,  and fully
+supports `Python 3.5`_.
 
 Some noteworthy features:
 
@@ -112,6 +113,7 @@ by the `#novacut`_ IRC channel on freenode.
 
 .. _`LGPLv3+`: https://www.gnu.org/licenses/lgpl-3.0.html
 .. _`Python 3.4`: https://docs.python.org/3.4/
+.. _`Python 3.5`: https://docs.python.org/3.5/
 
 .. _`Documentation`: http://docs.novacut.com/degu/index.html
 .. _`Report a bug`: https://bugs.launchpad.net/degu
