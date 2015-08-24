@@ -2,8 +2,10 @@ Changelog
 =========
 
 
-0.14 (unreleased)
------------------
+0.14 (August 2015)
+------------------
+
+`Download Degu 0.14`_
 
 Breaking API changes:
 
@@ -27,26 +29,61 @@ Breaking API changes:
         path-shifting that might be done after the HTTP request handling entered
         the WSGI domain.
 
-        Considering that in Degu the former ``Request.script`` attribute is
-        seldom used directly, this change is easy to justify as "mount" does a
-        better job of conveying a generic meaning applicable to both the
-        "script" mount point and the path-shifting that might be done after
-        entering the RGI domain.  (Even more so because CGI compatibility isn't
-        a design requirement for Degu/RGI).
+        As the former ``Request.script`` attribute generally  wasn't used
+        directly, this breaking change is fairly easy to justify.  The name
+        "mount" does a better job of conveying a generic meaning applicable to
+        both the "script" mount point and the path-shifting that might be done
+        after entering the RGI domain.
 
 
 Documentation improvements:
 
     *   :ref:`eg-routing` has been added to the tutorial, demonstrating RGI
-        request routing using :func:`degu.util.shift_path()`
+        request routing using :func:`degu.util.shift_path()`.
 
     *   A new :ref:`server-logging` section has been added in the
         :mod:`degu.server` documentation, providing details on the
-        per-connection logging done by the Degu server
+        per-connection logging done by the Degu server.
+
 
 Other changes:
 
     *   Update a number of unit tests for Python 3.5 compatibility.
+
+    *   The preamble validation tables now allow the bytes ``b'<'`` and ``b'>'``
+        in header values (to accommodate the HTTP "Link" header).
+
+    *   Cleanup the :mod:`degu.server` and :mod:`degu.client` modules so the
+        stable API is more clearly defined, plus add a number of missing unit
+        tests for the ``**options`` supported by :class:`degu.server.Server` and
+        :class:`degu.client.Client`.
+
+    *   Improve error message delivered by
+        :meth:`degu.client.Connection.request()` when an unsupported HTTP method
+        is used.  In Degu 0.13, it raised a ``ValueError`` like this::
+
+            ValueError: bad HTTP method: b'FOO'
+
+        This was because it used the same internal validation function used by
+        the server when parsing the method out of the HTTP preamble.  But this
+        has been fixed in Degu 0.14, which will now raise a ``ValueError`` like
+        this::
+
+            ValueError: bad method: 'FOO'
+
+    *   Simplify error messages used in ``ValueError`` raised when the HTTP
+        preamble contains an invalid Content-Length header value.  Degu 0.13
+        had four different possible messages, used when the Content-Length:
+
+            *   Was empty
+            *   Was longer than 16 bytes (the longest Degu will attempt to parse)
+            *   Contained invalid bytes
+            *   Had leading zeros and wasn't ``b'0'``
+
+        Degu 0.14 reduces this to just two error messages: one for when it's too
+        long, another for when it's invalid.  As such, the error behavior when
+        parsing a Content-Length now matches the error behavior when parsing
+        a Range or Content-Range header.
 
 
 
@@ -1333,6 +1370,7 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
+.. _`Download Degu 0.14`: https://launchpad.net/degu/+milestone/0.14
 .. _`Download Degu 0.13`: https://launchpad.net/degu/+milestone/0.13
 .. _`Download Degu 0.12`: https://launchpad.net/degu/+milestone/0.12
 .. _`Download Degu 0.11`: https://launchpad.net/degu/+milestone/0.11
