@@ -1,8 +1,8 @@
-degu (0.14.0~alpha) trusty; urgency=low
+degu (0.14.0) trusty; urgency=low
 
-  * Daily WIP for 0.14
+  * Upstream release
 
- -- Jason Gerard DeRose <jderose@novacut.com>  Sun, 24 May 2015 17:36:37 -0600
+ -- Jason Gerard DeRose <jderose@novacut.com>  Sun, 23 Aug 2015 19:49:59 -0600
 
 degu (0.13.0) trusty; urgency=low
 
