@@ -223,7 +223,7 @@ class Client:
             )
         self.options = options
         self.host = options.get('host', host)
-        self.timeout = options.get('timeout', 60)
+        self.timeout = options.get('timeout', 65)
         self.on_connect = options.get('on_connect')
         assert self.host is None or isinstance(self.host, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
