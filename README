@@ -31,6 +31,55 @@ Some noteworthy features:
         TCP connections
 
 
+Examples
+--------
+
+Define a simple *REST Gateway Interface* (RGI) server application:
+
+>>> def app(session, request, bodies):
+...     if request.method != 'GET':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request.path != ['example']:
+...         return (404, 'Not Found', {}, None)
+...     return (200, 'OK', {}, b'hello, world')
+...
+
+Run the above *app* on a throw-away server listening on a random, unprivileged
+port:
+
+>>> from degu.misc import TempServer
+>>> server = TempServer(('127.0.0.1', 0), app)
+
+Create a client for making connections to the above server:
+
+>>> from degu.client import Client
+>>> client = Client(server.address)
+
+(The ``server.address`` attribute will include the random port assigned by the
+kernel.)
+
+Create a connection and make a ``'GET'`` request:
+
+>>> conn = client.connect()
+>>> response = conn.get('/example', {})
+
+The return value is a ``Response`` namedtuple:
+
+>>> response
+Response(status=200, reason='OK', headers={'content-length': 12}, body=Body(<reader>, 12))
+
+Read the response body like this:
+
+>>> response.body.read()
+b'hello, world'
+
+Make another ``'GET'`` request, this time for a URI that will return a
+*404 Not Found* error:
+
+>>> conn.get('/nope', {})
+Response(status=404, reason='Not Found', headers={}, body=None)
+
+
 Degu resources
 --------------
 
@@ -63,41 +112,6 @@ average of:
 This level of performance makes HTTP perfectly viable for Inter Process
 Communication (IPC), with the added bonus that you get the same REST API
 goodness whether the server is running locally or remotely.
-
-
-Examples
---------
-
-This is a trivial *REST Gateway Interface* (RGI) server application:
-
->>> def app(session, request, bodies):
-...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
-...
-
-Run the above *app* in a throw-away server listening on a random port:
-
->>> from degu.misc import TempServer
->>> server = TempServer(('127.0.0.1', 0), app)
-
-Create a client for making connections to the above server:
-
->>> from degu.client import Client
->>> client = Client(server.address)
-
-(The ``server.address`` attribute will include the random port assigned by the
-kernel.)
-
-Now create a connection and make a request:
-
->>> conn = client.connect()
->>> conn.request('PUT', '/hello', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
-
-Likewise, use the ``conn.put()`` shortcut method to make the same ``'PUT'``
-request again:
-
->>> conn.put('/hello', {}, None)
-Response(status=200, reason='OK', headers={'x-msg': 'hello, world'}, body=None)
 
 
 A Novacut component
