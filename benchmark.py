@@ -124,6 +124,8 @@ print('Python: {}'.format(pyinfo))
 print('Test: {}; {:,} requests per run; {} runs'.format(
     family, args.requests, args.runs)
 )
+print('Request body: {:d} bytes'.format(len(request_body)))
+print('Response body: {:d} bytes'.format(len(response_body)))
 print('-' * 72)
 print('Run {} of {} was fastest'.format(fastest_run.rjust(width1), args.runs))
 print('Run {} of {} was slowest'.format(slowest_run.rjust(width1), args.runs))
