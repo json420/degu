@@ -22,6 +22,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--json', action='store_true', default=False,
     help='Output result in machine-readable JSON'
 )
+parser.add_argument('--send-host', action='store_true', default=False,
+    help='Send an HTTP Host header for AF_INET6'
+)
 parser.add_argument('--unix', action='store_true', default=False,
     help='Use AF_UNIX instead of AF_INET6'
 )
@@ -60,7 +63,11 @@ if args.unix:
 else:
     address = degu.IPv6_LOOPBACK
 server = TempServer(address, ping_pong_app, max_requests=args.requests)
-client = Client(server.address)
+if args.send_host:
+    client = Client(server.address)
+else:
+    client = Client(server.address, host=None)
+
 
 deltas = []
 for i in range(args.runs):
