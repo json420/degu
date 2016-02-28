@@ -590,7 +590,7 @@ static PyObject * _Body_New(PyObject *, uint64_t);
 static int64_t _Body_write_to(Body *, DeguWObj *);
 
 static PyMemberDef Body_members[] = {
-    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
+    {"rfile",          T_OBJECT,    offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
     {"state",          T_UBYTE,     offsetof(Body, state),          READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
@@ -670,9 +670,9 @@ static PyObject * _ChunkedBody_New(PyObject *);
 static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
-    {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
-    {"state",    T_UBYTE,     offsetof(ChunkedBody, state),    READONLY, NULL},
-    {"chunked",  T_BOOL,      offsetof(ChunkedBody, chunked),  READONLY, NULL},
+    {"rfile",    T_OBJECT, offsetof(ChunkedBody, rfile),    READONLY, NULL},
+    {"state",    T_UBYTE,  offsetof(ChunkedBody, state),    READONLY, NULL},
+    {"chunked",  T_BOOL,   offsetof(ChunkedBody, chunked),  READONLY, NULL},
     {NULL}
 };
 
@@ -749,7 +749,7 @@ typedef struct {
 static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
 
 static PyMemberDef BodyIter_members[] = {
-    {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
+    {"source", T_OBJECT, offsetof(BodyIter, source), READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(BodyIter, content_length), READONLY, NULL},
     {"state", T_UBYTE, offsetof(BodyIter, state), READONLY, NULL},
     {NULL}
@@ -821,8 +821,8 @@ typedef struct {
 static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
-    {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},
-    {"state",  T_UBYTE,     offsetof(ChunkedBodyIter, state),  READONLY, NULL},
+    {"source", T_OBJECT, offsetof(ChunkedBodyIter, source), READONLY, NULL},
+    {"state",  T_UBYTE,  offsetof(ChunkedBodyIter, state),  READONLY, NULL},
     {NULL}
 };
 
@@ -895,10 +895,10 @@ typedef struct {
 } Connection;
 
 static PyMemberDef Connection_members[] = {
-    {"sock",         T_OBJECT_EX, offsetof(Connection, sock),         READONLY, NULL},
-    {"base_headers", T_OBJECT_EX, offsetof(Connection, base_headers), READONLY, NULL},
-    {"bodies",       T_OBJECT_EX, offsetof(Connection, bodies),       READONLY, NULL},
-    {"closed",       T_BOOL,      offsetof(Connection, closed),       READONLY, NULL},
+    {"sock",         T_OBJECT, offsetof(Connection, sock),         READONLY, NULL},
+    {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
+    {"bodies",       T_OBJECT, offsetof(Connection, bodies),       READONLY, NULL},
+    {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
 
