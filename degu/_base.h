@@ -366,41 +366,41 @@ static PyObject * ContentRange_richcompare(ContentRange *, PyObject *, int);
 
 static PyTypeObject ContentRangeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.ContentRange",                 /* tp_name */
-    sizeof(ContentRange),                      /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)ContentRange_dealloc,          /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)ContentRange_repr,               /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    (reprfunc)ContentRange_str,                /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "ContentRange(start, stop, total)",               /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    (richcmpfunc)ContentRange_richcompare,     /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    0,                                  /* tp_methods */
-    ContentRange_members,                      /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)ContentRange_init,               /* tp_init */
+    "degu._base.ContentRange",              /* tp_name */
+    sizeof(ContentRange),                   /* tp_basicsize */
+    0,                                      /* tp_itemsize */
+    (destructor)ContentRange_dealloc,       /* tp_dealloc */
+    0,                                      /* tp_print */
+    0,                                      /* tp_getattr */
+    0,                                      /* tp_setattr */
+    0,                                      /* tp_reserved */
+    (reprfunc)ContentRange_repr,            /* tp_repr */
+    0,                                      /* tp_as_number */
+    0,                                      /* tp_as_sequence */
+    0,                                      /* tp_as_mapping */
+    0,                                      /* tp_hash  */
+    0,                                      /* tp_call */
+    (reprfunc)ContentRange_str,             /* tp_str */
+    0,                                      /* tp_getattro */
+    0,                                      /* tp_setattro */
+    0,                                      /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                     /* tp_flags */
+    "ContentRange(start, stop, total)",     /* tp_doc */
+    0,                                      /* tp_traverse */
+    0,                                      /* tp_clear */
+    (richcmpfunc)ContentRange_richcompare,  /* tp_richcompare */
+    0,                                      /* tp_weaklistoffset */
+    0,                                      /* tp_iter */
+    0,                                      /* tp_iternext */
+    0,                                      /* tp_methods */
+    ContentRange_members,                   /* tp_members */
+    0,                                      /* tp_getset */
+    0,                                      /* tp_base */
+    0,                                      /* tp_dict */
+    0,                                      /* tp_descr_get */
+    0,                                      /* tp_descr_set */
+    0,                                      /* tp_dictoffset */
+    (initproc)ContentRange_init,            /* tp_init */
 };
 
 
@@ -590,7 +590,7 @@ static PyObject * _Body_New(PyObject *, uint64_t);
 static int64_t _Body_write_to(Body *, DeguWObj *);
 
 static PyMemberDef Body_members[] = {
-    {"rfile",          T_OBJECT_EX, offsetof(Body, rfile),          READONLY, NULL},
+    {"rfile",          T_OBJECT,    offsetof(Body, rfile),          READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(Body, content_length), READONLY, NULL},
     {"state",          T_UBYTE,     offsetof(Body, state),          READONLY, NULL},
     {"chunked",        T_BOOL,      offsetof(Body, chunked),        READONLY, NULL},
@@ -670,9 +670,9 @@ static PyObject * _ChunkedBody_New(PyObject *);
 static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
-    {"rfile",    T_OBJECT_EX, offsetof(ChunkedBody, rfile),    READONLY, NULL},
-    {"state",    T_UBYTE,     offsetof(ChunkedBody, state),    READONLY, NULL},
-    {"chunked",  T_BOOL,      offsetof(ChunkedBody, chunked),  READONLY, NULL},
+    {"rfile",    T_OBJECT, offsetof(ChunkedBody, rfile),    READONLY, NULL},
+    {"state",    T_UBYTE,  offsetof(ChunkedBody, state),    READONLY, NULL},
+    {"chunked",  T_BOOL,   offsetof(ChunkedBody, chunked),  READONLY, NULL},
     {NULL}
 };
 
@@ -749,7 +749,7 @@ typedef struct {
 static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
 
 static PyMemberDef BodyIter_members[] = {
-    {"source", T_OBJECT_EX, offsetof(BodyIter, source), READONLY, NULL},
+    {"source", T_OBJECT, offsetof(BodyIter, source), READONLY, NULL},
     {"content_length", T_ULONGLONG, offsetof(BodyIter, content_length), READONLY, NULL},
     {"state", T_UBYTE, offsetof(BodyIter, state), READONLY, NULL},
     {NULL}
@@ -821,8 +821,8 @@ typedef struct {
 static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
-    {"source", T_OBJECT_EX, offsetof(ChunkedBodyIter, source), READONLY, NULL},
-    {"state",  T_UBYTE,     offsetof(ChunkedBodyIter, state),  READONLY, NULL},
+    {"source", T_OBJECT, offsetof(ChunkedBodyIter, source), READONLY, NULL},
+    {"state",  T_UBYTE,  offsetof(ChunkedBodyIter, state),  READONLY, NULL},
     {NULL}
 };
 
@@ -895,10 +895,10 @@ typedef struct {
 } Connection;
 
 static PyMemberDef Connection_members[] = {
-    {"sock",         T_OBJECT_EX, offsetof(Connection, sock),         READONLY, NULL},
-    {"base_headers", T_OBJECT_EX, offsetof(Connection, base_headers), READONLY, NULL},
-    {"bodies",       T_OBJECT_EX, offsetof(Connection, bodies),       READONLY, NULL},
-    {"closed",       T_BOOL,      offsetof(Connection, closed),       READONLY, NULL},
+    {"sock",         T_OBJECT, offsetof(Connection, sock),         READONLY, NULL},
+    {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
+    {"bodies",       T_OBJECT, offsetof(Connection, bodies),       READONLY, NULL},
+    {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
 
