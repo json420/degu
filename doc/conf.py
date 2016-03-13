@@ -9,7 +9,7 @@ import degu
 
 # Project info
 project = 'Degu'
-copyright = '2014-2015, Novacut Inc'
+copyright = '2014-2016, Novacut Inc'
 version = degu.__version__
 release = version
 
