@@ -57,6 +57,14 @@
 #define CONTENT_RANGE_BIT 8u
 #define BODY_MASK 3u
 
+#if PY_MINOR_VERSION >= 5
+    #define _TP_AS_ASYNC .tp_as_async
+    #define _M_SLOTS .m_slots
+#else
+    #define _TP_AS_ASYNC .tp_reserved
+    #define _M_SLOTS .m_reload
+#endif
+
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -169,7 +177,7 @@ typedef struct {
     ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
+    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL, 0})
 
 typedef struct {
     PyObject *key;
@@ -301,41 +309,53 @@ static PyObject * Range_richcompare(Range *, PyObject *, int);
 
 static PyTypeObject RangeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Range",                 /* tp_name */
-    sizeof(Range),                      /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Range_dealloc,          /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)Range_repr,               /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    (reprfunc)Range_str,                /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Range(start, stop)",               /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    (richcmpfunc)Range_richcompare,     /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    0,                                  /* tp_methods */
-    Range_members,                      /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Range_init,               /* tp_init */
+    .tp_name           = "degu._base.Range",
+    .tp_basicsize      = sizeof(Range),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Range_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)Range_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = (reprfunc)Range_str,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Range(start, stop)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = (richcmpfunc)Range_richcompare,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = Range_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Range_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -366,41 +386,53 @@ static PyObject * ContentRange_richcompare(ContentRange *, PyObject *, int);
 
 static PyTypeObject ContentRangeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.ContentRange",              /* tp_name */
-    sizeof(ContentRange),                   /* tp_basicsize */
-    0,                                      /* tp_itemsize */
-    (destructor)ContentRange_dealloc,       /* tp_dealloc */
-    0,                                      /* tp_print */
-    0,                                      /* tp_getattr */
-    0,                                      /* tp_setattr */
-    0,                                      /* tp_reserved */
-    (reprfunc)ContentRange_repr,            /* tp_repr */
-    0,                                      /* tp_as_number */
-    0,                                      /* tp_as_sequence */
-    0,                                      /* tp_as_mapping */
-    0,                                      /* tp_hash  */
-    0,                                      /* tp_call */
-    (reprfunc)ContentRange_str,             /* tp_str */
-    0,                                      /* tp_getattro */
-    0,                                      /* tp_setattro */
-    0,                                      /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                     /* tp_flags */
-    "ContentRange(start, stop, total)",     /* tp_doc */
-    0,                                      /* tp_traverse */
-    0,                                      /* tp_clear */
-    (richcmpfunc)ContentRange_richcompare,  /* tp_richcompare */
-    0,                                      /* tp_weaklistoffset */
-    0,                                      /* tp_iter */
-    0,                                      /* tp_iternext */
-    0,                                      /* tp_methods */
-    ContentRange_members,                   /* tp_members */
-    0,                                      /* tp_getset */
-    0,                                      /* tp_base */
-    0,                                      /* tp_dict */
-    0,                                      /* tp_descr_get */
-    0,                                      /* tp_descr_set */
-    0,                                      /* tp_dictoffset */
-    (initproc)ContentRange_init,            /* tp_init */
+    .tp_name           = "degu._base.ContentRange",
+    .tp_basicsize      = sizeof(ContentRange),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)ContentRange_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)ContentRange_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = (reprfunc)ContentRange_str,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "ContentRange(start, stop, total)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = (richcmpfunc)ContentRange_richcompare,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = ContentRange_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)ContentRange_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -445,41 +477,53 @@ static int Reader_init(Reader *, PyObject *, PyObject *);
 
 static PyTypeObject ReaderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Reader",          /* tp_name */
-    sizeof(Reader),               /* tp_basicsize */
-    0,                            /* tp_itemsize */
-    (destructor)Reader_dealloc,   /* tp_dealloc */
-    0,                            /* tp_print */
-    0,                            /* tp_getattr */
-    0,                            /* tp_setattr */
-    0,                            /* tp_reserved */
-    0,                            /* tp_repr */
-    0,                            /* tp_as_number */
-    0,                            /* tp_as_sequence */
-    0,                            /* tp_as_mapping */
-    0,                            /* tp_hash  */
-    0,                            /* tp_call */
-    0,                            /* tp_str */
-    0,                            /* tp_getattro */
-    0,                            /* tp_setattro */
-    0,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,           /* tp_flags */
-    "Reader(sock, bodies)",       /* tp_doc */
-    0,                            /* tp_traverse */
-    0,                            /* tp_clear */
-    0,                            /* tp_richcompare */
-    0,                            /* tp_weaklistoffset */
-    0,                            /* tp_iter */
-    0,                            /* tp_iternext */
-    Reader_methods,               /* tp_methods */
-    0,                            /* tp_members */
-    0,                            /* tp_getset */
-    0,                            /* tp_base */
-    0,                            /* tp_dict */
-    0,                            /* tp_descr_get */
-    0,                            /* tp_descr_set */
-    0,                            /* tp_dictoffset */
-    (initproc)Reader_init,        /* tp_init */
+    .tp_name           = "degu._base.Reader",
+    .tp_basicsize      = sizeof(Reader),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Reader_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Reader(sock)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = Reader_methods,
+    .tp_members        = NULL,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Reader_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define READER_CLASS ((PyObject *)&ReaderType)
@@ -524,41 +568,53 @@ static int Writer_init(Writer *, PyObject *, PyObject *);
 
 static PyTypeObject WriterType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Writer",          /* tp_name */
-    sizeof(Writer),               /* tp_basicsize */
-    0,                            /* tp_itemsize */
-    (destructor)Writer_dealloc,   /* tp_dealloc */
-    0,                            /* tp_print */
-    0,                            /* tp_getattr */
-    0,                            /* tp_setattr */
-    0,                            /* tp_reserved */
-    0,                            /* tp_repr */
-    0,                            /* tp_as_number */
-    0,                            /* tp_as_sequence */
-    0,                            /* tp_as_mapping */
-    0,                            /* tp_hash  */
-    0,                            /* tp_call */
-    0,                            /* tp_str */
-    0,                            /* tp_getattro */
-    0,                            /* tp_setattro */
-    0,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,           /* tp_flags */
-    "Writer(sock, bodies)",       /* tp_doc */
-    0,                            /* tp_traverse */
-    0,                            /* tp_clear */
-    0,                            /* tp_richcompare */
-    0,                            /* tp_weaklistoffset */
-    0,                            /* tp_iter */
-    0,                            /* tp_iternext */
-    Writer_methods,               /* tp_methods */
-    0,                            /* tp_members */
-    0,                            /* tp_getset */
-    0,                            /* tp_base */
-    0,                            /* tp_dict */
-    0,                            /* tp_descr_get */
-    0,                            /* tp_descr_set */
-    0,                            /* tp_dictoffset */
-    (initproc)Writer_init,        /* tp_init */
+    .tp_name           = "degu._base.Writer",
+    .tp_basicsize      = sizeof(Writer),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Writer_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Writer(sock)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = Writer_methods,
+    .tp_members        = NULL,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Writer_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define WRITER_CLASS ((PyObject *)&WriterType)
@@ -614,41 +670,53 @@ static PyObject * Body_next(Body *);
 
 static PyTypeObject BodyType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Body",                  /* tp_name */
-    sizeof(Body),                       /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Body_dealloc,           /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)Body_repr,                /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Body(rfile, content_length)",      /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    (getiterfunc)Body_iter,             /* tp_iter */
-    (iternextfunc)Body_next,            /* tp_iternext */
-    Body_methods,                       /* tp_methods */
-    Body_members,                       /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Body_init,                /* tp_init */
+    .tp_name           = "degu._base.Body",
+    .tp_basicsize      = sizeof(Body),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Body_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)Body_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Body(rfile, content_length)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = (getiterfunc)Body_iter,
+    .tp_iternext       = (iternextfunc)Body_next,
+    .tp_methods        = Body_methods,
+    .tp_members        = Body_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Body_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
@@ -695,41 +763,53 @@ static PyObject * ChunkedBody_next(ChunkedBody *);
 
 static PyTypeObject ChunkedBodyType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.ChunkedBody",           /* tp_name */
-    sizeof(ChunkedBody),                /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)ChunkedBody_dealloc,    /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)ChunkedBody_repr,         /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "ChunkedBody(rfile)",               /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    (getiterfunc)ChunkedBody_iter,      /* tp_iter */
-    (iternextfunc)ChunkedBody_next,     /* tp_iternext */
-    ChunkedBody_methods,                /* tp_methods */
-    ChunkedBody_members,                /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)ChunkedBody_init,         /* tp_init */
+    .tp_name           = "degu._base.ChunkedBody",
+    .tp_basicsize      = sizeof(ChunkedBody),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)ChunkedBody_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)ChunkedBody_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "ChunkedBody(rfile)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = (getiterfunc)ChunkedBody_iter,
+    .tp_iternext       = (iternextfunc)ChunkedBody_next,
+    .tp_methods        = ChunkedBody_methods,
+    .tp_members        = ChunkedBody_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)ChunkedBody_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
@@ -768,41 +848,53 @@ static PyObject * BodyIter_repr(BodyIter *);
 
 static PyTypeObject BodyIterType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.BodyIter",                  /* tp_name */
-    sizeof(BodyIter),                       /* tp_basicsize */
-    0,                                      /* tp_itemsize */
-    (destructor)BodyIter_dealloc,           /* tp_dealloc */
-    0,                                      /* tp_print */
-    0,                                      /* tp_getattr */
-    0,                                      /* tp_setattr */
-    0,                                      /* tp_reserved */
-    (reprfunc)BodyIter_repr,                /* tp_repr */
-    0,                                      /* tp_as_number */
-    0,                                      /* tp_as_sequence */
-    0,                                      /* tp_as_mapping */
-    0,                                      /* tp_hash  */
-    0,                                      /* tp_call */
-    0,                                      /* tp_str */
-    0,                                      /* tp_getattro */
-    0,                                      /* tp_setattro */
-    0,                                      /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                     /* tp_flags */
-    "BodyIter(source)",                     /* tp_doc */
-    0,                                      /* tp_traverse */
-    0,                                      /* tp_clear */
-    0,                                      /* tp_richcompare */
-    0,                                      /* tp_weaklistoffset */
-    0,                                      /* tp_iter */
-    0,                                      /* tp_iternext */
-    BodyIter_methods,                       /* tp_methods */
-    BodyIter_members,                       /* tp_members */
-    0,                                      /* tp_getset */
-    0,                                      /* tp_base */
-    0,                                      /* tp_dict */
-    0,                                      /* tp_descr_get */
-    0,                                      /* tp_descr_set */
-    0,                                      /* tp_dictoffset */
-    (initproc)BodyIter_init,                /* tp_init */
+    .tp_name           = "degu._base.BodyIter",
+    .tp_basicsize      = sizeof(BodyIter),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)BodyIter_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)BodyIter_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "BodyIter(source)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = BodyIter_methods,
+    .tp_members        = BodyIter_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)BodyIter_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
@@ -839,41 +931,53 @@ static PyObject * ChunkedBodyIter_repr(ChunkedBodyIter *);
 
 static PyTypeObject ChunkedBodyIterType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.ChunkedBodyIter",           /* tp_name */
-    sizeof(ChunkedBodyIter),                /* tp_basicsize */
-    0,                                      /* tp_itemsize */
-    (destructor)ChunkedBodyIter_dealloc,    /* tp_dealloc */
-    0,                                      /* tp_print */
-    0,                                      /* tp_getattr */
-    0,                                      /* tp_setattr */
-    0,                                      /* tp_reserved */
-    (reprfunc)ChunkedBodyIter_repr,         /* tp_repr */
-    0,                                      /* tp_as_number */
-    0,                                      /* tp_as_sequence */
-    0,                                      /* tp_as_mapping */
-    0,                                      /* tp_hash  */
-    0,                                      /* tp_call */
-    0,                                      /* tp_str */
-    0,                                      /* tp_getattro */
-    0,                                      /* tp_setattro */
-    0,                                      /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                     /* tp_flags */
-    "ChunkedBodyIter(source)",              /* tp_doc */
-    0,                                      /* tp_traverse */
-    0,                                      /* tp_clear */
-    0,                                      /* tp_richcompare */
-    0,                                      /* tp_weaklistoffset */
-    0,                                      /* tp_iter */
-    0,                                      /* tp_iternext */
-    ChunkedBodyIter_methods,                /* tp_methods */
-    ChunkedBodyIter_members,                /* tp_members */
-    0,                                      /* tp_getset */
-    0,                                      /* tp_base */
-    0,                                      /* tp_dict */
-    0,                                      /* tp_descr_get */
-    0,                                      /* tp_descr_set */
-    0,                                      /* tp_dictoffset */
-    (initproc)ChunkedBodyIter_init,         /* tp_init */
+    .tp_name           = "degu._base.ChunkedBodyIter",
+    .tp_basicsize      = sizeof(ChunkedBodyIter),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)ChunkedBodyIter_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)ChunkedBodyIter_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "ChunkedBodyIter(source)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = ChunkedBodyIter_methods,
+    .tp_members        = ChunkedBodyIter_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)ChunkedBodyIter_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
@@ -929,41 +1033,53 @@ static int Connection_init(Connection *, PyObject *, PyObject *);
 
 static PyTypeObject ConnectionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Connection",            /* tp_name */
-    sizeof(Connection),                 /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Connection_dealloc,     /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    0,                                  /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Connection(sock, base_headers)",   /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    Connection_methods,                 /* tp_methods */
-    Connection_members,                 /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Connection_init,          /* tp_init */
+    .tp_name           = "degu._base.Connection",
+    .tp_basicsize      = sizeof(Connection),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Connection_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Connection(sock, base_headers)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = Connection_methods,
+    .tp_members        = Connection_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Connection_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -999,41 +1115,53 @@ static PyObject * Session_str(Session *);
 
 static PyTypeObject SessionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Session",               /* tp_name */
-    sizeof(Session),                    /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Session_dealloc,        /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    (reprfunc)Session_repr,             /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    (reprfunc)Session_str,              /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Session(sock, base_headers)",      /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    0,                                  /* tp_methods */
-    Session_members,                    /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Session_init,             /* tp_init */
+    .tp_name           = "degu._base.Session",
+    .tp_basicsize      = sizeof(Session),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Session_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)Session_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = (reprfunc)Session_str,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Session(address, credentials=None, max_requests=None)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = Session_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Session_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define SESSION(obj) ((Session *)(obj))
