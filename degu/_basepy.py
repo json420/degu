@@ -68,9 +68,6 @@ _OK = 'OK'
 BodiesType = Bodies = namedtuple('Bodies',
     'Body ChunkedBody BodyIter ChunkedBodyIter'
 )
-RequestType = Request = namedtuple('Request',
-    'method uri headers body mount path query'
-)
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
 
@@ -620,6 +617,72 @@ def parse_request(preamble, rfile):
     else:
         body = None
     return Request(method, uri, headers, body, mount, path, query)
+
+
+class Request:
+    def __init__(self, method, uri, headers, body, mount, path, query):
+        self._method = method
+        self._uri = uri
+        self._headers = headers
+        self._body = body
+        self._mount = mount
+        self._path = path
+        self._query = query
+        self._keys = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
+        self._values = (method, uri, headers, body, mount, path, query)
+
+#    def __repr__(self):
+#        return 'Request({!r}, {!r}, {!r}, {!r}, mount={!r}, path={!r}, query={!r})'.format(
+#            self._method,
+#            self._uri,
+#            self._headers,
+#            self._body,
+#            self._mount,
+#            self._path,
+#            self._query,
+#        )
+
+    def __repr__(self):
+        return 'Request(method={!r}, uri={!r}, headers={!r}, body={!r}, mount={!r}, path={!r}, query={!r})'.format(
+            self._method,
+            self._uri,
+            self._headers,
+            self._body,
+            self._mount,
+            self._path,
+            self._query,
+        )
+
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def uri(self):
+        return self._uri
+
+    @property
+    def headers(self):
+        return self._headers
+
+    @property
+    def body(self):
+        return self._body
+
+    @property
+    def mount(self):
+        return self._mount
+
+    @property
+    def path(self):
+        return self._path
+
+    @property
+    def query(self):
+        return self._query
+
+
+RequestType = Request
 
 
 
