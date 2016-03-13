@@ -382,10 +382,10 @@ class BackendTestCase(TestCase):
 
 
 REQUEST_ARGS_REPR = ', '.join([
-    'method={!r}',
-    'uri={!r}',
-    'headers={!r}',
-    'body={!r}',
+    '{!r}',  # method
+    '{!r}',  # uri
+    '{!r}',  # headers
+    '{!r}',  # body
     'mount={!r}',
     'path={!r}',
     'query={!r}',
@@ -429,7 +429,7 @@ class TestRequest_Py(BackendTestCase):
 
 class TestRequest_C(TestRequest_Py):
     backend = _base
-        
+
 
 class TestRange_Py(BackendTestCase):
     @property

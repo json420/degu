@@ -619,7 +619,15 @@ def parse_request(preamble, rfile):
     return Request(method, uri, headers, body, mount, path, query)
 
 
+_REQUEST_REPR = 'Request(\
+{!r}, {!r}, {!r}, {!r}, mount={!r}, path={!r}, query={!r})'
+
+
 class Request:
+    __slots__ = (
+        '_method', '_uri', '_headers', '_body', '_mount', '_path', '_query'
+    )
+
     def __init__(self, method, uri, headers, body, mount, path, query):
         self._method = method
         self._uri = uri
@@ -628,22 +636,9 @@ class Request:
         self._mount = mount
         self._path = path
         self._query = query
-        self._keys = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
-        self._values = (method, uri, headers, body, mount, path, query)
-
-#    def __repr__(self):
-#        return 'Request({!r}, {!r}, {!r}, {!r}, mount={!r}, path={!r}, query={!r})'.format(
-#            self._method,
-#            self._uri,
-#            self._headers,
-#            self._body,
-#            self._mount,
-#            self._path,
-#            self._query,
-#        )
 
     def __repr__(self):
-        return 'Request(method={!r}, uri={!r}, headers={!r}, body={!r}, mount={!r}, path={!r}, query={!r})'.format(
+        return _REQUEST_REPR.format(
             self._method,
             self._uri,
             self._headers,
