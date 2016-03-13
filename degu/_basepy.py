@@ -574,20 +574,21 @@ def _parse_query(src):
     raise ValueError('bad bytes in query: {!r}'.format(src))
 
 
-def parse_uri(src):
+def _parse_uri(src):
     if not src:
         raise ValueError('uri is empty')
     if not URI.issuperset(src):
         raise ValueError('bad bytes in uri: {!r}'.format(src))
-    uri = src.decode('ascii')
     parts = src.split(b'?', 1)
     path = _parse_path(parts[0])
     if len(parts) == 1:
-        query = None
-    else:
-        query = _parse_query(parts[1])
-    # (uri, mount, path, query):
-    return (uri, [], path, query)
+        return (path, None)
+    return (path, _parse_query(parts[1]))
+
+
+def parse_uri(src):
+    (path, query) = _parse_uri(src)
+    return (src.decode('ascii'), [], path, query)
 
 
 def parse_request_line(line):
