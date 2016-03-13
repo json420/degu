@@ -57,6 +57,14 @@
 #define CONTENT_RANGE_BIT 8u
 #define BODY_MASK 3u
 
+#if PY_MINOR_VERSION >= 5
+    #define _TP_AS_ASYNC .tp_as_async
+    #define _M_SLOTS .m_slots
+#else
+    #define _TP_AS_ASYNC .tp_reserved
+    #define _M_SLOTS .m_reload
+#endif
+
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -308,7 +316,7 @@ static PyTypeObject RangeType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)Range_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -385,7 +393,7 @@ static PyTypeObject ContentRangeType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)ContentRange_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -476,7 +484,7 @@ static PyTypeObject ReaderType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -567,7 +575,7 @@ static PyTypeObject WriterType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -669,7 +677,7 @@ static PyTypeObject BodyType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)Body_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -762,7 +770,7 @@ static PyTypeObject ChunkedBodyType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)ChunkedBody_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -847,7 +855,7 @@ static PyTypeObject BodyIterType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)BodyIter_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -930,7 +938,7 @@ static PyTypeObject ChunkedBodyIterType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)ChunkedBodyIter_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1032,7 +1040,7 @@ static PyTypeObject ConnectionType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1114,7 +1122,7 @@ static PyTypeObject SessionType = {
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    .tp_as_async       = NULL,
+    _TP_AS_ASYNC       = NULL,
     .tp_repr           = (reprfunc)Session_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,

@@ -5046,7 +5046,7 @@ static struct PyModuleDef degu = {
     .m_doc = NULL,
     .m_size = -1,
     .m_methods = degu_functions,
-    .m_slots = NULL,
+    _M_SLOTS = NULL,
     .m_traverse = NULL,
     .m_free = NULL,
 };
