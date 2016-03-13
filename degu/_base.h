@@ -1025,41 +1025,41 @@ static int Connection_init(Connection *, PyObject *, PyObject *);
 
 static PyTypeObject ConnectionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "degu._base.Connection",            /* tp_name */
-    sizeof(Connection),                 /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Connection_dealloc,     /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    0,                                  /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Connection(sock, base_headers)",   /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    Connection_methods,                 /* tp_methods */
-    Connection_members,                 /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Connection_init,          /* tp_init */
+    .tp_name           = "degu._base.Connection",
+    .tp_basicsize      = sizeof(Connection),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Connection_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    .tp_as_async       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Connection(sock, base_headers)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = Connection_methods,
+    .tp_members        = Connection_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Connection_init,
     .tp_alloc          = NULL,
     .tp_new            = NULL,
     .tp_free           = NULL,
