@@ -113,11 +113,13 @@ class Test(Command):
 ext_kw = {
     'sources': ['degu/_base.c'],
     'extra_compile_args': [
-        '-std=gnu11',  # Default in gcc 5.0
-        '-Werror',  # Make all warnings into errors
-        '-pedantic-errors',
+        '-Werror',  # Make warnings into errors
+        '-Wall',
         '-Wsign-compare',
         '-Wsign-conversion',
+        '-std=gnu11',
+        '-pedantic-errors',
+        '-Wpedantic',
     ],
 }
 if os.environ.get('DEGU_INSTRUMENT_BUILD') == 'true':
