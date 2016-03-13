@@ -118,6 +118,7 @@ ext_kw = {
         '-Wsign-compare',
         '-Wsign-conversion',
         '-Wmissing-field-initializers',
+        '-Wfatal-errors',
         '-std=gnu11',
         '-pedantic-errors',
         '-Wpedantic',

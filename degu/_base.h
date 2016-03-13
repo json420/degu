@@ -336,6 +336,18 @@ static PyTypeObject RangeType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)Range_init,               /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -401,6 +413,18 @@ static PyTypeObject ContentRangeType = {
     0,                                      /* tp_descr_set */
     0,                                      /* tp_dictoffset */
     (initproc)ContentRange_init,            /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -480,6 +504,18 @@ static PyTypeObject ReaderType = {
     0,                            /* tp_descr_set */
     0,                            /* tp_dictoffset */
     (initproc)Reader_init,        /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define READER_CLASS ((PyObject *)&ReaderType)
@@ -559,6 +595,18 @@ static PyTypeObject WriterType = {
     0,                            /* tp_descr_set */
     0,                            /* tp_dictoffset */
     (initproc)Writer_init,        /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define WRITER_CLASS ((PyObject *)&WriterType)
@@ -649,6 +697,18 @@ static PyTypeObject BodyType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)Body_init,                /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_BODY(obj) (Py_TYPE((obj)) == &BodyType)
@@ -730,6 +790,18 @@ static PyTypeObject ChunkedBodyType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)ChunkedBody_init,         /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_CHUNKED_BODY(obj) (Py_TYPE((obj)) == &ChunkedBodyType)
@@ -803,6 +875,18 @@ static PyTypeObject BodyIterType = {
     0,                                      /* tp_descr_set */
     0,                                      /* tp_dictoffset */
     (initproc)BodyIter_init,                /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_BODY_ITER(obj) (Py_TYPE((obj)) == &BodyIterType)
@@ -874,6 +958,18 @@ static PyTypeObject ChunkedBodyIterType = {
     0,                                      /* tp_descr_set */
     0,                                      /* tp_dictoffset */
     (initproc)ChunkedBodyIter_init,         /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define IS_CHUNKED_BODY_ITER(obj) (Py_TYPE((obj)) == &ChunkedBodyIterType)
@@ -964,6 +1060,18 @@ static PyTypeObject ConnectionType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)Connection_init,          /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 
@@ -1034,6 +1142,18 @@ static PyTypeObject SessionType = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)Session_init,             /* tp_init */
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
 };
 
 #define SESSION(obj) ((Session *)(obj))

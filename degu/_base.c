@@ -5041,11 +5041,14 @@ error:
 }
 
 static struct PyModuleDef degu = {
-    PyModuleDef_HEAD_INIT,
-    "degu._base",
-    NULL,
-    -1,
-    degu_functions
+    .m_base = PyModuleDef_HEAD_INIT,
+    .m_name = "degu._base",
+    .m_doc = NULL,
+    .m_size = -1,
+    .m_methods = degu_functions,
+    .m_slots = NULL,
+    .m_traverse = NULL,
+    .m_free = NULL,
 };
 
 PyMODINIT_FUNC
