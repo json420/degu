@@ -169,7 +169,7 @@ typedef struct {
     ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
 
 #define NEW_DEGU_RESPONSE \
-    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL})
+    ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL, 0})
 
 typedef struct {
     PyObject *key;
