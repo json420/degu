@@ -678,9 +678,6 @@ class Request:
         return self._query
 
 
-RequestType = Request
-
-
 
 ################################################################################
 # Response parsing:
