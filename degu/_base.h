@@ -231,7 +231,6 @@ static PyObject * set_output_headers(PyObject *, PyObject *);
 
 /* namedtuples */
 static PyObject * Bodies(PyObject *, PyObject *);
-static PyObject * Request(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
 /* Server and client entry points */
@@ -274,7 +273,6 @@ static struct PyMethodDef degu_functions[] = {
 
     /* namedtuples */
     {"Bodies", Bodies, METH_VARARGS, NULL},
-    {"Request", Request, METH_VARARGS, NULL},
     {"Response", Response, METH_VARARGS, NULL},
 
     /* Server and client entry points */
@@ -421,6 +419,89 @@ static PyTypeObject ContentRangeType = {
     .tp_descr_set      = NULL,
     .tp_dictoffset     = 0,
     .tp_init           = (initproc)ContentRange_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
+};
+
+
+/******************************************************************************
+ * Request object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject * method;
+    PyObject * uri;
+    PyObject * headers;
+    PyObject * body;
+    PyObject * mount;
+    PyObject * path;
+    PyObject * query;
+} Request;
+
+static PyObject * _Request_New(DeguRequest *);
+
+static PyMemberDef Request_members[] = {
+    {"method",  T_OBJECT, offsetof(Request, method),  READONLY, NULL},
+    {"uri",     T_OBJECT, offsetof(Request, uri),     READONLY, NULL},
+    {"headers", T_OBJECT, offsetof(Request, headers), READONLY, NULL},
+    {"body",    T_OBJECT, offsetof(Request, body),    READONLY, NULL},
+    {"mount",   T_OBJECT, offsetof(Request, mount),   READONLY, NULL},
+    {"path",    T_OBJECT, offsetof(Request, path),    READONLY, NULL},
+    {"query",   T_OBJECT, offsetof(Request, query),   READONLY, NULL},
+    {NULL}
+};
+
+static void Request_dealloc(Request *);
+static int Request_init(Request *, PyObject *, PyObject *);
+static PyObject * Request_repr(Request *);
+
+static PyTypeObject RequestType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name           = "degu._base.Request",
+    .tp_basicsize      = sizeof(Request),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Request_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    _TP_AS_ASYNC       = NULL,
+    .tp_repr           = (reprfunc)Request_repr,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = NULL,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Request()",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = Request_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Request_init,
     .tp_alloc          = NULL,
     .tp_new            = NULL,
     .tp_free           = NULL,

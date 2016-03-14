@@ -208,49 +208,6 @@ Bodies(PyObject *self, PyObject *args)
 }
 
 
-/* Request namedtuple */
-static PyTypeObject RequestType;
-static PyStructSequence_Field RequestFields[] = {
-    {"method", NULL},
-    {"uri", NULL},
-    {"headers", NULL},
-    {"body", NULL},
-    {"mount", NULL},
-    {"path", NULL},
-    {"query", NULL},
-    {NULL},
-};
-static PyStructSequence_Desc RequestDesc = {"Request", NULL, RequestFields, 7};
-
-static PyObject *
-_Request(DeguRequest *dr)
-{
-    PyObject *ret = PyStructSequence_New(&RequestType);
-    if (ret != NULL) {
-        _SET_NAMEDTUPLE_ITEM(ret, 0, dr->method)
-        _SET_NAMEDTUPLE_ITEM(ret, 1, dr->uri)
-        _SET_NAMEDTUPLE_ITEM(ret, 2, dr->headers)
-        _SET_NAMEDTUPLE_ITEM(ret, 3, dr->body)
-        _SET_NAMEDTUPLE_ITEM(ret, 4, dr->mount)
-        _SET_NAMEDTUPLE_ITEM(ret, 5, dr->path)
-        _SET_NAMEDTUPLE_ITEM(ret, 6, dr->query)
-    }
-    return ret;
-}
-
-static PyObject *
-Request(PyObject *self, PyObject *args)
-{
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OOOOOOO:Request",
-            &dr.method, &dr.uri, &dr.headers, &dr.body,
-            &dr.mount, &dr.path, &dr.query)) {
-        return NULL;
-    }
-    return _Request(&dr);
-}
-
-
 /* Response namedtuple */
 static PyTypeObject ResponseType;
 static PyStructSequence_Field ResponseFields[] = {
@@ -308,9 +265,6 @@ static bool
 _init_all_namedtuples(PyObject *module)
 {
     if (! _init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
-        return false;
-    }
-    if (! _init_namedtuple(module, "RequestType", &RequestType, &RequestDesc)) {
         return false;
     }
     if (! _init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
@@ -1028,6 +982,103 @@ ContentRange_richcompare(ContentRange *self, PyObject *other, int op)
         "cannot compare ContentRange() with %R", Py_TYPE(other)
     );
     return NULL;
+}
+
+
+/******************************************************************************
+ * Request object.
+ ******************************************************************************/
+static void
+_Request_clear(Request *self)
+{
+    Py_CLEAR(self->method);
+    Py_CLEAR(self->uri);
+    Py_CLEAR(self->headers);
+    Py_CLEAR(self->body);
+    Py_CLEAR(self->mount);
+    Py_CLEAR(self->path);
+    Py_CLEAR(self->query);
+}
+
+static bool
+_Request_fill_args(Request *self, DeguRequest *dr)
+{
+    _SET_AND_INC(self->method,  dr->method)
+    _SET_AND_INC(self->uri,     dr->uri)
+    _SET_AND_INC(self->headers, dr->headers)
+    _SET_AND_INC(self->body,    dr->body)
+    _SET_AND_INC(self->mount,   dr->mount)
+    _SET_AND_INC(self->path,    dr->path)
+    _SET_AND_INC(self->query,   dr->query)
+    return true;
+
+error:
+    _Request_clear(self);
+    return false;
+}
+
+static PyObject *
+_Request_New(DeguRequest *dr)
+{
+    Request *self = PyObject_New(Request, &RequestType);
+    if (self == NULL) {
+        return NULL;
+    }
+    self->method = NULL;
+    self->uri = NULL;
+    self->headers = NULL;
+    self->body = NULL;
+    self->mount = NULL;
+    self->path = NULL;
+    self->query = NULL;
+    if (! _Request_fill_args(self, dr)) {
+        PyObject_Del((PyObject *)self);
+        return NULL;
+    }
+    return (PyObject *)PyObject_INIT(self, &RequestType);
+}
+
+static void
+Request_dealloc(Request *self)
+{
+    _Request_clear(self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Request_init(Request *self, PyObject *args, PyObject *kw)
+{
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    static char *keys[] = {
+        "method",
+        "uri",
+        "headers",
+        "body",
+        "mount",
+        "path",
+        "query",
+        NULL,
+    };
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOOOOOO:Request", keys,
+            &dr.method, &dr.uri, &dr.headers, &dr.body,
+            &dr.mount, &dr.path, &dr.query)
+    ) {
+        return -1;
+    }
+    if (! _Request_fill_args(self, &dr)) {
+        return -1; 
+    }
+    return 0;
+}
+
+static PyObject *
+Request_repr(Request *self)
+{
+    return PyUnicode_FromFormat(
+        "Request(%R, %R, %R, %R, mount=%R, path=%R, query=%R)",
+        self->method, self->uri, self->headers, self->body,
+        self->mount, self->path, self->query
+    );
 }
 
 
@@ -1867,7 +1918,7 @@ parse_request(PyObject *self, PyObject *args)
 
     DeguRequest dr = NEW_DEGU_REQUEST;
     if (_parse_request(src, rfile, scratch, &dr)) {
-        ret = _Request(&dr);
+        ret = _Request_New(&dr);
     }
     free(scratch.buf);
     _clear_degu_request(&dr);
@@ -3370,7 +3421,7 @@ Reader_read_request(Reader *self) {
     PyObject *ret = NULL;
 
     if (_Reader_read_request(self, &dr)) {
-        ret = _Request(&dr);
+        ret = _Request_New(&dr);
     }
     _clear_degu_request(&dr);
     return ret;
@@ -4662,13 +4713,12 @@ _handle_requests(PyObject *self, PyObject *args)
         if (! _Reader_read_request(READER(reader), &req)) {
             goto error;
         }
-        _SET(request, _Request(&req))
+        _SET(request, _Request_New(&req))
 
         /* Call the application, the validate and upack the response */
         _SET(response,
             PyObject_CallFunctionObjArgs(app, session, request, bodies, NULL)
         )
-        Py_CLEAR(request); /* Clear as req holds refererces to items still */
         if (! _unpack_response(response, &rsp)) {
             goto error;
         }
@@ -4702,6 +4752,7 @@ _handle_requests(PyObject *self, PyObject *args)
 
         /* Cleanup for next request */
         Py_CLEAR(response);
+        Py_CLEAR(request);
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
     }
@@ -4973,6 +5024,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "ContentRange", (PyObject *)&ContentRangeType)
+
+    RequestType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RequestType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Request", (PyObject *)&RequestType)
 
     ReaderType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&ReaderType) != 0) {

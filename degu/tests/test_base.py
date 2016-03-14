@@ -2715,7 +2715,6 @@ class TestNamedTuples_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(a), 3)
 
     def test_Request(self):
-        self.skipTest('FIXME')
         (tup, args) = self.new('Request', 7)
         self.assertIs(tup.method,  args[0])
         self.assertIs(tup.uri,     args[1])
