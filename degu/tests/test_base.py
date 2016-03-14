@@ -34,6 +34,7 @@ import socket
 from . import helpers
 from .helpers import random_chunks, FuzzTestCase, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
+from .helpers import iter_random_uri
 from degu.sslhelpers import random_id
 from degu import base, _basepy
 
@@ -296,10 +297,10 @@ class TestAliases(TestCase):
         all_names = (
             'EmptyPreambleError',
             'Bodies',   'BodiesType',
-            'Request',  'RequestType',
             'Response', 'ResponseType',
             'Range',
             'ContentRange',
+            'Request',
             'bodies',
             '_handle_requests',
             'parse_headers',
@@ -378,6 +379,56 @@ class BackendTestCase(TestCase):
     @property
     def EmptyPreambleError(self):
         return self.getattr('EmptyPreambleError')
+
+
+REQUEST_ARGS_REPR = ', '.join([
+    '{!r}',  # method
+    '{!r}',  # uri
+    '{!r}',  # headers
+    '{!r}',  # body
+    'mount={!r}',
+    'path={!r}',
+    'query={!r}',
+])
+
+
+class TestRequest_Py(BackendTestCase):
+    @property
+    def Request(self):
+        return self.getattr('Request')
+
+    def iter_random_args(self):
+        for method in GOOD_METHODS:
+            for (uri, path, query) in iter_random_uri():
+                yield (method, uri, {}, None, [], path, query)
+
+    def test_init(self):
+        request = self.Request('GET', '/', {}, None, [], [], None)
+        self.assertIsInstance(request, self.Request)
+        self.assertEqual(request.method, 'GET')
+        self.assertEqual(request.uri, '/')
+        self.assertEqual(request.headers, {})
+        self.assertIsNone(request.body)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, [])
+        self.assertIsNone(request.query)
+
+        for args in self.iter_random_args():
+            request = self.Request(*args)
+            self.assertIsInstance(request, self.Request)
+            self.assertIs(request.method,  args[0])
+            self.assertIs(request.uri,     args[1])
+            self.assertIs(request.headers, args[2])
+            self.assertIs(request.body,    args[3])
+            self.assertIs(request.mount,   args[4])
+            self.assertIs(request.path,    args[5])
+            self.assertIs(request.query,   args[6])
+            args_repr = REQUEST_ARGS_REPR.format(*args)
+            self.assertEqual(repr(request), 'Request({})'.format(args_repr))
+
+
+class TestRequest_C(TestRequest_Py):
+    backend = _base
 
 
 class TestRange_Py(BackendTestCase):
@@ -1439,7 +1490,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         bodies = self.getattr('bodies')
         parse_request = self.getattr('parse_request')
         EmptyPreambleError = self.getattr('EmptyPreambleError')
-        RequestType = self.getattr('RequestType')
+        Request = self.getattr('Request')
         Range = self.getattr('Range')
         rfile = io.BytesIO()
 
@@ -1448,7 +1499,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), 'request preamble is empty')
 
         r = parse_request(b'GET / HTTP/1.1', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/')
         self.assertEqual(r.headers, {})
@@ -1456,10 +1507,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
-        self.assertEqual(r, ('GET', '/', {}, None, [], [], None))
+        # FIXME:
+        #self.assertEqual(r, ('GET', '/', {}, None, [], [], None))
 
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/')
         self.assertEqual(r.headers, {'range': 'bytes=17-20'})
@@ -1467,9 +1519,10 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
-        self.assertEqual(r,
-            ('GET', '/', {'range': 'bytes=17-20'}, None, [], [], None)
-        )
+        # FIXME:
+        #self.assertEqual(r,
+        #    ('GET', '/', {'range': 'bytes=17-20'}, None, [], [], None)
+        #)
         _range = r.headers['range']
         self.assertIs(type(_range), Range)
         self.assertEqual(_range.start, 17)
@@ -1480,7 +1533,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(str(_range), 'bytes=17-20')
 
         r = parse_request(b'GET /foo? HTTP/1.1', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/foo?')
         self.assertEqual(r.headers, {})
@@ -1488,10 +1541,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertEqual(r.query, '')
-        self.assertEqual(r, ('GET', '/foo?', {}, None, [], ['foo'], ''))
+        # FIXME:
+        #self.assertEqual(r, ('GET', '/foo?', {}, None, [], ['foo'], ''))
 
         r = parse_request(b'GET /foo/bar/?stuff=junk HTTP/1.1', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
         self.assertEqual(r.uri, '/foo/bar/?stuff=junk')
         self.assertEqual(r.headers, {})
@@ -1499,12 +1553,13 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo', 'bar', ''])
         self.assertEqual(r.query, 'stuff=junk')
-        self.assertEqual(r,
-            ('GET', '/foo/bar/?stuff=junk', {}, None, [], ['foo', 'bar', ''], 'stuff=junk')
-        )
+        # FIXME:
+        #self.assertEqual(r,
+        #    ('GET', '/foo/bar/?stuff=junk', {}, None, [], ['foo', 'bar', ''], 'stuff=junk')
+        #)
 
         r = parse_request(b'PUT /foo HTTP/1.1', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
         self.assertEqual(r.headers, {})
@@ -1512,10 +1567,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        self.assertEqual(r, ('PUT', '/foo', {}, None, [], ['foo'], None))
+        # FIXME:
+        #self.assertEqual(r, ('PUT', '/foo', {}, None, [], ['foo'], None))
 
         r = parse_request(b'PUT /foo HTTP/1.1\r\nContent-Length: 17', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
         self.assertEqual(r.headers, {'content-length': 17})
@@ -1525,12 +1581,13 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        self.assertEqual(r,
-            ('PUT', '/foo', {'content-length': 17}, r.body, [], ['foo'], None)
-        )
+        # FIXME:
+        #self.assertEqual(r,
+        #    ('PUT', '/foo', {'content-length': 17}, r.body, [], ['foo'], None)
+        #)
 
         r = parse_request(b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile)
-        self.assertIs(type(r), RequestType)
+        self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
         self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
@@ -1539,9 +1596,10 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        self.assertEqual(r,
-            ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
-        )
+        # FIXME:
+        #self.assertEqual(r,
+        #    ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
+        #)
 
     def test_parse_response(self):
         bodies = self.getattr('bodies')
@@ -2650,21 +2708,6 @@ class TestNamedTuples_Py(BackendTestCase):
         self.assertIs(tup.ChunkedBody,     args[1])
         self.assertIs(tup.BodyIter,        args[2])
         self.assertIs(tup.ChunkedBodyIter, args[3])
-        for a in args:
-            self.assertEqual(sys.getrefcount(a), 4)
-        del tup
-        for a in args:
-            self.assertEqual(sys.getrefcount(a), 3)
-
-    def test_Request(self):
-        (tup, args) = self.new('Request', 7)
-        self.assertIs(tup.method,  args[0])
-        self.assertIs(tup.uri,     args[1])
-        self.assertIs(tup.headers, args[2])
-        self.assertIs(tup.body,    args[3])
-        self.assertIs(tup.mount,  args[4])
-        self.assertIs(tup.path,    args[5])
-        self.assertIs(tup.query,   args[6])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
@@ -5142,8 +5185,9 @@ class TestReader_Py(BackendTestCase):
         data = prefix + term + suffix
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
-        self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request, ('GET', '/', {}, None, [], [], None))
+        self.assertIsInstance(request, self.getattr('Request'))
+        # FIXME:
+        #self.assertEqual(request, ('GET', '/', {}, None, [], [], None))
 
         # Bad preamble termination:
         for bad in BAD_TERM:
@@ -5174,10 +5218,11 @@ class TestReader_Py(BackendTestCase):
         data = b'GET / HTTP/1.1\r\nRange: bytes=0-0\r\n\r\n'
         (sock, reader) = self.new(data, rcvbuf=rcvbuf)
         request = reader.read_request()
-        self.assertIsInstance(request, self.getattr('RequestType'))
-        self.assertEqual(request,
-            ('GET', '/', {'range': 'bytes=0-0'}, None, [], [], None)
-        )
+        self.assertIsInstance(request, self.getattr('Request'))
+        # FIXME:
+        #self.assertEqual(request,
+        #    ('GET', '/', {'range': 'bytes=0-0'}, None, [], [], None)
+        #)
         _range = request.headers['range']
         self.assertIs(type(_range), self.Range)
         self.assertIs(type(_range.start), int)

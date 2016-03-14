@@ -68,9 +68,6 @@ _OK = 'OK'
 BodiesType = Bodies = namedtuple('Bodies',
     'Body ChunkedBody BodyIter ChunkedBodyIter'
 )
-RequestType = Request = namedtuple('Request',
-    'method uri headers body mount path query'
-)
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
 
@@ -577,20 +574,21 @@ def _parse_query(src):
     raise ValueError('bad bytes in query: {!r}'.format(src))
 
 
-def parse_uri(src):
+def _parse_uri(src):
     if not src:
         raise ValueError('uri is empty')
     if not URI.issuperset(src):
         raise ValueError('bad bytes in uri: {!r}'.format(src))
-    uri = src.decode('ascii')
     parts = src.split(b'?', 1)
     path = _parse_path(parts[0])
     if len(parts) == 1:
-        query = None
-    else:
-        query = _parse_query(parts[1])
-    # (uri, mount, path, query):
-    return (uri, [], path, query)
+        return (path, None)
+    return (path, _parse_query(parts[1]))
+
+
+def parse_uri(src):
+    (path, query) = _parse_uri(src)
+    return (src.decode('ascii'), [], path, query)
 
 
 def parse_request_line(line):
@@ -620,6 +618,64 @@ def parse_request(preamble, rfile):
     else:
         body = None
     return Request(method, uri, headers, body, mount, path, query)
+
+
+_REQUEST_REPR = 'Request(\
+{!r}, {!r}, {!r}, {!r}, mount={!r}, path={!r}, query={!r})'
+
+
+class Request:
+    __slots__ = (
+        '_method', '_uri', '_headers', '_body', '_mount', '_path', '_query'
+    )
+
+    def __init__(self, method, uri, headers, body, mount, path, query):
+        self._method = method
+        self._uri = uri
+        self._headers = headers
+        self._body = body
+        self._mount = mount
+        self._path = path
+        self._query = query
+
+    def __repr__(self):
+        return _REQUEST_REPR.format(
+            self._method,
+            self._uri,
+            self._headers,
+            self._body,
+            self._mount,
+            self._path,
+            self._query,
+        )
+
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def uri(self):
+        return self._uri
+
+    @property
+    def headers(self):
+        return self._headers
+
+    @property
+    def body(self):
+        return self._body
+
+    @property
+    def mount(self):
+        return self._mount
+
+    @property
+    def path(self):
+        return self._path
+
+    @property
+    def query(self):
+        return self._query
 
 
 

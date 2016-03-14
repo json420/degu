@@ -278,3 +278,31 @@ def iter_bodies_with_non_callable_object():
         kw[name] = attr
         yield (MockBodies(**kw), name, attr)
 
+
+def build_uri(path, query):
+    uri = '/' + '/'.join(path)
+    if query is None:
+        return uri
+    return '?'.join([uri, query])
+
+
+def iter_random_path():
+    yield []
+    for length in range(1, 5):
+        p = [random_id() for i in range(length)]
+        yield p
+        yield p + [''] 
+
+
+def iter_random_uri():
+    queries = (
+        None,
+        random_id(),
+        '{}={}'.format(random_id(), random_id()),
+        '{}={}&{}={}'.format(random_id(), random_id(), random_id(), random_id())
+    )
+    for p in iter_random_path():
+        for q in queries:
+            yield (build_uri(p, q), p, q)
+
+
