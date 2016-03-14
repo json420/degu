@@ -56,10 +56,10 @@ except ImportError:
 __all__ = (
     'EmptyPreambleError',
     'Bodies', 'BodiesType',
-    'Request', 'RequestType',
     'Response', 'ResponseType',
     'Range',
     'ContentRange',
+    'Request',
     'bodies',
     'Connection',
     'Session',
