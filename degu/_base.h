@@ -449,6 +449,12 @@ typedef struct {
 } Request;
 
 static PyObject * _Request_New(DeguRequest *);
+static PyObject * Request_shift_path(Request *);
+
+static PyMethodDef Request_methods[] = {
+    {"shift_path", (PyCFunction)Request_shift_path, METH_NOARGS, NULL},
+    {NULL}
+};
 
 static PyMemberDef Request_members[] = {
     {"method",  T_OBJECT, offsetof(Request, method),  READONLY, NULL},
@@ -493,7 +499,7 @@ static PyTypeObject RequestType = {
     .tp_weaklistoffset = 0,
     .tp_iter           = NULL,
     .tp_iternext       = NULL,
-    .tp_methods        = NULL,
+    .tp_methods        = Request_methods,
     .tp_members        = Request_members,
     .tp_getset         = NULL,
     .tp_base           = NULL,

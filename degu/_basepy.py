@@ -102,6 +102,51 @@ EXTVAL = frozenset(_LOWER + _UPPER + _PATH + _VALUE)
 ################    END GENERATED TABLES      ##################################
 
 
+################################################################################
+# Argument type and value checking:
+
+def _check_type(name, obj, _type):
+    if type(obj) is not _type:
+        raise TypeError(
+            TYPE_ERROR.format(name, _type, type(obj), obj)
+        )
+
+def _check_type2(name, obj, _type):
+    if type(obj) is not _type:
+        raise TypeError(
+            TYPE_ERROR2.format(name, _type, type(obj))
+        )
+
+def _check_tuple(name, obj, size):
+    _check_type2(name, obj, tuple)
+    if len(obj) != size:
+        raise ValueError(
+            '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
+        )
+    return obj
+
+def _check_list(name, obj):
+    _check_type2(name, obj, list)
+    return obj
+
+def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
+    assert max_len <= MAX_IO_SIZE
+    _check_type2(name, obj, bytes)
+    if len(obj) > max_len:
+        raise ValueError(
+            'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
+        )
+
+_OUTGOING_STR = frozenset(chr(i) for i in range(128))
+
+def _check_str(name, obj):
+    _check_type(name, obj, str)
+    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+        raise ValueError(
+            'bad {}: {!r}'.format(name, obj)
+        )
+    return obj
+
 def _getcallable(objname, obj, name):
     attr = getattr(obj, name)
     if not callable(attr):
@@ -634,8 +679,8 @@ class Request:
         self._uri = uri
         self._headers = headers
         self._body = body
-        self._mount = mount
-        self._path = path
+        self._mount = _check_list('mount', mount)
+        self._path = _check_list('path', path)
         self._query = query
 
     def __repr__(self):
@@ -676,6 +721,13 @@ class Request:
     @property
     def query(self):
         return self._query
+
+    def shift_path(self):
+        if not self._path:
+            raise IndexError('Request.path is empty')
+        next = self._path.pop(0)
+        self._mount.append(next)
+        return next
 
 
 
@@ -729,47 +781,6 @@ def parse_response(method, preamble, rfile):
 
 ################################################################################
 # Rendering and formatting:
-
-def _check_type(name, obj, _type):
-    if type(obj) is not _type:
-        raise TypeError(
-            TYPE_ERROR.format(name, _type, type(obj), obj)
-        )
-    return obj
-
-
-def _check_type2(name, obj, _type):
-    if type(obj) is not _type:
-        raise TypeError(
-            TYPE_ERROR2.format(name, _type, type(obj))
-        )
-    return obj
-
-def _check_tuple(name, obj, size):
-    _check_type2(name, obj, tuple)
-    if len(obj) != size:
-        raise ValueError(
-            '{}: need a {}-tuple; got a {}-tuple'.format(name, size, len(obj))
-        )
-    return obj
-
-def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
-    assert max_len <= MAX_IO_SIZE
-    _check_type2(name, obj, bytes)
-    if len(obj) > max_len:
-        raise ValueError(
-            'need len({}) <= {}; got {}'.format(name, max_len, len(obj))
-        )
-
-_OUTGOING_STR = frozenset(chr(i) for i in range(128))
-
-def _check_str(name, obj):
-    _check_type(name, obj, str)
-    if obj == '' or not _OUTGOING_STR.issuperset(obj):
-        raise ValueError(
-            'bad {}: {!r}'.format(name, obj)
-        )
-    return obj
 
 def _check_method(method):
     _check_str('method', method)

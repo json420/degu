@@ -413,6 +413,17 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(request.path, [])
         self.assertIsNone(request.query)
 
+        with self.assertRaises(TypeError) as cm:
+            self.Request('GET', '/', {}, None, tuple(), [], None)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR2.format('mount', list, tuple)
+        )
+        with self.assertRaises(TypeError) as cm:
+            self.Request('GET', '/', {}, None, [], tuple(), None)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR2.format('path', list, tuple)
+        )
+
         for args in self.iter_random_args():
             request = self.Request(*args)
             self.assertIsInstance(request, self.Request)
@@ -425,6 +436,123 @@ class TestRequest_Py(BackendTestCase):
             self.assertIs(request.query,   args[6])
             args_repr = REQUEST_ARGS_REPR.format(*args)
             self.assertEqual(repr(request), 'Request({})'.format(args_repr))
+
+        # Test refrences counting:
+        args = (
+            random_id(),
+            random_id(),
+            {random_id(): random_id()},
+            random_id(),
+            [],
+            [random_id(), random_id()],
+            random_id(),
+        )
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+        request = self.Request(*args)
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 4)
+        del request
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+
+        # Attributes should be read-only:
+        names = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
+        request = self.Request(*args)
+        for (name, arg) in zip(names, args):
+            with self.assertRaises(AttributeError):
+                setattr(request, name, random_id())
+            self.assertIs(getattr(request, name), arg)
+            self.assertEqual(sys.getrefcount(arg), 5)
+            with self.assertRaises(AttributeError):
+                delattr(request, name)
+            self.assertIs(getattr(request, name), arg)
+            self.assertEqual(sys.getrefcount(arg), 5)
+        del request
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+
+    def test_shift_path(self):
+        def mk_request(mount, path):
+            return self.Request('GET', '/', {}, None, mount, path, None)
+
+        # both mount and path are empty:
+        mount = []
+        path = []
+        request = mk_request(mount, path)
+        with self.assertRaises(IndexError) as cm:
+            request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, [])
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+
+        # path is empty:
+        mount = ['foo']
+        path = []
+        request = mk_request(mount, path)
+        with self.assertRaises(IndexError) as cm:
+            request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo'])
+        self.assertEqual(request.path, [])
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+
+        # start with populated path:
+        items = tuple(random_id() for i in range(3))
+        mount = []
+        path = list(items)
+        request = mk_request(mount, path)
+        self.assertEqual(request.shift_path(), items[0])
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, list(items[0:1]))
+        self.assertEqual(request.path, list(items[1:3]))
+
+        self.assertEqual(request.shift_path(), items[1])
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, list(items[0:2]))
+        self.assertEqual(request.path, list(items[2:3]))
+
+        self.assertEqual(request.shift_path(), items[2])
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, list(items))
+        self.assertEqual(request.path, [])
+
+        with self.assertRaises(IndexError) as cm:
+            request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, list(items))
+        self.assertEqual(request.path, [])
+
+        self.assertEqual(sys.getrefcount(mount), 3)
+        self.assertEqual(sys.getrefcount(path), 3)
+        self.assertEqual(sys.getrefcount(items[0]), 3)
+        self.assertEqual(sys.getrefcount(items[1]), 3)
+        self.assertEqual(sys.getrefcount(items[2]), 3)
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+        self.assertEqual(sys.getrefcount(items[0]), 3)
+        self.assertEqual(sys.getrefcount(items[1]), 3)
+        self.assertEqual(sys.getrefcount(items[2]), 3)
+        del mount
+        del path
+        self.assertEqual(sys.getrefcount(items[0]), 2)
+        self.assertEqual(sys.getrefcount(items[1]), 2)
+        self.assertEqual(sys.getrefcount(items[2]), 2)
 
 
 class TestRequest_C(TestRequest_Py):

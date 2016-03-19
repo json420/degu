@@ -395,6 +395,12 @@ _check_tuple(const char *name, PyObject *obj, ssize_t len)
 }
 
 static inline bool
+_check_list(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyList_Type);
+}
+
+static inline bool
 _check_bytes(const char *name, PyObject *obj)
 {
     return _check_type2(name, obj, &PyBytes_Type);
@@ -1003,14 +1009,16 @@ _Request_clear(Request *self)
 static bool
 _Request_fill_args(Request *self, DeguRequest *dr)
 {
-    _SET_AND_INC(self->method,  dr->method)
-    _SET_AND_INC(self->uri,     dr->uri)
-    _SET_AND_INC(self->headers, dr->headers)
-    _SET_AND_INC(self->body,    dr->body)
-    _SET_AND_INC(self->mount,   dr->mount)
-    _SET_AND_INC(self->path,    dr->path)
-    _SET_AND_INC(self->query,   dr->query)
-    return true;
+    if (_check_list("mount", dr->mount) && _check_list("path", dr->path)) {
+        _SET_AND_INC(self->method,  dr->method)
+        _SET_AND_INC(self->uri,     dr->uri)
+        _SET_AND_INC(self->headers, dr->headers)
+        _SET_AND_INC(self->body,    dr->body)
+        _SET_AND_INC(self->mount,   dr->mount)
+        _SET_AND_INC(self->path,    dr->path)
+        _SET_AND_INC(self->query,   dr->query)
+        return true;
+    }
 
 error:
     _Request_clear(self);
@@ -1079,6 +1087,25 @@ Request_repr(Request *self)
         self->method, self->uri, self->headers, self->body,
         self->mount, self->path, self->query
     );
+}
+
+static PyObject *
+Request_shift_path(Request *self)
+{
+    PyObject *next = PyList_GetItem(self->path, 0);
+    if (next == NULL) {
+        PyErr_Clear();
+        PyErr_SetString(PyExc_IndexError, "Request.path is empty"); 
+        return NULL;
+    }
+    if (PyList_Append(self->mount, next) != 0) {
+        return NULL;
+    }
+    if (PyList_SetSlice(self->path, 0, 1, NULL) != 0) {
+        return NULL;
+    }
+    Py_INCREF(next);
+    return next;    
 }
 
 
