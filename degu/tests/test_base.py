@@ -437,6 +437,71 @@ class TestRequest_Py(BackendTestCase):
             args_repr = REQUEST_ARGS_REPR.format(*args)
             self.assertEqual(repr(request), 'Request({})'.format(args_repr))
 
+    def test_shift_path(self):
+        def mk_request(mount, path):
+            return self.Request('GET', '/', {}, None, mount, path, None)
+
+        # both mount and path are empty:
+        mount = []
+        path = []
+        request = mk_request(mount, path)
+        with self.assertRaises(IndexError):
+            request.shift_path()
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, [])
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+
+        # path is empty:
+        mount = ['foo']
+        path = []
+        request = mk_request(mount, path)
+        with self.assertRaises(IndexError):
+            request.shift_path()
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo'])
+        self.assertEqual(request.path, [])
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+
+        # start with populated path:
+        mount = []
+        path = ['foo', 'bar', 'baz']
+        request = mk_request(mount, path)
+        self.assertEqual(request.shift_path(), 'foo')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo'])
+        self.assertEqual(request.path, ['bar', 'baz'])
+
+        self.assertEqual(request.shift_path(), 'bar')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo', 'bar'])
+        self.assertEqual(request.path, ['baz'])
+
+        self.assertEqual(request.shift_path(), 'baz')
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.path, [])
+
+        with self.assertRaises(IndexError):
+            request.shift_path()
+        self.assertIs(request.mount, mount)
+        self.assertIs(request.path, path)
+        self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.path, [])
+
+        del request
+        self.assertEqual(sys.getrefcount(mount), 2)
+        self.assertEqual(sys.getrefcount(path), 2)
+
 
 class TestRequest_C(TestRequest_Py):
     backend = _base

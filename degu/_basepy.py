@@ -722,6 +722,11 @@ class Request:
     def query(self):
         return self._query
 
+    def shift_path(self):
+        next = self._path.pop(0)
+        self._mount.append(next)
+        return next
+
 
 
 ################################################################################
