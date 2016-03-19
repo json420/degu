@@ -413,6 +413,17 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(request.path, [])
         self.assertIsNone(request.query)
 
+        with self.assertRaises(TypeError) as cm:
+            self.Request('GET', '/', {}, None, tuple(), [], None)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR2.format('mount', list, tuple)
+        )
+        with self.assertRaises(TypeError) as cm:
+            self.Request('GET', '/', {}, None, [], tuple(), None)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR2.format('path', list, tuple)
+        )
+
         for args in self.iter_random_args():
             request = self.Request(*args)
             self.assertIsInstance(request, self.Request)

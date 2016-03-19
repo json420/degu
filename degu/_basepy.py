@@ -679,8 +679,8 @@ class Request:
         self._uri = uri
         self._headers = headers
         self._body = body
-        self._mount = mount
-        self._path = path
+        self._mount = _check_list('mount', mount)
+        self._path = _check_list('path', path)
         self._query = query
 
     def __repr__(self):
