@@ -21,11 +21,16 @@ Functions
 
     Shift component from ``path`` to ``mount`` in an RGI *request* argument.
 
+    .. warning::
+
+        As of Degu :ref:`version-0.15`, this function is deprecated.  Please use
+        the :meth:`degu.server.Request.shift_path()` method instead.
+
     This is an extremely common need when it comes to request routing, and in
     particular for RGI middleware applications that do request routing.
 
     This function only use the ``path`` and ``mount`` attributes from the
-    :class:`degu.server.Request` namedtuple:
+    :class:`degu.server.Request` object:
 
     >>> from collections import namedtuple
     >>> Request = namedtuple('Request', 'mount path')

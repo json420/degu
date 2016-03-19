@@ -2,10 +2,136 @@ Changelog
 =========
 
 
+.. _version-0.15:
+
 0.15 (unreleased)
 ------------------
 
 `Download Degu 0.15`_
+
+Breaking API changes:
+
+    *   :class:`degu.server.Request` is now a custom object rather than a
+        ``namedtuple``.
+
+        If your RGI server applications only accessed
+        :class:`degu.server.Request` items via their attribute, this change
+        should not break backward compatibility.
+
+        However, if you were accessing request items via their index, or if you
+        were otherwise relying on the properties a request had as a
+        ``namedtuple`` or ``tuple``, you might need to update your RGI server
+        applications.
+
+        For example, usage like this::
+
+            method = request[0]
+            conn.request(*request[0:4])
+
+        Needs to be ported to the following in Degu 0.15::
+
+            method = request.method
+            conn.request(request.method, request.uri, request.headers, request.body)
+
+        Note that although the :class:`degu.server.Request()` constructor API
+        remains the same, it now requires that the *mount* and *path* arguments
+        both be ``list`` instances.  This is unlikely to cause compatibility
+        breaks with normal run-time usage, but it might cause breakage in your
+        unit-tests depending on how you wrote them.
+
+        In general, this change might break some 3rd-party unit-tests, but it's
+        unlikely to break the normal run-time behavior of any existing RGI
+        server applications that worked with Degu 0.14.
+
+
+New API additions:
+
+    *   The :meth:`degu.server.Request.shift_path()` method was added.
+
+        This is the successor to the :func:`degu.util.shift_path()` function,
+        which itself was inspired by the ``wsgiref.util.shift_path_info()``
+        function in the Python standard library.
+
+        This change is a another small step in refining RGI as a standardized
+        API by which independent RGI server applications and middleware can
+        transparently run under multiple RGI server implementations.
+
+        In my own experience writing WSGI applications, I would typically use
+        the ``shift_path_info()`` implementation from the Python standard
+        library, or occasionally I would implement my own equivalent.
+
+        Although the above approach offers a nice amount a flexibility, in the
+        case of Degu it makes RGI applications less portable because there is no
+        RGI ``shift_path()`` implementation in the Python standard library.
+        Plus it limits the ability of RGI servers to provide optimized versions
+        of ``shift_path()`` that leverage the specific details of their
+        ``Request`` object implementation.
+
+        There is a somewhat difficult balance here.  As much as possible, I want
+        all essential functionality to be exposed via API in the three RGI
+        request handler arguments::
+
+            (session, request, bodies)
+
+        Yet at the same time, I especially want 3rd-party request routing
+        libraries to be first class citizens.
+
+        I believe that making ``shift_path()`` a method on the ``Request``
+        object maintains this balance, that it facilitates better optimization
+        and improved portability while still allowing 3rd-party request routing
+        libraries to be first class citizens:
+
+            1.  The ``Request.shift_path()`` method means one less global you
+                need to import from some standard library, implement on your
+                own, or import from the specific RGI server that your
+                application is running under (which breaks portability between
+                RGI server implementations)
+
+            2.  The ``Request.shift_path()`` method allows specific RGI server
+                implementations to optimize a critical code path that
+                (potentially) executes with more than per-request frequency
+
+            3.  Yet the ``Request.mount`` and ``Request.path`` attributes are
+                still standard Python ``list`` instances that can easily be
+                mutated by 3rd-party request routing libraries
+
+        Note that existing RGI server applications can continue to use
+        :func:`degu.util.shift_path()` for the time being, but you should
+        strongly consider using :meth:`degu.server.Request.shift_path()` instead
+        as the former might eventually be removed from the Degu API.
+
+        One caveat when porting to :meth:`degu.server.Request.shift_path()` is
+        that the ``IndexError`` message has changed when attempting to shift an
+        empty path::
+
+            'pop from empty list' --> 'Request.path is empty'
+
+        For example, if you have this :class:`degu.server.Request`:
+
+        >>> from degu.server import Request
+        >>> request = Request('GET', '/', {}, None, [], [], None)
+
+        You get this ``IndexError`` message when using
+        :func:`degu.util.shift_path()`:
+
+        >>> from degu.util import shift_path
+        >>> shift_path(request)
+        Traceback (most recent call last):
+          ...
+        IndexError: pop from empty list
+
+        But this you get this ``IndexError`` message when using
+        :meth:`degu.server.Request.shift_path()`:
+
+        >>> shift_path(request)
+        Traceback (most recent call last):
+          ...
+        IndexError: Request.path is empty
+
+        Although the change in the ``IndexError`` message is unlikely to effect
+        the normal run-time behavior of existing RGI server applications, you
+        might need to update your unit tests when porting to the
+        :meth:`degu.server.Request.shift_path()` method.
 
 
 

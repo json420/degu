@@ -349,14 +349,8 @@ As a request is routed through RGI middleware to the RGI leaf application that
 will generate the response, components should be shifted from
 :attr:`degu.server.Request.path` to :attr:`degu.server.Request.mount`.
 
-:func:`degu.util.shift_path()` is the recommended way to do this, the exact
-implementation of which is:
-
->>> def shift_path(request):
-...     next = request.path.pop(0)
-...     request.mount.append(next)
-...     return next
-... 
+The :func:`degu.server.Request.shift_path()` method is the recommended way to do
+this.
 
 For example, say we have these two RGI leaf applications:
 
@@ -380,7 +374,7 @@ And this RGI middleware, which will be our root application:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request.path == []:
 ...         return (200, 'OK', {}, b'ROOT here')
-...     next = shift_path(request)
+...     next = request.shift_path()
 ...     if next == 'foo':
 ...         return foo_app(session, request, bodies)
 ...     if next == 'bar':

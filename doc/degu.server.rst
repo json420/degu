@@ -602,7 +602,7 @@ Both are documented below.
 
 .. class:: Session(address, credentials=None, max_requests=None)
 
-    An object used to represent an incoming socket connection to the server.
+    Object used to represent an incoming socket connection to the server.
 
     .. note::
 
@@ -703,13 +703,12 @@ Both are documented below.
 
 
 
-
 :class:`Request`
 ''''''''''''''''
 
 .. class:: Request(method, uri, headers, body, mount, path, query)
 
-    A namedtuple used to represent an HTTP request.
+    Object used to represent a single HTTP request.
 
     For example, the Degu server might call your ``app()`` request handler with
     something like this:
@@ -717,6 +716,23 @@ Both are documented below.
     >>> from degu.server import Request
     >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
     Request('GET', '/foo', {}, None, mount=[], path=['foo'], query=None)
+
+    A :class:`Request` instance has the following attributes:
+
+        *   :attr:`Request.method` --- HTTP request method
+        *   :attr:`Request.uri` --- HTTP request URI
+        *   :attr:`Request.headers` --- HTTP request headers
+        *   :attr:`Request.body` --- HTTP request body
+        *   :attr:`Request.mount` --- processed portion of parsed URI
+        *   :attr:`Request.path` --- unprocessed portion of parsed URI
+        *   :attr:`Request.query` --- query portion of parsed URI
+
+    Plus the following methods:
+
+        *   :meth:`Request.shift_path()`
+
+    .. versionchanged:: 0.15
+        The :class:`Request` is now a custom object rather than a ``namedtuple``
 
     .. attribute:: method
 
@@ -727,11 +743,11 @@ Both are documented below.
 
     .. attribute:: uri
 
-        A ``str`` containing the original, unparsed request URI.
+        A ``str`` containing the original, unparsed HTTP request URI.
 
     .. attribute:: headers
 
-        A ``dict`` containing the request headers.
+        A ``dict`` containing the HTTP request headers.
 
     .. attribute:: body
 
@@ -759,7 +775,7 @@ Both are documented below.
         However, as a request was routed to the current RGI application or
         middleware, path components from :attr:`Request.path` may have been
         shifted to :attr:`Request.mount`, for example using
-        :func:`degu.util.shift_path()`.
+        :meth:`Request.shift_path()`.
 
     .. attribute:: path
 
@@ -779,7 +795,7 @@ Both are documented below.
         However, as a request was routed to the current RGI application or
         middleware, path components from :attr:`Request.path` may have been
         shifted to :attr:`Request.mount`, for example using
-        :func:`degu.util.shift_path()`.
+        :meth:`Request.shift_path()`.
 
     .. attribute:: query
 
@@ -797,6 +813,48 @@ Both are documented below.
             '/foo?'    --> ''
             '/foo?bar' --> 'bar'
             '/foo?k=v' --> 'k=v'
+
+    .. method:: shift_path()
+
+        Shift next item from request path to request mount, then return item.
+
+        .. versionadded:: 0.15
+
+        This method shifts the next path component from :attr:`Request.path` to
+        :attr:`Request.mount` and returns said path component.  It's typically
+        used by RGI middleware when routing a request to the appropriate RGI
+        request handler.
+
+        For example, we can create a new :class:`Request`:
+
+        >>> from degu.server import Request
+        >>> r = Request('GET', '/foo/bar', {}, None, [], ['foo', 'bar'], None)
+        >>> (r.mount, r.path)
+        ([], ['foo', 'bar'])
+
+        Then shift the path like this:
+
+        >>> r.shift_path()
+        'foo'
+        >>> (r.mount, r.path)
+        (['foo'], ['bar'])
+
+        And again shift the path like this:
+
+        >>> r.shift_path()
+        'bar'
+        >>> (r.mount, r.path)
+        (['foo', 'bar'], [])
+
+        If :attr:`Request.path` is already an empty list, this method will raise
+        an ``IndexError``:
+
+        >>> r.shift_path()
+        Traceback (most recent call last):
+          ...
+        IndexError: Request.path is empty
+
+        For more examples, see the :ref:`eg-routing` section in the tutorial.
 
 
 
