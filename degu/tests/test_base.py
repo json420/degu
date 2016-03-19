@@ -437,6 +437,41 @@ class TestRequest_Py(BackendTestCase):
             args_repr = REQUEST_ARGS_REPR.format(*args)
             self.assertEqual(repr(request), 'Request({})'.format(args_repr))
 
+        # Test refrences counting:
+        args = (
+            random_id(),
+            random_id(),
+            {random_id(): random_id()},
+            random_id(),
+            [],
+            [random_id(), random_id()],
+            random_id(),
+        )
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+        request = self.Request(*args)
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 4)
+        del request
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+
+        # Attributes should be read-only:
+        names = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
+        request = self.Request(*args)
+        for (name, arg) in zip(names, args):
+            with self.assertRaises(AttributeError):
+                setattr(request, name, random_id())
+            self.assertIs(getattr(request, name), arg)
+            self.assertEqual(sys.getrefcount(arg), 5)
+            with self.assertRaises(AttributeError):
+                delattr(request, name)
+            self.assertIs(getattr(request, name), arg)
+            self.assertEqual(sys.getrefcount(arg), 5)
+        del request
+        for arg in args:
+            self.assertEqual(sys.getrefcount(arg), 3)
+
     def test_shift_path(self):
         def mk_request(mount, path):
             return self.Request('GET', '/', {}, None, mount, path, None)
