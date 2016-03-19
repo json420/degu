@@ -1089,6 +1089,25 @@ Request_repr(Request *self)
     );
 }
 
+static PyObject *
+Request_shift_path(Request *self)
+{
+    PyObject *next = PyList_GetItem(self->path, 0);
+    if (next == NULL) {
+        PyErr_Clear();
+        PyErr_SetString(PyExc_IndexError, "Request.path is empty"); 
+        return NULL;
+    }
+    if (PyList_Append(self->mount, next) != 0) {
+        return NULL;
+    }
+    if (PyList_SetSlice(self->path, 0, 1, NULL) != 0) {
+        return NULL;
+    }
+    Py_INCREF(next);
+    return next;    
+}
+
 
 /******************************************************************************
  * Helper for clearing DeguHeaders, DeguRequest, DeguResponse, DeguChunk

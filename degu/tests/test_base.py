@@ -445,8 +445,9 @@ class TestRequest_Py(BackendTestCase):
         mount = []
         path = []
         request = mk_request(mount, path)
-        with self.assertRaises(IndexError):
+        with self.assertRaises(IndexError) as cm:
             request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
         self.assertEqual(request.mount, [])
@@ -459,8 +460,9 @@ class TestRequest_Py(BackendTestCase):
         mount = ['foo']
         path = []
         request = mk_request(mount, path)
-        with self.assertRaises(IndexError):
+        with self.assertRaises(IndexError) as cm:
             request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
         self.assertEqual(request.mount, ['foo'])
@@ -491,8 +493,9 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
         self.assertEqual(request.path, [])
 
-        with self.assertRaises(IndexError):
+        with self.assertRaises(IndexError) as cm:
             request.shift_path()
+        self.assertEqual(str(cm.exception), 'Request.path is empty')
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
         self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
