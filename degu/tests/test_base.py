@@ -472,25 +472,26 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(path), 2)
 
         # start with populated path:
+        items = tuple(random_id() for i in range(3))
         mount = []
-        path = ['foo', 'bar', 'baz']
+        path = list(items)
         request = mk_request(mount, path)
-        self.assertEqual(request.shift_path(), 'foo')
+        self.assertEqual(request.shift_path(), items[0])
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
-        self.assertEqual(request.mount, ['foo'])
-        self.assertEqual(request.path, ['bar', 'baz'])
+        self.assertEqual(request.mount, list(items[0:1]))
+        self.assertEqual(request.path, list(items[1:3]))
 
-        self.assertEqual(request.shift_path(), 'bar')
+        self.assertEqual(request.shift_path(), items[1])
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
-        self.assertEqual(request.mount, ['foo', 'bar'])
-        self.assertEqual(request.path, ['baz'])
+        self.assertEqual(request.mount, list(items[0:2]))
+        self.assertEqual(request.path, list(items[2:3]))
 
-        self.assertEqual(request.shift_path(), 'baz')
+        self.assertEqual(request.shift_path(), items[2])
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
-        self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.mount, list(items))
         self.assertEqual(request.path, [])
 
         with self.assertRaises(IndexError) as cm:
@@ -498,12 +499,25 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(str(cm.exception), 'Request.path is empty')
         self.assertIs(request.mount, mount)
         self.assertIs(request.path, path)
-        self.assertEqual(request.mount, ['foo', 'bar', 'baz'])
+        self.assertEqual(request.mount, list(items))
         self.assertEqual(request.path, [])
 
+        self.assertEqual(sys.getrefcount(mount), 3)
+        self.assertEqual(sys.getrefcount(path), 3)
+        self.assertEqual(sys.getrefcount(items[0]), 3)
+        self.assertEqual(sys.getrefcount(items[1]), 3)
+        self.assertEqual(sys.getrefcount(items[2]), 3)
         del request
         self.assertEqual(sys.getrefcount(mount), 2)
         self.assertEqual(sys.getrefcount(path), 2)
+        self.assertEqual(sys.getrefcount(items[0]), 3)
+        self.assertEqual(sys.getrefcount(items[1]), 3)
+        self.assertEqual(sys.getrefcount(items[2]), 3)
+        del mount
+        del path
+        self.assertEqual(sys.getrefcount(items[0]), 2)
+        self.assertEqual(sys.getrefcount(items[1]), 2)
+        self.assertEqual(sys.getrefcount(items[2]), 2)
 
 
 class TestRequest_C(TestRequest_Py):
