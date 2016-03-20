@@ -1,8 +1,8 @@
-degu (0.15.0~alpha) trusty; urgency=low
+degu (0.15.0) xenial; urgency=low
 
-  * Upstream pre-release
+  * Upstream release
 
- -- Jason Gerard DeRose <jderose@novacut.com>  Sun, 20 Sep 2015 04:17:28 -0600
+ -- Jason Gerard DeRose <jderose@novacut.com>  Sun, 20 Mar 2016 15:37:08 -0600
 
 degu (0.14.0) trusty; urgency=low
 
