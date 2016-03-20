@@ -4,8 +4,8 @@ Changelog
 
 .. _version-0.15:
 
-0.15 (unreleased)
-------------------
+0.15 (March 2016)
+-----------------
 
 `Download Degu 0.15`_
 
