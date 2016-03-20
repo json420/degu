@@ -190,7 +190,7 @@ using a connection, although this will likewise be done automatically when a
 
         The client socket timeout in seconds, or ``None`` for no timeout.
 
-        The default is ``60`` seconds, but you can override this using the
+        The default is ``65`` seconds, but you can override this using the
         *timeout* keyword option.
 
         :meth:`Client.create_socket()` sets the socket timeout to
@@ -280,7 +280,7 @@ Default values:
     Option          Attribute                  Default value
     ==============  =========================  ==================================
     ``host``        :attr:`Client.host`        derived from :ref:`client-address`
-    ``timeout``     :attr:`Client.timeout`     ``60``
+    ``timeout``     :attr:`Client.timeout`     ``65``
     ==============  =========================  ==================================
 
 Also see the server :ref:`server-options`.

@@ -159,8 +159,25 @@ New API additions:
                 application is called.
 
             3.  The name ``build_proxy_uri()`` ephasizes the scenario under
-                which this method is most likely to be use... in RGI
+                which this method is most likely to be used... in RGI
                 reverse-proxy applications.
+
+
+Other changes:
+
+    *   The default :attr:`degu.client.Client.timeout` is now ``65`` seconds
+        (it was ``60`` seconds in Degu 0.14).
+
+    *   The C extension is now built with ``-Wmissing-field-initializers``, plus
+        corresponding fixes were made in ``_base.c``, ``_base.h``.
+
+    *   In ``benchmark.py``, the client now doesn't include an HTTP Host header
+        by default when benchmarking over ``AF_INET6``, which makes the
+        comparison between ``AF_UNIX`` and ``AF_INET6`` more representative.
+
+        You can use the ``--send-host`` option to force the old behavior::
+
+            ./benchmark.py --send-host
 
 
 
