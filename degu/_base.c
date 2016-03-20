@@ -679,6 +679,29 @@ _copy(DeguDst dst, DeguSrc src)
     return src.len;
 }
 
+static bool
+_copy_into(DeguOutput *o, DeguSrc src)
+{
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (src.buf == NULL) {
+        return false;  /* Assuming an error has already been set */
+    }
+    if (src.len == 0) {
+        return true;
+    }
+    if (src.len > dst.len) {
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
+        return false;
+    }
+    o->stop += _copy(dst, src);
+    return true;
+}
+
+#define _COPY_INTO(o, src) \
+    if (! _copy_into(o, src)) { \
+        goto error; \
+    }
+
 static DeguDst
 _calloc_dst(const size_t len)
 {
@@ -1110,17 +1133,73 @@ Request_shift_path(Request *self)
     return next;    
 }
 
+static inline DeguSrc
+_simple_src_from_str(PyObject *obj)
+{
+    return (DeguSrc){
+        PyUnicode_1BYTE_DATA(obj),
+        (size_t)PyUnicode_GET_LENGTH(obj)
+    };
+}
+
 static PyObject *
 Request_relative_uri(Request *self)
 {
-    PyObject *tmp = NULL;
     PyObject *uri = NULL;
+    PyObject *component;
+    ssize_t uri_len, i;
 
-    tmp = PyUnicode_Join(str_slash, self->path);
-    if (tmp != NULL) {
-        uri = PyUnicode_Concat(str_slash, tmp);
+    /* Calculate length of URI */
+    const ssize_t path_len = PyList_Size(self->path);
+    if (path_len < 0) {
+        goto error;
     }
-    Py_CLEAR(tmp);
+    if (path_len == 0) {
+        uri_len = 1;
+    }
+    else {
+        for (uri_len = i = 0; i < path_len; i++) {
+            component = PyList_GET_ITEM(self->path, i);
+            if (! _check_str("Request.path component", component, 0)) {
+                goto error;
+            }
+            uri_len += PyUnicode_GET_LENGTH(component) + 1;
+        }
+    }
+    if (self->query != Py_None) {
+        if (! _check_str("Request.query", self->query, 0)) {
+            goto error;
+        }
+        uri_len += PyUnicode_GET_LENGTH(self->query) + 1;
+    }
+
+    /* Create str, copy data into it */
+    _SET(uri, PyUnicode_New(uri_len, 127))
+    DeguDst dst = {PyUnicode_1BYTE_DATA(uri), (size_t)uri_len};
+    DeguOutput o = {dst, 0};
+    if (path_len == 0) {
+        _COPY_INTO(&o, SLASH)
+    }
+    else {
+        for (i = 0; i < path_len; i++) {
+            _COPY_INTO(&o, SLASH)
+            component = PyList_GET_ITEM(self->path, i);
+            _COPY_INTO(&o, _simple_src_from_str(component))
+        }
+    }
+    if (self->query != Py_None) {
+        _COPY_INTO(&o, QMARK)
+        _COPY_INTO(&o, _simple_src_from_str(self->query))
+    }
+    if (o.stop != dst.len) {
+        Py_FatalError("Internal error in Request.relative_uri()");
+    }
+    goto success;
+
+error:
+    Py_CLEAR(uri);
+
+success:
     return uri;
 }
 
@@ -2421,29 +2500,6 @@ _get_status(PyObject *obj)
 {
     return _get_size("status", obj, 100, 599);
 }
-
-static bool
-_copy_into(DeguOutput *o, DeguSrc src)
-{
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
-    if (src.buf == NULL) {
-        return false;  /* Assuming an error has already been set */
-    }
-    if (src.len == 0) {
-        return true;
-    }
-    if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
-        return false;
-    }
-    o->stop += _copy(dst, src);
-    return true;
-}
-
-#define _COPY_INTO(o, src) \
-    if (! _copy_into(o, src)) { \
-        goto error; \
-    }
 
 static bool
 _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
