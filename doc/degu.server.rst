@@ -717,7 +717,7 @@ Both are documented below.
     >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
     Request('GET', '/foo', {}, None, mount=[], path=['foo'], query=None)
 
-    A :class:`Request` instance has the following attributes:
+    A :class:`Request` instance has the following read-only attributes:
 
         *   :attr:`Request.method` --- HTTP request method
         *   :attr:`Request.uri` --- HTTP request URI
@@ -730,7 +730,7 @@ Both are documented below.
     Plus the following methods:
 
         *   :meth:`Request.shift_path()`
-        *   :meth:`Request.relative_uri()`
+        *   :meth:`Request.build_proxy_uri()`
 
     .. versionchanged:: 0.15
         The :class:`Request` is now a custom object rather than a ``namedtuple``
@@ -857,7 +857,7 @@ Both are documented below.
 
         For more examples, see the :ref:`eg-routing` section in the tutorial.
 
-    .. method:: relative_uri()
+    .. method:: build_proxy_uri()
 
         Build URI from current request path plus request query.
 
@@ -879,7 +879,7 @@ Both are documented below.
 
         And then build the relative URI:
 
-        >>> r.relative_uri()
+        >>> r.build_proxy_uri()
         '/foo/bar?k=v'
         >>> r.uri
         '/foo/bar?k=v'
@@ -888,14 +888,14 @@ Both are documented below.
 
         >>> r.shift_path()
         'foo'
-        >>> r.relative_uri()
+        >>> r.build_proxy_uri()
         '/bar?k=v'
         
         Or if we shift the path again:
 
         >>> r.shift_path()
         'bar'
-        >>> r.relative_uri()
+        >>> r.build_proxy_uri()
         '/?k=v'
 
 

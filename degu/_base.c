@@ -1143,7 +1143,7 @@ _simple_src_from_str(PyObject *obj)
 }
 
 static PyObject *
-Request_relative_uri(Request *self)
+Request_build_proxy_uri(Request *self)
 {
     PyObject *uri = NULL;
     PyObject *component;
@@ -1192,7 +1192,7 @@ Request_relative_uri(Request *self)
         _COPY_INTO(&o, _simple_src_from_str(self->query))
     }
     if (o.stop != dst.len) {
-        Py_FatalError("Internal error in Request.relative_uri()");
+        Py_FatalError("Internal error in Request.build_proxy_uri()");
     }
     goto success;
 
