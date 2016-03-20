@@ -665,8 +665,8 @@ def parse_request(preamble, rfile):
     return Request(method, uri, headers, body, mount, path, query)
 
 
-_REQUEST_REPR = 'Request(\
-{!r}, {!r}, {!r}, {!r}, mount={!r}, path={!r}, query={!r})'
+_REQUEST_REPR = 'Request(method={!r}, uri={!r}, headers={!r}, body={!r}, \
+mount={!r}, path={!r}, query={!r})'
 
 
 class Request:

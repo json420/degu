@@ -1108,7 +1108,7 @@ static PyObject *
 Request_repr(Request *self)
 {
     return PyUnicode_FromFormat(
-        "Request(%R, %R, %R, %R, mount=%R, path=%R, query=%R)",
+        "Request(method=%R, uri=%R, headers=%R, body=%R, mount=%R, path=%R, query=%R)",
         self->method, self->uri, self->headers, self->body,
         self->mount, self->path, self->query
     );

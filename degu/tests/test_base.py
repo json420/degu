@@ -382,10 +382,10 @@ class BackendTestCase(TestCase):
 
 
 REQUEST_ARGS_REPR = ', '.join([
-    '{!r}',  # method
-    '{!r}',  # uri
-    '{!r}',  # headers
-    '{!r}',  # body
+    'method={!r}',  # method
+    'uri={!r}',  # uri
+    'headers={!r}',  # headers
+    'body={!r}',  # body
     'mount={!r}',
     'path={!r}',
     'query={!r}',
