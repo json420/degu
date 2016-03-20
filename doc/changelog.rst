@@ -85,15 +85,15 @@ New API additions:
                 need to import from some standard library, implement on your
                 own, or import from the specific RGI server that your
                 application is running under (which breaks portability between
-                RGI server implementations)
+                RGI server implementations).
 
             2.  The ``Request.shift_path()`` method allows specific RGI server
                 implementations to optimize a critical code path that
-                (potentially) executes with more than per-request frequency
+                (potentially) executes with more than per-request frequency.
 
             3.  Yet the ``Request.mount`` and ``Request.path`` attributes are
                 still standard Python ``list`` instances that can easily be
-                mutated by 3rd-party request routing libraries
+                mutated by 3rd-party request routing libraries.
 
         Note that existing RGI server applications can continue to use
         :func:`degu.util.shift_path()` for the time being, but you should
@@ -141,9 +141,26 @@ New API additions:
         for adding the :meth:`degu.server.Request.shift_path()` method.
 
         Note that existing RGI server applications can continue to use
-        :func:`degu.util.build_proxy_uri()` for the time being, but you should
+        :func:`degu.util.relative_uri()` for the time being, but you should
         strongly consider using :meth:`degu.server.Request.build_proxy_uri()`
         instead as the former might eventually be removed from the Degu API.
+
+        There are several reason for changing the name to ``build_proxy_uri()``
+        from ``relative_path()``:
+
+            1.  Because ``build_proxy_uri()`` starts with a verb, it's clearer
+                that it's a method rather than an attribute, which also
+                harmonizes better with ``shift_path()``.
+
+            2.  ``relative_uri()`` is confusing because it leads one to think
+                the resulting URI wont start with a ``'/'``; in fact, the
+                resulting URI itself is absolute (it starts with ``'/'``), but
+                it's built relative to the mount-point at which the RGI
+                application is called.
+
+            3.  The name ``build_proxy_uri()`` ephasizes the scenario under
+                which this method is most likely to be use... in RGI
+                reverse-proxy applications.
 
 
 
