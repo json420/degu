@@ -60,6 +60,7 @@ static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
+static PyObject *str_slash             = NULL;  //  '/'
 static PyObject *msg_max_requests      = NULL;  //
 
 /* Other misc PyObject */
@@ -107,6 +108,7 @@ _init_all_globals(PyObject *module)
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_empty,  PyUnicode_FromString(""))
+    _SET(str_slash,  PyUnicode_FromString("/"))
     _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
 
     /* Init misc objects */
@@ -1106,6 +1108,20 @@ Request_shift_path(Request *self)
     }
     Py_INCREF(next);
     return next;    
+}
+
+static PyObject *
+Request_relative_uri(Request *self)
+{
+    PyObject *tmp = NULL;
+    PyObject *uri = NULL;
+
+    tmp = PyUnicode_Join(str_slash, self->path);
+    if (tmp != NULL) {
+        uri = PyUnicode_Concat(str_slash, tmp);
+    }
+    Py_CLEAR(tmp);
+    return uri;
 }
 
 
