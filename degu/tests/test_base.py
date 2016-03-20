@@ -554,6 +554,76 @@ class TestRequest_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(items[1]), 2)
         self.assertEqual(sys.getrefcount(items[2]), 2)
 
+    def test_relative_uri(self):
+        def mk_request(path, query):
+            return self.Request('GET', '/', {}, None, [], path, query)
+
+        path_permutations = (
+            (tuple(),            '/'),
+            (('',),              '/'),
+            (('foo',),           '/foo'),
+            (('foo', ''),        '/foo/'),
+            (('foo', 'bar'),     '/foo/bar'),
+            (('foo', 'bar', ''), '/foo/bar/'),
+        )
+        query_permutations = (
+            (None,      ''),
+            ('',        '?'),
+            ('foo',     '?foo'),
+            ('foo=bar', '?foo=bar'),
+        )
+        for (path, uri) in path_permutations:
+            request = mk_request(list(path), None)
+            self.assertEqual(request.relative_uri(), uri)
+            self.assertEqual(request.path, list(path))
+        for (query, end) in query_permutations:
+            request = mk_request([], query)
+            self.assertEqual(request.relative_uri(), '/' + end)
+            self.assertEqual(request.path, [])
+        for (path, uri) in path_permutations:
+            for (query, end) in query_permutations:
+                request = mk_request(list(path), query)
+                self.assertEqual(request.relative_uri(), uri + end)
+                self.assertEqual(request.path, list(path))
+
+        # path is empty:
+        request = mk_request([], None)
+        self.assertEqual(request.relative_uri(), '/')
+        self.assertEqual(request.path, [])
+
+        request = mk_request([], '')
+        self.assertEqual(request.relative_uri(), '/?')
+        self.assertEqual(request.path, [])
+
+        request = mk_request([], 'foo')
+        self.assertEqual(request.relative_uri(), '/?foo')
+        self.assertEqual(request.path, [])
+
+        request = mk_request([], 'foo=bar')
+        self.assertEqual(request.relative_uri(), '/?foo=bar')
+        self.assertEqual(request.path, [])
+
+        # No query
+        request = mk_request([''], None)
+        self.assertEqual(request.relative_uri(), '/')
+        self.assertEqual(request.path, [''])
+
+        request = mk_request(['foo'], None)
+        self.assertEqual(request.relative_uri(), '/foo')
+        self.assertEqual(request.path, ['foo'])
+
+        request = mk_request(['foo', ''], None)
+        self.assertEqual(request.relative_uri(), '/foo/')
+        self.assertEqual(request.path, ['foo', ''])
+
+        request = mk_request(['foo', 'bar'], None)
+        self.assertEqual(request.relative_uri(), '/foo/bar')
+        self.assertEqual(request.path, ['foo', 'bar'])
+
+        request = mk_request(['foo', 'bar', ''], None)
+        self.assertEqual(request.relative_uri(), '/foo/bar/')
+        self.assertEqual(request.path, ['foo', 'bar', ''])
+
 
 class TestRequest_C(TestRequest_Py):
     backend = _base
