@@ -63,6 +63,11 @@ Functions
 
     Reconstruct a relative URI from an RGI *request* argument.
 
+    .. warning::
+
+        As of Degu :ref:`version-0.15`, this function is deprecated.  Please use
+        the :meth:`degu.server.Request.relative_uri()` method instead.
+
     This function is especially useful for RGI reverse-proxy applications when
     building the URI used in their forwarded HTTP client request.
 

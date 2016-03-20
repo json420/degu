@@ -448,11 +448,12 @@ typedef struct {
     PyObject * query;
 } Request;
 
-static PyObject * _Request_New(DeguRequest *);
 static PyObject * Request_shift_path(Request *);
+static PyObject * Request_relative_uri(Request *);
 
 static PyMethodDef Request_methods[] = {
-    {"shift_path", (PyCFunction)Request_shift_path, METH_NOARGS, NULL},
+    {"shift_path",   (PyCFunction)Request_shift_path,   METH_NOARGS, NULL},
+    {"relative_uri", (PyCFunction)Request_relative_uri, METH_NOARGS, NULL},
     {NULL}
 };
 
@@ -467,6 +468,7 @@ static PyMemberDef Request_members[] = {
     {NULL}
 };
 
+static PyObject * _Request_New(DeguRequest *);
 static void Request_dealloc(Request *);
 static int Request_init(Request *, PyObject *, PyObject *);
 static PyObject * Request_repr(Request *);

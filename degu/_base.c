@@ -60,6 +60,7 @@ static PyObject *str_HEAD              = NULL;  //  'HEAD'
 static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
+static PyObject *str_slash             = NULL;  //  '/'
 static PyObject *msg_max_requests      = NULL;  //
 
 /* Other misc PyObject */
@@ -107,6 +108,7 @@ _init_all_globals(PyObject *module)
     _SET(str_DELETE, PyUnicode_FromString("DELETE"))
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_empty,  PyUnicode_FromString(""))
+    _SET(str_slash,  PyUnicode_FromString("/"))
     _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
 
     /* Init misc objects */
@@ -440,7 +442,7 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
 }
 
 static bool
-_check_str(const char *name, PyObject *obj)
+_check_str(const char *name, PyObject *obj, const ssize_t minlen)
 {
     if (! _check_type(name, obj, &PyUnicode_Type)) {
         return false;
@@ -448,7 +450,7 @@ _check_str(const char *name, PyObject *obj)
     if (PyUnicode_READY(obj) != 0) {
         return false;
     }
-    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) <= 0) {
+    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) < minlen) {
         PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
@@ -551,7 +553,7 @@ _frombytes(PyObject *bytes)
 static inline DeguSrc
 _src_from_str(const char *name, PyObject *obj)
 {
-    if (! _check_str(name, obj)) {
+    if (! _check_str(name, obj, 1)) {
         return NULL_DeguSrc;
     }
     return (DeguSrc){
@@ -676,6 +678,29 @@ _copy(DeguDst dst, DeguSrc src)
     memcpy(dst.buf, src.buf, src.len);
     return src.len;
 }
+
+static bool
+_copy_into(DeguOutput *o, DeguSrc src)
+{
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (src.buf == NULL) {
+        return false;  /* Assuming an error has already been set */
+    }
+    if (src.len == 0) {
+        return true;
+    }
+    if (src.len > dst.len) {
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
+        return false;
+    }
+    o->stop += _copy(dst, src);
+    return true;
+}
+
+#define _COPY_INTO(o, src) \
+    if (! _copy_into(o, src)) { \
+        goto error; \
+    }
 
 static DeguDst
 _calloc_dst(const size_t len)
@@ -1106,6 +1131,76 @@ Request_shift_path(Request *self)
     }
     Py_INCREF(next);
     return next;    
+}
+
+static inline DeguSrc
+_simple_src_from_str(PyObject *obj)
+{
+    return (DeguSrc){
+        PyUnicode_1BYTE_DATA(obj),
+        (size_t)PyUnicode_GET_LENGTH(obj)
+    };
+}
+
+static PyObject *
+Request_relative_uri(Request *self)
+{
+    PyObject *uri = NULL;
+    PyObject *component;
+    ssize_t uri_len, i;
+
+    /* Calculate length of URI */
+    const ssize_t path_len = PyList_Size(self->path);
+    if (path_len < 0) {
+        goto error;
+    }
+    if (path_len == 0) {
+        uri_len = 1;
+    }
+    else {
+        for (uri_len = i = 0; i < path_len; i++) {
+            component = PyList_GET_ITEM(self->path, i);
+            if (! _check_str("Request.path component", component, 0)) {
+                goto error;
+            }
+            uri_len += PyUnicode_GET_LENGTH(component) + 1;
+        }
+    }
+    if (self->query != Py_None) {
+        if (! _check_str("Request.query", self->query, 0)) {
+            goto error;
+        }
+        uri_len += PyUnicode_GET_LENGTH(self->query) + 1;
+    }
+
+    /* Create str, copy data into it */
+    _SET(uri, PyUnicode_New(uri_len, 127))
+    DeguDst dst = {PyUnicode_1BYTE_DATA(uri), (size_t)uri_len};
+    DeguOutput o = {dst, 0};
+    if (path_len == 0) {
+        _COPY_INTO(&o, SLASH)
+    }
+    else {
+        for (i = 0; i < path_len; i++) {
+            _COPY_INTO(&o, SLASH)
+            component = PyList_GET_ITEM(self->path, i);
+            _COPY_INTO(&o, _simple_src_from_str(component))
+        }
+    }
+    if (self->query != Py_None) {
+        _COPY_INTO(&o, QMARK)
+        _COPY_INTO(&o, _simple_src_from_str(self->query))
+    }
+    if (o.stop != dst.len) {
+        Py_FatalError("Internal error in Request.relative_uri()");
+    }
+    goto success;
+
+error:
+    Py_CLEAR(uri);
+
+success:
+    return uri;
 }
 
 
@@ -2407,29 +2502,6 @@ _get_status(PyObject *obj)
 }
 
 static bool
-_copy_into(DeguOutput *o, DeguSrc src)
-{
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
-    if (src.buf == NULL) {
-        return false;  /* Assuming an error has already been set */
-    }
-    if (src.len == 0) {
-        return true;
-    }
-    if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
-        return false;
-    }
-    o->stop += _copy(dst, src);
-    return true;
-}
-
-#define _COPY_INTO(o, src) \
-    if (! _copy_into(o, src)) { \
-        goto error; \
-    }
-
-static bool
 _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
                const uint8_t mask, const size_t max_len)
 {
@@ -2544,7 +2616,7 @@ _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
     }
     i = 0;
     while (PyDict_Next(headers, &pos, &key, &val)) {
-        if (! _check_str("key", key)) {
+        if (! _check_str("key", key, 1)) {
             return false;
         }
         lines[i] = (HLine){key, val};
@@ -2568,7 +2640,7 @@ _render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
     HLine line;
 
     while (PyDict_Next(headers, &pos, &key, &val)) {
-        if (! _check_str("key", key)) {
+        if (! _check_str("key", key, 1)) {
             return false;
         }
         line = (HLine){key, val};
