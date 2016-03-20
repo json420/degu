@@ -133,6 +133,18 @@ New API additions:
         might need to update your unit tests when porting to the
         :meth:`degu.server.Request.shift_path()` method.
 
+    *   The :meth:`degu.server.Request.relative_uri()` method was added.
+
+        This is the successor to the :func:`degu.util.relative_uri()` function.
+
+        The rationale for adding this method is the same as the rationale above
+        for adding the :meth:`degu.server.Request.shift_path()` method.
+
+        Note that existing RGI server applications can continue to use
+        :func:`degu.util.relative_uri()` for the time being, but you should
+        strongly consider using :meth:`degu.server.Request.relative_uri()`
+        instead as the former might eventually be removed from the Degu API.
+
 
 
 0.14 (August 2015)
