@@ -729,7 +729,7 @@ class Request:
         self._mount.append(next)
         return next
 
-    def relative_uri(self):
+    def build_proxy_uri(self):
         uri = '/' + '/'.join(self._path)
         if self._query is None:
             return uri

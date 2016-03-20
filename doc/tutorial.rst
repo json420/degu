@@ -132,7 +132,7 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...             session.store['conn'] = conn
 ...         return conn.request(
 ...             request.method,
-...             request.uri,
+...             request.build_proxy_uri(),
 ...             request.headers,
 ...             request.body
 ...         )
