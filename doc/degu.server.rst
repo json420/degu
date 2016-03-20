@@ -298,7 +298,7 @@ this:
 
 >>> from degu.server import Request
 >>> Request('GET', '/foo/bar?key=val', {}, None, [], ['foo', 'bar'], 'key=val')
-Request('GET', '/foo/bar?key=val', {}, None, mount=[], path=['foo', 'bar'], query='key=val')
+Request(method='GET', uri='/foo/bar?key=val', headers={}, body=None, mount=[], path=['foo', 'bar'], query='key=val')
 
 Finally, the *bodies* argument will be the :attr:`degu.base.bodies` namedtuple
 exposing the four wrapper classes that can be use to specify the your HTTP
@@ -715,7 +715,7 @@ Both are documented below.
 
     >>> from degu.server import Request
     >>> Request('GET', '/foo', {}, None, [], ['foo'], None)
-    Request('GET', '/foo', {}, None, mount=[], path=['foo'], query=None)
+    Request(method='GET', uri='/foo', headers={}, body=None, mount=[], path=['foo'], query=None)
 
     A :class:`Request` instance has the following read-only attributes:
 
