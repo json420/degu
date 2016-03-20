@@ -470,27 +470,63 @@ _isempty(DeguSrc src)
     return false;
 }
 
+static inline bool
+_dst_isempty(DeguDst dst)
+{
+    if (dst.buf == NULL || dst.len == 0) {
+        return true;
+    }
+    return false;
+}
+
 static DeguSrc
 _slice(DeguSrc src, const size_t start, const size_t stop)
 {
-    // FIXME: should we allow slices of an empty src?
     if (src.buf == NULL || start > stop || stop > src.len) {
         Py_FatalError("_slice(): bad internal call");
     }
     return (DeguSrc){src.buf + start, stop - start};
 }
 
-static inline bool
+static DeguDst
+_dst_slice(DeguDst dst, const size_t start, const size_t stop)
+{
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
+        Py_FatalError("_dst_slice(): bad internal call");
+    }
+    return (DeguDst){dst.buf + start, stop - start};
+}
+
+static bool
 _equal(DeguSrc a, DeguSrc b) {
+    if (a.buf == NULL || b.buf == NULL) {
+        Py_FatalError("_equal(): bad internal call");
+    }
     if (a.len == b.len && memcmp(a.buf, b.buf, a.len) == 0) {
         return true;
     }
     return false;
 }
 
-static inline ssize_t
+static size_t
+_search(DeguSrc haystack, DeguSrc needle)
+{
+    if (haystack.buf == NULL || needle.buf == NULL) {
+        Py_FatalError("_searh(): bad internal call");
+    }
+    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    if (ptr == NULL) {
+        return haystack.len;
+    }
+    return (size_t)(ptr - haystack.buf);
+}
+
+static ssize_t
 _find(DeguSrc src, DeguSrc end)
 {
+    if (src.buf == NULL || end.buf == NULL) {
+        Py_FatalError("_find(): bad internal call");
+    }
     const uint8_t *ptr = memmem(src.buf, src.len, end.buf, end.len);
     if (ptr == NULL) {
         return -1;
@@ -508,15 +544,47 @@ _find_in_slice(DeguSrc src, const size_t start, const size_t stop, DeguSrc end)
     return index + (ssize_t)start;
 }
 
-static inline size_t
-_search(DeguSrc haystack, DeguSrc needle)
+static void
+_move(DeguDst dst, DeguSrc src)
 {
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
-    if (ptr == NULL) {
-        return haystack.len;
+    if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
+        Py_FatalError("_move(): bad internal call");
     }
-    return (size_t)(ptr - haystack.buf);
+    memmove(dst.buf, src.buf, src.len);
 }
+
+static inline size_t
+_copy(DeguDst dst, DeguSrc src)
+{
+    if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
+        Py_FatalError("_copy(): bad internal call");
+    }
+    memcpy(dst.buf, src.buf, src.len);
+    return src.len;
+}
+
+static bool
+_copy_into(DeguOutput *o, DeguSrc src)
+{
+    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    if (src.buf == NULL) {
+        return false;  /* Assuming an error has already been set */
+    }
+    if (src.len == 0) {
+        return true;
+    }
+    if (src.len > dst.len) {
+        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
+        return false;
+    }
+    o->stop += _copy(dst, src);
+    return true;
+}
+
+#define _COPY_INTO(o, src) \
+    if (! _copy_into(o, src)) { \
+        goto error; \
+    }
 
 static PyObject *
 _tostr(DeguSrc src)
@@ -633,24 +701,6 @@ done:
     return dst;
 }
 
-static inline bool
-_dst_isempty(DeguDst dst)
-{
-    if (dst.buf == NULL || dst.len == 0) {
-        return true;
-    }
-    return false;
-}
-
-static inline DeguDst
-_dst_slice(DeguDst dst, const size_t start, const size_t stop)
-{
-    if (dst.buf == NULL || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
-    }
-    return (DeguDst){dst.buf + start, stop - start};
-}
-
 static DeguSrc
 _slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
 {
@@ -659,48 +709,6 @@ _slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
     }
     return (DeguSrc){dst.buf + start, stop - start};
 }
-
-static void
-_move(DeguDst dst, DeguSrc src)
-{
-    if (_dst_isempty(dst) || _isempty(src) || dst.len < src.len) {
-        Py_FatalError("_move(): bad internal call");
-    }
-    memmove(dst.buf, src.buf, src.len);
-}
-
-static inline size_t
-_copy(DeguDst dst, DeguSrc src)
-{
-    if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
-        Py_FatalError("_copy(): bad internal call");
-    }
-    memcpy(dst.buf, src.buf, src.len);
-    return src.len;
-}
-
-static bool
-_copy_into(DeguOutput *o, DeguSrc src)
-{
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
-    if (src.buf == NULL) {
-        return false;  /* Assuming an error has already been set */
-    }
-    if (src.len == 0) {
-        return true;
-    }
-    if (src.len > dst.len) {
-        PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
-        return false;
-    }
-    o->stop += _copy(dst, src);
-    return true;
-}
-
-#define _COPY_INTO(o, src) \
-    if (! _copy_into(o, src)) { \
-        goto error; \
-    }
 
 static DeguDst
 _calloc_dst(const size_t len)
