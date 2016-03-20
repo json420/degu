@@ -20,7 +20,7 @@ def run_iter(statement, n):
         yield t.timeit(n)
 
 
-def run(statement, K=250):
+def run(statement, K=750):
     n = K * 1000
     # Choose fastest of 10 runs:
     elapsed = min(run_iter(statement, n))
@@ -31,6 +31,6 @@ def run(statement, K=250):
 
 run('relative_uri(r1)')
 run('relative_uri(r2)')
-run('r1.relative_uri()')
-run('r2.relative_uri()')
+run('r1.build_proxy_uri()')
+run('r2.build_proxy_uri()')
 
