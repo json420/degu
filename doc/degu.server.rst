@@ -730,6 +730,7 @@ Both are documented below.
     Plus the following methods:
 
         *   :meth:`Request.shift_path()`
+        *   :meth:`Request.relative_uri()`
 
     .. versionchanged:: 0.15
         The :class:`Request` is now a custom object rather than a ``namedtuple``
@@ -855,6 +856,47 @@ Both are documented below.
         IndexError: Request.path is empty
 
         For more examples, see the :ref:`eg-routing` section in the tutorial.
+
+    .. method:: relative_uri()
+
+        Build URI from current request path plus request query.
+
+        .. versionadded:: 0.15
+
+        This method builds a URI from the components in :attr:`Request.path`
+        plus the :attr:`Request.query`.  It's typically used by RGI
+        reverse-proxy applications.
+
+        When no path components have been shifted from :attr:`Request.path` to
+        :attr:`Request.mount`, this method will return a value equal to the
+        original request URI.  This will be the case when a request first enters
+        its processing in your RGI root application.
+
+        For example, we can create a new :class:`Request`:
+
+        >>> from degu.server import Request
+        >>> r = Request('GET', '/foo/bar?k=v', {}, None, [], ['foo', 'bar'], 'k=v')
+
+        And then build the relative URI:
+
+        >>> r.relative_uri()
+        '/foo/bar?k=v'
+        >>> r.uri
+        '/foo/bar?k=v'
+
+        But note what is return after we shift the path once:
+
+        >>> r.shift_path()
+        'foo'
+        >>> r.relative_uri()
+        '/bar?k=v'
+        
+        Or if we shift the path again:
+
+        >>> r.shift_path()
+        'bar'
+        >>> r.relative_uri()
+        '/?k=v'
 
 
 
