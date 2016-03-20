@@ -449,11 +449,11 @@ typedef struct {
 } Request;
 
 static PyObject * Request_shift_path(Request *);
-static PyObject * Request_relative_uri(Request *);
+static PyObject * Request_build_proxy_uri(Request *);
 
 static PyMethodDef Request_methods[] = {
-    {"shift_path",   (PyCFunction)Request_shift_path,   METH_NOARGS, NULL},
-    {"relative_uri", (PyCFunction)Request_relative_uri, METH_NOARGS, NULL},
+    {"shift_path",      (PyCFunction)Request_shift_path,      METH_NOARGS, NULL},
+    {"build_proxy_uri", (PyCFunction)Request_build_proxy_uri, METH_NOARGS, NULL},
     {NULL}
 };
 
