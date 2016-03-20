@@ -442,7 +442,7 @@ _getcallable(const char *label, PyObject *obj, PyObject *name)
 }
 
 static bool
-_check_str(const char *name, PyObject *obj)
+_check_str(const char *name, PyObject *obj, const ssize_t minlen)
 {
     if (! _check_type(name, obj, &PyUnicode_Type)) {
         return false;
@@ -450,7 +450,7 @@ _check_str(const char *name, PyObject *obj)
     if (PyUnicode_READY(obj) != 0) {
         return false;
     }
-    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) <= 0) {
+    if (PyUnicode_MAX_CHAR_VALUE(obj) != 127 || PyUnicode_GET_LENGTH(obj) < minlen) {
         PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
@@ -553,7 +553,7 @@ _frombytes(PyObject *bytes)
 static inline DeguSrc
 _src_from_str(const char *name, PyObject *obj)
 {
-    if (! _check_str(name, obj)) {
+    if (! _check_str(name, obj, 1)) {
         return NULL_DeguSrc;
     }
     return (DeguSrc){
@@ -2560,7 +2560,7 @@ _render_headers_sorted(DeguOutput *o, PyObject *headers, const size_t count)
     }
     i = 0;
     while (PyDict_Next(headers, &pos, &key, &val)) {
-        if (! _check_str("key", key)) {
+        if (! _check_str("key", key, 1)) {
             return false;
         }
         lines[i] = (HLine){key, val};
@@ -2584,7 +2584,7 @@ _render_headers_fast(DeguOutput *o, PyObject *headers, const size_t count)
     HLine line;
 
     while (PyDict_Next(headers, &pos, &key, &val)) {
-        if (! _check_str("key", key)) {
+        if (! _check_str("key", key, 1)) {
             return false;
         }
         line = (HLine){key, val};
