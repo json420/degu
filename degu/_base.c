@@ -279,14 +279,6 @@ _init_all_namedtuples(PyObject *module)
 /******************************************************************************
  * Python object validation and conversion
  ******************************************************************************/
-static void
-_type_error(const char *name, PyTypeObject *need, PyObject *got)
-{
-    PyErr_Format(PyExc_TypeError, "%s: need a %R; got a %R: %R",
-        name, (PyObject *)need, Py_TYPE(got), got
-    );
-}
-
 static bool
 _check_type(const char *name, PyObject *obj, PyTypeObject *type) {
     if (obj == NULL) {
@@ -1699,6 +1691,9 @@ parse_headers(PyObject *self, PyObject *args, PyObject *kw)
             &buf, &len, &isresponse)) {
         return NULL;
     }
+    if (! _check_type("isresponse", isresponse, &PyBool_Type)) {
+        return NULL;
+    }
     if (isresponse == Py_False) {
         _isresponse = false;
     }
@@ -1706,7 +1701,7 @@ parse_headers(PyObject *self, PyObject *args, PyObject *kw)
         _isresponse = true;
     }
     else {
-        _type_error("isresponse", &PyBool_Type, isresponse);
+        Py_FatalError("internal error in parse_headers()");
         return NULL;
     }
     DeguSrc src = {buf, len};
