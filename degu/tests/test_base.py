@@ -2901,17 +2901,18 @@ class TestNamedTuples_Py(BackendTestCase):
         return (tup, args)
 
     def test_Bodies(self):
-        (tup, args) = self.new('Bodies', 4)
+        (tup, args) = self.new('Bodies', 6)
         self.assertIs(tup.Body,            args[0])
         self.assertIs(tup.ChunkedBody,     args[1])
         self.assertIs(tup.BodyIter,        args[2])
         self.assertIs(tup.ChunkedBodyIter, args[3])
+        self.assertIs(tup.Range,           args[4])
+        self.assertIs(tup.ContentRange,    args[5])
         for a in args:
             self.assertEqual(sys.getrefcount(a), 4)
         del tup
         for a in args:
             self.assertEqual(sys.getrefcount(a), 3)
-
     def test_Response(self):
         (tup, args) = self.new('Response', 4)
         self.assertIs(tup.status,  args[0])
@@ -2999,15 +3000,19 @@ class TestConstants_Py(BackendTestCase):
         self.assertIsInstance(bodies, tuple)
         self.assertIsInstance(bodies, BodiesType)
 
-        self.assertIs(bodies.Body, bodies.Body)
-        self.assertIs(bodies.BodyIter, bodies.BodyIter)
-        self.assertIs(bodies.ChunkedBody, bodies.ChunkedBody)
-        self.assertIs(bodies.ChunkedBodyIter, bodies.ChunkedBodyIter)
+        self.assertIs(bodies.Body, self.backend.Body)
+        self.assertIs(bodies.BodyIter, self.backend.BodyIter)
+        self.assertIs(bodies.ChunkedBody, self.backend.ChunkedBody)
+        self.assertIs(bodies.ChunkedBodyIter, self.backend.ChunkedBodyIter)
+        self.assertIs(bodies.Range, self.backend.Range)
+        self.assertIs(bodies.ContentRange, self.backend.ContentRange)
 
-        self.assertIs(bodies[0], bodies.Body)
-        self.assertIs(bodies[1], bodies.ChunkedBody)
-        self.assertIs(bodies[2], bodies.BodyIter)
-        self.assertIs(bodies[3], bodies.ChunkedBodyIter)
+        self.assertIs(bodies[0], self.backend.Body)
+        self.assertIs(bodies[1], self.backend.ChunkedBody)
+        self.assertIs(bodies[2], self.backend.BodyIter)
+        self.assertIs(bodies[3], self.backend.ChunkedBodyIter)
+        self.assertIs(bodies[4], self.backend.Range)
+        self.assertIs(bodies[5], self.backend.ContentRange)
 
         self.assertEqual(bodies,
             (
@@ -3015,6 +3020,8 @@ class TestConstants_Py(BackendTestCase):
                 bodies.ChunkedBody,
                 bodies.BodyIter,
                 bodies.ChunkedBodyIter,
+                bodies.Range,
+                bodies.ContentRange,
             )
         )
 

@@ -178,19 +178,23 @@ static PyStructSequence_Field BodiesFields[] = {
     {"ChunkedBody", NULL},
     {"BodyIter", NULL},
     {"ChunkedBodyIter", NULL},
+    {"Range", NULL},
+    {"ContentRange", NULL},
     {NULL},
 };
-static PyStructSequence_Desc BodiesDesc = {"Bodies", NULL, BodiesFields, 4};
+static PyStructSequence_Desc BodiesDesc = {"Bodies", NULL, BodiesFields, 6};
 
 static PyObject *
-_Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
+_Bodies(PyObject *a0, PyObject *a1, PyObject *a2, PyObject *a3, PyObject *a4, PyObject *a5)
 {
     PyObject *ret = PyStructSequence_New(&BodiesType);
     if (ret != NULL) {
-        _SET_NAMEDTUPLE_ITEM(ret, 0, arg0)
-        _SET_NAMEDTUPLE_ITEM(ret, 1, arg1)
-        _SET_NAMEDTUPLE_ITEM(ret, 2, arg2)
-        _SET_NAMEDTUPLE_ITEM(ret, 3, arg3)
+        _SET_NAMEDTUPLE_ITEM(ret, 0, a0)
+        _SET_NAMEDTUPLE_ITEM(ret, 1, a1)
+        _SET_NAMEDTUPLE_ITEM(ret, 2, a2)
+        _SET_NAMEDTUPLE_ITEM(ret, 3, a3)
+        _SET_NAMEDTUPLE_ITEM(ret, 4, a4)
+        _SET_NAMEDTUPLE_ITEM(ret, 5, a5)
     }
     return ret;
 }
@@ -198,15 +202,17 @@ _Bodies(PyObject *arg0, PyObject *arg1, PyObject *arg2, PyObject *arg3)
 static PyObject *
 Bodies(PyObject *self, PyObject *args)
 {
-    PyObject *arg0 = NULL;  // Body
-    PyObject *arg1 = NULL;  // ChunkedBody
-    PyObject *arg2 = NULL;  // BodyIter
-    PyObject *arg3 = NULL;  // ChunkedBodyIter
+    PyObject *a0 = NULL;  // Body
+    PyObject *a1 = NULL;  // ChunkedBody
+    PyObject *a2 = NULL;  // BodyIter
+    PyObject *a3 = NULL;  // ChunkedBodyIter
+    PyObject *a4 = NULL;  // Range
+    PyObject *a5 = NULL;  // ContentRange
 
-    if (! PyArg_ParseTuple(args, "OOOO:Bodies", &arg0, &arg1, &arg2, &arg3)) {
+    if (! PyArg_ParseTuple(args, "OOOOOO:Bodies", &a0, &a1, &a2, &a3, &a4, &a5)) {
         return NULL;
     }
-    return _Bodies(arg0, arg1, arg2, arg3);
+    return _Bodies(a0, a1, a2, a3, a4, a5);
 }
 
 
@@ -5189,7 +5195,9 @@ _init_all_types(PyObject *module)
             (PyObject *)&BodyType,
             (PyObject *)&ChunkedBodyType,
             (PyObject *)&BodyIterType,
-            (PyObject *)&ChunkedBodyIterType
+            (PyObject *)&ChunkedBodyIterType,
+            (PyObject *)&RangeType,
+            (PyObject *)&ContentRangeType
         )
     )
     _ADD_MODULE_ATTR(module, "bodies", bodies)

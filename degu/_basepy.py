@@ -66,7 +66,7 @@ _OK = 'OK'
 
 
 BodiesType = Bodies = namedtuple('Bodies',
-    'Body ChunkedBody BodyIter ChunkedBodyIter'
+    'Body ChunkedBody BodyIter ChunkedBodyIter Range ContentRange'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
 
@@ -1595,7 +1595,7 @@ class ChunkedBodyIter:
         return total
 
 # Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter)
+bodies = Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter, Range, ContentRange)
 
 
 def _check_dict(name, obj):
