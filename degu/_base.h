@@ -230,7 +230,7 @@ static PyObject * write_chunk(PyObject *, PyObject *);
 static PyObject * set_output_headers(PyObject *, PyObject *);
 
 /* namedtuples */
-static PyObject * Bodies(PyObject *, PyObject *);
+static PyObject * API(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
 /* Server and client entry points */
@@ -272,7 +272,7 @@ static struct PyMethodDef degu_functions[] = {
     {"set_output_headers", set_output_headers, METH_VARARGS, NULL},
 
     /* namedtuples */
-    {"Bodies", Bodies, METH_VARARGS, NULL},
+    {"API", API, METH_VARARGS, NULL},
     {"Response", Response, METH_VARARGS, NULL},
 
     /* Server and client entry points */
