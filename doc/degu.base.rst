@@ -61,12 +61,8 @@ Exceptions
 
     A ``namedtuple`` used to expose the standard RGI application API.
 
-    An instance of this namedtuple is used to expose the standard RGI server
-    application API to server applications.  In particular, it is used to expose
-    this API to RGI request handlers::
-
-        def myapp(session, request, api):
-            return (200, 'OK', {}, b'hello, world')
+    An instance of this namedtuple is used to expose the standard :doc:`rgi`
+    server and client application API.
 
     .. attribute:: Body
 
@@ -100,20 +96,31 @@ Exceptions
 
 .. data:: api
 
-    The :class:`API` instance exposing the standard RGI application API.
+    :class:`API` instance exposing the standard RGI application API.
 
     For example:
 
-    >>> from degu.base import api
-    >>> my_body = api.BodyIter([b'hello, ', b' world'], 12)
+    >>> import degu.base
+    >>> my_body = degu.base.api.BodyIter([b'hello, ', b' world'], 12)
 
-    It's best not to directly import this from :mod:`degu.base`, but instead to
-    use the :attr:`degu.client.Connection.api` attribute on the client-side,
-    and to use the *api* argument passed to your RGI ``app()`` callable on
-    the server side::
+    However, so that your Degu server and client applications can transparently
+    run under future Python HTTP servers and clients that conform with the
+    :doc:`rgi` specification, you should not directly import this object from
+    :mod:`degu.base`.
 
-        def myapp(session, request, api):
-            return (200, 'OK', {}, b'hello, world')
+    Instead, RGI server applications should use this API via the RGI *api*
+    argument passed to your RGI request handler::
+
+        def my_app(session, request, api):
+            my_body = api.BodyIter([b'hello, ', b' world'], 12)
+            return (200, 'OK', {}, my_body)
+
+    And RGI client applications should use this API via the
+    :attr:`degu.client.Connection.api` attribute::
+
+        conn = client.connect()
+        my_body = conn.api.BodyIter([b'hello, ', b' world'], 12)
+        conn.request('POST', '/foo', {}, my_body)
 
 
 
