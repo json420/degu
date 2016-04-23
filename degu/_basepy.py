@@ -65,7 +65,7 @@ _METHODS = {
 _OK = 'OK'
 
 
-BodiesType = Bodies = namedtuple('Bodies',
+APIType = API = namedtuple('API',
     'Body ChunkedBody BodyIter ChunkedBodyIter Range ContentRange'
 )
 ResponseType = Response = namedtuple('Response', 'status reason headers body')
@@ -1192,7 +1192,7 @@ class Writer:
                     )
                 )
             total += self._write(body)
-        elif type(body) in bodies:
+        elif type(body) in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
             total += body.write_to(self)
         elif body is not None:
             raise TypeError(
@@ -1594,8 +1594,8 @@ class ChunkedBodyIter:
         self._state = BODY_CONSUMED
         return total
 
-# Used to expose the RGI IO wrappers:
-bodies = Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter, Range, ContentRange)
+# Used to expose the RGI API to server and client applications:
+api = API(Body, ChunkedBody, BodyIter, ChunkedBodyIter, Range, ContentRange)
 
 
 def _check_dict(name, obj):
@@ -1715,7 +1715,7 @@ def _handle_requests(app, session, sock):
     writer = Writer(sock)
     while not session._closed:
         request = reader.read_request()
-        response = app(session, request, bodies)
+        response = app(session, request, api)
         (status, reason, headers, body) = _unpack_response(response)
         _check_status(status)
 
@@ -1754,7 +1754,7 @@ class Connection:
         '_writer',
         '_response_body',
         '_closed',
-        '_bodies',
+        '_api',
     )
 
     def __init__(self, sock, base_headers):
@@ -1767,15 +1767,27 @@ class Connection:
         self._writer = Writer(sock)
         self._response_body = None
         self._closed = False
-        self._bodies = bodies
+        self._api = api
 
     @property
     def closed(self):
         return self._closed
 
     @property
+    def api(self):
+        return self._api
+
+    @property
     def bodies(self):
-        return self._bodies
+        """
+        Deprecated alias for `Connection.api`.
+
+        This attribute is deprecated and will be remove at some point in a
+        future Degu release.  Please use the `Connection.api` attribute instead.
+
+        FIXME: Remove this attribute when the time is right.
+        """
+        return self._api
 
     def __del__(self):
         self._shutdown()

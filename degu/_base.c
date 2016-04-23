@@ -31,8 +31,8 @@
 /* EmptyPreambleError exception */
 static PyObject *EmptyPreambleError = NULL;
 
-/* Default Bodies namedtuple instance */
-static PyObject *bodies = NULL;
+/* Default API namedtuple instance */
+static PyObject *api = NULL;
 
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
@@ -171,9 +171,9 @@ _DEGU_SRC_CONSTANT(EQUALS, "=")
     PyStructSequence_SET_ITEM(tup, index, value);
 
 
-/* Bodies namedtuple */
-static PyTypeObject BodiesType;
-static PyStructSequence_Field BodiesFields[] = {
+/* API namedtuple */
+static PyTypeObject APIType;
+static PyStructSequence_Field APIFields[] = {
     {"Body", NULL},
     {"ChunkedBody", NULL},
     {"BodyIter", NULL},
@@ -182,12 +182,12 @@ static PyStructSequence_Field BodiesFields[] = {
     {"ContentRange", NULL},
     {NULL},
 };
-static PyStructSequence_Desc BodiesDesc = {"Bodies", NULL, BodiesFields, 6};
+static PyStructSequence_Desc APIDesc = {"API", NULL, APIFields, 6};
 
 static PyObject *
-_Bodies(PyObject *a0, PyObject *a1, PyObject *a2, PyObject *a3, PyObject *a4, PyObject *a5)
+_API(PyObject *a0, PyObject *a1, PyObject *a2, PyObject *a3, PyObject *a4, PyObject *a5)
 {
-    PyObject *ret = PyStructSequence_New(&BodiesType);
+    PyObject *ret = PyStructSequence_New(&APIType);
     if (ret != NULL) {
         _SET_NAMEDTUPLE_ITEM(ret, 0, a0)
         _SET_NAMEDTUPLE_ITEM(ret, 1, a1)
@@ -200,7 +200,7 @@ _Bodies(PyObject *a0, PyObject *a1, PyObject *a2, PyObject *a3, PyObject *a4, Py
 }
 
 static PyObject *
-Bodies(PyObject *self, PyObject *args)
+API(PyObject *self, PyObject *args)
 {
     PyObject *a0 = NULL;  // Body
     PyObject *a1 = NULL;  // ChunkedBody
@@ -209,10 +209,10 @@ Bodies(PyObject *self, PyObject *args)
     PyObject *a4 = NULL;  // Range
     PyObject *a5 = NULL;  // ContentRange
 
-    if (! PyArg_ParseTuple(args, "OOOOOO:Bodies", &a0, &a1, &a2, &a3, &a4, &a5)) {
+    if (! PyArg_ParseTuple(args, "OOOOOO:API", &a0, &a1, &a2, &a3, &a4, &a5)) {
         return NULL;
     }
-    return _Bodies(a0, a1, a2, a3, a4, a5);
+    return _API(a0, a1, a2, a3, a4, a5);
 }
 
 
@@ -272,7 +272,7 @@ error:
 static bool
 _init_all_namedtuples(PyObject *module)
 {
-    if (! _init_namedtuple(module, "BodiesType", &BodiesType, &BodiesDesc)) {
+    if (! _init_namedtuple(module, "APIType", &APIType, &APIDesc)) {
         return false;
     }
     if (! _init_namedtuple(module, "ResponseType", &ResponseType, &ResponseDesc)) {
@@ -4825,7 +4825,7 @@ _handle_requests(PyObject *self, PyObject *args)
 
         /* Call the application, the validate and upack the response */
         _SET(response,
-            PyObject_CallFunctionObjArgs(app, session, request, bodies, NULL)
+            PyObject_CallFunctionObjArgs(app, session, request, api, NULL)
         )
         if (! _unpack_response(response, &rsp)) {
             goto error;
@@ -4891,7 +4891,7 @@ Connection_dealloc(Connection *self)
     _Connection_shutdown(self);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
-    Py_CLEAR(self->bodies);
+    Py_CLEAR(self->api);
     Py_CLEAR(self->reader);
     Py_CLEAR(self->writer);
     Py_CLEAR(self->response_body);
@@ -4916,7 +4916,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
-    _SET_AND_INC(self->bodies, bodies)
+    _SET_AND_INC(self->api, api)
     _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
     _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
     self->response_body = NULL;
@@ -5190,8 +5190,8 @@ _init_all_types(PyObject *module)
     if (! _init_all_namedtuples(module)) {
         goto error;
     }
-    _SET(bodies,
-        _Bodies(
+    _SET(api,
+        _API(
             (PyObject *)&BodyType,
             (PyObject *)&ChunkedBodyType,
             (PyObject *)&BodyIterType,
@@ -5200,7 +5200,7 @@ _init_all_types(PyObject *module)
             (PyObject *)&ContentRangeType
         )
     )
-    _ADD_MODULE_ATTR(module, "bodies", bodies)
+    _ADD_MODULE_ATTR(module, "api", api)
     return true;
 
 error:

@@ -2,6 +2,95 @@ Changelog
 =========
 
 
+.. _version-0.16:
+
+0.16 (unreleased)
+-----------------
+
+`Download Degu 0.16`_
+
+Breaking API changes:
+
+    *   The ``degu.base.Bodies`` namedtuple has been renamed to
+        :class:`degu.base.API`, plus the new ``Range`` and ``ContentRange``
+        attributes were added.
+
+        This is another small step in making it possible to transparently run
+        RGI server and client application code under different RGI compliant
+        implementations.
+
+        To achieve this, RGI server and client code should not directly import
+        anything from :mod:`degu.base`.  This was mostly the case in Degu 0.15
+        save for the :class:`degu.base.Range` and
+        :class:`degu.base.ContentRange` classes.
+
+        As such, ``Range`` and ``ContentRange`` attributes needed to be added
+        to the namedtuple exposing the standard RGI API.
+
+        Because this standard RGI API now exposes more that just IO abstraction
+        classes for creating HTTP request and response bodies, it made since to
+        rename this namedtuple from ``Bodies`` to the more generic ``API``.
+
+    *   The ``degu.base.bodies`` constant has been renamed to
+        :data:`degu.base.api` and is now a :class:`degu.base.API` instance.
+
+        The standard RGI API now exposes six classes:
+
+        =======================  ==================================
+        Attribute                Degu implementation
+        =======================  ==================================
+        ``api.Body``             :class:`degu.base.Body`
+        ``api.ChunkedBody``      :class:`degu.base.ChunkedBody`
+        ``api.BodyIter``         :class:`degu.base.BodyIter`
+        ``api.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+        ``api.Range``            :class:`degu.base.Range`
+        ``api.ContentRange``     :class:`degu.base.ContentRange`
+        =======================  ==================================
+        
+
+        Although this change does not break backward compatibility with RGI
+        server applications, new applications should follow the new convention
+        and use ``api`` for their 3rd argument name instead of ``bodies``.
+
+        For example, change this::
+
+            def my_app(session, request, bodies):
+                my_body = bodies.BodyIter([b'hello, ', b' world'], 12)
+                return (200, 'OK', {}, my_body)
+
+        To this::
+
+            def my_app(session, request, api):
+                my_body = api.BodyIter([b'hello, ', b' world'], 12)
+                return (200, 'OK', {}, my_body)
+
+        For backward compatibility, ``degu.base.bodies`` is still available as
+        as alias for :data:`degu.base.api`.  However, new applications should
+        always use :data:`degu.base.api` instead of ``degu.base.bodies`` as the
+        former is deprecated and will be removed in a future Degu release.
+
+    *   The ``degu.client.Connection.bodies`` attribute has been renamed to
+        :attr:`degu.client.Connection.api`.
+
+        For example, change this::
+
+            conn = client.connect()
+            my_body = conn.bodies.BodyIter([b'hello, ', b' world'], 12)
+            conn.request('POST', '/foo', {}, my_body)
+
+        To this::
+
+            conn = client.connect()
+            my_body = conn.api.BodyIter([b'hello, ', b' world'], 12)
+            conn.request('POST', '/foo', {}, my_body)
+
+        For backward compatibility, ``degu.client.Connection.bodies`` is still
+        available as as alias for :attr:`degu.client.Connection.api`.  However,
+        new applications should always use :attr:`degu.client.Connection.api`
+        instead of ``degu.client.Connection.bodies`` as the former is deprecated
+        and will be removed in a future Degu release.
+
+
 .. _version-0.15:
 
 0.15 (March 2016)
@@ -1549,6 +1638,7 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
+.. _`Download Degu 0.16`: https://launchpad.net/degu/+milestone/0.16
 .. _`Download Degu 0.15`: https://launchpad.net/degu/+milestone/0.15
 .. _`Download Degu 0.14`: https://launchpad.net/degu/+milestone/0.14
 .. _`Download Degu 0.13`: https://launchpad.net/degu/+milestone/0.13

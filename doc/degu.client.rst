@@ -490,7 +490,12 @@ Also see the server :ref:`server-options`.
 
         *   :meth:`Connection.get_range()`
 
-    For brevity, the shortcut methods are recommended (when possible).
+    (For brevity, use of the shortcut methods is recommended when possible.)
+
+    Finally, the :attr:`Connection.api` attribute exposes the standard RGI
+    application API.  Under Degu, :attr:`Connection.api` will always be the
+    :data:`degu.base.api` constant, which is an instance of the
+    :class:`degu.base.API` namedtuple.
 
     A :class:`Connection` is stateful  and is *not* thread-safe.
 
@@ -544,18 +549,28 @@ Also see the server :ref:`server-options`.
 
         The *base_headers* argument passed to the constructor.
 
-    .. attribute:: bodies
+    .. attribute:: api
 
-        This attribute exposes the :attr:`degu.base.bodies` namedtuple.
+        This attribute exposes the stanard RGI application API.
 
-        The long-term goal is to standardize the Degu API such that high-level
-        client and server components could transparently use other compatible 
-        implementations.
+        Under Degu this attribute will always be the :data:`degu.base.api`
+        constant, which is an instance of the :class:`degu.base.API` namedtuple.
 
-        To prepare for this scenario, it's best for consumers of the Degu client
-        API to create their request bodies via this attribute rather than
-        directly importing :mod:`degu.base.bodies`, or
-        :class:`degu.base.Body`, etc.
+        The long-term goal is to standardize the Degu RGI application API such
+        that high-level client and server components could transparently under
+        multiple RGI compatible implementations.
+
+        To prepare for this scenario, consumers of the Degu client API should
+        create their request bodies via this attribute rather than directly
+        importing :mod:`degu.base.api`, or :class:`degu.base.Body`, etc.
+
+        .. versionchanged:: 0.16
+
+            This attribute was renamed from ``bodies`` to ``api``.  For backward
+            compatability, the ``bodies`` attribute is still present, but new
+            applications should always use the ``api`` attribute instead of the
+            ``bodies`` attribute as the later is deprecated and will be removed
+            in some future version of Degu.
 
     .. attribute:: closed
 

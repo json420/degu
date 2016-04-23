@@ -230,7 +230,7 @@ static PyObject * write_chunk(PyObject *, PyObject *);
 static PyObject * set_output_headers(PyObject *, PyObject *);
 
 /* namedtuples */
-static PyObject * Bodies(PyObject *, PyObject *);
+static PyObject * API(PyObject *, PyObject *);
 static PyObject * Response(PyObject *, PyObject *);
 
 /* Server and client entry points */
@@ -272,7 +272,7 @@ static struct PyMethodDef degu_functions[] = {
     {"set_output_headers", set_output_headers, METH_VARARGS, NULL},
 
     /* namedtuples */
-    {"Bodies", Bodies, METH_VARARGS, NULL},
+    {"API", API, METH_VARARGS, NULL},
     {"Response", Response, METH_VARARGS, NULL},
 
     /* Server and client entry points */
@@ -1080,7 +1080,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *sock;
     PyObject *base_headers;
-    PyObject *bodies;
+    PyObject *api;
     PyObject *reader;
     PyObject *writer;
     PyObject *response_body;
@@ -1090,7 +1090,8 @@ typedef struct {
 static PyMemberDef Connection_members[] = {
     {"sock",         T_OBJECT, offsetof(Connection, sock),         READONLY, NULL},
     {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
-    {"bodies",       T_OBJECT, offsetof(Connection, bodies),       READONLY, NULL},
+    {"api",          T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
+    {"bodies",       T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
     {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };

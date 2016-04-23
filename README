@@ -36,7 +36,7 @@ Examples
 
 Define a simple *REST Gateway Interface* (RGI) server application:
 
->>> def app(session, request, bodies):
+>>> def app(session, request, api):
 ...     if request.method != 'GET':
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request.path != ['example']:
