@@ -160,12 +160,19 @@ Header values
         'bytes 50-99/200'
 
 
-:class:`Bodies` namedtuple
+:class:`API` namedtuple
 --------------------------
 
-.. class:: Bodies(Body, ChunkedBody, BodyIter, ChunkedBodyIter)
+.. class:: API(Body, ChunkedBody, BodyIter, ChunkedBodyIter, Range, ContentRange)
 
-    An instances of this namedtuple is used to expose the IO abstraction API.
+    A ``namedtuple`` used to expose the standard RGI application API.
+
+    An instance of this namedtuple is used to expose the standard RGI server
+    application API to server applications.  In particular, it is used to expose
+    this API to RGI request handlers::
+
+        def myapp(session, request, api):
+            return (200, 'OK', {}, b'hello, world')
 
     .. attribute:: Body
 
@@ -183,27 +190,37 @@ Header values
 
         The :class:`ChunkedBodyIter` class.
 
+    .. attribute:: Range
+
+        The :class:`Range` class.
+
+    .. attribute:: ContentRange
+
+        The :class:`ContentRange` class.
 
 
-:attr:`bodies`
+
+:attr:`api`
 --------------
 
 
-.. data:: bodies
+.. data:: api
 
-    The :class:`Bodies` instance exposing the Degu IO abstraction API.
+    The :class:`API` instance exposing the standard RGI application API.
 
     For example:
 
-    >>> from degu.base import bodies
-    >>> my_body = bodies.BodyIter([b'hello, ', b' world'], 12)
+    >>> from degu.base import api
+    >>> my_body = api.BodyIter([b'hello, ', b' world'], 12)
 
     It's best not to directly import this from :mod:`degu.base`, but instead to
-    use the :attr:`degu.client.Connection.bodies` attribute on the client-side,
-    and to use the *bodies* argument passed to your RGI ``app()`` callable on
+    use the :attr:`degu.client.Connection.api` attribute on the client-side,
+    and to use the *api* argument passed to your RGI ``app()`` callable on
     the server side::
 
-        app(session, request, bodies)
+        def myapp(session, request, api):
+            return (200, 'OK', {}, b'hello, world')
+
 
 
 Input/output bodies
