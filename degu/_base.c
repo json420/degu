@@ -4891,7 +4891,7 @@ Connection_dealloc(Connection *self)
     _Connection_shutdown(self);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
-    Py_CLEAR(self->bodies);
+    Py_CLEAR(self->api);
     Py_CLEAR(self->reader);
     Py_CLEAR(self->writer);
     Py_CLEAR(self->response_body);
@@ -4916,7 +4916,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
-    _SET_AND_INC(self->bodies, api)
+    _SET_AND_INC(self->api, api)
     _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
     _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
     self->response_body = NULL;

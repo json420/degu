@@ -1080,7 +1080,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *sock;
     PyObject *base_headers;
-    PyObject *bodies;
+    PyObject *api;
     PyObject *reader;
     PyObject *writer;
     PyObject *response_body;
@@ -1090,7 +1090,8 @@ typedef struct {
 static PyMemberDef Connection_members[] = {
     {"sock",         T_OBJECT, offsetof(Connection, sock),         READONLY, NULL},
     {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
-    {"bodies",       T_OBJECT, offsetof(Connection, bodies),       READONLY, NULL},
+    {"api",          T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
+    {"bodies",       T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
     {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
