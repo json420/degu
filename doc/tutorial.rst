@@ -54,7 +54,7 @@ Example: SSL reverse-proxy
 Here's a minimal Degu server application, implemented according to the
 :doc:`rgi`:
 
->>> def example_app(session, request, bodies):
+>>> def example_app(session, request, api):
 ...     return (200, 'OK', {'x-msg': 'hello, world'}, None)
 ...
 
@@ -125,7 +125,7 @@ For example, here's an RGI application that implements a `reverse-proxy`_:
 ...     def __init__(self, client):
 ...         self.client = client
 ... 
-...     def __call__(self, session, request, bodies):
+...     def __call__(self, session, request, api):
 ...         conn = session.store.get('conn')
 ...         if conn is None:
 ...             conn = self.client.connect()
@@ -299,21 +299,21 @@ RGI request handlers must return a 4-tuple to convey their HTTP response::
     (status, reason, headers, body)
 
 The RGI *session* argument contains per-connection information.  The same
-*session* instance is passed to the RGI request handler for all requests handled
-through a given connection.  Under Degu, the *session* argument will be a
-:class:`degu.server.Session` instance.
+*session* instance is passed to your RGI request handler for all requests
+handled through a given connection.  Under Degu, the *session* argument will
+always be an :class:`degu.server.Session` instance.
 
 The RGI *request* argument contains per-request information.  A unique *request*
-instance will be passed to the RGI request handler for each request (regardless
-whether the requests are made through the same connection).  Under Degu, the
-*request* argument will be a :class:`degu.server.Request` instance.
+instance is passed to your RGI request handler for each request (regardless
+whether the request was made through the same connection).  Under Degu, the
+*request* argument will always be a :class:`degu.server.Request` instance.
 
-The RGI *api* argument exposes the standard RGI API.  In particular, it exposes
-the standard RGI :ref:`io-abstractions`, a set of classes used to construct
-HTTP request and response bodies.  The same *api* argument should be passed to
-the RGI request handler for all requests handled through all connections.  It
-should be an immutable object, ideally a ``namedtuple`` (this is the case is
-Degu).
+The RGI *api* argument exposes the standard RGI application API.  In particular,
+it exposes the standard RGI :ref:`io-abstractions`, a set of classes used to
+construct HTTP request and response bodies.  The same *api* argument is passed
+to your RGI request handler for all requests handled through all connections.
+Under Degu, the *api* argument will always be the :data:`degu.base.api`
+constant.
 
 As RGI request handlers will deal most with the *request* argument, it will
 be detailed here.
@@ -400,6 +400,10 @@ For more information on the RGI request arguments, see the documentation for:
 
     *   :class:`degu.server.Request`
 
+    *   :class:`degu.base.API`
+
+    *   :data:`degu.base.api`
+
 
 
 .. _io-abstractions:
@@ -483,13 +487,13 @@ this.
 
 For example, say we have these two RGI leaf applications:
 
->>> def foo_app(session, request, bodies):
+>>> def foo_app(session, request, api):
 ...     assert request.mount == ['foo']
 ...     if request.path != []:
 ...         return (404, 'Not Found Foo', {}, None)
 ...     return (200, 'OK', {}, b'FOO this')
 ... 
->>> def bar_app(session, request, bodies):
+>>> def bar_app(session, request, api):
 ...     assert request.mount == ['bar']
 ...     if request.path != []:
 ...         return (404, 'Not Found Bar', {}, None)
@@ -498,16 +502,16 @@ For example, say we have these two RGI leaf applications:
 
 And this RGI middleware, which will be our root application:
 
->>> def root_app(session, request, bodies):
+>>> def root_app(session, request, api):
 ...     if request.method != 'GET':
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     if request.path == []:
 ...         return (200, 'OK', {}, b'ROOT here')
 ...     next = request.shift_path()
 ...     if next == 'foo':
-...         return foo_app(session, request, bodies)
+...         return foo_app(session, request, api)
 ...     if next == 'bar':
-...         return bar_app(session, request, bodies)
+...         return bar_app(session, request, api)
 ...     return (404, 'Not Found', {}, None)
 ... 
 
@@ -633,7 +637,7 @@ instance:
 Let's put all this together in a live example.  First we'll define our server
 application:
 
->>> def range_app(session, request, bodies):
+>>> def range_app(session, request, api):
 ...     if request.path != ['example']:
 ...         return (404, 'Not Found', {}, None)
 ...     if request.method not in {'GET', 'HEAD'}:
@@ -770,7 +774,7 @@ Second, we'll define an RGI server application that will return a response body 
 chunked transfer encoding if we ``POST /chunked``, and that will return a body
 with a content-length if we ``POST /length``:
 
->>> def rgi_io_app(session, request, bodies):
+>>> def rgi_io_app(session, request, api):
 ...     if request.path not in (['length'], ['chunked']):
 ...         return (404, 'Not Found', {}, None)
 ...     if request.method != 'POST':
@@ -779,9 +783,9 @@ with a content-length if we ``POST /length``:
 ...         return (400, 'Bad Request', {}, None)
 ...     echo = request.body.read()  # Body/ChunkedBody agnostic
 ...     if request.path[0] == 'chunked':
-...         body = bodies.ChunkedBodyIter(chunked_response_body(echo))
+...         body = api.ChunkedBodyIter(chunked_response_body(echo))
 ...     else:
-...         body = bodies.BodyIter(response_body(echo), len(echo) + 17)
+...         body = api.BodyIter(response_body(echo), len(echo) + 17)
 ...     return (200, 'OK', {}, body)
 ... 
 
@@ -879,8 +883,7 @@ client-side request body using chunked trasfer-encoding:
 To use this generator as our request body, we need to wrap it in a
 :class:`degu.base.ChunkedBodyIter`, like this:
 
->>> from degu.base import bodies
->>> body = bodies.ChunkedBodyIter(chunked_request_body())
+>>> body = conn.api.ChunkedBodyIter(chunked_request_body())
 
 And then if we ``POST /chunked``:
 
@@ -890,7 +893,7 @@ b'All your *something else* are belong to us'
 
 Or if we ``POST /length``:
 
->>> body = bodies.ChunkedBodyIter(chunked_request_body())
+>>> body = conn.api.ChunkedBodyIter(chunked_request_body())
 >>> response = conn.request('POST', '/length', {}, body)
 >>> response.body.read()
 b'All your *something else* are belong to us'
