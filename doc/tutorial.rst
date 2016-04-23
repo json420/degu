@@ -272,6 +272,135 @@ network-transparent services, most of which will usually all be running on the
 local host, but any of which could likewise be running on a remote host.
 
 
+RGI Primer
+----------
+
+The :doc:`rgi` (RGI) is very much in the spirit of `WSGI`_ but does not attempt
+to be compatible with `CGI`_, nor necessarily to be compatible with any existing
+HTTP servers.
+
+However, a central goal of the RGI specification is be server agnostic so that
+one can write RGI server applications that can transparently run under both Degu
+and future Python HTTP servers that might conform with the RGI specification.
+
+An RGI request handler (aka an "RGI server application") must be a callable
+object taking three arguments, for example:
+
+>>> def app(session, request, api):
+...     if request.method != 'GET':
+...         return (405, 'Method Not Allowed', {}, None)
+...     if request.path != ['example']:
+...         return (404, 'Not Found', {}, None)
+...     return (200, 'OK', {}, b'hello, world')
+...
+
+RGI request handlers must return a 4-tuple to convey their HTTP response::
+
+    (status, reason, headers, body)
+
+The RGI *session* argument contains per-connection information.  The same
+*session* instance is passed to the RGI request handler for all requests handled
+through a given connection.  Under Degu, the *session* argument will be a
+:class:`degu.server.Session` instance.
+
+The RGI *request* argument contains per-request information.  A unique *request*
+instance will be passed to the RGI request handler for each request (regardless
+whether the requests are made through the same connection).  Under Degu, the
+*request* argument will be a :class:`degu.server.Request` instance.
+
+The RGI *api* argument exposes the standard RGI API.  In particular, it exposes
+the standard RGI :ref:`io-abstractions`, a set of classes used to construct
+HTTP request and response bodies.  The same *api* argument should be passed to
+the RGI request handler for all requests handled through all connections.  It
+should be an immutable object, ideally a ``namedtuple`` (this is the case is
+Degu).
+
+As RGI request handlers will deal most with the *request* argument, it will
+be detailed here.
+
+For example, say your received this HTTP request::
+
+    GET /foo/bar HTTP/1.1\r\n
+    Accept: application/json\r\n
+    \r\n
+
+Then the *request* argument will have the following attributes with the
+following values::
+
+    request.method  --> 'GET'
+    request.uri     --> '/foo/bar'
+    request.headers --> {'accept': 'application/json'}
+    request.body    --> None
+    request.mount   --> []
+    request.path    --> ['foo', 'bar']
+    request.query   --> None
+
+Or for a second example, say your received this HTTP request::
+
+    POST /foo?bar=baz HTTP/1.1\r\n
+    Content-Length: 18\r\n
+    Content-Type: application/json\r\n
+    \r\n
+    {"hello": "world"}
+
+Then the *request* argument will have the following attributes with the
+following values::
+
+    request.method  --> 'POST'
+    request.uri     --> '/foo?bar=baz'
+    request.headers --> {'content-length': 18, 'content-type': 'application/json'}
+    request.body    --> Body(<rfile>, 18)
+    request.mount   --> []
+    request.path    --> ['foo']
+    request.query   --> 'bar=baz'
+
+In which case the RGI request handler can read the incoming HTTP request body
+like this::
+
+    request.body.read() --> b'{"hello": "world"}'
+
+A few things are worth noting about the *request* argument:
+
+    1.  The ``request.uri`` attribute is a ``str`` containing the full,
+        unparsed request URI.
+
+    2.  The header names in the ``request.headers`` attribute are
+        case-normalized to lowercase.
+
+    3.  The ``request.body`` attribute will be ``None`` when the request does
+        not contain an HTTP request body, it will be a
+        :class:`degu.base.Body` instance when the request contains a
+        ``'content-length'`` header, or it will be a
+        :class:`degu.base.ChunkedBody` instance when the request contains a
+        ``'transfer-encoding'`` header.
+
+    4.  The ``request.mount`` attribute is a ``list`` that is semantically
+        equivalent to the `WSGI`_ ``environ['SCRIPT_NAME']`` item; it contains
+        the already handled portions of the request URI; in Degu, it will
+        always be an empty list ``[]`` when your RGI root application receives
+        a new request, as Degu only supports mounting the root application at
+        ``'/'``.
+
+    5.  The ``request.path`` attribute is a ``list`` that is semantically
+        equivalent to the `WSGI`_ ``environ['PATH_INFO']`` item; it contains
+        the yet-to-be handled portions of the request URI; as a request is
+        routed through RGI middleware, components should be shifted from
+        ``request.path`` to ``request.mount`` using the ``request.shift_path()``
+        method (in Degu, the :meth:`degu.server.Request.shift_path()` method).
+
+    6.  The ``request.query`` attribute will be ``None`` when the request URI
+        does not contain a ``'?'``, or otherwise will be a ``str`` contain the
+        query portion of of the request URI, which can be an empty ``''`` if
+        the final character of the URI is ``'?'``.
+
+
+For more information on the RGI request arguments, see the documentation for:
+
+    *   :class:`degu.server.Session`
+
+    *   :class:`degu.server.Request`
+
+
 
 .. _io-abstractions:
 
@@ -863,6 +992,8 @@ In particular, Degu is restrictive when it comes to:
 
 .. _`gunicorn`: http://gunicorn.org/
 .. _`modwsgi`: https://code.google.com/p/modwsgi/
+.. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
+.. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`Python3`: https://docs.python.org/3/
 .. _`Avahi`: http://avahi.org/
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#the-process-class
