@@ -296,12 +296,12 @@ class TestAliases(TestCase):
     def test_all(self):
         all_names = (
             'EmptyPreambleError',
-            'Bodies',   'BodiesType',
+            'API',      'APIType',
             'Response', 'ResponseType',
             'Range',
             'ContentRange',
             'Request',
-            'bodies',
+            'api',
             '_handle_requests',
             'parse_headers',
             'Connection',
@@ -379,6 +379,10 @@ class BackendTestCase(TestCase):
     @property
     def EmptyPreambleError(self):
         return self.getattr('EmptyPreambleError')
+
+    @property
+    def api(self):
+        return self.getattr('api')
 
 
 REQUEST_ARGS_REPR = ', '.join([
@@ -1685,7 +1689,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(good_count, 2)
 
     def test_parse_request(self):
-        bodies = self.getattr('bodies')
+        api = self.api
         parse_request = self.getattr('parse_request')
         EmptyPreambleError = self.getattr('EmptyPreambleError')
         Request = self.getattr('Request')
@@ -1773,7 +1777,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
         self.assertEqual(r.headers, {'content-length': 17})
-        self.assertIs(type(r.body), bodies.Body)
+        self.assertIs(type(r.body), api.Body)
         self.assertIs(r.body.rfile, rfile)
         self.assertEqual(r.body.content_length, 17)
         self.assertEqual(r.mount, [])
@@ -1789,7 +1793,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.method, 'PUT')
         self.assertEqual(r.uri, '/foo')
         self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
-        self.assertIs(type(r.body), bodies.ChunkedBody)
+        self.assertIs(type(r.body), api.ChunkedBody)
         self.assertIs(r.body.rfile, rfile)
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
@@ -1800,7 +1804,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         #)
 
     def test_parse_response(self):
-        bodies = self.getattr('bodies')
+        api = self.api
         parse_response = self.getattr('parse_response')
         EmptyPreambleError = self.getattr('EmptyPreambleError')
         ResponseType = self.getattr('ResponseType')
@@ -1833,7 +1837,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(r.status, 200)
             self.assertEqual(r.reason, 'OK')
             self.assertEqual(r.headers, {'content-length': 17})
-            self.assertIs(type(r.body), bodies.Body)
+            self.assertIs(type(r.body), api.Body)
             self.assertIs(r.body.rfile, rfile)
             self.assertEqual(r.body.content_length, 17)
 
@@ -1852,7 +1856,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             self.assertEqual(r.status, 200)
             self.assertEqual(r.reason, 'OK')
             self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
-            self.assertIs(type(r.body), bodies.ChunkedBody)
+            self.assertIs(type(r.body), api.ChunkedBody)
             self.assertIs(r.body.rfile, rfile)
 
     def test_parse_chunk_size(self):
@@ -2229,7 +2233,7 @@ class TestMiscFunctions_Py(BackendTestCase):
 
     def test_set_output_headers(self):
         set_output_headers = self.getattr('set_output_headers')
-        bodies = self.getattr('bodies')
+        api = self.api
 
         # None:
         h = {}
@@ -2244,35 +2248,35 @@ class TestMiscFunctions_Py(BackendTestCase):
         self.assertIsNone(set_output_headers(h, os.urandom(17)))
         self.assertEqual(h, {'content-length': 17})
 
-        # bodies.Body:
+        # api.Body:
         h = {}
-        body = bodies.Body(io.BytesIO(), 0)
+        body = api.Body(io.BytesIO(), 0)
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'content-length': 0})
         h = {}
-        body = bodies.Body(io.BytesIO(), 17)
+        body = api.Body(io.BytesIO(), 17)
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'content-length': 17})
 
-        # bodies.ChunkedBody:
+        # api.ChunkedBody:
         h = {}
-        body = bodies.ChunkedBody(io.BytesIO())
+        body = api.ChunkedBody(io.BytesIO())
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'transfer-encoding': 'chunked'})
 
-        # bodies.BodyIter:
+        # api.BodyIter:
         h = {}
-        body = bodies.BodyIter([], 0)
+        body = api.BodyIter([], 0)
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'content-length': 0})
         h = {}
-        body = bodies.BodyIter([], 17)
+        body = api.BodyIter([], 17)
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'content-length': 17})
 
-        # bodies.ChunkedBodyIter:
+        # api.ChunkedBodyIter:
         h = {}
-        body = bodies.ChunkedBodyIter([])
+        body = api.ChunkedBodyIter([])
         self.assertIsNone(set_output_headers(h, body))
         self.assertEqual(h, {'transfer-encoding': 'chunked'})
 
@@ -2291,18 +2295,18 @@ class TestMiscFunctions_Py(BackendTestCase):
             yield ({'content-length': 0}, b'')
             yield ({'content-length': 17}, os.urandom(17))
 
-            yield ({'content-length': 0}, bodies.Body(io.BytesIO(), 0))
-            yield ({'content-length': 17}, bodies.Body(io.BytesIO(), 17))
+            yield ({'content-length': 0}, api.Body(io.BytesIO(), 0))
+            yield ({'content-length': 17}, api.Body(io.BytesIO(), 17))
     
-            yield ({'content-length': 0}, bodies.BodyIter([], 0))
-            yield ({'content-length': 17}, bodies.BodyIter([], 17))
+            yield ({'content-length': 0}, api.BodyIter([], 0))
+            yield ({'content-length': 17}, api.BodyIter([], 17))
 
             yield (
                 {'transfer-encoding': 'chunked'},
-                bodies.ChunkedBody(io.BytesIO())
+                api.ChunkedBody(io.BytesIO())
             )
 
-            yield ({'transfer-encoding': 'chunked'}, bodies.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'chunked'}, api.ChunkedBodyIter([]))
 
         for (h, body) in iter_matching():
             hcopy = h.copy()
@@ -2316,32 +2320,32 @@ class TestMiscFunctions_Py(BackendTestCase):
             yield ({'content-length': 16}, os.urandom(17))
             yield ({'content-length': 18}, os.urandom(17))
 
-            yield ({'content-length': 1}, bodies.Body(io.BytesIO(), 0))
-            yield ({'content-length': 0}, bodies.Body(io.BytesIO(), 1))
-            yield ({'content-length': 16}, bodies.Body(io.BytesIO(), 17))
-            yield ({'content-length': 18}, bodies.Body(io.BytesIO(), 17))
+            yield ({'content-length': 1}, api.Body(io.BytesIO(), 0))
+            yield ({'content-length': 0}, api.Body(io.BytesIO(), 1))
+            yield ({'content-length': 16}, api.Body(io.BytesIO(), 17))
+            yield ({'content-length': 18}, api.Body(io.BytesIO(), 17))
     
-            yield ({'content-length': 1}, bodies.BodyIter([], 0))
-            yield ({'content-length': 0}, bodies.BodyIter([], 1))
-            yield ({'content-length': 16}, bodies.BodyIter([], 17))
-            yield ({'content-length': 18}, bodies.BodyIter([], 17))
+            yield ({'content-length': 1}, api.BodyIter([], 0))
+            yield ({'content-length': 0}, api.BodyIter([], 1))
+            yield ({'content-length': 16}, api.BodyIter([], 17))
+            yield ({'content-length': 18}, api.BodyIter([], 17))
 
             yield (
                 {'transfer-encoding': 'clumped'},
-                bodies.ChunkedBody(io.BytesIO())
+                api.ChunkedBody(io.BytesIO())
             )
             yield (
                 {'transfer-encoding': 'chunke'},
-                bodies.ChunkedBody(io.BytesIO())
+                api.ChunkedBody(io.BytesIO())
             )
             yield (
                 {'transfer-encoding': 'chunkedy'},
-                bodies.ChunkedBody(io.BytesIO())
+                api.ChunkedBody(io.BytesIO())
             )
 
-            yield ({'transfer-encoding': 'clumped'}, bodies.ChunkedBodyIter([]))
-            yield ({'transfer-encoding': 'chunke'}, bodies.ChunkedBodyIter([]))
-            yield ({'transfer-encoding': 'chunkedy'}, bodies.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'clumped'}, api.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'chunke'}, api.ChunkedBodyIter([]))
+            yield ({'transfer-encoding': 'chunkedy'}, api.ChunkedBodyIter([]))
 
         for (h, body) in iter_not_matching():
             hcopy = h.copy()
@@ -2350,9 +2354,9 @@ class TestMiscFunctions_Py(BackendTestCase):
             (key, val) = items[0]
             if type(body) is bytes:
                 newval = len(body)
-            elif type(body) in (bodies.Body, bodies.BodyIter):
+            elif type(body) in (api.Body, api.BodyIter):
                 newval = body.content_length
-            elif type(body) in (bodies.ChunkedBody, bodies.ChunkedBodyIter):
+            elif type(body) in (api.ChunkedBody, api.ChunkedBodyIter):
                 newval = 'chunked'
             else:
                 raise Exception('should not be reached')
@@ -2900,8 +2904,8 @@ class TestNamedTuples_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(a), 4)
         return (tup, args)
 
-    def test_Bodies(self):
-        (tup, args) = self.new('Bodies', 6)
+    def test_API(self):
+        (tup, args) = self.new('API', 6)
         self.assertIs(tup.Body,            args[0])
         self.assertIs(tup.ChunkedBody,     args[1])
         self.assertIs(tup.BodyIter,        args[2])
@@ -2913,6 +2917,7 @@ class TestNamedTuples_Py(BackendTestCase):
         del tup
         for a in args:
             self.assertEqual(sys.getrefcount(a), 3)
+
     def test_Response(self):
         (tup, args) = self.new('Response', 4)
         self.assertIs(tup.status,  args[0])
@@ -2993,35 +2998,35 @@ class TestConstants_Py(BackendTestCase):
     def test_MAX_CHUNK_SIZE(self):
         self.check_size_constant('MAX_CHUNK_SIZE')
 
-    def test_bodies(self):
-        bodies = self.getattr('bodies')
-        BodiesType = self.getattr('BodiesType')
+    def test_api(self):
+        api = self.api
+        APIType = self.getattr('APIType')
 
-        self.assertIsInstance(bodies, tuple)
-        self.assertIsInstance(bodies, BodiesType)
+        self.assertIsInstance(api, tuple)
+        self.assertIsInstance(api, APIType)
 
-        self.assertIs(bodies.Body, self.backend.Body)
-        self.assertIs(bodies.BodyIter, self.backend.BodyIter)
-        self.assertIs(bodies.ChunkedBody, self.backend.ChunkedBody)
-        self.assertIs(bodies.ChunkedBodyIter, self.backend.ChunkedBodyIter)
-        self.assertIs(bodies.Range, self.backend.Range)
-        self.assertIs(bodies.ContentRange, self.backend.ContentRange)
+        self.assertIs(api.Body, self.backend.Body)
+        self.assertIs(api.BodyIter, self.backend.BodyIter)
+        self.assertIs(api.ChunkedBody, self.backend.ChunkedBody)
+        self.assertIs(api.ChunkedBodyIter, self.backend.ChunkedBodyIter)
+        self.assertIs(api.Range, self.backend.Range)
+        self.assertIs(api.ContentRange, self.backend.ContentRange)
 
-        self.assertIs(bodies[0], self.backend.Body)
-        self.assertIs(bodies[1], self.backend.ChunkedBody)
-        self.assertIs(bodies[2], self.backend.BodyIter)
-        self.assertIs(bodies[3], self.backend.ChunkedBodyIter)
-        self.assertIs(bodies[4], self.backend.Range)
-        self.assertIs(bodies[5], self.backend.ContentRange)
+        self.assertIs(api[0], self.backend.Body)
+        self.assertIs(api[1], self.backend.ChunkedBody)
+        self.assertIs(api[2], self.backend.BodyIter)
+        self.assertIs(api[3], self.backend.ChunkedBodyIter)
+        self.assertIs(api[4], self.backend.Range)
+        self.assertIs(api[5], self.backend.ContentRange)
 
-        self.assertEqual(bodies,
+        self.assertEqual(api,
             (
-                bodies.Body,
-                bodies.ChunkedBody,
-                bodies.BodyIter,
-                bodies.ChunkedBodyIter,
-                bodies.Range,
-                bodies.ContentRange,
+                self.backend.Body,
+                self.backend.ChunkedBody,
+                self.backend.BodyIter,
+                self.backend.ChunkedBodyIter,
+                self.backend.Range,
+                self.backend.ContentRange,
             )
         )
 
@@ -5657,10 +5662,6 @@ class TestWriter_Py(BackendTestCase):
     def Writer(self):
         return self.getattr('Writer')
 
-    @property
-    def bodies(self):
-        return self.getattr('bodies')
-
     def test_init(self):
         sock = WSocket()
         self.assertEqual(sys.getrefcount(sock), 2)
@@ -5755,10 +5756,10 @@ class TestWriter_Py(BackendTestCase):
             'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
         )
 
-        # body is bodies.Body:
+        # body is base.Body:
         headers = {}
         rfile = io.BytesIO(b'hello')
-        body = self.bodies.Body(rfile, 5)
+        body = self.api.Body(rfile, 5)
         sock = WSocket()
         writer = self.Writer(sock)
         self.assertEqual(
@@ -5772,9 +5773,9 @@ class TestWriter_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ncontent-length: 5\r\n\r\nhello'
         )
 
-        # body is bodies.BodyIter:
+        # body is base.BodyIter:
         headers = {}
-        body = self.bodies.BodyIter((b'hell', b'o'), 5)
+        body = self.api.BodyIter((b'hell', b'o'), 5)
         sock = WSocket()
         writer = self.Writer(sock)
         self.assertEqual(
@@ -5789,7 +5790,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.ChunkedBody:
         rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
-        body = self.bodies.ChunkedBody(rfile)
+        body = self.api.ChunkedBody(rfile)
         headers = {}
         sock = WSocket()
         writer = self.Writer(sock)
@@ -5806,7 +5807,7 @@ class TestWriter_Py(BackendTestCase):
 
         # body is base.ChunkedBodyIter:
         headers = {}
-        body = self.bodies.ChunkedBodyIter(
+        body = self.api.ChunkedBodyIter(
             ((None, b'hello'), (None, b''))
         )
         sock = WSocket()
@@ -5893,7 +5894,7 @@ class TestWriter_Py(BackendTestCase):
         sock = WSocket()
         writer = self.Writer(sock)
         headers = {}
-        body = self.bodies.BodyIter((b'hell', b'o'), 5)
+        body = self.api.BodyIter((b'hell', b'o'), 5)
         self.assertEqual(
             writer.write_response(200, 'OK', headers, body),
             43
@@ -5909,7 +5910,7 @@ class TestWriter_Py(BackendTestCase):
         sock = WSocket()
         writer = self.Writer(sock)
         headers = {}
-        body = self.bodies.ChunkedBodyIter(
+        body = self.api.ChunkedBodyIter(
             ((None, b'hello'), (None, b''))
         )
         self.assertEqual(
@@ -5928,7 +5929,7 @@ class TestWriter_Py(BackendTestCase):
         writer = self.Writer(sock)
         headers = {}
         rfile = io.BytesIO(b'hello')
-        body = self.bodies.Body(rfile, 5)
+        body = self.api.Body(rfile, 5)
         self.assertEqual(
             writer.write_response(200, 'OK', headers, body),
             43
@@ -5946,7 +5947,7 @@ class TestWriter_Py(BackendTestCase):
         writer = self.Writer(sock)
         headers = {}
         rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
-        body = self.bodies.ChunkedBody(rfile)
+        body = self.api.ChunkedBody(rfile)
         self.assertEqual(
             writer.write_response(200, 'OK', headers, body),
             62
@@ -6521,10 +6522,6 @@ class TestConnection_Py(BackendTestCase):
     def ContentRange(self):
         return getattr(self.backend, 'ContentRange')
 
-    @property
-    def bodies(self):
-        return getattr(self.backend, 'bodies')
-
     def test_init(self):
         # no sock.recv_into() attribute:
         class BadSocket1(BaseMockSocket):
@@ -6613,7 +6610,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(base_headers, [('foo', 'bar')])
 
         # Good sock, base_headers is None:
-        bodies = self.bodies
+        bodies = self.api
         bcount = sys.getrefcount(bodies)
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
@@ -6795,10 +6792,10 @@ class TestConnection_Py(BackendTestCase):
         def iter_bodies():
             data = b'hello, world'
             yield data
-            yield self.bodies.Body(io.BytesIO(data), len(data))
-            yield self.bodies.BodyIter([data], len(data))
-            yield self.bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
-            yield self.bodies.ChunkedBodyIter([(None, b'')])
+            yield self.api.Body(io.BytesIO(data), len(data))
+            yield self.api.BodyIter([data], len(data))
+            yield self.api.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+            yield self.api.ChunkedBodyIter([(None, b'')])
 
         for method in ('GET', 'HEAD', 'DELETE'):
             for body in iter_bodies():

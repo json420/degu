@@ -26,12 +26,12 @@ Common HTTP parser and IO abstractions used by server and client.
 try:
     from ._base import (
         EmptyPreambleError,
-        Bodies,   BodiesType,
+        API,      APIType,
         Response, ResponseType,
         Range,
         ContentRange,
         Request,
-        bodies,
+        api,
         Connection,
         Session,
         _handle_requests,
@@ -40,12 +40,12 @@ try:
 except ImportError:
     from ._basepy import (
         EmptyPreambleError,
-        Bodies,   BodiesType,
+        API,      APIType,
         Response, ResponseType,
         Range,
         ContentRange,
         Request,
-        bodies,
+        api,
         Connection,
         Session,
         _handle_requests,
@@ -53,14 +53,18 @@ except ImportError:
     )
 
 
+# FIXME: for compatibility with Degu < 0.16:
+bodies = api
+
+
 __all__ = (
     'EmptyPreambleError',
-    'Bodies', 'BodiesType',
+    'API', 'APIType',
     'Response', 'ResponseType',
     'Range',
     'ContentRange',
     'Request',
-    'bodies',
+    'api',
     'Connection',
     'Session',
     '_handle_requests',
