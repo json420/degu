@@ -6610,14 +6610,15 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(base_headers, [('foo', 'bar')])
 
         # Good sock, base_headers is None:
-        bodies = self.api
-        bcount = sys.getrefcount(bodies)
+        api = self.api
+        count = sys.getrefcount(api)
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
         self.assertEqual(sys.getrefcount(sock), 5)
         self.assertIs(conn.sock, sock)
         self.assertIsNone(conn.base_headers)
-        self.assertIs(conn.bodies, bodies)
+        self.assertIs(conn.api, api)
+        self.assertIs(conn.bodies, api)  # Deprecated alias for `Connection.api`
         self.assertIs(conn.closed, False)
         self.assertEqual(sock._calls, [])
         del conn
@@ -6626,7 +6627,7 @@ class TestConnection_Py(BackendTestCase):
             ('shutdown', socket.SHUT_RDWR),
             'close',
         ])
-        self.assertEqual(sys.getrefcount(bodies), bcount)
+        self.assertEqual(sys.getrefcount(api), count)
 
         # Good sock, base_headers is a dict:
         sock = NewMockSocket()
@@ -6638,7 +6639,8 @@ class TestConnection_Py(BackendTestCase):
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, base_headers)
         self.assertEqual(conn.base_headers, {k: v})
-        self.assertIs(conn.bodies, bodies)
+        self.assertIs(conn.api, api)
+        self.assertIs(conn.api, api)  # Deprecated alias for `Connection.api`
         self.assertIs(conn.closed, False)
         self.assertEqual(sock._calls, [])
         del conn
@@ -6648,7 +6650,7 @@ class TestConnection_Py(BackendTestCase):
             ('shutdown', socket.SHUT_RDWR),
             'close',
         ])
-        self.assertEqual(sys.getrefcount(bodies), bcount)
+        self.assertEqual(sys.getrefcount(api), count)
 
     def test_close(self):
         sock = NewMockSocket()

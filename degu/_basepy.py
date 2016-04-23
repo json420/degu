@@ -1779,6 +1779,14 @@ class Connection:
 
     @property
     def bodies(self):
+        """
+        Deprecated alias for `Connection.api`.
+
+        This attribute is deprecated and will be remove at some point in a
+        future Degu release.  Please use the `Connection.api` attribute instead.
+
+        FIXME: Remove this attribute when the time is right.
+        """
         return self._api
 
     def __del__(self):
