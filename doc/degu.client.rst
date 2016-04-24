@@ -631,7 +631,7 @@ Also see the server :ref:`server-options`.
 
         If you want your request body to be directly uploaded from a regular
         file, simply wrap it in a :class:`degu.base.Body` via the
-        :attr:`Connection.bodies` attribute.
+        :attr:`Connection.api` attribute.
 
         The file will be uploaded from its current seek position up to the
         specified *content_length*.  For example, this will upload 76 bytes from
@@ -639,7 +639,7 @@ Also see the server :ref:`server-options`.
 
         >>> fp = open('/my/file', 'rb')  #doctest: +SKIP
         >>> fp.seek(1700)  #doctest: +SKIP
-        >>> body = conn.bodies.Body(fp, 76)  #doctest: +SKIP
+        >>> body = conn.api.Body(fp, 76)  #doctest: +SKIP
         >>> response = conn.request('POST', '/foo', {}, body)  #doctest: +SKIP
 
     .. method:: get(uri, headers)
