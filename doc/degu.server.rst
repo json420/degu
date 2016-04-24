@@ -7,7 +7,7 @@
 
 As a quick example, say you have this :doc:`rgi` application:
 
->>> def my_app(session, request, bodies):
+>>> def my_app(session, request, api):
 ...     if request.method not in {'GET', 'HEAD'}:
 ...         return (405, 'Method Not Allowed', {}, None)
 ...     body = b'hello, world'
@@ -64,7 +64,7 @@ example, to kill the server process we just created:
 
     An HTTP server instance.
 
-    >>> def my_app(session, request, bodies):
+    >>> def my_app(session, request, api):
     ...     return (200, 'OK', {}, b'hello, world')
     ...
     >>> from degu.server import Server
@@ -271,7 +271,7 @@ details, please see the :doc:`rgi` (RGI) specification.
 
 Your *app* must be a callable object that accepts three arguments, for example:
 
->>> def my_app(session, request, bodies):
+>>> def my_app(session, request, api):
 ...     return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
@@ -300,18 +300,20 @@ this:
 >>> Request('GET', '/foo/bar?key=val', {}, None, [], ['foo', 'bar'], 'key=val')
 Request(method='GET', uri='/foo/bar?key=val', headers={}, body=None, mount=[], path=['foo', 'bar'], query='key=val')
 
-Finally, the *bodies* argument will be the :attr:`degu.base.bodies` namedtuple
-exposing the four wrapper classes that can be use to specify the your HTTP
-response body:
+Finally, the *api* argument will be the :attr:`degu.base.api` object exposing
+the four wrapper classes that can be use to specify the your HTTP response body,
+plus two classes used for HTTP header values:
 
-==========================  ==================================
+=======================  ==================================
 Attribute                   Class
-==========================  ==================================
-``bodies.Body``             :class:`degu.base.Body`
-``bodies.ChunkedBody``      :class:`degu.base.ChunkedBody`
-``bodies.BodyIter``         :class:`degu.base.BodyIter`
-``bodies.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
-==========================  ==================================
+=======================  ==================================
+``api.Body``             :class:`degu.base.Body`
+``api.ChunkedBody``      :class:`degu.base.ChunkedBody`
+``api.BodyIter``         :class:`degu.base.BodyIter`
+``api.ChunkedBodyIter``  :class:`degu.base.ChunkedBodyIter`
+``api.Range``            :class:`degu.base.Range`
+``api.ContentRange``     :class:`degu.base.ContentRange`
+=======================  ==================================
 
 Your ``app()`` must return a 4-tuple containing the HTTP response::
 
@@ -335,7 +337,7 @@ accept two arguments, for example:
 ...     def on_connect(self, session, sock):
 ...         return True
 ... 
-...     def __call__(self, session, request, bodies):
+...     def __call__(self, session, request, api):
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
 ...
 
@@ -367,7 +369,7 @@ connection.
 
 This is a silly example, but :attr:`Session.store` could be used like this: 
 
->>> def my_app(session, request, bodies):
+>>> def my_app(session, request, api):
 ...     body = session.store.get('my_body')
 ...     if body is None:
 ...         body = b'hello, world'
@@ -390,7 +392,7 @@ For example:
 ...         session.store['_user'] = 'admin'
 ...         return True
 ...
-...     def __call__(self, session, request, bodies):
+...     def __call__(self, session, request, api):
 ...         if session.store.get('_user') != 'admin':
 ...             return (403, 'Forbidden', {}, None)
 ...         return (200, 'OK', {'content-type': 'text/plain'}, b'hello, world')
@@ -450,7 +452,7 @@ The default values of which are:
 
     An HTTPS server instance (secured using TLSv1.2).
 
-    >>> def my_app(session, request, bodies):
+    >>> def my_app(session, request, api):
     ...     return (200, 'OK', {}, b'hello, world')
     ...
     >>> from degu.server import SSLServer
@@ -580,12 +582,12 @@ Then for each request received through the connection, your ``app()`` request
 handler will be called with still this exact same :class:`Session` instance as
 the first argument::
 
-    app(session, request, bodies) --> (status, reason, headers, body)
+    app(session, request, api) --> (status, reason, headers, body)
 
-(The second argument will be a :class:`Request` namedtuple representing the
+(The second argument will be a :class:`Request` object representing the
 specific request, and the third argument will be the standard
-:attr:`degu.base.bodies` namedtuple instance exposing the Bodies API, which will
-always be the same for all requests and all connections for the lifetime of the
+:attr:`degu.base.api` object exposing the RGI application API, which will always
+be the same for all requests and all connections for the lifetime of the
 process.)
 
 :class:`Request` instances expose request-level semantics to RGI server
@@ -667,12 +669,17 @@ Both are documented below.
         ...     def __init__(self, client):
         ...         self.client = client
         ... 
-        ...     def __call__(self, session, request, bodies):
+        ...     def __call__(self, session, request, api):
         ...         conn = session.store.get('conn')
         ...         if conn is None:
         ...             conn = self.client.connect()
         ...             session.store['conn'] = conn
-        ...         return conn.request(*request[:4])
+        ...         return conn.request(
+        ...             request.method,
+        ...             request.build_proxy_uri(),
+        ...             request.headers,
+        ...             request.body,
+        ...         )
         ... 
 
         Hopefully this example helps make it clear the term "session" was chosen
@@ -962,8 +969,8 @@ example:
 ...     def __init__(self, app):
 ...         self.app = app
 ... 
-...     def __call__(self, session, request, bodies):
-...         (status, reason, headers, body) = self.app(session, request, bodies)
+...     def __call__(self, session, request, api):
+...         (status, reason, headers, body) = self.app(session, request, api)
 ...         log.info('%s %s --> %s %s', request.method, request.uri, status, reason)
 ...         return (status, reason, headers, body)
 ... 
@@ -976,9 +983,9 @@ bodies):
 ...     def __init__(self, app):
 ...         self.app = app
 ... 
-...     def __call__(self, session, request, bodies):
+...     def __call__(self, session, request, api):
 ...         log.info('--> %s %s %r %r', *request[:4])
-...         (status, reason, headers, body) = self.app(session, request, bodies)
+...         (status, reason, headers, body) = self.app(session, request, api)
 ...         if isinstance(body, bytes):
 ...             body_repr = '<bytes: {}>'.format(len(body))
 ...         else:
