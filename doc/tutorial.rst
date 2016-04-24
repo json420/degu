@@ -650,7 +650,7 @@ application:
 ...         return (200, 'OK', {}, body)
 ...     if r.stop > len(body):
 ...         return (416, 'Requested Range Not Satisfiable', {}, None)
-...     cr = ContentRange(r.start, r.stop, len(body))
+...     cr = api.ContentRange(r.start, r.stop, len(body))
 ...     return (206, 'Partial Content', {'content-range': cr}, body[r.start:r.stop])
 ...
 
