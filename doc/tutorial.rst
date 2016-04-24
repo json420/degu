@@ -632,6 +632,30 @@ instance:
 >>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
 {'content-range': ContentRange(3, 9, 12)}
 
+**Note on portability**
+
+The goal of the RGI specification is to allow RGI server and client components
+to transparently run under multiple RGI compatible implementations.
+
+To be portable between implementations, RGI consumers should not directly import
+:class:`degu.base.Range` or :class:`degu.base.ContentRange` from the
+:mod:`degu.base` module.
+
+Instead, RGI server applications should use the ``ContentRange`` attribute
+exposed on the RGI *api* argument, for example::
+
+    def my_app(session, request, api):
+        my_content_range = api.ContentRange(3, 9, 12)
+
+And RGI client applications should use the ``Range`` attribute exposed via :attr:`degu.client.Connection.api`, for example::
+
+    conn = client.connect()
+    my_range = conn.api.Range(3, 9)
+
+Or ideally RGI client applications should use the
+:meth:`degu.client.Connection.get_range()` method as there's really no reason to
+use ``api.Range`` directly in production code.
+
 **Live example!**
 
 Let's put all this together in a live example.  First we'll define our server
