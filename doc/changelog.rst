@@ -11,6 +11,10 @@ Changelog
 
 Breaking API changes:
 
+    *   :meth:`degu.server.Request.shift_path()` now returns ``None`` when
+        :attr:`degu.server.Request.path` is empty (rather than raising an
+        ``IndexError``.
+
     *   The ``degu.base.Bodies`` namedtuple has been renamed to
         :class:`degu.base.API`, plus the new ``Range`` and ``ContentRange``
         attributes were added.
