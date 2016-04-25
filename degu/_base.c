@@ -1126,8 +1126,7 @@ Request_shift_path(Request *self)
     PyObject *next = PyList_GetItem(self->path, 0);
     if (next == NULL) {
         PyErr_Clear();
-        PyErr_SetString(PyExc_IndexError, "Request.path is empty"); 
-        return NULL;
+        Py_RETURN_NONE;
     }
     if (PyList_Append(self->mount, next) != 0) {
         return NULL;

@@ -30,15 +30,14 @@ class Router:
 
     For example:
 
-    >>> from degu.applib import Router
     >>> def foo_app(session, request, api):
     ...     return (200, 'OK', {}, b'foo')
     ... 
     >>> def bar_app(session, request, api):
     ...     return (200, 'OK', {}, b'bar')
     ...
-    >>> appmap = {'foo': foo_app, 'bar': bar_app}
-    >>> router = Router(appmap)
+    >>> from degu.applib import Router
+    >>> router = Router({'foo': foo_app, 'bar': bar_app})
 
     """
 

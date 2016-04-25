@@ -77,7 +77,7 @@ class TestRouter(TestCase):
         self.assertIs(app.appmap, appmap)
         self.assertEqual(app.appmap, {})
 
-        # appmap single non-None key:
+        # appmap single str key:
         appmap = {'foo': foo_app}
         app = applib.Router(appmap)
         self.assertIs(app.appmap, appmap)
