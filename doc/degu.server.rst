@@ -854,13 +854,11 @@ Both are documented below.
         >>> (r.mount, r.path)
         (['foo', 'bar'], [])
 
-        If :attr:`Request.path` is already an empty list, this method will raise
-        an ``IndexError``:
+        If :attr:`Request.path` is already an empty list, this method will
+        return ``None``:
 
-        >>> r.shift_path()
-        Traceback (most recent call last):
-          ...
-        IndexError: Request.path is empty
+        >>> r.shift_path() is None
+        True
 
         For more examples, see the :ref:`eg-routing` section in the tutorial.
 

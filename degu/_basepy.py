@@ -724,7 +724,7 @@ class Request:
 
     def shift_path(self):
         if not self._path:
-            raise IndexError('Request.path is empty')
+            return None
         next = self._path.pop(0)
         self._mount.append(next)
         return next
