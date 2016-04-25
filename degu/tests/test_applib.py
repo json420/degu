@@ -128,12 +128,125 @@ class TestRouter(TestCase):
         def bar_app(session, request, api):
             return (200, 'OK', {}, b'bar')
 
-        appmap = {'foo': foo_app, 'bar': bar_app}
-        app = applib.Router(appmap)
+        # appmap is empty:
+        app = applib.Router({})
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
 
         r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
+
+        # One appmap key, a str:
+        app = applib.Router({'foo': foo_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app})
+
+        r = Request('GET', '/bar', {}, None, [], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app})
+
+        # One appmap key, an empty str:
+        app = applib.Router({'': foo_app})
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app})
+
+        r = Request('GET', '/foo/bar', {}, None, ['foo'], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', 'bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app})
+
+        # One appmap key, None:
+        app = applib.Router({None: foo_app})
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {None: foo_app})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {None: foo_app})
+
+        # Two appmap keys, both str:
+        app = applib.Router({'foo': foo_app, 'bar': bar_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
 
         r = Request('GET', '/bar', {}, None, [], ['bar'], None)
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, ['bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        r = Request('GET', '/baz', {}, None, [], ['baz'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['baz'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        # Two appmap keys, one str one None:
+        app = applib.Router({'foo': foo_app, None: bar_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        # Two appmap keys, one empty str one None:
+        app = applib.Router({'': foo_app, None: bar_app})
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        r = Request('GET', '/foo/bar', {}, None, ['foo'], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', 'bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
 
