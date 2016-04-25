@@ -20,7 +20,7 @@
 #   Jason Gerard DeRose <jderose@novacut.com>
 
 """
-Unit tests for the `degu.base` module`
+Unit tests for the `degu.base` module.
 """
 
 from unittest import TestCase
