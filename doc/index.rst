@@ -55,6 +55,7 @@ Contents:
     degu.server
     degu.client
     degu.base
+    degu.applib
     degu.misc
     degu.util
     degu.rgi

@@ -35,10 +35,39 @@ import logging
 
 from .base import _TYPE_ERROR
 from .sslhelpers import PKI as _PKI
-from .server import Server, SSLServer
+from .server import Server, SSLServer, Request
 
 
 log = logging.getLogger(__name__)
+
+
+def mkreq(method, uri, headers=None, body=None, shift=0):
+    """
+    Shortcut for making a `Request` object for unit testing and demonstration.
+
+    The function will parse the URI out into mouth, path, and query components.
+
+    For example:
+
+    >>> r = mkreq('GET', '/foo/bar')
+    >>> r.mount
+    []
+    >>> r.path
+    ['foo', 'bar']
+    >>> r.query is None
+    True
+
+    """
+    assert isinstance(shift, int) and shift >= 0
+    parts = uri.split('?', 1)
+    mount = []
+    path = ([] if parts[0] == '/' else parts[0][1:].split('/'))
+    for i in range(shift):
+        mount.append(path.pop(0)) 
+    query = (parts[1] if len(parts) == 2 else None)
+    headers = ({} if headers is None else headers)
+    return Request(method, uri, headers, body, mount, path, query)
+
 
 
 class TempPKI(_PKI):

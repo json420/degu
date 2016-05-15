@@ -24,7 +24,7 @@ A collection of RGI server applications for common scenarios.
 """
 
 
-class Router:
+class RouterApp:
     """
     Generic RGI routing middleware.
 
@@ -36,8 +36,8 @@ class Router:
     >>> def bar_app(session, request, api):
     ...     return (200, 'OK', {}, b'bar')
     ...
-    >>> from degu.applib import Router
-    >>> router = Router({'foo': foo_app, 'bar': bar_app})
+    >>> from degu.applib import RouterApp
+    >>> router = RouterApp({'foo': foo_app, 'bar': bar_app})
 
     """
 
@@ -68,4 +68,28 @@ class Router:
         if handler is None:
             return (410, 'Gone', {}, None)
         return handler(session, request, api)
+
+
+class ProxyApp:
+    """
+    Generic RGI reverse-proxy application.
+    """
+
+    __slots__ = ('client', 'key')
+
+    def __init__(self, client, key='conn'):
+        self.client = client
+        self.key = key
+
+    def __call__(self, session, request, api):
+        conn = session.store.get(self.key)
+        if conn is None:
+            conn = self.client.connect()
+            session.store[self.key] = conn
+        return conn.request(
+            request.method,
+            request.build_proxy_uri(),
+            request.headers,
+            request.body,
+        )
 
