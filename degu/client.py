@@ -185,7 +185,7 @@ class Client:
     """
 
     _default_port = 80  # Needed to construct the default host header
-    _options = ('host', 'timeout', 'on_connect')
+    _options = ('host', 'authorization', 'timeout', 'on_connect')
     __slots__ = ('address', 'options', '_family', '_base_headers') + _options
 
     def __init__(self, address, **options):
@@ -223,9 +223,11 @@ class Client:
             )
         self.options = options
         self.host = options.get('host', host)
+        self.authorization = options.get('authorization')
         self.timeout = options.get('timeout', 65)
         self.on_connect = options.get('on_connect')
         assert self.host is None or isinstance(self.host, str)
+        assert self.authorization is None or isinstance(self.authorization, str)
         assert self.timeout is None or isinstance(self.timeout, (int, float))
         if not (self.on_connect is None or callable(self.on_connect)):
             raise TypeError(
@@ -233,7 +235,15 @@ class Client:
             )
 
         # Build _base_headers:
-        self._base_headers = ({'host': self.host} if self.host else None)
+        if self.host or self.authorization:
+            base_headers = {}
+            if self.host:
+                base_headers['host'] = self.host
+            if self.authorization:
+                base_headers['authorization'] = self.authorization
+        else:
+            base_headers = None
+        self._base_headers = base_headers
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
