@@ -24,10 +24,13 @@ Unit tests for the `degu.applib` module.
 """
 
 from unittest import TestCase
+import os
 from collections import OrderedDict
 
-from .. base import Request
-from .. sslhelpers import random_id
+from ..base import Request
+from ..sslhelpers import random_id
+from ..misc import TempServer
+from ..client import Client
 from .. import applib
 
 
@@ -249,4 +252,32 @@ class TestRouterApp(TestCase):
         self.assertEqual(r.mount, ['foo', 'bar'])
         self.assertEqual(r.path, [])
         self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+
+class TestProxyApp(TestCase):
+    def test_live(self):
+        class Endpoint:
+            def __init__(self, marker):
+                self.marker = marker
+
+            def __call__(self, session, request, api):
+                return (200, 'OK', {}, self.marker)
+
+        marker = os.urandom(16)
+        app1 = Endpoint(marker)
+        server1 = TempServer(('127.0.0.1', 0), app1)
+        client1 = Client(server1.address)
+
+        app2 = applib.ProxyApp(client1)
+        server2 = TempServer(('127.0.0.1', 0), app2)
+        client2 = Client(server2.address)
+
+        conn = client2.connect()
+        r = conn.get('/', {})
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.reason, 'OK')
+        self.assertEqual(r.headers, {'content-length': 16})
+        self.assertIs(r.body.chunked, False)
+        self.assertEqual(r.body.read(), marker)
+        conn.close()
 
