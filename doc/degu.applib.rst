@@ -6,7 +6,7 @@
 
 
 :class:`RouterApp`
--------------------
+------------------
 
 .. class:: RouterApp(appmap)
 
@@ -29,4 +29,24 @@
 
         RGI callable.
 
+
+
+:class:`ProxyApp`
+-----------------
+
+.. class:: ProxyApp(client, key='conn')
+
+    Generic RGI reverse-proxy application.
+
+    .. attribute:: client
+
+        The *client* argument passed to the constructor.
+
+    .. attribute:: key
+
+        The *key* argument passed to the constructor.
+
+    .. method:: __call__(session, request, api)
+
+        RGI callable.
 
