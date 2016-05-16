@@ -106,11 +106,14 @@ using a connection, although this will likewise be done automatically when a
     :ref:`client-address` for details.
 
     The keyword-only *options* allow you to override certain client
-    configuration defaults.  You can override *host* and *timeout*, the values
-    of which are exposed via attributes of the same name:
+    configuration defaults.  You can override *host*, *authorization*,
+    *timeout*, and *on_connect*, the values of which are exposed via attributes
+    of the same name:
 
         * :attr:`Client.host`
+        * :attr:`Client.authorization`
         * :attr:`Client.timeout`
+        * :attr:`Client.on_connect`
 
     See :ref:`client-options` for details.
 
@@ -186,6 +189,16 @@ using a connection, although this will likewise be done automatically when a
         :class:`Connection`, and when not ``None``, :meth:`Connection.request()`
         will use this value for the "host" request header.
 
+    .. attribute:: authorization
+
+        Value of HTTP Authorization header.
+
+        When this value is not ``None``, it will be used as the HTTP
+        Authorization header in each request made using a :class:`Connection`.
+
+        The default is ``None``, but you can override this using the
+        *authorization* keyword option.
+
     .. attribute:: timeout
 
         The client socket timeout in seconds, or ``None`` for no timeout.
@@ -195,6 +208,31 @@ using a connection, although this will likewise be done automatically when a
 
         :meth:`Client.create_socket()` sets the socket timeout to
         :attr:`Client.timeout` for all new sockets it creates.
+
+    .. attribute:: on_connect
+
+        Callback that is called when a new connection is created.
+
+        If provided, this must be a callable taking a single argument, which
+        must return ``True`` when the connection should be accepted.
+
+        For example:
+
+        >>> def my_on_connect(conn):
+        ...     return True
+        ...
+
+        The *conn* argument above will be the :class:`Connection` instance
+        created for the new connection.
+
+        This callback is called after a new connection has been created, but
+        before any HTTP requests have been made using that connection.  If this
+        callback does not return ``True``, or if any unhandled exception occurs
+        when the callback is called, the connection will be closed immediately
+        and an exception will be raised.
+
+        The default is ``None``, but you can override this using the
+        *on_connect* keyword option.
 
     .. method:: create_socket()
 
@@ -271,17 +309,28 @@ The following client *options* are supported:
         request header that will be set by :meth:`Connection.request()`, or
         ``None``, in which case no "host" header will be set
 
+    *   **authorization** --- a ``str`` containing the value of the HTTP
+        "authorization" request header that will be set by
+        :meth:`Connection.request()`, or ``None``, in which case no
+        "authorization" header will be set
+
     *   **timeout** --- client socket timeout in seconds; must be a positve
         ``int`` or ``float``, or ``None`` to indicate no timeout
 
+    *   **on_connect** --- callback called when after a new connection has been
+        made, but before any HTTP requests have been made through that
+        connection
+
 Default values:
 
-    ==============  =========================  ==================================
-    Option          Attribute                  Default value
-    ==============  =========================  ==================================
-    ``host``        :attr:`Client.host`        derived from :ref:`client-address`
-    ``timeout``     :attr:`Client.timeout`     ``65``
-    ==============  =========================  ==================================
+    =================  ============================  ==================================
+    Option             Attribute                     Default value
+    =================  ============================  ==================================
+    ``host``           :attr:`Client.host`           derived from :ref:`client-address`
+    ``authorization``  :attr:`Client.authorization`  ``None``
+    ``timeout``        :attr:`Client.timeout`        ``65``
+    ``on_connect``     :attr:`Client.on_connect`     ``None``
+    =================  ============================  ==================================
 
 Also see the server :ref:`server-options`.
 

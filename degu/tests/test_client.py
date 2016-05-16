@@ -233,13 +233,19 @@ class TestClient(TestCase):
 
         # Good address type and value permutations:
         for address in GOOD_ADDRESSES:
+            if isinstance(address, tuple):
+                host = client._build_host(80, *address)
+                headers = {'host': host}
+            else:
+                host = None
+                headers = None
+
             inst = client.Client(address)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(80, *address))
-            else:
-                self.assertIsNone(inst.host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -249,6 +255,8 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
+            self.assertEqual(inst._base_headers, {'host': my_host})
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -257,6 +265,44 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
+            self.assertIsNone(inst._base_headers)
+            self.assertIsNone(inst.authorization)
+            self.assertEqual(inst.timeout, 65)
+            self.assertIsNone(inst.on_connect)
+
+            # Test overriding the `authorization` option:
+            my_authorization = random_id()
+            inst = client.Client(address, authorization=my_authorization)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'authorization': my_authorization})
+            self.assertEqual(inst.host, host)
+            self.assertIs(inst.authorization, my_authorization)
+            if host is None:
+                self.assertEqual(inst._base_headers,
+                    {'authorization': my_authorization}
+                )
+            else:
+                self.assertEqual(inst._base_headers,
+                    {'authorization': my_authorization, 'host': host}
+                )
+            self.assertEqual(inst.timeout, 65)
+            self.assertIsNone(inst.on_connect)
+
+            # Test overriding the `authorization` option when `host` is
+            # also overridden to None:
+            inst = client.Client(address,
+                authorization=my_authorization,
+                host=None,
+            )
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options,
+                {'authorization': my_authorization, 'host': None}
+            )
+            self.assertIsNone(inst.host)
+            self.assertIs(inst.authorization, my_authorization)
+            self.assertEqual(inst._base_headers,
+                {'authorization': my_authorization}
+            )
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -264,19 +310,17 @@ class TestClient(TestCase):
             inst = client.Client(address, timeout=17)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(80, *address))
-            else:
-                self.assertIsNone(inst.host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 17)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding the `on_connect` option:
             inst = client.Client(address, on_connect=None)
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(80, *address))
-            else:
-                self.assertIsNone(inst.host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -289,16 +333,16 @@ class TestClient(TestCase):
             def my_on_connect(conn):
                 return True
             inst = client.Client(address, on_connect=my_on_connect)
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(80, *address))
-            else:
-                self.assertIsNone(inst.host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIs(inst.on_connect, my_on_connect)
 
             # Test overriding all the options together:
             options = {
                 'host': my_host,
+                'authorization': my_authorization,
                 'timeout': 16.9,
                 'on_connect': my_on_connect,
             }
@@ -306,6 +350,10 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, my_host)
+            self.assertIs(inst.authorization, my_authorization)
+            self.assertEqual(inst._base_headers,
+                {'host': my_host, 'authorization': my_authorization}
+            )
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
 
@@ -452,15 +500,22 @@ class TestSSLClient(TestCase):
 
         # Good address type and value permutations:
         for address in GOOD_ADDRESSES:
+            if isinstance(address, tuple):
+                ssl_host = address[0]
+                host = client._build_host(443, *address)
+                headers = {'host': host}
+            else:
+                ssl_host = None
+                host = None
+                headers = None
+
             inst = client.SSLClient(sslctx, address)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(443, *address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
+            self.assertIs(inst.ssl_host, ssl_host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -470,6 +525,7 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -478,6 +534,45 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
+            self.assertIsNone(inst.authorization)
+            self.assertEqual(inst.timeout, 65)
+            self.assertIsNone(inst.on_connect)
+
+            # Test overriding the `authorization` option:
+            my_authorization = random_id()
+            inst = client.SSLClient(sslctx, address, authorization=my_authorization)
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options, {'authorization': my_authorization})
+            self.assertEqual(inst.host, host)
+            self.assertIs(inst.authorization, my_authorization)
+            if host is None:
+                self.assertEqual(inst._base_headers,
+                    {'authorization': my_authorization}
+                )
+            else:
+                self.assertEqual(inst._base_headers,
+                    {'authorization': my_authorization, 'host': host}
+                )
+            self.assertEqual(inst.ssl_host, ssl_host)
+            self.assertEqual(inst.timeout, 65)
+            self.assertIsNone(inst.on_connect)
+
+            # Test overriding the `authorization` option when `host` is
+            # also overridden to None:
+            inst = client.SSLClient(sslctx, address,
+                authorization=my_authorization,
+                host=None,
+            )
+            self.assertIs(inst.address, address)
+            self.assertEqual(inst.options,
+                {'authorization': my_authorization, 'host': None}
+            )
+            self.assertIsNone(inst.host)
+            self.assertIs(inst.authorization, my_authorization)
+            self.assertEqual(inst._base_headers,
+                {'authorization': my_authorization}
+            )
+            self.assertEqual(inst.ssl_host, ssl_host)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
@@ -502,12 +597,10 @@ class TestSSLClient(TestCase):
             inst = client.SSLClient(sslctx, address, timeout=17)
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(443, *address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
+            self.assertIs(inst.ssl_host, ssl_host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 17)
             self.assertIsNone(inst.on_connect)
 
@@ -520,29 +613,26 @@ class TestSSLClient(TestCase):
             def my_on_connect(conn):
                 return True
             inst = client.SSLClient(sslctx, address, on_connect=my_on_connect)
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(443, *address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
+            self.assertIs(inst.ssl_host, ssl_host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIs(inst.on_connect, my_on_connect)
 
             # Test overriding the `on_connect` option with `None`:
             inst = client.SSLClient(sslctx, address, on_connect=None)
-            if isinstance(address, tuple):
-                self.assertEqual(inst.host, client._build_host(443, *address))
-                self.assertIs(inst.ssl_host, address[0])
-            else:
-                self.assertIsNone(inst.host)
-                self.assertIsNone(inst.ssl_host)
+            self.assertIs(inst.ssl_host, ssl_host)
+            self.assertEqual(inst.host, host)
+            self.assertEqual(inst._base_headers, headers)
+            self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
 
             # Test overriding all the options together:
             options = {
                 'host': my_host,
+                'authorization': my_authorization,
                 'ssl_host': my_ssl_host,
                 'timeout': 16.9,
                 'on_connect': my_on_connect,
@@ -551,6 +641,10 @@ class TestSSLClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, my_host)
+            self.assertIs(inst.authorization, my_authorization)
+            self.assertEqual(inst._base_headers,
+                {'host': my_host, 'authorization': my_authorization}
+            )
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
