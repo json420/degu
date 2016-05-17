@@ -565,11 +565,11 @@ Also see the server :ref:`server-options`.
 
     (See the `socket.socket`_ documentation for details.)
 
-    The *base_headers* argument must be a ``dict`` providing headers that
+    The *base_headers* argument must be a ``tuple`` providing headers that
     :meth:`Connection.request()` should automatically include in each request.
 
     Optionally, *base_headers* can be ``None``, which is treated the same as an
-    empty ``{}``.
+    empty ``tuple``.
 
     A ``(key, value)`` in *base_headers* will unconditionally replace the same
     should it exist in the *headers* provided to :meth:`Connection.request()`,
