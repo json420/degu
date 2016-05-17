@@ -6593,7 +6593,7 @@ class TestConnection_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             self.Connection(sock, base_headers)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('base_headers', dict, list, base_headers)
+            TYPE_ERROR.format('base_headers', tuple, list, base_headers)
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(base_headers), 2)
@@ -6627,14 +6627,13 @@ class TestConnection_Py(BackendTestCase):
         sock = NewMockSocket()
         k = random_id().lower()
         v = random_id()
-        base_headers = {k: v}
+        base_headers = ((k, v),)
         conn = self.Connection(sock, base_headers)
         self.assertEqual(sys.getrefcount(sock), 5)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, base_headers)
-        self.assertEqual(conn.base_headers, {k: v})
         self.assertIs(conn.api, api)
-        self.assertIs(conn.api, api)  # Deprecated alias for `Connection.api`
+        self.assertIs(conn.bodies, api)  # Deprecated alias for `Connection.api`
         self.assertIs(conn.closed, False)
         self.assertEqual(sock._calls, [])
         del conn
@@ -6765,7 +6764,7 @@ class TestConnection_Py(BackendTestCase):
             sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
             k = random_id().lower()
             v = random_id()
-            bh = {k: v}
+            bh = ((k, v),)
             conn = self.Connection(sock, bh)
             h = {}
             response = conn.request('GET', '/', h, None)

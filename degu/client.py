@@ -235,15 +235,12 @@ class Client:
             )
 
         # Build _base_headers:
-        if self.host or self.authorization:
-            base_headers = {}
-            if self.host:
-                base_headers['host'] = self.host
-            if self.authorization:
-                base_headers['authorization'] = self.authorization
-        else:
-            base_headers = None
-        self._base_headers = base_headers
+        headers = []
+        if self.authorization:
+            headers.append(('authorization', self.authorization))
+        if self.host:
+            headers.append(('host', self.host))
+        self._base_headers = (tuple(headers) if headers else None)
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
