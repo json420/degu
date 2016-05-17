@@ -606,8 +606,8 @@ Also see the server :ref:`server-options`.
         constant, which is an instance of the :class:`degu.base.API` namedtuple.
 
         The long-term goal is to standardize the Degu RGI application API such
-        that high-level client and server components could transparently under
-        multiple RGI compatible implementations.
+        that high-level client and server components could transparently run
+        under multiple RGI compatible implementations.
 
         To prepare for this scenario, consumers of the Degu client API should
         create their request bodies via this attribute rather than directly
