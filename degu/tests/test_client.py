@@ -379,6 +379,29 @@ class TestClient(TestCase):
             inst = Custom(address)
             self.assertEqual(repr(inst), 'Custom({!r})'.format(address))
 
+    def test_set_base_header(self):
+        for address in GOOD_ADDRESSES:
+            inst = client.Client(address, host=None)
+            self.assertIsNone(inst._base_headers)
+
+            key1 = random_id().lower()
+            val1_a = random_id()
+            self.assertIsNone(inst.set_base_header(key1, val1_a))
+            self.assertEqual(inst._base_headers, ((key1, val1_a),))
+
+            key2 = random_id().lower()
+            val2 = random_id()
+            self.assertIsNone(inst.set_base_header(key2, val2))
+            self.assertEqual(inst._base_headers,
+                tuple(sorted([(key1, val1_a), (key2, val2)]))
+            )
+
+            val1_b = random_id()
+            self.assertIsNone(inst.set_base_header(key1, val1_b))
+            self.assertEqual(inst._base_headers,
+                tuple(sorted([(key1, val1_b), (key2, val2)]))
+            )
+
     def test_connect(self):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host, on_connect=None):

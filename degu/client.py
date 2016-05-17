@@ -245,6 +245,11 @@ class Client:
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
+    def set_base_header(self, key, value):
+        base_headers = (dict(self._base_headers) if self._base_headers else {})
+        base_headers[key] = value
+        self._base_headers = tuple(sorted(base_headers.items()))
+
     def create_socket(self):
         if self._family is None:
             return socket.create_connection(self.address, timeout=self.timeout)
