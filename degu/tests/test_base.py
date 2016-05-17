@@ -6623,7 +6623,7 @@ class TestConnection_Py(BackendTestCase):
         ])
         self.assertEqual(sys.getrefcount(api), count)
 
-        # Good sock, base_headers is a dict:
+        # Good sock, base_headers is a tuple:
         sock = NewMockSocket()
         k = random_id().lower()
         v = random_id()
