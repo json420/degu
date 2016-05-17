@@ -186,7 +186,7 @@ class Client:
 
     _default_port = 80  # Needed to construct the default host header
     _options = ('host', 'authorization', 'timeout', 'on_connect')
-    __slots__ = ('address', 'options', '_family', '_base_headers') + _options
+    __slots__ = ('address', 'options', '_family', 'base_headers') + _options
 
     def __init__(self, address, **options):
         # address:
@@ -240,15 +240,16 @@ class Client:
             headers.append(('authorization', self.authorization))
         if self.host:
             headers.append(('host', self.host))
-        self._base_headers = (tuple(headers) if headers else None)
+        self.base_headers = (tuple(headers) if headers else None)
 
     def __repr__(self):
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def set_base_header(self, key, value):
-        base_headers = (dict(self._base_headers) if self._base_headers else {})
-        base_headers[key] = value
-        self._base_headers = tuple(sorted(base_headers.items()))
+        existing = self.base_headers
+        new = (dict(existing) if existing else {})
+        new[key] = value
+        self.base_headers = tuple(sorted(new.items()))
 
     def create_socket(self):
         if self._family is None:
@@ -262,7 +263,7 @@ class Client:
 
     def connect(self):
         sock = self.create_socket()
-        conn = Connection(sock, self._base_headers)
+        conn = Connection(sock, self.base_headers)
         if self.on_connect is None or self.on_connect(conn) is True:
             return conn
         conn.close()
