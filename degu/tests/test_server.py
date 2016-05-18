@@ -809,14 +809,14 @@ class TestLiveServer(TestCase):
 
         # Wait till 1 second *before* the timeout should happen, to make sure
         # connection is still open:
-        time.sleep(timeout - 0.5)
+        time.sleep(timeout - 1)
         self.assertEqual(conn.request('POST', '/foo', {}, None),
             (200, 'OK', {}, None)
         )
 
         # Now wait till 1 second *after* the timeout should have happened, to
         # make sure the connection was closed by the server:
-        time.sleep(timeout + 0.5)
+        time.sleep(timeout + 1)
         with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo', {}, None)
         self.assertIs(conn.closed, True)
