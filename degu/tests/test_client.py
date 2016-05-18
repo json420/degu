@@ -402,6 +402,12 @@ class TestClient(TestCase):
                 tuple(sorted([(key1, val1_b), (key2, val2)]))
             )
 
+            self.assertIsNone(inst.set_base_header(key1, None))
+            self.assertEqual(inst.base_headers, ((key2, val2),))
+
+            self.assertIsNone(inst.set_base_header(key2, None))
+            self.assertIsNone(inst.base_headers)
+
     def test_connect(self):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host, on_connect=None):

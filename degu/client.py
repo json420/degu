@@ -246,10 +246,15 @@ class Client:
         return '{}({!r})'.format(self.__class__.__name__, self.address)
 
     def set_base_header(self, key, value):
+        assert type(key) is str and key.islower()
+        assert value is None or type(value) is str
         existing = self.base_headers
-        new = (dict(existing) if existing else {})
-        new[key] = value
-        self.base_headers = tuple(sorted(new.items()))
+        new = ({} if existing is None else dict(existing))
+        if value is None:
+            new.pop(key, None)
+        else:
+            new[key] = value
+        self.base_headers = (tuple(sorted(new.items())) if new else None)
 
     def create_socket(self):
         if self._family is None:
