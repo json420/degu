@@ -4911,7 +4911,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
-    if (base_headers != Py_None && !_check_dict("base_headers", base_headers)) {
+    if (base_headers != Py_None && !_check_type("base_headers", base_headers, &PyTuple_Type)) {
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
@@ -4984,7 +4984,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
         if (! _check_dict("headers", dr->headers)) {
             goto error;
         }
-        if (PyDict_Update(dr->headers, self->base_headers) != 0) {
+        if (PyDict_MergeFromSeq2(dr->headers, self->base_headers, 1) != 0) {
             goto error;
         }
     }

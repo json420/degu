@@ -235,7 +235,7 @@ class TestClient(TestCase):
         for address in GOOD_ADDRESSES:
             if isinstance(address, tuple):
                 host = client._build_host(80, *address)
-                headers = {'host': host}
+                headers = (('host', host),)
             else:
                 host = None
                 headers = None
@@ -244,7 +244,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {})
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -255,7 +255,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': my_host})
             self.assertIs(inst.host, my_host)
-            self.assertEqual(inst._base_headers, {'host': my_host})
+            self.assertEqual(inst.base_headers, (('host', my_host),))
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -265,7 +265,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'host': None})
             self.assertIsNone(inst.host)
-            self.assertIsNone(inst._base_headers)
+            self.assertIsNone(inst.base_headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -278,12 +278,12 @@ class TestClient(TestCase):
             self.assertEqual(inst.host, host)
             self.assertIs(inst.authorization, my_authorization)
             if host is None:
-                self.assertEqual(inst._base_headers,
-                    {'authorization': my_authorization}
+                self.assertEqual(inst.base_headers,
+                    (('authorization', my_authorization),)
                 )
             else:
-                self.assertEqual(inst._base_headers,
-                    {'authorization': my_authorization, 'host': host}
+                self.assertEqual(inst.base_headers,
+                    (('authorization', my_authorization), ('host', host))
                 )
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -300,8 +300,8 @@ class TestClient(TestCase):
             )
             self.assertIsNone(inst.host)
             self.assertIs(inst.authorization, my_authorization)
-            self.assertEqual(inst._base_headers,
-                {'authorization': my_authorization}
+            self.assertEqual(inst.base_headers,
+                (('authorization', my_authorization),)
             )
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -311,7 +311,7 @@ class TestClient(TestCase):
             self.assertIs(inst.address, address)
             self.assertEqual(inst.options, {'timeout': 17})
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 17)
             self.assertIsNone(inst.on_connect)
@@ -319,7 +319,7 @@ class TestClient(TestCase):
             # Test overriding the `on_connect` option:
             inst = client.Client(address, on_connect=None)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -334,7 +334,7 @@ class TestClient(TestCase):
                 return True
             inst = client.Client(address, on_connect=my_on_connect)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIs(inst.on_connect, my_on_connect)
@@ -351,8 +351,8 @@ class TestClient(TestCase):
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, my_host)
             self.assertIs(inst.authorization, my_authorization)
-            self.assertEqual(inst._base_headers,
-                {'host': my_host, 'authorization': my_authorization}
+            self.assertEqual(inst.base_headers,
+                (('authorization', my_authorization), ('host', my_host))
             )
             self.assertEqual(inst.timeout, 16.9)
             self.assertIs(inst.on_connect, my_on_connect)
@@ -379,11 +379,40 @@ class TestClient(TestCase):
             inst = Custom(address)
             self.assertEqual(repr(inst), 'Custom({!r})'.format(address))
 
+    def test_set_base_header(self):
+        for address in GOOD_ADDRESSES:
+            inst = client.Client(address, host=None)
+            self.assertIsNone(inst.base_headers)
+
+            key1 = random_id().lower()
+            val1_a = random_id()
+            self.assertIsNone(inst.set_base_header(key1, val1_a))
+            self.assertEqual(inst.base_headers, ((key1, val1_a),))
+
+            key2 = random_id().lower()
+            val2 = random_id()
+            self.assertIsNone(inst.set_base_header(key2, val2))
+            self.assertEqual(inst.base_headers,
+                tuple(sorted([(key1, val1_a), (key2, val2)]))
+            )
+
+            val1_b = random_id()
+            self.assertIsNone(inst.set_base_header(key1, val1_b))
+            self.assertEqual(inst.base_headers,
+                tuple(sorted([(key1, val1_b), (key2, val2)]))
+            )
+
+            self.assertIsNone(inst.set_base_header(key1, None))
+            self.assertEqual(inst.base_headers, ((key2, val2),))
+
+            self.assertIsNone(inst.set_base_header(key2, None))
+            self.assertIsNone(inst.base_headers)
+
     def test_connect(self):
         class ClientSubclass(client.Client):
             def __init__(self, sock, host, on_connect=None):
                 self.__sock = sock
-                self._base_headers = {'host': host}
+                self.base_headers = (('host', host),)
                 self.on_connect = on_connect
 
             def create_socket(self):
@@ -396,7 +425,7 @@ class TestClient(TestCase):
         conn = inst.connect()
         self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
-        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.base_headers, inst.base_headers)
         self.assertEqual(sock._calls, [])
 
         # Should return a new Connection instance each time:
@@ -404,7 +433,7 @@ class TestClient(TestCase):
         self.assertIsNot(conn2, conn)
         self.assertIsInstance(conn2, base.Connection)
         self.assertIs(conn2.sock, sock)
-        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.base_headers, inst.base_headers)
         self.assertEqual(sock._calls, [])
 
         # on_connect() returns True:
@@ -417,7 +446,7 @@ class TestClient(TestCase):
         conn = inst.connect()
         self.assertIsInstance(conn, base.Connection)
         self.assertIs(conn.sock, sock)
-        self.assertIs(conn.base_headers, inst._base_headers)
+        self.assertIs(conn.base_headers, inst.base_headers)
         self.assertEqual(sock._calls, [])
 
         # on_connect() does not return True:
@@ -503,7 +532,7 @@ class TestSSLClient(TestCase):
             if isinstance(address, tuple):
                 ssl_host = address[0]
                 host = client._build_host(443, *address)
-                headers = {'host': host}
+                headers = (('host', host),)
             else:
                 ssl_host = None
                 host = None
@@ -514,7 +543,7 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {})
             self.assertIs(inst.ssl_host, ssl_host)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -546,12 +575,12 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.host, host)
             self.assertIs(inst.authorization, my_authorization)
             if host is None:
-                self.assertEqual(inst._base_headers,
-                    {'authorization': my_authorization}
+                self.assertEqual(inst.base_headers,
+                    (('authorization', my_authorization),)
                 )
             else:
-                self.assertEqual(inst._base_headers,
-                    {'authorization': my_authorization, 'host': host}
+                self.assertEqual(inst.base_headers,
+                    (('authorization', my_authorization), ('host', host))
                 )
             self.assertEqual(inst.ssl_host, ssl_host)
             self.assertEqual(inst.timeout, 65)
@@ -569,8 +598,8 @@ class TestSSLClient(TestCase):
             )
             self.assertIsNone(inst.host)
             self.assertIs(inst.authorization, my_authorization)
-            self.assertEqual(inst._base_headers,
-                {'authorization': my_authorization}
+            self.assertEqual(inst.base_headers,
+                (('authorization', my_authorization),)
             )
             self.assertEqual(inst.ssl_host, ssl_host)
             self.assertEqual(inst.timeout, 65)
@@ -599,7 +628,7 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, {'timeout': 17})
             self.assertIs(inst.ssl_host, ssl_host)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 17)
             self.assertIsNone(inst.on_connect)
@@ -615,7 +644,7 @@ class TestSSLClient(TestCase):
             inst = client.SSLClient(sslctx, address, on_connect=my_on_connect)
             self.assertIs(inst.ssl_host, ssl_host)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIs(inst.on_connect, my_on_connect)
@@ -624,7 +653,7 @@ class TestSSLClient(TestCase):
             inst = client.SSLClient(sslctx, address, on_connect=None)
             self.assertIs(inst.ssl_host, ssl_host)
             self.assertEqual(inst.host, host)
-            self.assertEqual(inst._base_headers, headers)
+            self.assertEqual(inst.base_headers, headers)
             self.assertIsNone(inst.authorization)
             self.assertEqual(inst.timeout, 65)
             self.assertIsNone(inst.on_connect)
@@ -642,8 +671,8 @@ class TestSSLClient(TestCase):
             self.assertEqual(inst.options, options)
             self.assertIs(inst.host, my_host)
             self.assertIs(inst.authorization, my_authorization)
-            self.assertEqual(inst._base_headers,
-                {'host': my_host, 'authorization': my_authorization}
+            self.assertEqual(inst.base_headers,
+                (('authorization', my_authorization), ('host', my_host))
             )
             self.assertIs(inst.ssl_host, my_ssl_host)
             self.assertEqual(inst.timeout, 16.9)

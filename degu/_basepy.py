@@ -1761,7 +1761,7 @@ class Connection:
         self._closed = False
         self.sock = sock
         if base_headers is not None:
-            _check_dict('base_headers', base_headers)
+            _check_type('base_headers', base_headers, tuple)
         self.base_headers = base_headers
         self._reader = Reader(sock)
         self._writer = Writer(sock)
@@ -1822,7 +1822,7 @@ class Connection:
                 raise ValueError(
                     'response body not consumed: {!r}'.format(self._response_body)
                 )
-            if self.base_headers:
+            if self.base_headers is not None:
                 headers.update(self.base_headers)
             self._writer.write_request(method, uri, headers, body)
             response = self._reader.read_response(method)

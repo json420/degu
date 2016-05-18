@@ -234,6 +234,79 @@ using a connection, although this will likewise be done automatically when a
         The default is ``None``, but you can override this using the
         *on_connect* keyword option.
 
+    .. attribute:: base_headers
+
+        Headers that will be unconditionally included in each request.
+
+        This attribute will be ``None`` when no base headers have been
+        specified (or implied); otherwise it will be a ``tuple`` of
+        ``(name,value)`` pairs.
+
+        :meth:`Client.connect()` will pass this attribute to the
+        :class:`Connection` constructor when a new connection is created, and
+        :meth:`Connection.request()` will unconditionally set these headers
+        (overriding existing values if present) for each HTTP request made
+        through the connection.
+
+        :attr:`Client.host` and :attr:`Client.authorization` will be included in
+        :attr:`Client.base_headers` when they have a value that isn't ``None``.
+
+        For example, when the *address* provided to the :class:`Client`
+        constructor is a 2-tuple or a 4-tuple, a default *host* value will be
+        built from the *address*:
+
+        >>> client = Client(('127.0.0.1', 12345))
+        >>> client.base_headers
+        (('host', '127.0.0.1:12345'),)
+
+        You can override this by providing ``host=None`` to the :class:`Client`
+        constructor:
+
+        >>> client = Client(('127.0.0.1', 12345), host=None)
+        >>> client.base_headers is None
+        True
+
+        Likewise, if you provide an *authorization* keyword option to the
+        :class:`Client` constructor, it will be included:
+
+        >>> client = Client(('127.0.0.1', 12345), authorization='foo')
+        >>> client.base_headers
+        (('authorization', 'foo'), ('host', '127.0.0.1:12345'))
+
+        In addition to the *host* and *authorization* options, you can specify
+        additional base headers using :meth:`Client.set_base_header`.
+
+    .. method:: set_base_header(name, value)
+
+        Set a base header that will be included in all requests.
+
+        This method will add a new header to :attr:`Client.base_headers`:
+
+        >>> client = Client(('127.0.0.1', 12345))
+        >>> client.set_base_header('accept', 'application/json')
+        >>> client.base_headers
+        (('accept', 'application/json'), ('host', '127.0.0.1:12345'))
+
+        This method will also replace an existing base header of the same name:
+
+        >>> client.set_base_header('accept', '*/*')
+        >>> client.base_headers
+        (('accept', '*/*'), ('host', '127.0.0.1:12345'))
+
+        Finally, you can use this method to delete an existing header of the
+        same name by providing a *value* of ``None``:
+
+        >>> client.set_base_header('accept', None)
+        >>> client.base_headers
+        (('host', '127.0.0.1:12345'),)
+
+        If you use this method to delete the final remaining header value,
+        :attr:`Client.base_headers` will be ``None``:
+
+        >>> client.set_base_header('host', None)
+        >>> client.base_headers is None
+        True
+
     .. method:: create_socket()
 
         Create a new `socket.socket`_ connected to :attr:`Client.address`.
@@ -565,11 +638,11 @@ Also see the server :ref:`server-options`.
 
     (See the `socket.socket`_ documentation for details.)
 
-    The *base_headers* argument must be a ``dict`` providing headers that
+    The *base_headers* argument must be a ``tuple`` providing headers that
     :meth:`Connection.request()` should automatically include in each request.
 
     Optionally, *base_headers* can be ``None``, which is treated the same as an
-    empty ``{}``.
+    empty ``tuple``.
 
     A ``(key, value)`` in *base_headers* will unconditionally replace the same
     should it exist in the *headers* provided to :meth:`Connection.request()`,
@@ -606,8 +679,8 @@ Also see the server :ref:`server-options`.
         constant, which is an instance of the :class:`degu.base.API` namedtuple.
 
         The long-term goal is to standardize the Degu RGI application API such
-        that high-level client and server components could transparently under
-        multiple RGI compatible implementations.
+        that high-level client and server components could transparently run
+        under multiple RGI compatible implementations.
 
         To prepare for this scenario, consumers of the Degu client API should
         create their request bodies via this attribute rather than directly
