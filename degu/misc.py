@@ -45,7 +45,9 @@ def mkreq(method, uri, headers=None, body=None, shift=0):
     """
     Shortcut for making a `Request` object for unit testing and demonstration.
 
-    The function will parse the URI out into mouth, path, and query components.
+    This function is handy for unit test when one needs to build a `Request`
+    object.  It will parse the URI out into `mouth`, `path`, and `query`
+    components.
 
     For example:
 
@@ -67,6 +69,31 @@ def mkreq(method, uri, headers=None, body=None, shift=0):
     query = (parts[1] if len(parts) == 2 else None)
     headers = ({} if headers is None else headers)
     return Request(method, uri, headers, body, mount, path, query)
+
+
+def mkuri(*path, query=None):
+    """
+    Build an HTTP request URI from RGI *path* and *query* components.
+
+    This function is handy for unit testing when building a URI from the
+    components of an RGI `request` object.
+
+    For example:
+
+    >>> mkuri()
+    '/'
+    >>> mkuri('foo')
+    '/foo'
+    >>> mkuri('foo', 'bar')
+    '/foo/bar'
+    >>> mkuri('foo', 'bar', query='key=value')
+    '/foo/bar?key=value'
+
+    """
+    uri = '/' + '/'.join(path)
+    if query is None:
+        return uri
+    return '?'.join([uri, query])
 
 
 def format_headers(headers):

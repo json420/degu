@@ -120,6 +120,43 @@ class TestFunctions(TestCase):
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
 
+    def test_mkuri(self):
+        self.assertEqual(misc.mkuri(), '/')
+        self.assertEqual(misc.mkuri(query=None), '/')
+        self.assertEqual(misc.mkuri(query=''), '/?')
+        self.assertEqual(misc.mkuri(query='hello'), '/?hello')
+        self.assertEqual(misc.mkuri(query='k=v'), '/?k=v')
+
+        self.assertEqual(misc.mkuri('foo'), '/foo')
+        self.assertEqual(misc.mkuri('foo', query=None), '/foo')
+        self.assertEqual(misc.mkuri('foo', query=''), '/foo?')
+        self.assertEqual(misc.mkuri('foo', query='hello'), '/foo?hello')
+        self.assertEqual(misc.mkuri('foo', query='k=v'), '/foo?k=v')
+
+        self.assertEqual(misc.mkuri('foo', ''), '/foo/')
+        self.assertEqual(misc.mkuri('foo', '', query=None), '/foo/')
+        self.assertEqual(misc.mkuri('foo', '', query=''), '/foo/?')
+        self.assertEqual(misc.mkuri('foo', '', query='hello'), '/foo/?hello')
+        self.assertEqual(misc.mkuri('foo', '', query='k=v'), '/foo/?k=v')
+
+        self.assertEqual(misc.mkuri('foo', 'bar'), '/foo/bar')
+        self.assertEqual(misc.mkuri('foo', 'bar', query=None), '/foo/bar')
+        self.assertEqual(misc.mkuri('foo', 'bar', query=''), '/foo/bar?')
+        self.assertEqual(misc.mkuri('foo', 'bar', query='hello'),
+            '/foo/bar?hello'
+        )
+        self.assertEqual(misc.mkuri('foo', 'bar', query='k=v'), '/foo/bar?k=v')
+
+        self.assertEqual(misc.mkuri('foo', 'bar', ''), '/foo/bar/')
+        self.assertEqual(misc.mkuri('foo', 'bar', '', query=None), '/foo/bar/')
+        self.assertEqual(misc.mkuri('foo', 'bar', '', query=''), '/foo/bar/?')
+        self.assertEqual(misc.mkuri('foo', 'bar', '', query='hello'),
+            '/foo/bar/?hello'
+        )
+        self.assertEqual(misc.mkuri('foo', 'bar', '', query='k=v'),
+            '/foo/bar/?k=v'
+        )
+
     def test_format_headers(self):
         self.assertEqual(misc.format_headers({}), b'')
         self.assertEqual(misc.format_headers({'foo': 'bar'}), b'foo: bar')
