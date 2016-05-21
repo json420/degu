@@ -120,6 +120,14 @@ class TestFunctions(TestCase):
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
 
+    def test_format_headers(self):
+        self.assertEqual(misc.format_headers({}), b'')
+        self.assertEqual(misc.format_headers({'foo': 'bar'}), b'foo: bar')
+        self.assertEqual(
+            misc.format_headers({'foo': 'bar', 'bar': 'baz'}),
+            b'bar: baz\r\nfoo: bar'
+        )
+
 
 class TestTempPKI(TestCase):
     def test_init(self):

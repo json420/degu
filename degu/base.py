@@ -177,10 +177,3 @@ def write_chunk(wfile, chunk, max_size=None):
     wfile.flush()
     return total
 
-
-def format_headers(headers, sort=True):
-    lines = ['{}: {}'.format(*kv) for kv in headers.items()]
-    if sort:
-        lines.sort()
-    return '\r\n'.join(lines).encode()
-

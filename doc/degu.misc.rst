@@ -271,9 +271,30 @@
 
 
 
+Parsing/formatting
+------------------
+
+.. function:: format_headers(headers)
+
+    Format headers for use as the input to :func:`parse_headers()`.
+
+    Note this is just a simple convenience function and isn't actually what the
+    real Degu backend uses.  In particular, this function does no validation on
+    the header keys, whereas the real backend requires that all keys be lower
+    case.
+
+    For example:
+
+    >>> from degu.misc import format_headers
+    >>> format_headers({'One': 'two', 'FOO': 'bar'})
+    b'FOO: bar\r\nOne: two'
+
+
+
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
 .. _`multiprocessing.Queue`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue
 .. _`multiprocessing.Process.terminate()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.terminate
 .. _`multiprocessing.Process.join()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.join
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
+

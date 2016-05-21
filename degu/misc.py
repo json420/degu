@@ -69,6 +69,11 @@ def mkreq(method, uri, headers=None, body=None, shift=0):
     return Request(method, uri, headers, body, mount, path, query)
 
 
+def format_headers(headers):
+    lines = ['{}: {}'.format(*kv) for kv in headers.items()]
+    lines.sort()
+    return '\r\n'.join(lines).encode()
+
 
 class TempPKI(_PKI):
     def __init__(self, client_pki=True, bits=1024):
