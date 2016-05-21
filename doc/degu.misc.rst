@@ -67,11 +67,16 @@ Helper functions
     specifying the number of times that the ``path`` should be shifted to the
     ``mount``.  This emulates one or more calls to
     :meth:`degu.server.Request.shift_path()` as a request is routed to the RGI
-    leaf application that will ultimately handle the request, for example:
+    leaf application that will ultimately handle the request.
+
+    For example, when the path is shifted once:
 
     >>> request = mkreq('GET', '/foo/bar?key=value', shift=1)
     >>> (request.mount, request.path, request.query)
     (['foo'], ['bar'], 'key=value')
+
+    Or when the path is shifted twice:
+
     >>> request = mkreq('GET', '/foo/bar?key=value', shift=2)
     >>> (request.mount, request.path, request.query)
     (['foo', 'bar'], [], 'key=value')
@@ -80,6 +85,47 @@ Helper functions
     concisely as possible, but it may not always be as flexible as you need.
     When more flexibility is needed, please manually construct a
     :class:`degu.server.Request` instance.
+
+
+.. function:: mkuri(*path, query=None)
+
+    Build an HTTP request URI from RGI *path* and *query* components.
+
+    For example:
+
+    >>> from degu.misc import mkuri
+    >>> mkuri('foo', 'bar', query='k=V')
+    '/foo/bar?k=V'
+
+    This function provides the inverse of the parsing that will be done by an
+    RGI compatible server, and likewise provides the inverse of the parsing
+    done by the :func:`mkreq()` helper function.
+
+    This function especially makes it easier to build random request URIs from
+    a number of components, for example:
+
+    >>> component = 'my-random-URI-component'
+    >>> mkuri('foo', component)
+    '/foo/my-random-URI-component'
+
+    This function correctly round-trips the full RGI query semantics, which
+    differentiate between no query versus merely an empty query.
+
+    For example, when there's no query:
+
+    >>> mkuri('foo', query=None)
+    '/foo'
+
+    When there's an empty query:
+
+    >>> mkuri('foo', query='')
+    '/foo?'
+
+    And when there's a non-empty query:
+
+    >>> mkuri('foo', query='hello=world')
+    '/foo?hello=world'
+
 
 
 :class:`TempServer`
