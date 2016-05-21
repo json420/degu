@@ -97,7 +97,7 @@ Breaking API changes:
 
     *   :meth:`degu.server.Request.shift_path()` now returns ``None`` when
         :attr:`degu.server.Request.path` is empty (rather than raising an
-        ``IndexError``.
+        ``IndexError``).
 
         This change was made to make an important pattern in RGI routing
         middleware easier to capture, for example:
