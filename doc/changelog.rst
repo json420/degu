@@ -147,6 +147,18 @@ New API additions:
         to build a valid HTTP request URI from RGI-like *path* and *query*
         components for unit-testing.
 
+    *   The :mod:`degu.applib` module was added, with the goal of providing
+        a library of RGI application and middleware components for common
+        scenarios.
+
+        This far, it contains two components:
+
+            1.  :class:`degu.applib.RouterApp`
+
+            2.  :class:`degu.applib.ProxyApp`
+
+        Note that nothing in this module is yet API stable.
+
 
 
 .. _version-0.15:
