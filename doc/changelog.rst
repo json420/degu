@@ -136,8 +136,34 @@ Breaking API changes:
         ... 
         >>> my_router = RouterApp(my_appmap)
 
+    *   The *base_headers* argument provided to the
+        :class:`degu.client.Connection` constructor now must be a ``tuple`` of
+        ``(key,value)`` pairs instead of a ``dict``.
+
+        It's simpler and better defined for these *base_headers* to be provided
+        by an immutable object.
+
 
 New API additions:
+
+    *   The :class:`degu.client.Client` and :class:`degu.client.SSLClient`
+        constructors now take an optional *authorization* keyword option, which
+        can be used to specify an HTTP Authorization header that will be
+        unconditionally included in each HTTP request made by
+        :meth:`degu.client.Connection.request()`.
+
+        See :attr:`degu.client.Client.authorization` for details.
+
+    *   The undocumented ``degu.client.Client._base_headers`` attribute has been
+        renamed to :attr:`degu.client.Client.base_headers`, thus making it part
+        of the formal API.  It was likewise changed from a ``dict`` to a
+        ``tuple``, the same instance of which is passed as the *base_headers*
+        argument to the :class:`degu.client.Connection` constructor.
+
+    *   The :meth:`degu.client.Client.set_base_header()` method was added,
+        providing a mechanism for 3rd-party applications to set addition base
+        headers without adding new keyword *options* to the
+        :class:`degu.client.Client` constructor.
 
     *   The :func:`degu.misc.mkreq()` function was added, which makes it easier
         to construct well-formed :class:`degu.server.Request` instances for
