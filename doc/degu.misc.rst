@@ -4,6 +4,129 @@
 .. module:: degu.misc
    :synopsis: Test fixtures and other handy tidbits
 
+The :mod:`degu.misc` module contains functionality that aids in unit-testing,
+demonstration, and play.
+
+Note that production Degu applications are advised *against* importing
+``degu.misc`` during normal run-time operation, specifically because it will
+make the baseline memory usage of your Degu application larger than needed.
+
+
+Helper functions
+----------------
+
+.. function:: mkreq(method, uri, headers=None, body=None, shift=0)
+
+    Shortcut for making a :class:`degu.server.Request` instance.
+
+    It's rather verbose to create a :class:`degu.server.Request` instance,
+    particularly because you must specify both the unparsed URI, and the URI
+    as parsed into `mount`, `path`, and `query` components.
+
+    This function greatly simplifies the process and can be quite useful in
+    unit-tests.
+
+    Unlike the :class:`degu.server.Request` constructor, only the *method* and
+    *uri* arguments are required:
+
+    >>> from degu.misc import mkreq
+    >>> mkreq('GET', '/')
+    Request(method='GET', uri='/', headers={}, body=None, mount=[], path=[], query=None)
+
+    Note that when the *headers* keyword argument is not provided (or is
+    ``None``), this function will create a new, empty ``{}`` for the headers.
+    But you can also explicity provide the *headers* to use, for example:
+
+    >>> request = mkreq('GET', '/', headers={'k': 'V'})
+    >>> request.headers
+    {'k': 'V'}
+
+    Likewise, note that if not provided, the *body* defaults to ``None``.  In
+    unit-tests that require an HTTP request body, you'd typically provide a
+    suitable :class:`degu.base.Body` or :class:`degu.base.ChunkedBody`
+    instance, for example:
+
+    >>> import io
+    >>> from degu.base import api
+    >>> fp = io.BytesIO(b'hello, world')
+    >>> request = mkreq('PUT', '/foo', body=api.Body(fp, 12))
+    >>> request.body.read()
+    b'hello, world'
+
+    This function will parse the *uri* into RGI ``mount``, ``path``, and
+    ``query`` components, for example:
+
+    >>> request = mkreq('GET', '/foo')
+    >>> (request.mount, request.path, request.query)
+    ([], ['foo'], None)
+    >>> request = mkreq('GET', '/foo/bar?key=value')
+    >>> (request.mount, request.path, request.query)
+    ([], ['foo', 'bar'], 'key=value')
+
+    If the optional *shift* keyword argument is provided, it must be an ``int``
+    specifying the number of times that the ``path`` should be shifted to the
+    ``mount``.  This emulates one or more calls to
+    :meth:`degu.server.Request.shift_path()` as a request is routed to the RGI
+    leaf application that will ultimately handle the request.
+
+    For example, when the path is shifted once:
+
+    >>> request = mkreq('GET', '/foo/bar?key=value', shift=1)
+    >>> (request.mount, request.path, request.query)
+    (['foo'], ['bar'], 'key=value')
+
+    Or when the path is shifted twice:
+
+    >>> request = mkreq('GET', '/foo/bar?key=value', shift=2)
+    >>> (request.mount, request.path, request.query)
+    (['foo', 'bar'], [], 'key=value')
+
+    This function tries to capture the most common unit-test scenarios as
+    concisely as possible, but it may not always be as flexible as you need.
+    When more flexibility is needed, please manually construct a
+    :class:`degu.server.Request` instance.
+
+
+.. function:: mkuri(*path, query=None)
+
+    Build an HTTP request URI from RGI *path* and *query* components.
+
+    For example:
+
+    >>> from degu.misc import mkuri
+    >>> mkuri('foo', 'bar', query='k=V')
+    '/foo/bar?k=V'
+
+    This function provides the inverse of the parsing that will be done by an
+    RGI compatible server, and likewise provides the inverse of the parsing
+    done by the :func:`mkreq()` helper function.
+
+    This function especially makes it easier to build random request URIs from
+    a number of components, for example:
+
+    >>> component = 'my-random-URI-component'
+    >>> mkuri('foo', component)
+    '/foo/my-random-URI-component'
+
+    This function correctly round-trips the full RGI query semantics, which
+    differentiate between no query versus merely an empty query.
+
+    For example, when there's no query:
+
+    >>> mkuri('foo', query=None)
+    '/foo'
+
+    When there's an empty query:
+
+    >>> mkuri('foo', query='')
+    '/foo?'
+
+    And when there's a non-empty query:
+
+    >>> mkuri('foo', query='hello=world')
+    '/foo?hello=world'
+
+
 
 :class:`TempServer`
 -------------------
@@ -271,9 +394,34 @@
 
 
 
+Parsing/formatting
+------------------
+
+.. function:: format_headers(headers)
+
+    Format headers for use as the input to :func:`parse_headers()`.
+
+    .. versionchanged:: 0.16
+        This function was moved to the :mod:`degu.base` module to the
+        :mod:`degu.misc` module.
+
+    Note this is just a simple convenience function and isn't actually what the
+    real Degu backend uses.  In particular, this function does no validation on
+    the header keys, whereas the real backend requires that all keys be lower
+    case.
+
+    For example:
+
+    >>> from degu.misc import format_headers
+    >>> format_headers({'One': 'two', 'FOO': 'bar'})
+    b'FOO: bar\r\nOne: two'
+
+
+
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
 .. _`multiprocessing.Queue`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue
 .. _`multiprocessing.Process.terminate()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.terminate
 .. _`multiprocessing.Process.join()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.join
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
+

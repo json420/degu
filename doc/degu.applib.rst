@@ -4,6 +4,15 @@
 .. module:: degu.applib
    :synopsis: Library of RGI applications and middleware
 
+.. versionadded:: 0.16
+
+The goal of this module is to provide a number of pre-built RGI application
+and middleware components for common scenarios.
+
+.. warning::
+    None of the classes in this module are yet API stable, use them at your
+    own risk!
+
 
 :class:`RouterApp`
 ------------------

@@ -606,24 +606,6 @@ Parsing/formatting
     True
 
 
-.. function:: format_headers(headers, sort=True)
-
-    Format headers for use as the input to :func:`parse_headers()`.
-
-    Note this is just a simple convenience function and isn't actually what the
-    real Degu backend uses.  In particular, this function does no validation on
-    the header keys, whereas the real backend requires that all keys be lower
-    case.
-
-    Unless you specify ``sort=False``, the headers will be output in sorted
-    order:
-
-    >>> from degu.base import format_headers
-    >>> format_headers({'One': 'two', 'FOO': 'bar'})
-    b'FOO: bar\r\nOne: two'
-    
-
-
 .. function:: read_chunk(rfile)
 
     Read a chunk from a chunk-encoded request or response body.
