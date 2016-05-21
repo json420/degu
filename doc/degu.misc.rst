@@ -401,6 +401,10 @@ Parsing/formatting
 
     Format headers for use as the input to :func:`parse_headers()`.
 
+    .. versionchanged:: 0.16
+        This function was moved to the :mod:`degu.base` module to the
+        :mod:`degu.misc` module.
+
     Note this is just a simple convenience function and isn't actually what the
     real Degu backend uses.  In particular, this function does no validation on
     the header keys, whereas the real backend requires that all keys be lower

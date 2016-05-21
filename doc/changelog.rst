@@ -10,8 +10,9 @@ Changelog
 `Download Degu 0.16`_
 
 Degu 0.16 again brings a number of small breaking API changes; however, the
-changes in this release are quite unlikely to break the behavior of real-world
-Degu server and client consumers.
+changes in this release are quite unlikely to break the behavior Degu server and
+client consumers during normal run-time use.  If any, the most likely changes
+will be updates to your unit-tests.
 
 Breaking API changes:
 
@@ -135,6 +136,13 @@ Breaking API changes:
         ... }
         ... 
         >>> my_router = RouterApp(my_appmap)
+
+    *   The ``format_headers()`` function was moved from the :mod:`degu.base`
+        module to :func:`degu.misc.format_headers()`.
+
+        As this function should never be needed by Degu server and client
+        applications during normal run-time use, it didn't belong in
+        :mod:`degu.base`, is properly placed in :mod:`degu.misc`.
 
     *   The *base_headers* argument provided to the
         :class:`degu.client.Connection` constructor now must be a ``tuple`` of
