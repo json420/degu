@@ -4,6 +4,83 @@
 .. module:: degu.misc
    :synopsis: Test fixtures and other handy tidbits
 
+The :mod:`degu.misc` module contains functionality that aids in unit-testing,
+demonstration, and play.
+
+Note that production Degu applications are advised *against* importing
+``degu.misc`` during normal run-time operation, specifically because it will
+make the baseline memory usage of your Degu application larger than needed.
+
+
+Helper functions
+----------------
+
+.. function:: mkreq(method, uri, headers=None, body=None, shift=0)
+
+    Shortcut for making a :class:`degu.server.Request` instance.
+
+    It's rather verbose to create a :class:`degu.server.Request` instance,
+    particularly because you must specify both the unparsed URI, and the URI
+    as parsed into `mount`, `path`, and `query` components.
+
+    This function greatly simplifies the process and can be quite useful in
+    unit-tests.
+
+    Unlike the :class:`degu.server.Request` constructor, only the *method* and
+    *uri* arguments are required:
+
+    >>> from degu.misc import mkreq
+    >>> mkreq('GET', '/')
+    Request(method='GET', uri='/', headers={}, body=None, mount=[], path=[], query=None)
+
+    Note that when the *headers* keyword argument is not provided (or is
+    ``None``), this function will create a new, empty ``{}`` for the headers.
+    But you can also explicity provide the *headers* to use, for example:
+
+    >>> request = mkreq('GET', '/', headers={'k': 'V'})
+    >>> request.headers
+    {'k': 'V'}
+
+    Likewise, note that if not provided, the *body* defaults to ``None``.  In
+    unit-tests that require an HTTP request body, you'd typically provide a
+    suitable :class:`degu.base.Body` or :class:`degu.base.ChunkedBody`
+    instance, for example:
+
+    >>> import io
+    >>> from degu.base import api
+    >>> fp = io.BytesIO(b'hello, world')
+    >>> request = mkreq('PUT', '/foo', body=api.Body(fp, 12))
+    >>> request.body.read()
+    b'hello, world'
+
+    This function will parse the *uri* into RGI ``mount``, ``path``, and
+    ``query`` components, for example:
+
+    >>> request = mkreq('GET', '/foo')
+    >>> (request.mount, request.path, request.query)
+    ([], ['foo'], None)
+    >>> request = mkreq('GET', '/foo/bar?key=value')
+    >>> (request.mount, request.path, request.query)
+    ([], ['foo', 'bar'], 'key=value')
+
+    If the optional *shift* keyword argument is provided, it must be an ``int``
+    specifying the number of times that the ``path`` should be shifted to the
+    ``mount``.  This emulates one or more calls to
+    :meth:`degu.server.Request.shift_path()` as a request is routed to the RGI
+    leaf application that will ultimately handle the request, for example:
+
+    >>> request = mkreq('GET', '/foo/bar?key=value', shift=1)
+    >>> (request.mount, request.path, request.query)
+    (['foo'], ['bar'], 'key=value')
+    >>> request = mkreq('GET', '/foo/bar?key=value', shift=2)
+    >>> (request.mount, request.path, request.query)
+    (['foo', 'bar'], [], 'key=value')
+
+    This function tries to capture the most common unit-test scenarios as
+    concisely as possible, but it may not always be as flexible as you need.
+    When more flexibility is needed, please manually construct a
+    :class:`degu.server.Request` instance.
+
 
 :class:`TempServer`
 -------------------
