@@ -9,11 +9,11 @@ Changelog
 
 `Download Degu 0.16`_
 
-Breaking API changes:
+Degu 0.16 again brings a number of small breaking API changes; however, the
+changes in this release are quite unlikely to break the behavior of real-world
+Degu server and client consumers.
 
-    *   :meth:`degu.server.Request.shift_path()` now returns ``None`` when
-        :attr:`degu.server.Request.path` is empty (rather than raising an
-        ``IndexError``.
+Breaking API changes:
 
     *   The ``degu.base.Bodies`` namedtuple has been renamed to
         :class:`degu.base.API`, plus the new ``Range`` and ``ContentRange``
@@ -93,6 +93,60 @@ Breaking API changes:
         new applications should always use :attr:`degu.client.Connection.api`
         instead of ``degu.client.Connection.bodies`` as the former is deprecated
         and will be removed in a future Degu release.
+
+    *   :meth:`degu.server.Request.shift_path()` now returns ``None`` when
+        :attr:`degu.server.Request.path` is empty (rather than raising an
+        ``IndexError``.
+
+        This change was made to make an important pattern in RGI routing
+        middleware easier to capture, for example:
+
+        >>> class RouterApp:
+        ...     def __init__(self, appmap):
+        ...         self.appmap = appmap
+        ... 
+        ...     def __call__(self, session, request, api):
+        ...         handler = self.appmap.get(request.shift_path())
+        ...         if handler is None:
+        ...             return (410, 'Gone', {}, None)
+        ...         return handler(session, request, api)
+        ... 
+
+        There is an unfortunate ambiguity in HTTP around URIs that end with a
+        trailing ``'/'``.  For example, we'd like our routing application to
+        behave the same whether it was mounted at ``'/'`` vs. ``'/foo'`` vs.
+        ``'/foo/'``.
+
+        Because :meth:`degu.server.Request.shift_path()` now returns ``None``
+        when :attr:`degu.server.Request.path` is empty, the solution to this
+        problem is easier because (when needed) an application can have entries
+        in their routing map for both ``None`` and ``''``:
+
+        >>> def my_index_app(session, request, api):
+        ...     return (200, 'OK', {}, b'From the root app')
+        ... 
+        >>> def my_bar_app(session, request, api):
+        ...     return (200, 'OK', {}, b'From the bar app')
+        ... 
+        >>> my_appmap = {
+        ...     None:  my_index_app,
+        ...     '':    my_index_app,
+        ...     'bar': my_bar_app,
+        ... }
+        ... 
+        >>> my_router = RouterApp(my_appmap)
+
+
+New API additions:
+
+    *   The :func:`degu.misc.mkreq()` function was added, which makes it easier
+        to construct well-formed :class:`degu.server.Request` instances for
+        unit-testing.
+
+    *   The :func:`degu.misc.mkuri()` function was added, which makes it easier
+        to build a valid HTTP request URI from RGI-like *path* and *query*
+        components for unit-testing.
+
 
 
 .. _version-0.15:
