@@ -3687,6 +3687,10 @@ class BodyBackendTestCase(BackendTestCase):
         return self.getattr('BODY_ERROR')
 
     @property
+    def IO_SIZE(self):
+        return self.getattr('IO_SIZE')
+
+    @property
     def MAX_IO_SIZE(self):
         return self.getattr('MAX_IO_SIZE')
 
@@ -4031,9 +4035,9 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertIs(rfile.closed, False)
 
         # Make sure data is read in IO_SIZE chunks:
-        data1 = os.urandom(base.IO_SIZE)
-        data2 = os.urandom(base.IO_SIZE)
-        length = base.IO_SIZE * 2
+        data1 = os.urandom(self.IO_SIZE)
+        data2 = os.urandom(self.IO_SIZE)
+        length = self.IO_SIZE * 2
         rfile = io.BytesIO(data1 + data2)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2])
@@ -4047,7 +4051,7 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with smaller final chunk:
-        length = base.IO_SIZE * 2 + len(data)
+        length = self.IO_SIZE * 2 + len(data)
         rfile = io.BytesIO(data1 + data2 + data)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data])
@@ -4061,7 +4065,7 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(rfile.read(), b'')
 
         # Again, with length 1 byte less than available:
-        length = base.IO_SIZE * 2 + len(data) - 1
+        length = self.IO_SIZE * 2 + len(data) - 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = Body(rfile, length)
         self.assertEqual(list(body), [data1, data2, data[:-1]])
@@ -4075,7 +4079,7 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(rfile.read(), data[-1:])
 
         # Again, with length 1 byte *more* than available:
-        length = base.IO_SIZE * 2 + len(data) + 1
+        length = self.IO_SIZE * 2 + len(data) + 1
         rfile = io.BytesIO(data1 + data2 + data)
         body = Body(rfile, length)
         with self.assertRaises(ValueError) as cm:

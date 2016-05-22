@@ -5235,7 +5235,7 @@ PyInit__base(void)
     PyModule_AddIntMacro(module, MAX_LINE_LEN);
 
     PyModule_AddIntMacro(module, MAX_CL_LEN);
-    
+
     PyModule_AddIntMacro(module, MAX_HEADER_COUNT);
 
     PyModule_AddIntMacro(module, IO_SIZE);    
