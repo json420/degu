@@ -77,49 +77,6 @@ MAX_CHUNK_SIZE = 16777216  # 16 MiB
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 
 
-# FIXME: Add optional max_size=None keyword argument
-def read_chunk(rfile):
-    """
-    Read a chunk from a chunk-encoded request or response body.
-
-    See "Chunked Transfer Coding":
-
-        http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1
-    """
-    line = rfile.readline(4096)
-    if line[-2:] != b'\r\n':
-        raise ValueError('bad chunk size termination: {!r}'.format(line[-2:]))
-    parts = line[:-2].split(b';')
-    if len(parts) > 2:
-        raise ValueError('bad chunk size line: {!r}'.format(line))
-    size = int(parts[0], 16)
-    if not (0 <= size <= MAX_CHUNK_SIZE):
-        raise ValueError(
-            'need 0 <= chunk_size <= {}; got {}'.format(MAX_CHUNK_SIZE, size)
-        )
-    if len(parts) == 2:
-        text = None
-        try:
-            text = parts[1].decode('ascii')  # Disallow the high-bit
-        except ValueError:
-            pass
-        if text is None or not text.isprintable():
-            raise ValueError(
-                'bad bytes in chunk extension: {!r}'.format(parts[1])
-            )
-        (key, value) = text.split('=')
-        extension = (key, value)
-    else:
-        extension = None
-    data = rfile.read(size)
-    if len(data) != size:
-        raise ValueError('underflow: {} < {}'.format(len(data), size))
-    crlf = rfile.read(2)
-    if crlf != b'\r\n':
-        raise ValueError('bad chunk data termination: {!r}'.format(crlf))
-    return (extension, data)
-
-
 def _encode_chunk(chunk, check_size=True):
     """
     Internal API for unit testing.
