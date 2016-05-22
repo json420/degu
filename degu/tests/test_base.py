@@ -32,7 +32,7 @@ import types
 import socket
 
 from . import helpers
-from .helpers import random_chunks, FuzzTestCase, iter_bad, MockSocket
+from .helpers import random_chunks, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
 from .helpers import iter_random_uri
 from degu.sslhelpers import random_id
@@ -308,12 +308,6 @@ class TestAliases(TestCase):
         )
         for name in all_names:
             self.check(name)
-
-
-class AlternatesTestCase(FuzzTestCase):
-    def skip_if_no_c_ext(self):
-        if not C_EXT_AVAIL:
-            self.skipTest('cannot import `degu._base` C extension')
 
 
 class BackendTestCase(TestCase):
@@ -3032,11 +3026,6 @@ class TestEmptyPreambleError(TestCase):
         self.assertIsInstance(e, ConnectionError)
         self.assertIs(type(e), base.EmptyPreambleError)
         self.assertEqual(str(e), 'stuff and junk')
-
-
-class FuzzTestFunctions(AlternatesTestCase):
-    def test_read_chunk(self):
-        self.fuzz(base.read_chunk)
 
 
 class DummyFile:
