@@ -303,7 +303,6 @@ class TestAliases(TestCase):
             'Request',
             'api',
             '_handle_requests',
-            'parse_headers',
             'Connection',
         )
         for name in all_names:

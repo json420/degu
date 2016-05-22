@@ -35,7 +35,6 @@ try:
         Connection,
         Session,
         _handle_requests,
-        parse_headers,
     )
 except ImportError:
     from ._basepy import (
@@ -49,7 +48,6 @@ except ImportError:
         Connection,
         Session,
         _handle_requests,
-        parse_headers,
     )
 
 
@@ -68,7 +66,6 @@ __all__ = (
     'Connection',
     'Session',
     '_handle_requests',
-    'parse_headers',
 )
 
 # Provide very clear TypeError messages:

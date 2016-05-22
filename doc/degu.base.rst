@@ -580,32 +580,6 @@ Header values
 
 
 
-Parsing/formatting
-------------------
-
-
-.. function:: parse_headers(src, isresponse=False)
-
-    Parse headers from the ``bytes`` instance *src*.
-
-    For example:
-
-    >>> from degu.base import parse_headers
-    >>> parse_headers(b'Content-Type: text/plain')
-    {'content-type': 'text/plain'}
-
-    Note that although Degu accepts mixed-case headers in the HTTP input
-    preamble, they are case-folded when parsed, and that outgoing headers must
-    only use lowercase names.
-
-    Because of same details in how the Degu parser works, the function expects
-    separate header lines to be separated by a ``b'\r\n'``, but does not allow
-    a ``b'\r\n'`` termination after the final header:
-
-    >>> parse_headers(b'Foo: Bar\r\nSTUFF: Junk') == {'foo': 'Bar', 'stuff': 'Junk'}
-    True
-
-
 .. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c

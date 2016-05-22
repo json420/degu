@@ -610,7 +610,7 @@ Breaking API changes:
     *   When the server receives a request with a Range header, its value is
         converted to a :class:`degu.base.Range` instance:
 
-        >>> from degu.base import parse_headers
+        >>> from degu.misc import parse_headers
         >>> parse_headers(b'Range: bytes=3-8')
         {'range': Range(3, 9)}
 
@@ -622,7 +622,7 @@ Breaking API changes:
     *   When the client receives a response with a Content-Range header, its
         value is converted to a :class:`degu.base.ContentRange` instance:
 
-        >>> from degu.base import parse_headers
+        >>> from degu.misc import parse_headers
         >>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
         {'content-range': ContentRange(3, 9, 12)}
 
