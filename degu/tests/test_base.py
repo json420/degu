@@ -2986,9 +2986,6 @@ class TestConstants_Py(BackendTestCase):
         self.assertIs(type(self.MAX_IO_SIZE), int)
         self.assertEqual(self.MAX_IO_SIZE, 16 * 1024 * 1024)
 
-    def test_MAX_READ_SIZE(self):
-        self.check_size_constant('MAX_READ_SIZE')
-
     def test_MAX_CHUNK_SIZE(self):
         self.check_size_constant('MAX_CHUNK_SIZE')
 
@@ -3806,14 +3803,14 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(rfile.tell(), 0)
         self.assertEqual(body.content_length, 1776)
 
-        # size < 0 or size > MAX_READ_SIZE
-        toobig = base.MAX_READ_SIZE + 1
+        # size < 0 or size > MAX_IO_SIZE
+        toobig = self.MAX_IO_SIZE + 1
         for bad in (-18, -1, toobig):
             body = Body(rfile, 1776)
             with self.assertRaises(ValueError) as cm:
                 body.read(bad)
             self.assertEqual(str(cm.exception),
-                'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
+                'need 0 <= size <= {}; got {}'.format(self.MAX_IO_SIZE, bad)
             )
             self.assertIs(body.chunked, False)
             self.assertEqual(body.state, self.BODY_READY)
@@ -3824,14 +3821,14 @@ class TestBody_Py(BodyBackendTestCase):
             with self.assertRaises(ValueError) as cm:
                 body.read(bad)
             self.assertEqual(str(cm.exception),
-                'need 0 <= size <= {}; got {}'.format(base.MAX_READ_SIZE, bad)
+                'need 0 <= size <= {}; got {}'.format(self.MAX_IO_SIZE, bad)
             )
             self.assertIs(body.chunked, False)
             self.assertEqual(body.state, self.BODY_READY)
             self.assertEqual(rfile.tell(), 0)
             self.assertEqual(body.content_length, toobig)
 
-        # Test when read size > MAX_READ_SIZE:
+        # Test when read size > MAX_IO_SIZE:
         rfile = io.BytesIO()
         body = Body(rfile, toobig)
         self.assertEqual(body.content_length, toobig)
