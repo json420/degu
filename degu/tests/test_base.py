@@ -302,9 +302,12 @@ class TestAliases(TestCase):
             'ContentRange',
             'Request',
             'api',
-            '_handle_requests',
             'Connection',
+            'Session',
+            '_handle_requests',
         )
+        self.assertEqual(sorted(set(all_names)), sorted(all_names))
+        self.assertEqual(all_names, base.__all__)
         for name in all_names:
             self.check(name)
 
