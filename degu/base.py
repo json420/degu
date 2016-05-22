@@ -71,8 +71,6 @@ __all__ = (
     'parse_headers',
 )
 
-MAX_CHUNK_SIZE = 16777216  # 16 MiB
-
 # Provide very clear TypeError messages:
 _TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
 

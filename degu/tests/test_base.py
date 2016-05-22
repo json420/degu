@@ -2923,28 +2923,7 @@ class TestNamedTuples_C(TestNamedTuples_Py):
     backend = _base
 
 
-MiB = 1024 * 1024
-
 class TestConstants_Py(BackendTestCase):
-    def check_power_of_two(self, name, size):
-        self.assertIsInstance(size, int, name)
-        self.assertGreaterEqual(size, 1024, name)
-        self.assertLessEqual(size, MiB * 32, name)
-        self.assertFalse(size & (size - 1),
-            '({}) {:d} is not a power of 2'.format(name, size)
-        )
-
-    def check_size_constant(self, name, min_size=4096, max_size=16777216):
-        self.check_power_of_two('min_size', min_size)
-        self.check_power_of_two('max_size', max_size)
-        self.assertEqual(name[-5:], '_SIZE', name)
-        self.assertTrue(name.isupper(), '{!r} not uppercase'.format(name))
-        size = getattr(base, name)
-        self.check_power_of_two(name, size)
-        self.assertGreaterEqual(size, min_size, name)
-        self.assertLessEqual(size, max_size, name)
-        return size
-
     def test_BUF_LEN(self):
         self.assertIs(type(self.BUF_LEN), int)
         self.assertEqual(self.BUF_LEN, 32 * 1024)
@@ -2979,9 +2958,6 @@ class TestConstants_Py(BackendTestCase):
     def test_MAX_IO_SIZE(self):
         self.assertIs(type(self.MAX_IO_SIZE), int)
         self.assertEqual(self.MAX_IO_SIZE, 16 * 1024 * 1024)
-
-    def test_MAX_CHUNK_SIZE(self):
-        self.check_size_constant('MAX_CHUNK_SIZE')
 
     def test_api(self):
         api = self.api
