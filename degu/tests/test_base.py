@@ -3066,10 +3066,9 @@ class UserBytes(bytes):
     pass
 
 
-class TestFunctions(AlternatesTestCase):
-    def check_parse_method(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_method = backend.parse_method
+class TestFunctions_Py(BackendTestCase):
+    def test_parse_method(self):
+        parse_method = self.getattr('parse_method')
 
         for method in GOOD_METHODS:
             # Input is str:
@@ -3116,16 +3115,8 @@ class TestFunctions(AlternatesTestCase):
                     'bad HTTP method: {!r}'.format(bad)
                 )
 
-    def test_parse_method_py(self):
-        self.check_parse_method(_basepy)
-
-    def test_parse_method_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_method(_base)
-
-    def check_parse_uri(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_uri = backend.parse_uri
+    def test_parse_uri(self):
+        parse_uri = self.getattr('parse_uri')
 
         # Empty b'':
         with self.assertRaises(ValueError) as cm:
@@ -3196,16 +3187,8 @@ class TestFunctions(AlternatesTestCase):
             )
         )
 
-    def test_parse_uri_py(self):
-        self.check_parse_uri(_basepy)
-
-    def test_parse_uri_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_uri(_base)
-
-    def check_parse_header_name(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_header_name = backend.parse_header_name
+    def test_parse_header_name(self):
+        parse_header_name = self.getattr('parse_header_name')
 
         # Empty bytes:
         with self.assertRaises(ValueError) as cm:
@@ -3257,38 +3240,8 @@ class TestFunctions(AlternatesTestCase):
                     'bad bytes in header name: {!r}'.format(bad)
                 )
 
-    def test_parse_header_name_py(self):
-        self.check_parse_header_name(_basepy)
-
-    def test_parse_header_name_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_header_name(_base)
-
-        # Compare C to Python implementations with the same random values:
-        functions = (_base.parse_header_name, _basepy.parse_header_name)
-        for i in range(1000):
-            bad = os.urandom(32)
-            for func in functions:
-                exc = 'bad bytes in header name: {!r}'.format(bad)
-                with self.assertRaises(ValueError) as cm:
-                    func(bad)
-                self.assertEqual(str(cm.exception), exc, func.__module__)
-            bad2 = bad + b'R'
-            for func in functions:
-                exc = 'header name too long: {!r}...'.format(bad)
-                with self.assertRaises(ValueError) as cm:
-                    func(bad2)
-                self.assertEqual(str(cm.exception), exc, func.__module__)
-        for i in range(5000):
-            good = bytes(random.sample(_basepy.NAME, 32))
-            for func in functions:
-                ret = func(good)
-                self.assertIsInstance(ret, str)
-                self.assertEqual(ret, good.decode().lower())
-
-    def check_parse_response_line(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_response_line = backend.parse_response_line
+    def test_parse_response_line(self):
+        parse_response_line = self.getattr('parse_response_line')
 
         # request line is too short:
         line  = b'HTTP/1.1 200 OK'
@@ -3355,26 +3308,11 @@ class TestFunctions(AlternatesTestCase):
                 with self.assertRaises(ValueError):
                     parse_response_line(bytes(bad))
 
-    def test_parse_response_line_py(self):
-        self.check_parse_response_line(_basepy)
-
-    def test_parse_response_line_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_response_line(_base)
-
-    def check_parse_request_line(self, backend):
-        self.assertIn(backend, (_base, _basepy))
-        parse_request_line = backend.parse_request_line
+    def test_parse_request_line(self):
+        parse_request_line = self.getattr('parse_request_line')
         self.assertEqual(parse_request_line(b'GET / HTTP/1.1'),
             ('GET', '/', [], [], None)
         )
-
-    def test_parse_request_line_py(self):
-        self.check_parse_request_line(_basepy)
-
-    def test_parse_request_line_c(self):
-        self.skip_if_no_c_ext()
-        self.check_parse_request_line(_base)
 
     def test_read_chunk(self):
         data = (b'D' * 7777)  # Longer than _MAX_LINE_SIZE
@@ -3667,6 +3605,34 @@ class TestFunctions(AlternatesTestCase):
         self.assertEqual(base.write_chunk(fp, chunk), total)
         fp.seek(0)
         self.assertEqual(base.read_chunk(fp), chunk)
+
+class TestFunctions_C(TestFunctions_Py):
+    backend = _base
+
+    def test_parse_header_name(self):
+        super().test_parse_header_name()
+
+        # Compare C to Python implementations with the same random values:
+        functions = (_base.parse_header_name, _basepy.parse_header_name)
+        for i in range(1000):
+            bad = os.urandom(32)
+            for func in functions:
+                exc = 'bad bytes in header name: {!r}'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+            bad2 = bad + b'R'
+            for func in functions:
+                exc = 'header name too long: {!r}...'.format(bad)
+                with self.assertRaises(ValueError) as cm:
+                    func(bad2)
+                self.assertEqual(str(cm.exception), exc, func.__module__)
+        for i in range(5000):
+            good = bytes(random.sample(_basepy.NAME, 32))
+            for func in functions:
+                ret = func(good)
+                self.assertIsInstance(ret, str)
+                self.assertEqual(ret, good.decode().lower())
 
 
 class BodyBackendTestCase(BackendTestCase):
