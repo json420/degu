@@ -563,7 +563,7 @@ Example: range requests
 When the Degu server receives a request with an HTTP Range header, its value is
 exposed as a :class:`degu.base.Range` instance:
 
->>> from degu.base import parse_headers
+>>> from degu.misc import parse_headers
 >>> parse_headers(b'Range: bytes=3-8')
 {'range': Range(3, 9)}
 

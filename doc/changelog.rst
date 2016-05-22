@@ -11,8 +11,9 @@ Changelog
 
 Degu 0.16 again brings a number of small breaking API changes; however, the
 changes in this release are quite unlikely to break the behavior Degu server and
-client consumers during normal run-time use.  If any, the most likely changes
-will be updates to your unit-tests.
+client consumers during normal run-time use.  If any changes are needed to port
+your applications to Degu 0.16, it will most likely be changes to your unit
+tests.
 
 Breaking API changes:
 
@@ -136,6 +137,22 @@ Breaking API changes:
         ... }
         ... 
         >>> my_router = RouterApp(my_appmap)
+
+    *   The ``read_chunk()`` and ``write_chunk()``  functions were removed from
+        the :mod:`degu.base` module and dropped from the stable API.
+
+        As these functions should never be needed by Degu server and client
+        applications during normal run-time use, they didn't belong in
+        :mod:`degu.base`.  In the future, equivalent functions might be added to
+        the :mod:`degu.misc` module, simply to aid in unit testing and
+        illustrations.
+
+    *   The ``parse_headers()`` function was moved from the :mod:`degu.base`
+        module to :func:`degu.misc.parse_headers()`.
+
+        As this function should never be needed by Degu server and client
+        applications during normal run-time use, it didn't belong in
+        :mod:`degu.base`, is properly placed in :mod:`degu.misc`.
 
     *   The ``format_headers()`` function was moved from the :mod:`degu.base`
         module to :func:`degu.misc.format_headers()`.
@@ -610,7 +627,7 @@ Breaking API changes:
     *   When the server receives a request with a Range header, its value is
         converted to a :class:`degu.base.Range` instance:
 
-        >>> from degu.base import parse_headers
+        >>> from degu.misc import parse_headers
         >>> parse_headers(b'Range: bytes=3-8')
         {'range': Range(3, 9)}
 
@@ -622,7 +639,7 @@ Breaking API changes:
     *   When the client receives a response with a Content-Range header, its
         value is converted to a :class:`degu.base.ContentRange` instance:
 
-        >>> from degu.base import parse_headers
+        >>> from degu.misc import parse_headers
         >>> parse_headers(b'Content-Range: bytes 3-8/12', isresponse=True)
         {'content-range': ContentRange(3, 9, 12)}
 

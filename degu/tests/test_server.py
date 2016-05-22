@@ -42,6 +42,7 @@ from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import _TYPE_ERROR
+from degu.misc import write_chunk
 from degu import rgi, base, server
 
 
@@ -678,14 +679,14 @@ class TestSSLServer(TestCase):
 
 
 CHUNKS = []
-for i in range(7):
-    size = random.randint(1, 5000)
+for i in range(5):
+    size = random.randint(1, 2000)
     CHUNKS.append(os.urandom(size))
 CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 wfile = io.BytesIO()
 for data in CHUNKS:
-    base.write_chunk(wfile, (None, data))
+    write_chunk(wfile, (None, data))
 ENCODED_CHUNKS = wfile.getvalue()
 del wfile
 
@@ -835,7 +836,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
-            {'content-length': 352, 'content-type': 'application/json'}
+            {'content-length': 264, 'content-type': 'application/json'}
         )
         self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
@@ -1003,7 +1004,7 @@ class TestLiveServer(TestCase):
 
     def test_max_connections(self):
         uri = '/status/404/Nope'
-        for value in (17, 27, 37):
+        for value in (17, 27):
             (httpd, client) = self.build_with_app(standard_harness_app,
                                                   max_connections=value)
             allconns = []

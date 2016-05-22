@@ -24,13 +24,11 @@ Unit test helpers.
 """
 
 import io
-import sys
 import os
 from os import path
 import tempfile
 import shutil
 from random import SystemRandom
-from unittest import TestCase
 import string
 
 from degu import tables
@@ -219,32 +217,6 @@ class MockSocket2:
         if self.__rcvbuf is not None:
             buf = buf[0:self.__rcvbuf]
         return self.__rfile.readinto(buf)
-
-
-class FuzzTestCase(TestCase):
-    """
-    Base class for fuzz-testing read functions.
-    """
-
-    def fuzz(self, func, *args):
-        """
-        Perform random fuzz test on *func*.
-
-        Expected result: given an rfile containing 8192 random bytes, func()
-        should raise a ValueError every time, should read at least 1 byte, and
-        should never read more than 4096 bytes.
-        """
-        for i in range(1000):
-            data = os.urandom(4096 * 2)
-            rfile = io.BytesIO(data)
-            self.assertEqual(sys.getrefcount(rfile), 2)
-            with self.assertRaises(ValueError):
-                func(rfile, *args)
-            self.assertGreaterEqual(rfile.tell(), 1)
-            self.assertLessEqual(rfile.tell(), 4096)
-            # Make sure refcount is still correct (especially important for
-            # testing C extensions):
-            self.assertEqual(sys.getrefcount(rfile), 2)
 
 
 class MockBodies:

@@ -397,13 +397,39 @@ Helper functions
 Parsing/formatting
 ------------------
 
+.. function:: parse_headers(src, isresponse=False)
+
+    Parse headers from the ``bytes`` instance *src*.
+
+    .. versionchanged:: 0.16
+        This function was moved to the :mod:`degu.misc` module to the
+        :mod:`degu.base` module.
+
+    For example:
+
+    >>> from degu.misc import parse_headers
+    >>> parse_headers(b'Content-Type: text/plain')
+    {'content-type': 'text/plain'}
+
+    Note that although Degu accepts mixed-case headers in the HTTP input
+    preamble, they are case-folded when parsed, and that outgoing headers must
+    only use lowercase names.
+
+    Because of same details in how the Degu parser works, the function expects
+    separate header lines to be separated by a ``b'\r\n'``, but does not allow
+    a ``b'\r\n'`` termination after the final header:
+
+    >>> parse_headers(b'Foo: Bar\r\nSTUFF: Junk') == {'foo': 'Bar', 'stuff': 'Junk'}
+    True
+
+
 .. function:: format_headers(headers)
 
     Format headers for use as the input to :func:`parse_headers()`.
 
     .. versionchanged:: 0.16
-        This function was moved to the :mod:`degu.base` module to the
-        :mod:`degu.misc` module.
+        This function was moved to the :mod:`degu.misc` module to the
+        :mod:`degu.base` module.
 
     Note this is just a simple convenience function and isn't actually what the
     real Degu backend uses.  In particular, this function does no validation on
