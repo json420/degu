@@ -3303,105 +3303,6 @@ class TestFunctions_Py(BackendTestCase):
             ('GET', '/', [], [], None)
         )
 
-    def test_write_chunk(self):
-        # len(data) > MAX_CHUNK_SIZE:
-        data = b'D' * (base.MAX_CHUNK_SIZE + 1)
-        wfile = io.BytesIO()
-        chunk = (None, data)
-        with self.assertRaises(ValueError) as cm:
-            base.write_chunk(wfile, chunk)
-        self.assertEqual(str(cm.exception),
-            'need len(data) <= 16777216; got 16777217'
-        )
-        self.assertEqual(wfile.getvalue(), b'')
-
-        # len(data) > MAX_CHUNK_SIZE, but now with extension:
-        wfile = io.BytesIO()
-        chunk = (('foo', 'bar'), data)
-        with self.assertRaises(ValueError) as cm:
-            base.write_chunk(wfile, chunk)
-        self.assertEqual(str(cm.exception),
-            'need len(data) <= 16777216; got 16777217'
-        )
-        self.assertEqual(wfile.getvalue(), b'')
-
-        # Empty data:
-        wfile = io.BytesIO()
-        chunk = (None, b'')
-        self.assertEqual(base.write_chunk(wfile, chunk), 5)
-        self.assertEqual(wfile.getvalue(), b'0\r\n\r\n')
-
-        # Empty data plus extension:
-        wfile = io.BytesIO()
-        chunk = (('foo', 'bar'),  b'')
-        self.assertEqual(base.write_chunk(wfile, chunk), 13)
-        self.assertEqual(wfile.getvalue(), b'0;foo=bar\r\n\r\n')
-
-        # Small data:
-        wfile = io.BytesIO()
-        chunk = (None, b'hello')
-        self.assertEqual(base.write_chunk(wfile, chunk), 10)
-        self.assertEqual(wfile.getvalue(), b'5\r\nhello\r\n')
-
-        # Small data plus extension:
-        wfile = io.BytesIO()
-        chunk = (('foo', 'bar'), b'hello')
-        self.assertEqual(base.write_chunk(wfile, chunk), 18)
-        self.assertEqual(wfile.getvalue(), b'5;foo=bar\r\nhello\r\n')
-
-        # Larger data:
-        data = b'D' * 7777
-        wfile = io.BytesIO()
-        chunk = (None, data)
-        self.assertEqual(base.write_chunk(wfile, chunk), 7785)
-        self.assertEqual(wfile.getvalue(), b'1e61\r\n' + data + b'\r\n')
-
-        # Larger data plus extension:
-        wfile = io.BytesIO()
-        chunk = (('foo', 'bar'), data)
-        self.assertEqual(base.write_chunk(wfile, chunk), 7793)
-        self.assertEqual(wfile.getvalue(), b'1e61;foo=bar\r\n' + data + b'\r\n')
-
-        # Test random value round-trip with read_chunk():
-        for size in range(1776):
-            # No extension:
-            data = os.urandom(size)
-            total = size + len('{:x}'.format(size)) + 4
-            fp = io.BytesIO()
-            chunk = (None, data)
-            self.assertEqual(base.write_chunk(fp, chunk), total)
-            fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), chunk)
-
-            # With extension:
-            key = random_id()
-            value = random_id()
-            total = size + len('{:x};{}={}'.format(size, key, value)) + 4
-            fp = io.BytesIO()
-            chunk = ((key, value), data)
-            self.assertEqual(base.write_chunk(fp, chunk), total)
-            fp.seek(0)
-            self.assertEqual(base.read_chunk(fp), chunk)
-
-        # Make sure we can round-trip MAX_CHUNK_SIZE:
-        size = base.MAX_CHUNK_SIZE
-        data = os.urandom(size)
-        total = size + len('{:x}'.format(size)) + 4
-        fp = io.BytesIO()
-        chunk = (None, data)
-        self.assertEqual(base.write_chunk(fp, chunk), total)
-        fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), chunk)
-
-        # With extension:
-        key = random_id()
-        value = random_id()
-        total = size + len('{:x};{}={}'.format(size, key, value)) + 4
-        chunk = ((key, value), data)
-        fp = io.BytesIO()
-        self.assertEqual(base.write_chunk(fp, chunk), total)
-        fp.seek(0)
-        self.assertEqual(base.read_chunk(fp), chunk)
 
 class TestFunctions_C(TestFunctions_Py):
     backend = _base
@@ -3979,6 +3880,8 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_readchunk(self):
+        write_chunk = self.getattr('write_chunk')
+    
         rfile = io.BytesIO(b'0\r\n\r\n')
         body = self.ChunkedBody(rfile)
         self.assertEqual(sys.getrefcount(rfile), 5)
@@ -4230,7 +4133,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             chunks = random_chunks2(i)
             wfile = io.BytesIO()
             for chunk in chunks:
-                base.write_chunk(wfile, chunk)
+                write_chunk(wfile, chunk)
             data = wfile.getvalue()
             del wfile
 
@@ -4270,13 +4173,15 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                 self.assertEqual(sys.getrefcount(rfile), 2)
 
     def test_read(self):
+        write_chunk = self.getattr('write_chunk')
+
         for i in range(1, 10):
             chunks = random_chunks2(i)
             data = b''.join(c[1] for c in chunks)
             wfile = io.BytesIO()
             total = 0
             for chunk in chunks:
-                total += base.write_chunk(wfile, chunk)
+                total += write_chunk(wfile, chunk)
             cdata = wfile.getvalue()
             self.assertEqual(wfile.tell(), total)
             self.assertEqual(len(cdata), total)
@@ -4317,7 +4222,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         wfile = io.BytesIO()
         total = 0
         for good in goodchunks:
-            total += base.write_chunk(wfile, good)
+            total += write_chunk(wfile, good)
         cdata = wfile.getvalue()
         self.assertEqual(wfile.tell(), total)
         self.assertEqual(len(cdata), total)
@@ -4353,7 +4258,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         wfile = io.BytesIO()
         total = 0
         for bad in badchunks:
-            total += base.write_chunk(wfile, bad)
+            total += write_chunk(wfile, bad)
         cdata = wfile.getvalue()
         self.assertEqual(wfile.tell(), total)
         self.assertEqual(len(cdata), total)
@@ -4415,13 +4320,15 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             yield self.get_rfile_plus_body(d, mock=True, rcvbuf=3)
 
     def test_write_to(self):
+        write_chunk = self.getattr('write_chunk')
+
         extra = os.urandom(1776)
         for count in range(1, 10):
             chunks = random_chunks2(count)
             wfile = io.BytesIO()
             total = 0
             for chunk in chunks:
-                total += base.write_chunk(wfile, chunk)
+                total += write_chunk(wfile, chunk)
             data = wfile.getvalue()
             self.assertEqual(wfile.tell(), total)
             self.assertEqual(len(data), total)
@@ -4494,7 +4401,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             wfile = io.BytesIO()
             total = 0
             for chunk in chunks[:-1]:
-                total += base.write_chunk(wfile, chunk)
+                total += write_chunk(wfile, chunk)
             data = wfile.getvalue()
             self.assertEqual(wfile.tell(), total)
             self.assertEqual(len(data), total)

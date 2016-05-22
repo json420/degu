@@ -42,6 +42,7 @@ from degu.sslhelpers import random_id
 from degu.misc import TempPKI, TempServer, TempSSLServer
 from degu.client import Client, SSLClient, build_client_sslctx
 from degu.base import _TYPE_ERROR
+from degu.misc import write_chunk
 from degu import rgi, base, server
 
 
@@ -685,7 +686,7 @@ CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
 wfile = io.BytesIO()
 for data in CHUNKS:
-    base.write_chunk(wfile, (None, data))
+    write_chunk(wfile, (None, data))
 ENCODED_CHUNKS = wfile.getvalue()
 del wfile
 

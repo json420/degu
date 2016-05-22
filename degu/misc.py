@@ -36,6 +36,19 @@ import logging
 from .base import _TYPE_ERROR
 from .sslhelpers import PKI as _PKI
 from .server import Server, SSLServer, Request
+try:
+    from ._base import (
+        parse_headers,
+        write_chunk,
+    )
+except ImportError:
+    from ._basepy import (
+        parse_headers,
+        write_chunk,
+    )
+
+
+__all__ = ('parse_headers', 'write_chunk')
 
 
 log = logging.getLogger(__name__)
