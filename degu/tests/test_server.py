@@ -679,8 +679,8 @@ class TestSSLServer(TestCase):
 
 
 CHUNKS = []
-for i in range(5):
-    size = random.randint(1, 2000)
+for i in range(2):
+    size = random.randint(1, 500)
     CHUNKS.append(os.urandom(size))
 CHUNKS.append(b'')
 CHUNKS = tuple(CHUNKS)
@@ -808,16 +808,16 @@ class TestLiveServer(TestCase):
             (200, 'OK', {}, None)
         )
 
-        # Wait till 1 second *before* the timeout should happen, to make sure
+        # Wait till 1.5 seconds *before* the timeout should happen, to make sure
         # connection is still open:
         time.sleep(timeout - 1)
         self.assertEqual(conn.request('POST', '/foo', {}, None),
             (200, 'OK', {}, None)
         )
 
-        # Now wait till 1 second *after* the timeout should have happened, to
+        # Now wait till 1.5 seconds *after* the timeout should have happened, to
         # make sure the connection was closed by the server:
-        time.sleep(timeout + 1)
+        time.sleep(timeout + 1.5)
         with self.assertRaises(ConnectionError):
             conn.request('POST', '/foo', {}, None)
         self.assertIs(conn.closed, True)
@@ -836,7 +836,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
-            {'content-length': 264, 'content-type': 'application/json'}
+            {'content-length': 132, 'content-type': 'application/json'}
         )
         self.assertIsInstance(response.body, base.bodies.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
@@ -929,9 +929,9 @@ class TestLiveServer(TestCase):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, True)
         (httpd, client) = self.build_with_app(app)
-        for i in range(17):
+        for i in range(11):
             conn = client.connect()
-            for j in range(69):
+            for j in range(17):
                 response = conn.request('GET', '/', {}, None)
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
@@ -945,7 +945,7 @@ class TestLiveServer(TestCase):
         marker = os.urandom(16)
         app = AppWithConnectionHandler(marker, False)
         (httpd, client) = self.build_with_app(app)
-        for i in range(17):
+        for i in range(11):
             conn = client.connect()
             with self.assertRaises(ConnectionError):
                 conn.request('GET', '/', {}, None)
@@ -1004,7 +1004,7 @@ class TestLiveServer(TestCase):
 
     def test_max_connections(self):
         uri = '/status/404/Nope'
-        for value in (17, 27):
+        for value in (11, 17):
             (httpd, client) = self.build_with_app(standard_harness_app,
                                                   max_connections=value)
             allconns = []
