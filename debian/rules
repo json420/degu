@@ -20,7 +20,7 @@ override_dh_auto_build:
 # making scan-build unhappy with Python 3.5rc1 on Wily:
 override_dh_auto_test:
 	set -ex; for python in $(shell py3versions -r); do \
-		$$python -Werror setup.py test; \
+		$$python -Werror setup.py test --skip-slow; \
 		scan-build --status-bugs -analyze-headers \
 			$$python setup.py build_ext -i; \
 		$$python -c "from degu import _base"; \

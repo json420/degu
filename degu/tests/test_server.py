@@ -771,6 +771,10 @@ class AppWithConnectionHandler:
 class TestLiveServer(TestCase):
     address = degu.IPv4_LOOPBACK
 
+    def setUp(self):
+        if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
+            self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
+
     def build_with_app(self, app, **options):
         httpd = TempServer(self.address, rgi.Validator(app), **options)
         client = Client(httpd.address)
@@ -796,8 +800,6 @@ class TestLiveServer(TestCase):
             $ DEGU_TEST_SKIP_SLOW=true ./setup.py test
 
         """
-        if os.environ.get('DEGU_TEST_SKIP_SLOW') == 'true':
-            self.skipTest('skipping as DEGU_TEST_SKIP_SLOW is set')
 
         timeout = 3
         (httpd, client) = self.build_with_app(timeout_app, timeout=timeout)
