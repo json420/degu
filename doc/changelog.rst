@@ -4,8 +4,8 @@ Changelog
 
 .. _version-0.16:
 
-0.16 (unreleased)
------------------
+0.16 (May 2016)
+---------------
 
 `Download Degu 0.16`_
 
