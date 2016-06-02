@@ -24,6 +24,53 @@ A collection of RGI server applications for common scenarios.
 """
 
 
+_METHODS = {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}
+
+
+class AllowedMethods:
+    __slots__ = ('methods',)
+
+    def __init__(self, *methods):
+        for m in methods:
+            if m not in _METHODS:
+                raise ValueError('bad method: {!r}'.format(m))
+        self.methods = methods
+
+    def __repr__(self):
+        return 'AllowedMethods({})'.format(
+            ', '.join(repr(m) for m in self.methods)
+        )
+
+    def __call__(self, app):
+        return MethodFilter(app, self)
+
+    def isallowed(self, m):
+        return m in self.methods
+
+
+class MethodFilter:
+    __slots__ = ('app', 'allowed_methods')
+
+    def __init__(self, app, allowed_methods):
+        if not callable(app):
+            raise TypeError(
+                'app not callable: {!r}'.format(app)
+            )
+        if type(allowed_methods) is not AllowedMethods:
+            raise TypeError(
+                'allowed_methods: need a {!r}; got a {!r}: {!r}'.format(
+                    AllowedMethods, type(allowed_methods), allowed_methods
+                )
+            )
+        self.app = app
+        self.allowed_methods = allowed_methods
+
+    def __call__(self, session, request, api):
+        if self.allowed_methods.isallowed(request.method):
+            return self.app(session, request, api)
+        return (405, 'Method Not Allowed', {}, None)
+
+
 class RouterApp:
     """
     Generic RGI routing middleware.
