@@ -928,7 +928,7 @@ The Degu server will log when a new connection is received and will likewise
 log when that same connection is closed, with some summary information about
 how many requests were handled and why the connection was closed.
 
-For example, if you run the ``benchmark.py`` mount from within the source tree,
+For example, if you run the ``benchmark.py`` script from within the source tree,
 you'll see logging like this::
 
     INFO	Thread-5	+ ('::1', 40682, 0, 0) New connection
