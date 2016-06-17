@@ -893,14 +893,14 @@ Both are documented below.
         >>> r.uri
         '/foo/bar?k=v'
 
-        But note what is return after we shift the path once:
+        But note what is returned after we shift the path once:
 
         >>> r.shift_path()
         'foo'
         >>> r.build_proxy_uri()
         '/bar?k=v'
-        
-        Or if we shift the path again:
+
+        Or after we shift the path again:
 
         >>> r.shift_path()
         'bar'

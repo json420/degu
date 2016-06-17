@@ -680,9 +680,8 @@ Breaking API changes:
         their *rfile* to have a ``readinto()`` method, no longer use the
         ``read()`` method.
 
-        However, all most all Python "file-like" objects implement a
-        ``readinto()`` method, so for most folks, this is unlikely to cause any
-        breakage.
+        However, most all Python "file-like" objects implement a ``readinto()``
+        method, so for most folks, this is unlikely to cause any breakage.
 
     *   The ``body.closed`` attribute has been dropped from the four HTTP body
         classes:
@@ -795,7 +794,7 @@ Breaking API changes:
             *   :attr:`degu.base.ChunkedBody.chunked`
 
         These attributes allow you to test whether or not an HTTP input body
-        uses chunked Transfer-Encoded, without have to test the exact Python
+        uses chunked Transfer-Encoded, without having to test the exact Python
         type.
 
 
