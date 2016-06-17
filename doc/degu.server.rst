@@ -862,6 +862,10 @@ Both are documented below.
 
         For more examples, see the :ref:`eg-routing` section in the tutorial.
 
+        .. versionchanged:: 0.16
+            When :attr:`Request.path` is empty, this method now returns ``None``
+            rather than raising an ``IndexError``
+
     .. method:: build_proxy_uri()
 
         Build URI from current request path plus request query.
