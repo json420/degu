@@ -4961,8 +4961,8 @@ _Connection_request(Connection *self, DeguRequest *dr)
         return NULL;
     }
 
-    /* Only PUT and POST requests can have a body */
-    if (dr->body != Py_None && dr->method != str_PUT && dr->method != str_POST) {
+    /* Only POST and PUT requests can have a body */
+    if (dr->body != Py_None && dr->method != str_POST && dr->method != str_PUT) {
         PyErr_Format(PyExc_ValueError,
             "when method is %R, body must be None; got a %R",
             dr->method, Py_TYPE(dr->body)
@@ -5010,19 +5010,23 @@ cleanup:
     return response;
 }
 
-
 static PyObject *
 Connection_request(Connection *self, PyObject *args)
 {
-    PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *response = NULL;
 
-    if (! PyArg_ParseTuple(args, "OOOO:request",
-            &method, &dr.uri, &dr.headers, &dr.body)) {
-        goto error;
+    if (PyTuple_GET_SIZE(args) != 4) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.request() requires 4 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
+        return NULL;
     }
-    _SET(dr.method, _check_method(method))
+    _SET(dr.method, _check_method(PyTuple_GET_ITEM(args, 0)))
+    dr.uri = PyTuple_GET_ITEM(args, 1);
+    dr.headers = PyTuple_GET_ITEM(args, 2);
+    dr.body = PyTuple_GET_ITEM(args, 3);
     _SET(response, _Connection_request(self, &dr))
 
 error:
@@ -5033,10 +5037,18 @@ static PyObject *
 Connection_put(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OOO:put", &dr.uri, &dr.headers, &dr.body)) {
+
+    if (PyTuple_GET_SIZE(args) != 3) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.put() requires 3 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_PUT;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
+    dr.body = PyTuple_GET_ITEM(args, 2);
     return _Connection_request(self, &dr);
 }
 
@@ -5044,10 +5056,18 @@ static PyObject *
 Connection_post(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OOO:post", &dr.uri, &dr.headers, &dr.body)) {
+
+    if (PyTuple_GET_SIZE(args) != 3) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.post() requires 3 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_POST;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
+    dr.body = PyTuple_GET_ITEM(args, 2);
     return _Connection_request(self, &dr);
 }
 
@@ -5055,10 +5075,17 @@ static PyObject *
 Connection_get(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OO:get", &dr.uri, &dr.headers)) {
+
+    if (PyTuple_GET_SIZE(args) != 2) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.get() requires 2 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_GET;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
     dr.body = Py_None;
     return _Connection_request(self, &dr);
 }
@@ -5067,10 +5094,17 @@ static PyObject *
 Connection_head(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OO:head", &dr.uri, &dr.headers)) {
+
+    if (PyTuple_GET_SIZE(args) != 2) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.head() requires 2 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_HEAD;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
     dr.body = Py_None;
     return _Connection_request(self, &dr);
 }
@@ -5079,10 +5113,17 @@ static PyObject *
 Connection_delete(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    if (! PyArg_ParseTuple(args, "OO:delete", &dr.uri, &dr.headers)) {
+
+    if (PyTuple_GET_SIZE(args) != 2) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.delete() requires 2 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_DELETE;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
     dr.body = Py_None;
     return _Connection_request(self, &dr);
 }
@@ -5091,18 +5132,23 @@ static PyObject *
 Connection_get_range(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *start = NULL;
-    PyObject *stop = NULL;
     PyObject *range = NULL;
     PyObject *ret = NULL;
 
-    if (! PyArg_ParseTuple(args, "OOOO:get_range",
-            &dr.uri, &dr.headers, &start, &stop)) {
+    if (PyTuple_GET_SIZE(args) != 4) {
+        PyErr_Format(PyExc_TypeError,
+            "Connection.get_range() requires 4 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         return NULL;
     }
     dr.method = str_GET;
+    dr.uri = PyTuple_GET_ITEM(args, 0);
+    dr.headers = PyTuple_GET_ITEM(args, 1);
     dr.body = Py_None;
-    _SET(range, _Range_PyNew(start, stop))
+    _SET(range,
+        _Range_PyNew(PyTuple_GET_ITEM(args, 2), PyTuple_GET_ITEM(args, 3))
+    )
     if (! _set_default_header(dr.headers, key_range, range)) {
         goto error;
     }
