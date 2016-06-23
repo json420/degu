@@ -1283,9 +1283,9 @@ _parse_key(DeguSrc src, DeguDst dst)
 static inline PyObject *
 _parse_val(DeguSrc src)
 {
-    if (src.len < 1) {
-        PyErr_SetString(PyExc_ValueError, "header value is empty");
-        return NULL; 
+    if (src.len == 0) {
+        Py_INCREF(str_empty);
+        return str_empty;
     }
     return _decode(src, VAL_MASK, "bad bytes in header value: %R");
 }
