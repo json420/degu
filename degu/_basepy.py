@@ -391,8 +391,7 @@ def parse_header_name(src):
 
 def _parse_val(src):
     if len(src) < 1:
-        return ''
-        #raise ValueError('header value is empty')
+        raise ValueError('header value is empty')
     if VAL.issuperset(src):
         return src.decode('ascii')
     raise ValueError('bad bytes in header value: {!r}'.format(src))

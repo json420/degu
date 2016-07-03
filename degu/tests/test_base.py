@@ -1560,10 +1560,9 @@ class TestParsingFunctions_Py(BackendTestCase):
         with self.assertRaises(ValueError) as cm:
             parse_headers(b'K: ')
         self.assertEqual(str(cm.exception), "header line too short: b'K: '")
-#        with self.assertRaises(ValueError) as cm:
-#            parse_headers(b'KK: ')
-#        self.assertEqual(str(cm.exception), 'header value is empty')
-        self.assertEqual(parse_headers(b'KK: '), {'kk': ''})
+        with self.assertRaises(ValueError) as cm:
+            parse_headers(b'KK: ')
+        self.assertEqual(str(cm.exception), 'header value is empty')
 
         length =  b'Content-Length: 17'
         encoding = b'Transfer-Encoding: chunked'
