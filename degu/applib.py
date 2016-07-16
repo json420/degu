@@ -71,7 +71,7 @@ class MethodFilter:
         return (405, 'Method Not Allowed', {}, None)
 
 
-class RouterApp:
+class Router:
     """
     Generic RGI routing middleware.
 
@@ -83,8 +83,8 @@ class RouterApp:
     >>> def bar_app(session, request, api):
     ...     return (200, 'OK', {}, b'bar')
     ...
-    >>> from degu.applib import RouterApp
-    >>> router = RouterApp({'foo': foo_app, 'bar': bar_app})
+    >>> from degu.applib import Router
+    >>> router = Router({'foo': foo_app, 'bar': bar_app})
 
     """
 
@@ -117,7 +117,7 @@ class RouterApp:
         return handler(session, request, api)
 
 
-class ProxyApp:
+class Proxy:
     """
     Generic RGI reverse-proxy application.
     """
