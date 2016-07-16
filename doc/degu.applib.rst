@@ -14,10 +14,10 @@ and middleware components for common scenarios.
     own risk!
 
 
-:class:`RouterApp`
-------------------
+:class:`Router`
+---------------
 
-.. class:: RouterApp(appmap)
+.. class:: Router(appmap)
 
     Generic RGI routing middleware.
 
@@ -27,8 +27,12 @@ and middleware components for common scenarios.
     >>> def bar_app(session, request, api):
     ...     return (200, 'OK', {}, b'bar')
     ...
-    >>> from degu.applib import RouterApp
-    >>> router = RouterApp({'foo': foo_app, 'bar': bar_app})
+    >>> from degu.applib import Router
+    >>> router = Router({'foo': foo_app, 'bar': bar_app})
+
+    .. versionchanged:: 0.17
+
+        This class was renamed from ``RouterApp`` to :class:`Router`.
 
     .. attribute:: appmap
 
@@ -40,12 +44,16 @@ and middleware components for common scenarios.
 
 
 
-:class:`ProxyApp`
------------------
+:class:`Proxy`
+--------------
 
-.. class:: ProxyApp(client, key='conn')
+.. class:: Proxy(client, key='conn')
 
     Generic RGI reverse-proxy application.
+
+    .. versionchanged:: 0.17
+
+        This class was renamed from ``ProxyApp`` to :class:`Proxy`.
 
     .. attribute:: client
 
