@@ -30,6 +30,10 @@ and middleware components for common scenarios.
     >>> from degu.applib import Router
     >>> router = Router({'foo': foo_app, 'bar': bar_app})
 
+    .. versionchanged:: 0.17
+
+        This class was renamed from ``RouterApp`` to :class:`Router`.
+
     .. attribute:: appmap
 
         The *appmap* argument passed to the constructor.
@@ -46,6 +50,10 @@ and middleware components for common scenarios.
 .. class:: Proxy(client, key='conn')
 
     Generic RGI reverse-proxy application.
+
+    .. versionchanged:: 0.17
+
+        This class was renamed from ``ProxyApp`` to :class:`Proxy`.
 
     .. attribute:: client
 
