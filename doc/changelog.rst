@@ -22,6 +22,18 @@ Breaking API changes:
         :class:`degu.applib.Proxy` are RGI middleware components.
 
 
+New API additions:
+
+    *   The :class:`degu.applib.AllowedMethods` and
+        :class:`degu.applib.MethodFilter` classes were added to the
+        :mod:`degu.applib` module.
+
+        Note that these new classes, along with everything else in the
+        :mod:`degu.applib` module, are not yet API stable!  These items might
+        yet still undergo backward-incompatible API changes, be renamed, or be
+        removed entirely.
+
+
 
 .. _version-0.16:
 
