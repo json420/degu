@@ -8,6 +8,19 @@ Changelog
 
 `Download Degu 0.17`_
 
+Breaking API changes:
+
+    *   In the (currently non-API-stable) :mod:`degu.applib` module:
+
+        *   The ``RouterApp`` class was renamed to :class:`degu.applib.Router`
+
+        *   The ``ProxyApp`` class was renamed to :class:`degu.applib.Proxy`
+
+        This rename was done both for brevity and to correct naming ambiguity
+        between RGI middleware and RGI leaf applications.  Their new names
+        better reflect that both :class:`degu.applib.Router` and
+        :class:`degu.applib.Proxy` are RGI middleware components.
+
 
 
 .. _version-0.16:
