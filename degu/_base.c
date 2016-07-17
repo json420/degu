@@ -5215,23 +5215,14 @@ error:
 static PyObject *
 _build_410_response(void)
 {
+    PyObject *ret = NULL;
+
     PyObject *headers = PyDict_New();
-    if (headers == NULL) {
-        return NULL;
+    if (headers != NULL) {
+        ret = PyTuple_Pack(4, int_410, str_Gone, headers, Py_None);
     }
-    PyObject *response = PyTuple_New(4);
-    if (response == NULL) {
-        Py_CLEAR(headers);
-        return NULL;
-    }
-    Py_INCREF(int_410);
-    Py_INCREF(str_Gone);
-    Py_INCREF(Py_None);
-    PyTuple_SET_ITEM(response, 0, int_410);
-    PyTuple_SET_ITEM(response, 1, str_Gone);
-    PyTuple_SET_ITEM(response, 2, headers);
-    PyTuple_SET_ITEM(response, 3, Py_None);
-    return response;
+    Py_CLEAR(headers);
+    return ret;
 }
 
 static PyObject *
