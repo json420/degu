@@ -61,6 +61,7 @@ if args.unix:
     tmp = TempDir()
     address = tmp.join('my.socket')
 else:
+    tmp = None
     address = degu.IPv6_LOOPBACK
 server = TempServer(address, ping_pong_app, max_requests=args.requests)
 if args.send_host:
@@ -77,8 +78,8 @@ for i in range(args.runs):
         conn.post('/', {}, request_body).body.read()
     deltas.append(time.monotonic() - start)
     conn.close()
-del conn
-del server
+del tmp
+server.terminate()
 
 rates = tuple(args.requests / d for d in deltas)
 _max = max(rates)

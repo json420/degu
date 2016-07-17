@@ -65,6 +65,7 @@ if args.unix:
     address1 = tmp.join('server1.socket')
     address2 = tmp.join('server2.socket')
 else:
+    tmp = None
     address1 = degu.IPv6_LOOPBACK
     address2 = degu.IPv6_LOOPBACK
 
@@ -89,7 +90,7 @@ for i in range(args.runs):
         conn.get('/', {})
     deltas.append(time.monotonic() - start)
     conn.close()
-del conn
+del tmp
 server2.terminate()
 server1.terminate()
 
