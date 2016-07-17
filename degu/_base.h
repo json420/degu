@@ -1327,10 +1327,6 @@ static PyTypeObject RouterType = {
     .tp_finalize       = NULL,
 };
 
-#define IS_ROUTER(obj) (Py_TYPE((obj)) == &RouterType)
-#define ROUTER(obj) ((Router *)(obj))
-
-
 
 /***************    BEGIN GENERATED TABLES    *********************************/
 static const uint8_t _NAME[256] = {
