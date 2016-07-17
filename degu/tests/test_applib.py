@@ -475,7 +475,7 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
 
 
-class TestProxy(TestCase):
+class TestProxyApp(TestCase):
     def test_live(self):
         class Endpoint:
             def __init__(self, marker):
@@ -489,7 +489,7 @@ class TestProxy(TestCase):
         server1 = TempServer(('127.0.0.1', 0), app1)
         client1 = Client(server1.address)
 
-        app2 = applib.Proxy(client1)
+        app2 = applib.ProxyApp(client1)
         server2 = TempServer(('127.0.0.1', 0), app2)
         client2 = Client(server2.address)
 

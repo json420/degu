@@ -26,10 +26,12 @@ A collection of RGI server applications for common scenarios.
 try:
     from ._base import (
         Router,
+        ProxyApp,
     )
 except ImportError:
     from ._basepy import (
         Router,
+        ProxyApp,
     )
 
 
@@ -37,7 +39,7 @@ __all__ = (
     'AllowedMethods',
     'MethodFilter',
     'Router',
-    'Proxy',
+    'ProxyApp',
 )
 
 
@@ -87,26 +89,3 @@ class MethodFilter:
             return self.app(session, request, api)
         return (405, 'Method Not Allowed', {}, None)
 
-
-class Proxy:
-    """
-    Generic RGI reverse-proxy application.
-    """
-
-    __slots__ = ('client', 'key')
-
-    def __init__(self, client, key='conn'):
-        self.client = client
-        self.key = key
-
-    def __call__(self, session, request, api):
-        conn = session.store.get(self.key)
-        if conn is None:
-            conn = self.client.connect()
-            session.store[self.key] = conn
-        return conn.request(
-            request.method,
-            request.build_proxy_uri(),
-            request.headers,
-            request.body,
-        )

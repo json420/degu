@@ -1089,6 +1089,8 @@ typedef struct {
     bool closed;
 } Connection;
 
+static PyObject * _Connection_request(Connection *, DeguRequest *);
+
 static PyMemberDef Connection_members[] = {
     {"sock",         T_OBJECT, offsetof(Connection, sock),         READONLY, NULL},
     {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
@@ -1173,6 +1175,8 @@ static PyTypeObject ConnectionType = {
     .tp_version_tag    = 0,
     .tp_finalize       = NULL,
 };
+
+#define CONNECTION(obj) ((Connection *)(obj))
 
 
 /******************************************************************************
@@ -1313,6 +1317,77 @@ static PyTypeObject RouterType = {
     .tp_descr_set      = NULL,
     .tp_dictoffset     = 0,
     .tp_init           = (initproc)Router_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
+};
+
+
+/******************************************************************************
+ * ProxyApp object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *client;
+    PyObject *key;
+} ProxyApp;
+
+static PyMemberDef ProxyApp_members[] = {
+    {"client",  T_OBJECT, offsetof(ProxyApp, client),  READONLY, NULL},
+    {"key",     T_OBJECT, offsetof(ProxyApp, key),     READONLY, NULL},
+    {NULL}
+};
+
+static void ProxyApp_dealloc(ProxyApp *);
+static int ProxyApp_init(ProxyApp *, PyObject *, PyObject *);
+static PyObject * ProxyApp_call(ProxyApp *, PyObject *, PyObject *);
+
+static PyTypeObject ProxyAppType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name           = "degu._base.ProxyApp",
+    .tp_basicsize      = sizeof(ProxyApp),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)ProxyApp_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    .tp_as_async       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = (ternaryfunc)ProxyApp_call,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "ProxyApp(appmap)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = ProxyApp_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)ProxyApp_init,
     .tp_alloc          = NULL,
     .tp_new            = NULL,
     .tp_free           = NULL,

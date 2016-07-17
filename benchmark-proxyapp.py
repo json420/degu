@@ -43,15 +43,16 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='\t'.join([
         '%(levelname)s',
+        '%(processName)s',
         '%(threadName)s',
         '%(message)s',
     ]),
 )
 
 if args.py:
-    from degu._basepy import Router
+    from degu._basepy import ProxyApp
 else:
-    from degu._base import Router
+    from degu._base import ProxyApp
 
 
 #@AllowedMethods('GET')
@@ -59,39 +60,39 @@ def app(session, request, bodies):
     return (200, 'OK', {}, None)
 
 
-router = Router({'a':
-    Router({'b':
-        Router({'c':
-            Router({'d':
-                Router({'e': app})
-            })
-        })
-    })
-})
-
-
 if args.unix:
     tmp = TempDir()
-    address = tmp.join('my.socket')
+    address1 = tmp.join('server1.socket')
+    address2 = tmp.join('server2.socket')
 else:
-    address = degu.IPv6_LOOPBACK
-server = TempServer(address, router, max_requests=args.requests)
+    tmp = None
+    address1 = degu.IPv6_LOOPBACK
+    address2 = degu.IPv6_LOOPBACK
+
+server1 = TempServer(address1, app, max_requests=args.requests)
 if args.send_host:
-    client = Client(server.address)
+    client1 = Client(server1.address)
 else:
-    client = Client(server.address, host=None)
+    client1 = Client(server1.address, host=None)
+
+server2 = TempServer(address2, ProxyApp(client1), max_requests=args.requests)
+if args.send_host:
+    client2 = Client(server2.address)
+else:
+    client2 = Client(server2.address, host=None)
 
 
 deltas = []
 for i in range(args.runs):
-    conn = client.connect()
+    conn = client2.connect()
     start = time.monotonic()
     for i in range(args.requests):
-        conn.get('/a/b/c/d/e', {})
+        conn.get('/', {})
     deltas.append(time.monotonic() - start)
     conn.close()
-del conn
-del server
+del tmp
+server2.terminate()
+server1.terminate()
 
 rates = tuple(args.requests / d for d in deltas)
 _max = max(rates)

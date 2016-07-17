@@ -10,16 +10,13 @@ Changelog
 
 Breaking API changes:
 
-    *   In the (currently non-API-stable) :mod:`degu.applib` module:
+    *   The ``RouterApp`` class in the :mod:`degu.applib` module was renamed to
+        :class:`degu.applib.Router`.
 
-        *   The ``RouterApp`` class was renamed to :class:`degu.applib.Router`
-
-        *   The ``ProxyApp`` class was renamed to :class:`degu.applib.Proxy`
-
-        This rename was done both for brevity and to correct naming ambiguity
-        between RGI middleware and RGI leaf applications.  Their new names
-        better reflect that both :class:`degu.applib.Router` and
-        :class:`degu.applib.Proxy` are RGI middleware components.
+        This rename was done to correct naming ambiguity between RGI middleware
+        components and RGI leaf applications.  The new name better reflects that
+        :class:`degu.applib.Router` is an RGI middleware component (as opposed
+        to :class:`degu.applib.ProxyApp`, which is an RGI leaf application).
 
 
 New API additions:
@@ -32,6 +29,33 @@ New API additions:
         :mod:`degu.applib` module, are not yet API stable!  These items might
         yet still undergo backward-incompatible API changes, be renamed, or be
         removed entirely.
+
+
+Performance improvements:
+
+    *   :class:`degu.applib.Router` and :class:`degu.applib.ProxyApp` now have
+        high-performance C implementations that are used when the Degu
+        `C extension`_ is available.
+
+        In part this is an effort to make sure the public Python API in
+        :mod:`degu.applib` is constructed such that these standard Degu RGI
+        components can be easily implemented as C extensions and, when needed,
+        can reach within the internal C API for optimization purposes.
+
+        But this is also just part of the continued effort to make sure the
+        Degu client and server are highly optimized for everything that happens
+        at a per-request frequency (or higher).  In real-world scenarios, these
+        two new C implementations can provide noteworthy performance
+        improvements when it comes to round-trip throughput for sequential
+        requests made through the same connection (eg, a 10% performance
+        improvement can easily be achieved in the right scenario).
+
+    *   The C implementation of :meth:`degu.client.Connection.request()` and the
+        related :class:`degu.client.Connection` request shortcut methods are now
+        slightly faster.  Although the round-trip performance improvement is
+        rather small (in the range of 1 to 2%), this was an easy change and the
+        performance improvement can be greater in cache-constrained systems like
+        a Raspberry Pi 2, etc.
 
 
 
