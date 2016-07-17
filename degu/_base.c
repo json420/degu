@@ -68,7 +68,7 @@ static PyObject *str_Gone              = NULL;  //  'Gone'
 static PyObject *bytes_empty           = NULL;  //  b''
 static PyObject *bytes_CRLF            = NULL;  //  b'\r\n'
 static PyObject *int_MAX_LINE_LEN      = NULL;  //  4096
-static PyObject *int_410               = NULL;  // 410
+static PyObject *int_410               = NULL;  //  410
 
 /* PyModule_AddIntMacro() wont work for this on 32-bit systems */
 static PyObject *int_MAX_LENGTH        = NULL;  // 9999999999999999ull
