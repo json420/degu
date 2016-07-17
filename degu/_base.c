@@ -40,6 +40,7 @@ static PyObject *attr_send             = NULL;  //  'send'
 static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_readline         = NULL;  //  'readline'
+static PyObject *attr_connect          = NULL;  //  'connect'
 
 /* Non-interned `str` used for header keys */
 static PyObject *key_content_length    = NULL;  //  'content-length'
@@ -61,8 +62,9 @@ static PyObject *str_DELETE            = NULL;  //  'DELETE'
 static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
 static PyObject *str_slash             = NULL;  //  '/'
-static PyObject *msg_max_requests      = NULL;  //
 static PyObject *str_Gone              = NULL;  //  'Gone'
+static PyObject *str_conn              = NULL;  //  'conn'
+static PyObject *msg_max_requests      = NULL;  //
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
@@ -90,6 +92,7 @@ _init_all_globals(PyObject *module)
     _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_readline,        PyUnicode_InternFromString("readline"))
+    _SET(attr_connect,         PyUnicode_InternFromString("connect"))
 
     /* Init non-interned header keys */
     _SET(key_content_length,    PyUnicode_FromString("content-length"))
@@ -111,8 +114,9 @@ _init_all_globals(PyObject *module)
     _SET(str_OK,     PyUnicode_FromString("OK"))
     _SET(str_empty,  PyUnicode_FromString(""))
     _SET(str_slash,  PyUnicode_FromString("/"))
+    _SET(str_Gone,   PyUnicode_FromString("Gone"))
+    _SET(str_conn,   PyUnicode_FromString("conn"))
     _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
-    _SET(str_Gone, PyUnicode_FromString("Gone"))
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
@@ -5266,6 +5270,96 @@ error:
 
 
 /******************************************************************************
+ * Proxy object.
+ ******************************************************************************/
+static void
+Proxy_dealloc(Proxy *self)
+{
+    Py_CLEAR(self->client);
+    Py_CLEAR(self->key);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Proxy_init(Proxy *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"client", "key", NULL};
+    PyObject *client = NULL;
+    PyObject *key = str_conn;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O|O:Proxy", keys,
+            &client, &key)) {
+        goto error;
+    }
+    _SET_AND_INC(self->client, client)
+    _SET_AND_INC(self->key, key)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
+{
+    /* `dr.uri` and `conn` are owned references, must be cleared */
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *conn = NULL; 
+    PyObject *ret = NULL;
+
+    if (PyTuple_GET_SIZE(args) != 3) {
+        PyErr_Format(PyExc_TypeError,
+            "Proxy.__call__() requires exactly 3 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
+        goto error;
+    }
+    PyObject *session = PyTuple_GET_ITEM(args, 0);
+    PyObject *request = PyTuple_GET_ITEM(args, 1);
+
+    if (! _check_type("session", session, &SessionType)) {
+        goto error;
+    }
+    if (! _check_type("request", request, &RequestType)) {
+        goto error;
+    }
+    PyObject *store = SESSION(session)->store;
+
+    /* Create connection if it isn't aready in session.store for this thread */
+    conn = PyDict_GetItem(store, self->key);
+    if (conn == NULL) {
+        conn = PyObject_CallMethodObjArgs(self->client, attr_connect, NULL);
+        if (conn == NULL || PyDict_SetItem(store, self->key, conn) != 0) {
+            goto error;
+        }
+    }
+    else {
+        /* So we own a reference */
+        Py_INCREF(conn);
+    }
+
+    /* Make sure `conn` is a Connection instance */
+    if (! _check_type("conn", conn, &ConnectionType)) {
+        goto error;
+    }
+
+    /* Build proxy URI and fill-in DeguRequest */
+    _SET(dr.uri, Request_build_proxy_uri(REQUEST(request)))
+    dr.method = REQUEST(request)->method;
+    dr.headers = REQUEST(request)->headers;
+    dr.body = REQUEST(request)->body;
+
+    /* Make request to upstream server, return response unmodified */
+    ret = _Connection_request(CONNECTION(conn), &dr);
+
+error:
+    Py_CLEAR(dr.uri);
+    Py_CLEAR(conn);
+    return ret;
+}
+
+
+/******************************************************************************
  * Module init.
  ******************************************************************************/
 static bool
@@ -5342,6 +5436,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Router", (PyObject *)&RouterType)
+
+    ProxyType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ProxyType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Proxy", (PyObject *)&ProxyType)
 
     if (! _init_all_namedtuples(module)) {
         goto error;

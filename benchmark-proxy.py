@@ -49,11 +49,10 @@ logging.basicConfig(
     ]),
 )
 
-#if args.py:
-#    from degu._basepy import Router
-#else:
-#    from degu._base import Router
-from degu.applib import Proxy
+if args.py:
+    from degu._basepy import Proxy
+else:
+    from degu._base import Proxy
 
 
 #@AllowedMethods('GET')
