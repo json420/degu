@@ -139,9 +139,9 @@ def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
 
 _OUTGOING_STR = frozenset(chr(i) for i in range(128))
 
-def _check_str(name, obj):
+def _check_str(name, obj, minlen=1):
     _check_type(name, obj, str)
-    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+    if len(obj) < minlen or not _OUTGOING_STR.issuperset(obj):
         raise ValueError(
             'bad {}: {!r}'.format(name, obj)
         )
@@ -1850,4 +1850,45 @@ class Connection:
     def get_range(self, uri, headers, start, stop):
         set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)
+
+
+
+################################################################################
+# degu.applib components
+
+class Router:
+    """
+    Generic RGI routing middleware.
+
+    For example:
+
+    >>> def foo_app(session, request, api):
+    ...     return (200, 'OK', {}, b'foo')
+    ... 
+    >>> def bar_app(session, request, api):
+    ...     return (200, 'OK', {}, b'bar')
+    ...
+    >>> from degu.applib import Router
+    >>> router = Router({'foo': foo_app, 'bar': bar_app})
+
+    """
+
+    __slots__ = ('appmap',)
+
+    def __init__(self, appmap):
+        _check_dict('appmap', appmap)
+        for (key, value) in appmap.items():
+            if key is not None:
+                _check_str("appmap key", key, 0)
+            if not callable(value):
+                raise TypeError(
+                    'appmap[{!r}]: value not callable: {!r}'.format(key, value)
+                )
+        self.appmap = appmap
+
+    def __call__(self, session, request, api):
+        handler = self.appmap.get(request.shift_path())
+        if handler is None:
+            return (410, 'Gone', {}, None)
+        return handler(session, request, api)
 

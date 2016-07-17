@@ -23,8 +23,25 @@
 A collection of RGI server applications for common scenarios.
 """
 
+try:
+    from ._base import (
+        Router,
+    )
+except ImportError:
+    from ._basepy import (
+        Router,
+    )
 
-_METHODS = {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}
+
+__all__ = (
+    'AllowedMethods',
+    'MethodFilter',
+    'Router',
+    'Proxy',
+)
+
+
+_ALLOWED_METHODS = {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}
 
 
 class AllowedMethods:
@@ -32,7 +49,7 @@ class AllowedMethods:
 
     def __init__(self, *methods):
         for m in methods:
-            if m not in _METHODS:
+            if m not in _ALLOWED_METHODS:
                 raise ValueError('bad method: {!r}'.format(m))
         self.methods = methods
 
@@ -71,52 +88,6 @@ class MethodFilter:
         return (405, 'Method Not Allowed', {}, None)
 
 
-class Router:
-    """
-    Generic RGI routing middleware.
-
-    For example:
-
-    >>> def foo_app(session, request, api):
-    ...     return (200, 'OK', {}, b'foo')
-    ... 
-    >>> def bar_app(session, request, api):
-    ...     return (200, 'OK', {}, b'bar')
-    ...
-    >>> from degu.applib import Router
-    >>> router = Router({'foo': foo_app, 'bar': bar_app})
-
-    """
-
-    __slots__ = ('appmap',)
-
-    def __init__(self, appmap):
-        if not isinstance(appmap, dict):
-            raise TypeError(
-                'appmap: need a {!r}; got a {!r}: {!r}'.format(
-                    dict, type(appmap), appmap
-                )
-            )
-        for (key, value) in appmap.items():
-            if not (key is None or isinstance(key, str)):
-                raise TypeError(
-                    'appmap: bad key: need a {!r}; got a {!r}: {!r}'.format(
-                        str, type(key), key
-                    )
-                )
-            if not callable(value):
-                raise TypeError(
-                    'appmap[{!r}]: value not callable: {!r}'.format(key, value)
-                )
-        self.appmap = appmap
-
-    def __call__(self, session, request, api):
-        handler = self.appmap.get(request.shift_path())
-        if handler is None:
-            return (410, 'Gone', {}, None)
-        return handler(session, request, api)
-
-
 class Proxy:
     """
     Generic RGI reverse-proxy application.
@@ -139,4 +110,3 @@ class Proxy:
             request.headers,
             request.body,
         )
-

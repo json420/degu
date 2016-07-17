@@ -62,11 +62,13 @@ static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
 static PyObject *str_slash             = NULL;  //  '/'
 static PyObject *msg_max_requests      = NULL;  //
+static PyObject *str_Gone              = NULL;  //  'Gone'
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
 static PyObject *bytes_CRLF            = NULL;  //  b'\r\n'
 static PyObject *int_MAX_LINE_LEN      = NULL;  //  4096
+static PyObject *int_410               = NULL;  //  410
 
 /* PyModule_AddIntMacro() wont work for this on 32-bit systems */
 static PyObject *int_MAX_LENGTH        = NULL;  // 9999999999999999ull
@@ -110,11 +112,13 @@ _init_all_globals(PyObject *module)
     _SET(str_empty,  PyUnicode_FromString(""))
     _SET(str_slash,  PyUnicode_FromString("/"))
     _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
+    _SET(str_Gone, PyUnicode_FromString("Gone"))
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
     _SET(bytes_CRLF,  PyBytes_FromStringAndSize("\r\n", 2))
     _SET(int_MAX_LINE_LEN, PyLong_FromLong(MAX_LINE_LEN))
+    _SET(int_410, PyLong_FromUnsignedLong(410))
 
     /* Can't use PyModule_AddIntMacro() for this on 32-bit systems */
     _SET(int_MAX_LENGTH, PyLong_FromUnsignedLongLong(MAX_LENGTH))
@@ -5161,6 +5165,107 @@ error:
 
 
 /******************************************************************************
+ * Router object.
+ ******************************************************************************/
+static void
+Router_dealloc(Router *self)
+{
+    Py_CLEAR(self->appmap);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Router_init(Router *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"appmap", NULL};
+    PyObject *appmap = NULL;
+    ssize_t pos = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+
+    self->appmap = NULL;
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Router", keys, &appmap)) {
+        goto error;
+    }
+    if (! _check_dict("appmap", appmap)) {
+        goto error;
+    }
+    while (PyDict_Next(appmap, &pos, &key, &val)) {
+        if (key != Py_None && !_check_str("appmap key", key, 0)) {
+            goto error;
+        }
+        if (! PyCallable_Check(val)) {
+            PyErr_Format(PyExc_TypeError,
+                "appmap[%R]: value not callable: %R", key, val
+            );
+            goto error;
+        }
+    }
+    _SET_AND_INC(self->appmap, appmap)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+_build_410_response(void)
+{
+    PyObject *headers = PyDict_New();
+    if (headers == NULL) {
+        return NULL;
+    }
+    PyObject *response = PyTuple_New(4);
+    if (response == NULL) {
+        Py_CLEAR(headers);
+        return NULL;
+    }
+    Py_INCREF(int_410);
+    Py_INCREF(str_Gone);
+    Py_INCREF(Py_None);
+    PyTuple_SET_ITEM(response, 0, int_410);
+    PyTuple_SET_ITEM(response, 1, str_Gone);
+    PyTuple_SET_ITEM(response, 2, headers);
+    PyTuple_SET_ITEM(response, 3, Py_None);
+    return response;
+}
+
+static PyObject *
+Router_call(Router *self, PyObject *args, PyObject *kw)
+{
+    PyObject *next = NULL;
+    PyObject *app = NULL;
+    PyObject *ret = NULL;
+
+    if (PyTuple_GET_SIZE(args) != 3) {
+        PyErr_Format(PyExc_TypeError,
+            "Router.__call__() requires exactly 3 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
+        goto error;
+    }
+    PyObject *request = PyTuple_GET_ITEM(args, 1);
+    if (! _check_type("request", request, &RequestType)) {
+        goto error;
+    }
+    _SET(next, Request_shift_path(REQUEST(request)))
+    PyObject *tmp = PyDict_GetItem(self->appmap, next);
+    if (tmp == NULL) {
+        ret = _build_410_response();
+    }
+    else {
+        _SET_AND_INC(app, tmp);
+        ret = PyObject_Call(app, args, NULL);
+    }
+
+error:
+    Py_CLEAR(next);
+    Py_CLEAR(app);
+    return ret;
+}
+
+
+/******************************************************************************
  * Module init.
  ******************************************************************************/
 static bool
@@ -5231,6 +5336,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Connection", (PyObject *)&ConnectionType)
+
+    RouterType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RouterType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Router", (PyObject *)&RouterType)
 
     if (! _init_all_namedtuples(module)) {
         goto error;

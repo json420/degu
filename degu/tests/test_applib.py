@@ -28,6 +28,7 @@ import os
 from collections import OrderedDict
 from random import SystemRandom
 
+from .._basepy import TYPE_ERROR
 from ..base import Request
 from ..misc import mkreq
 from ..sslhelpers import random_id
@@ -265,7 +266,7 @@ class TestRouter(TestCase):
         with self.assertRaises(TypeError) as cm:
             applib.Router(appmap)
         self.assertEqual(str(cm.exception),
-            'appmap: bad key: need a {!r}; got a {!r}: {!r}'.format(
+            'appmap key: need a {!r}; got a {!r}: {!r}'.format(
                 str, int, 17
             )
         )
@@ -286,9 +287,11 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {})
 
         appmap = OrderedDict(appmap)
-        app = applib.Router(appmap)
-        self.assertIs(app.appmap, appmap)
-        self.assertEqual(app.appmap, {})
+        with self.assertRaises(TypeError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
 
         # appmap single str key:
         appmap = {'foo': foo_app}
@@ -297,9 +300,11 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {'foo': foo_app})
 
         appmap = OrderedDict(appmap)
-        app = applib.Router(appmap)
-        self.assertIs(app.appmap, appmap)
-        self.assertEqual(app.appmap, {'foo': foo_app})
+        with self.assertRaises(TypeError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
 
         # appmap single key that is None:
         appmap = {None: foo_app}
@@ -308,9 +313,11 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {None: foo_app})
         
         appmap = OrderedDict(appmap)
-        app = applib.Router(appmap)
-        self.assertIs(app.appmap, appmap)
-        self.assertEqual(app.appmap, {None: foo_app})
+        with self.assertRaises(TypeError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
 
         # appmap has two keys, both str:
         appmap = {'foo': foo_app, 'bar': bar_app}
@@ -319,9 +326,11 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
 
         appmap = OrderedDict(appmap)
-        app = applib.Router(appmap)
-        self.assertIs(app.appmap, appmap)
-        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+        with self.assertRaises(TypeError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
 
         # appmap has two keys, one a str and the other None:
         appmap = {'foo': foo_app, None: bar_app}
@@ -330,9 +339,11 @@ class TestRouter(TestCase):
         self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
 
         appmap = OrderedDict(appmap)
-        app = applib.Router(appmap)
-        self.assertIs(app.appmap, appmap)
-        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+        with self.assertRaises(TypeError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
 
     def test_call(self):
         def foo_app(session, request, api):
