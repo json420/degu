@@ -62,11 +62,13 @@ static PyObject *str_OK                = NULL;  //  'OK'
 static PyObject *str_empty             = NULL;  //  ''
 static PyObject *str_slash             = NULL;  //  '/'
 static PyObject *msg_max_requests      = NULL;  //
+static PyObject *str_Gone              = NULL;  //  'Gone'
 
 /* Other misc PyObject */
 static PyObject *bytes_empty           = NULL;  //  b''
 static PyObject *bytes_CRLF            = NULL;  //  b'\r\n'
 static PyObject *int_MAX_LINE_LEN      = NULL;  //  4096
+static PyObject *int_410               = NULL;  // 410
 
 /* PyModule_AddIntMacro() wont work for this on 32-bit systems */
 static PyObject *int_MAX_LENGTH        = NULL;  // 9999999999999999ull
@@ -110,11 +112,13 @@ _init_all_globals(PyObject *module)
     _SET(str_empty,  PyUnicode_FromString(""))
     _SET(str_slash,  PyUnicode_FromString("/"))
     _SET(msg_max_requests,  PyUnicode_FromString("max_requests"))
+    _SET(str_Gone, PyUnicode_FromString("Gone"))
 
     /* Init misc objects */
     _SET(bytes_empty, PyBytes_FromStringAndSize(NULL, 0))
     _SET(bytes_CRLF,  PyBytes_FromStringAndSize("\r\n", 2))
     _SET(int_MAX_LINE_LEN, PyLong_FromLong(MAX_LINE_LEN))
+    _SET(int_410, PyLong_FromUnsignedLong(410))
 
     /* Can't use PyModule_AddIntMacro() for this on 32-bit systems */
     _SET(int_MAX_LENGTH, PyLong_FromUnsignedLongLong(MAX_LENGTH))
@@ -5207,16 +5211,23 @@ error:
 static PyObject *
 _build_410_response(void)
 {
-    // FIXME: add correct error handling here:
-    PyObject *r = PyTuple_New(4);
-    if (r != NULL) {
-        PyTuple_SET_ITEM(r, 0, PyLong_FromUnsignedLong(410));
-        PyTuple_SET_ITEM(r, 1, PyUnicode_FromString("Gone"));
-        PyTuple_SET_ITEM(r, 2, PyDict_New());
-        Py_INCREF(Py_None);
-        PyTuple_SET_ITEM(r, 3, Py_None);
+    PyObject *headers = PyDict_New();
+    if (headers == NULL) {
+        return NULL;
     }
-    return r;
+    PyObject *response = PyTuple_New(4);
+    if (response == NULL) {
+        Py_CLEAR(headers);
+        return NULL;
+    }
+    Py_INCREF(int_410);
+    Py_INCREF(str_Gone);
+    Py_INCREF(Py_None);
+    PyTuple_SET_ITEM(response, 0, int_410);
+    PyTuple_SET_ITEM(response, 1, str_Gone);
+    PyTuple_SET_ITEM(response, 2, headers);
+    PyTuple_SET_ITEM(response, 3, Py_None);
+    return response;
 }
 
 static PyObject *
