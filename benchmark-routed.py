@@ -9,8 +9,6 @@ import platform
 import sys
 
 import degu
-from degu.sslhelpers import random_id
-from degu.applib import Router, AllowedMethods
 from degu.misc import TempServer
 from degu.tests.helpers import TempDir
 from degu.client import Client
@@ -35,6 +33,9 @@ parser.add_argument('--requests', type=int, metavar='N', default=REQUESTS,
 parser.add_argument('--runs', type=int, metavar='N', default=RUNS,
     help='Number of runs; default={}'.format(RUNS)
 )
+parser.add_argument('--py', action='store_true', default=False,
+    help='Use Python instead of C implementation of Router'
+)
 args = parser.parse_args()
 
 
@@ -47,21 +48,26 @@ logging.basicConfig(
     ]),
 )
 
-ping = random_id(60)
-request_body = json.dumps({'ping': ping}).encode()
-pong = random_id(60)
-response_body = json.dumps({'pong': pong}).encode()
+if args.py:
+    from degu._basepy import Router
+else:
+    from degu._base import Router
 
 
-@AllowedMethods('POST')
-def ping_pong_app(session, request, bodies):
-    request.body.read()
-    return (200, 'OK', {}, response_body)
+#@AllowedMethods('GET')
+def app(session, request, bodies):
+    return (200, 'OK', {}, None)
 
 
-router3 = Router({'baz': ping_pong_app})
-router2 = Router({'bar': router3})
-router1 = Router({'foo': router2})
+router = Router({'a':
+    Router({'b':
+        Router({'c':
+            Router({'d':
+                Router({'e': app})
+            })
+        })
+    })
+})
 
 
 if args.unix:
@@ -69,7 +75,7 @@ if args.unix:
     address = tmp.join('my.socket')
 else:
     address = degu.IPv6_LOOPBACK
-server = TempServer(address, router1, max_requests=args.requests)
+server = TempServer(address, router, max_requests=args.requests)
 if args.send_host:
     client = Client(server.address)
 else:
@@ -81,7 +87,7 @@ for i in range(args.runs):
     conn = client.connect()
     start = time.monotonic()
     for i in range(args.requests):
-        conn.post('/foo/bar/baz', {}, request_body).body.read()
+        conn.get('/a/b/c/d/e', {})
     deltas.append(time.monotonic() - start)
     conn.close()
 del conn
@@ -131,8 +137,6 @@ print('Python: {}'.format(pyinfo))
 print('Test: {}; {:,} requests per run; {} runs'.format(
     family, args.requests, args.runs)
 )
-print('Request body: {:d} bytes'.format(len(request_body)))
-print('Response body: {:d} bytes'.format(len(response_body)))
 print('-' * 72)
 print('Run {} of {} was fastest'.format(fastest_run.rjust(width1), args.runs))
 print('Run {} of {} was slowest'.format(slowest_run.rjust(width1), args.runs))

@@ -5222,30 +5222,29 @@ _build_410_response(void)
 static PyObject *
 Router_call(Router *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"session", "request", "api", NULL};
-    PyObject *session = NULL;
-    PyObject *request = NULL;
-    PyObject *api = NULL;
     PyObject *next = NULL;
-    PyObject *tmp = NULL;
     PyObject *app = NULL;
     PyObject *ret = NULL;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOO", keys,
-            &session, &request, &api)) {
+    if (PyTuple_GET_SIZE(args) != 3) {
+        PyErr_Format(PyExc_TypeError,
+            "Router.__call__() requires exactly 3 arguments; got %zd",
+            PyTuple_GET_SIZE(args)
+        );
         goto error;
     }
+    PyObject *request = PyTuple_GET_ITEM(args, 1);
     if (! _check_type("request", request, &RequestType)) {
         goto error;
     }
     _SET(next, Request_shift_path(REQUEST(request)))
-    tmp = PyDict_GetItem(self->appmap, next);
+    PyObject *tmp = PyDict_GetItem(self->appmap, next);
     if (tmp == NULL) {
         ret = _build_410_response();
     }
     else {
         _SET_AND_INC(app, tmp);
-        ret = PyObject_Call(app, args, kw);
+        ret = PyObject_Call(app, args, NULL);
     }
 
 error:
