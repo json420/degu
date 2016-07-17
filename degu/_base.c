@@ -5187,7 +5187,6 @@ Router_init(Router *self, PyObject *args, PyObject *kw)
     PyObject *key = NULL;
     PyObject *val = NULL;
 
-    self->appmap = NULL;
     if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Router", keys, &appmap)) {
         goto error;
     }
