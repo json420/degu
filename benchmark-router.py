@@ -74,6 +74,7 @@ if args.unix:
     tmp = TempDir()
     address = tmp.join('my.socket')
 else:
+    tmp = None
     address = degu.IPv6_LOOPBACK
 server = TempServer(address, router, max_requests=args.requests)
 if args.send_host:
@@ -90,8 +91,8 @@ for i in range(args.runs):
         conn.get('/a/b/c/d/e', {})
     deltas.append(time.monotonic() - start)
     conn.close()
-del conn
-del server
+del tmp
+server.terminate()
 
 rates = tuple(args.requests / d for d in deltas)
 _max = max(rates)

@@ -50,9 +50,9 @@ logging.basicConfig(
 )
 
 if args.py:
-    from degu._basepy import Proxy
+    from degu._basepy import ProxyApp
 else:
-    from degu._base import Proxy
+    from degu._base import ProxyApp
 
 
 #@AllowedMethods('GET')
@@ -75,7 +75,7 @@ if args.send_host:
 else:
     client1 = Client(server1.address, host=None)
 
-server2 = TempServer(address2, Proxy(client1), max_requests=args.requests)
+server2 = TempServer(address2, ProxyApp(client1), max_requests=args.requests)
 if args.send_host:
     client2 = Client(server2.address)
 else:
