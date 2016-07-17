@@ -31,6 +31,34 @@ New API additions:
         removed entirely.
 
 
+Performance improvements:
+
+    *   :class:`degu.applib.Router` and :class:`degu.applib.ProxyApp` now have
+        high-performance C implementations that are used when the Degu
+        `C extension`_ is available.
+
+        In part this is an effort to make sure the public Python API in
+        :mod:`degu.applib` is constructed such that these standard Degu RGI
+        components can be easily implemented as C extensions and, when needed,
+        can reach within the internal C API for optimization purposes.
+
+        But this is also just part of the continued effort to make sure the
+        Degu client and server are highly optimized for everything that happens
+        at a per-request frequency (or higher).  In real-world scenarios, these
+        two new C implementations can provide noteworthy performance
+        improvements when it comes to round-trip throughput for sequential
+        requests made through the same connection (eg, a 10% performance
+        improvement can easily be achieved in the right scenario).
+
+    *   The C implementation of :meth:`degu.client.Connection.request()` and the
+        related :class:`degu.client.Connection` request shortcut methods are now
+        slightly faster.  Although the round-trip performance improvement is
+        rather small (in the range of 1 to 2%), this was an easy change and the
+        performance improvement can be greater in cache-constrained systems like
+        a Raspberry Pi 2, etc.
+
+
+
 .. _version-0.16:
 
 0.16 (May 2016)
