@@ -5316,7 +5316,6 @@ Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
     }
     PyObject *session = PyTuple_GET_ITEM(args, 0);
     PyObject *request = PyTuple_GET_ITEM(args, 1);
-
     if (! _check_type("session", session, &SessionType)) {
         goto error;
     }
@@ -5325,7 +5324,7 @@ Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
     }
     PyObject *store = SESSION(session)->store;
 
-    /* Create connection if it isn't aready in session.store for this thread */
+    /* Create connection if not already in session.store for this thread */
     conn = PyDict_GetItem(store, self->key);
     if (conn == NULL) {
         conn = PyObject_CallMethodObjArgs(self->client, attr_connect, NULL);
@@ -5337,8 +5336,6 @@ Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
         /* So we own a reference */
         Py_INCREF(conn);
     }
-
-    /* Make sure `conn` is a Connection instance */
     if (! _check_type("conn", conn, &ConnectionType)) {
         goto error;
     }
@@ -5349,7 +5346,7 @@ Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
     dr.headers = REQUEST(request)->headers;
     dr.body = REQUEST(request)->body;
 
-    /* Make request to upstream server, return response unmodified */
+    /* Make request to upstream server, return its response unmodified */
     ret = _Connection_request(CONNECTION(conn), &dr);
 
 error:
