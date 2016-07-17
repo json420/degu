@@ -23,20 +23,32 @@
 A collection of RGI server applications for common scenarios.
 """
 
+#try:
+#    from ._base import (
+#        AllowedMethods,
+#        MethodFilter,
+#        Router,
+#        Proxy,
+#    )
+#except ImportError:
+#    from ._basepy import (
+#        AllowedMethods,
+#        MethodFilter,
+#        Router,
+#        Proxy,
+#    )
+
+from ._basepy import AllowedMethods, MethodFilter, Proxy
 try:
     from ._base import (
-        AllowedMethods,
-        MethodFilter,
         Router,
-        Proxy,
     )
 except ImportError:
     from ._basepy import (
-        AllowedMethods,
-        MethodFilter,
         Router,
-        Proxy,
     )
+
+
 
 __all__ = (
     'AllowedMethods',

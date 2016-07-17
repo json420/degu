@@ -139,9 +139,9 @@ def _check_bytes(name, obj, max_len=MAX_IO_SIZE):
 
 _OUTGOING_STR = frozenset(chr(i) for i in range(128))
 
-def _check_str(name, obj):
+def _check_str(name, obj, minlen=1):
     _check_type(name, obj, str)
-    if obj == '' or not _OUTGOING_STR.issuperset(obj):
+    if len(obj) < minlen or not _OUTGOING_STR.issuperset(obj):
         raise ValueError(
             'bad {}: {!r}'.format(name, obj)
         )
@@ -1923,19 +1923,10 @@ class Router:
     __slots__ = ('appmap',)
 
     def __init__(self, appmap):
-        if not isinstance(appmap, dict):
-            raise TypeError(
-                'appmap: need a {!r}; got a {!r}: {!r}'.format(
-                    dict, type(appmap), appmap
-                )
-            )
+        _check_dict('appmap', appmap)
         for (key, value) in appmap.items():
-            if not (key is None or isinstance(key, str)):
-                raise TypeError(
-                    'appmap: bad key: need a {!r}; got a {!r}: {!r}'.format(
-                        str, type(key), key
-                    )
-                )
+            if key is not None:
+                _check_str("appmap key", key, 0)
             if not callable(value):
                 raise TypeError(
                     'appmap[{!r}]: value not callable: {!r}'.format(key, value)

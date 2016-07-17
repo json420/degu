@@ -5161,6 +5161,101 @@ error:
 
 
 /******************************************************************************
+ * Router object.
+ ******************************************************************************/
+static void
+Router_dealloc(Router *self)
+{
+    Py_CLEAR(self->appmap);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Router_init(Router *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"appmap", NULL};
+    PyObject *appmap = NULL;
+    ssize_t pos = 0;
+    PyObject *key = NULL;
+    PyObject *val = NULL;
+
+    self->appmap = NULL;
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Router", keys, &appmap)) {
+        goto error;
+    }
+    if (! _check_dict("appmap", appmap)) {
+        goto error;
+    }
+    while (PyDict_Next(appmap, &pos, &key, &val)) {
+        if (key != Py_None && !_check_str("appmap key", key, 0)) {
+            goto error;
+        }
+        if (! PyCallable_Check(val)) {
+            PyErr_Format(PyExc_TypeError,
+                "appmap[%R]: value not callable: %R", key, val
+            );
+            goto error;
+        }
+    }
+    _SET_AND_INC(self->appmap, appmap)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+_build_410_response(void)
+{
+    // FIXME: add correct error handling here:
+    PyObject *r = PyTuple_New(4);
+    if (r != NULL) {
+        PyTuple_SET_ITEM(r, 0, PyLong_FromUnsignedLong(410));
+        PyTuple_SET_ITEM(r, 1, PyUnicode_FromString("Gone"));
+        PyTuple_SET_ITEM(r, 2, PyDict_New());
+        Py_INCREF(Py_None);
+        PyTuple_SET_ITEM(r, 3, Py_None);
+    }
+    return r;
+}
+
+static PyObject *
+Router_call(Router *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"session", "request", "api", NULL};
+    PyObject *session = NULL;
+    PyObject *request = NULL;
+    PyObject *api = NULL;
+    PyObject *next = NULL;
+    PyObject *tmp = NULL;
+    PyObject *app = NULL;
+    PyObject *ret = NULL;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOO", keys,
+            &session, &request, &api)) {
+        goto error;
+    }
+    if (! _check_type("request", request, &RequestType)) {
+        goto error;
+    }
+    _SET(next, Request_shift_path(REQUEST(request)))
+    tmp = PyDict_GetItem(self->appmap, next);
+    if (tmp == NULL) {
+        ret = _build_410_response();
+    }
+    else {
+        _SET_AND_INC(app, tmp);
+        ret = PyObject_Call(app, args, kw);
+    }
+
+error:
+    Py_CLEAR(next);
+    Py_CLEAR(app);
+    return ret;
+}
+
+
+/******************************************************************************
  * Module init.
  ******************************************************************************/
 static bool
@@ -5231,6 +5326,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Connection", (PyObject *)&ConnectionType)
+
+    RouterType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RouterType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "Router", (PyObject *)&RouterType)
 
     if (! _init_all_namedtuples(module)) {
         goto error;

@@ -524,6 +524,8 @@ static PyTypeObject RequestType = {
     .tp_finalize       = NULL,
 };
 
+#define REQUEST(obj) ((Request *)(obj))
+
 
 /******************************************************************************
  * Reader object.
@@ -1255,6 +1257,79 @@ static PyTypeObject SessionType = {
 };
 
 #define SESSION(obj) ((Session *)(obj))
+
+
+/******************************************************************************
+ * Router object.
+ ******************************************************************************/
+typedef struct {
+    PyObject_HEAD
+    PyObject *appmap;
+} Router;
+
+static PyMemberDef Router_members[] = {
+    {"appmap", T_OBJECT, offsetof(Router, appmap), READONLY, NULL},
+    {NULL}
+};
+
+static void Router_dealloc(Router *);
+static int Router_init(Router *, PyObject *, PyObject *);
+static PyObject * Router_call(Router *, PyObject *, PyObject *);
+
+static PyTypeObject RouterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name           = "degu._base.Router",
+    .tp_basicsize      = sizeof(Router),
+    .tp_itemsize       = 0,
+    .tp_dealloc        = (destructor)Router_dealloc,
+    .tp_print          = NULL,
+    .tp_getattr        = NULL,
+    .tp_setattr        = NULL,
+    .tp_as_async       = NULL,
+    .tp_repr           = NULL,
+    .tp_as_number      = NULL,
+    .tp_as_sequence    = NULL,
+    .tp_as_mapping     = NULL,
+    .tp_hash           = NULL,
+    .tp_call           = (ternaryfunc)Router_call,
+    .tp_str            = NULL,
+    .tp_getattro       = NULL,
+    .tp_setattro       = NULL,
+    .tp_as_buffer      = NULL,
+    .tp_flags          = Py_TPFLAGS_DEFAULT,
+    .tp_doc            = "Router(appmap)",
+    .tp_traverse       = NULL,
+    .tp_clear          = NULL,
+    .tp_richcompare    = NULL,
+    .tp_weaklistoffset = 0,
+    .tp_iter           = NULL,
+    .tp_iternext       = NULL,
+    .tp_methods        = NULL,
+    .tp_members        = Router_members,
+    .tp_getset         = NULL,
+    .tp_base           = NULL,
+    .tp_dict           = NULL,
+    .tp_descr_get      = NULL,
+    .tp_descr_set      = NULL,
+    .tp_dictoffset     = 0,
+    .tp_init           = (initproc)Router_init,
+    .tp_alloc          = NULL,
+    .tp_new            = NULL,
+    .tp_free           = NULL,
+    .tp_is_gc          = NULL,
+    .tp_bases          = NULL,
+    .tp_mro            = NULL,
+    .tp_cache          = NULL,
+    .tp_subclasses     = NULL,
+    .tp_weaklist       = NULL,
+    .tp_del            = NULL,
+    .tp_version_tag    = 0,
+    .tp_finalize       = NULL,
+};
+
+#define IS_ROUTER(obj) (Py_TYPE((obj)) == &RouterType)
+#define ROUTER(obj) ((Router *)(obj))
+
 
 
 /***************    BEGIN GENERATED TABLES    *********************************/
