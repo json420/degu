@@ -1893,7 +1893,7 @@ class Router:
         return handler(session, request, api)
 
 
-class Proxy:
+class ProxyApp:
     """
     Generic RGI reverse-proxy application.
     """

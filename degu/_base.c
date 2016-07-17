@@ -5270,10 +5270,10 @@ error:
 
 
 /******************************************************************************
- * Proxy object.
+ * ProxyApp object.
  ******************************************************************************/
 static void
-Proxy_dealloc(Proxy *self)
+ProxyApp_dealloc(ProxyApp *self)
 {
     Py_CLEAR(self->client);
     Py_CLEAR(self->key);
@@ -5281,13 +5281,13 @@ Proxy_dealloc(Proxy *self)
 }
 
 static int
-Proxy_init(Proxy *self, PyObject *args, PyObject *kw)
+ProxyApp_init(ProxyApp *self, PyObject *args, PyObject *kw)
 {
     static char *keys[] = {"client", "key", NULL};
     PyObject *client = NULL;
     PyObject *key = str_conn;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O|O:Proxy", keys,
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O|O:ProxyApp", keys,
             &client, &key)) {
         goto error;
     }
@@ -5300,7 +5300,7 @@ error:
 }
 
 static PyObject *
-Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
+ProxyApp_call(ProxyApp *self, PyObject *args, PyObject *kw)
 {
     /* `dr.uri` and `conn` are owned references, must be cleared */
     DeguRequest dr = NEW_DEGU_REQUEST;
@@ -5309,7 +5309,7 @@ Proxy_call(Proxy *self, PyObject *args, PyObject *kw)
 
     if (PyTuple_GET_SIZE(args) != 3) {
         PyErr_Format(PyExc_TypeError,
-            "Proxy.__call__() requires exactly 3 arguments; got %zd",
+            "ProxyApp.__call__() requires exactly 3 arguments; got %zd",
             PyTuple_GET_SIZE(args)
         );
         goto error;
@@ -5434,11 +5434,11 @@ _init_all_types(PyObject *module)
     }
     _ADD_MODULE_ATTR(module, "Router", (PyObject *)&RouterType)
 
-    ProxyType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&ProxyType) != 0) {
+    ProxyAppType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ProxyAppType) != 0) {
         goto error;
     }
-    _ADD_MODULE_ATTR(module, "Proxy", (PyObject *)&ProxyType)
+    _ADD_MODULE_ATTR(module, "ProxyApp", (PyObject *)&ProxyAppType)
 
     if (! _init_all_namedtuples(module)) {
         goto error;

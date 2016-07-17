@@ -26,12 +26,12 @@ A collection of RGI server applications for common scenarios.
 try:
     from ._base import (
         Router,
-        Proxy,
+        ProxyApp,
     )
 except ImportError:
     from ._basepy import (
         Router,
-        Proxy,
+        ProxyApp,
     )
 
 
@@ -39,7 +39,7 @@ __all__ = (
     'AllowedMethods',
     'MethodFilter',
     'Router',
-    'Proxy',
+    'ProxyApp',
 )
 
 

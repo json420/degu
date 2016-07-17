@@ -10,16 +10,13 @@ Changelog
 
 Breaking API changes:
 
-    *   In the (currently non-API-stable) :mod:`degu.applib` module:
+    *   The ``RouterApp`` class in the :mod:`degu.applib` module was renamed to
+        :class:`degu.applib.Router`.
 
-        *   The ``RouterApp`` class was renamed to :class:`degu.applib.Router`
-
-        *   The ``ProxyApp`` class was renamed to :class:`degu.applib.Proxy`
-
-        This rename was done both for brevity and to correct naming ambiguity
-        between RGI middleware and RGI leaf applications.  Their new names
-        better reflect that both :class:`degu.applib.Router` and
-        :class:`degu.applib.Proxy` are RGI middleware components.
+        This rename was done to correct naming ambiguity between RGI middleware
+        components and RGI leaf applications.  The new name better reflects that
+        :class:`degu.applib.Router` is an RGI middleware component (as opposed
+        to :class:`degu.applib.ProxyApp`, which is an RGI leaf application).
 
 
 New API additions:
@@ -32,7 +29,6 @@ New API additions:
         :mod:`degu.applib` module, are not yet API stable!  These items might
         yet still undergo backward-incompatible API changes, be renamed, or be
         removed entirely.
-
 
 
 .. _version-0.16:

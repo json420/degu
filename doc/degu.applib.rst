@@ -130,16 +130,12 @@ leaf-application components for common scenarios.
 
 
 
-:class:`Proxy`
---------------
+:class:`ProxyApp`
+-----------------
 
-.. class:: Proxy(client, key='conn')
+.. class:: ProxyApp(client, key='conn')
 
     Generic RGI reverse-proxy application.
-
-    .. versionchanged:: 0.17
-
-        This class was renamed from ``ProxyApp`` to :class:`Proxy`.
 
     .. attribute:: client
 
