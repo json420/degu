@@ -1892,3 +1892,27 @@ class Router:
             return (410, 'Gone', {}, None)
         return handler(session, request, api)
 
+
+class Proxy:
+    """
+    Generic RGI reverse-proxy application.
+    """
+
+    __slots__ = ('client', 'key')
+
+    def __init__(self, client, key='conn'):
+        self.client = client
+        self.key = key
+
+    def __call__(self, session, request, api):
+        conn = session.store.get(self.key)
+        if conn is None:
+            conn = self.client.connect()
+            session.store[self.key] = conn
+        return conn.request(
+            request.method,
+            request.build_proxy_uri(),
+            request.headers,
+            request.body,
+        )
+
