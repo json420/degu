@@ -57,6 +57,14 @@
 #define CONTENT_RANGE_BIT 8u
 #define BODY_MASK 3u
 
+#define GET_BIT    (1 << 0)
+#define PUT_BIT    (1 << 1)
+#define POST_BIT   (1 << 2)
+#define HEAD_BIT   (1 << 3)
+#define DELETE_BIT (1 << 4)
+#define PUT_POST_MASK (PUT_BIT | POST_BIT)
+
+
 #if PY_MINOR_VERSION >= 5
     #define _TP_AS_ASYNC .tp_as_async
     #define _M_SLOTS .m_slots
@@ -125,11 +133,15 @@ typedef const struct {
     const size_t len;
 } DeguDst;
 
+/* Helper macros for building DeguSrc, DeguDst */
+#define DEGU_SRC(buf, len) ((DeguSrc){(buf), (len)})
+#define DEGU_DST(buf, len) ((DeguDst){(buf), (len)})
+
 /* A "NULL" DeguSrc */
-#define NULL_DeguSrc ((DeguSrc){NULL, 0})
+#define NULL_DeguSrc DEGU_SRC(NULL, 0)
 
 /* A "NULL" DeguDst */
-#define NULL_DeguDst ((DeguDst){NULL, 0})
+#define NULL_DeguDst DEGU_DST(NULL, 0)
 
 /* _DEGU_SRC_CONSTANT(): helper macro for creating DeguSrc globals */
 #define _DEGU_SRC_CONSTANT(name, text) \
@@ -161,6 +173,7 @@ typedef struct {
     PyObject *mount;
     PyObject *path;
     PyObject *query;
+    uint8_t m;
 } DeguRequest;
 
 typedef struct {
@@ -174,7 +187,7 @@ typedef struct {
     ((DeguHeaders) {NULL, NULL, 0, 0})
 
 #define NEW_DEGU_REQUEST \
-    ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL})
+    ((DeguRequest) {NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, 0})
 
 #define NEW_DEGU_RESPONSE \
     ((DeguResponse){NULL, NULL, 0, 0, NULL, NULL, 0})
