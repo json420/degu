@@ -5216,7 +5216,7 @@ Router_init(Router *self, PyObject *args, PyObject *kw)
         if (key != Py_None && !_check_str("appmap key", key, 0)) {
             goto error;
         }
-        if (! PyCallable_Check(val)) {
+        if (Py_TYPE(val) != &PyDict_Type && !PyCallable_Check(val)) {
             PyErr_Format(PyExc_TypeError,
                 "appmap[%R]: value not callable: %R", key, val
             );
@@ -5246,9 +5246,15 @@ _build_410_response(void)
 static PyObject *
 Router_call(Router *self, PyObject *args, PyObject *kw)
 {
-    PyObject *next = NULL;
-    PyObject *app = NULL;
+    PyObject *request = NULL;
+    PyObject *val = NULL;
     PyObject *ret = NULL;
+    PyObject *appmap = NULL;
+    size_t i;
+
+    /* `key` and `app` are owned references that must be cleared */
+    PyObject *key = NULL;
+    PyObject *app = NULL;
 
     if (PyTuple_GET_SIZE(args) != 3) {
         PyErr_Format(PyExc_TypeError,
@@ -5257,22 +5263,36 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
         );
         goto error;
     }
-    PyObject *request = PyTuple_GET_ITEM(args, 1);
+    _SET(request, PyTuple_GET_ITEM(args, 1))
     if (! _check_type("request", request, &RequestType)) {
         goto error;
     }
-    _SET(next, Request_shift_path(REQUEST(request)))
-    PyObject *tmp = PyDict_GetItem(self->appmap, next);
-    if (tmp == NULL) {
-        ret = _build_410_response();
+
+    appmap = self->appmap;
+    for (i = 0; i < MAX_ROUTER_DEPTH; i++) {
+        _SET(key, Request_shift_path(REQUEST(request)))
+        val = PyDict_GetItem(appmap, key);
+        if (val == NULL) {
+            ret = _build_410_response();
+            goto cleanup;
+        }
+        if (Py_TYPE(val) != &PyDict_Type) {
+            /* Own a reference to val in case appmap is modified during call */
+            _SET_AND_INC(app, val);
+            ret = PyObject_Call(app, args, NULL);
+            goto cleanup;
+        }
+        Py_CLEAR(key);
+        appmap = val;
     }
-    else {
-        _SET_AND_INC(app, tmp);
-        ret = PyObject_Call(app, args, NULL);
-    }
+    PyErr_Format(PyExc_ValueError,
+        "MAX_ROUTER_DEPTH %zu exceeded: recursive references in appmap?",
+        MAX_ROUTER_DEPTH
+    );
 
 error:
-    Py_CLEAR(next);
+cleanup:
+    Py_CLEAR(key);
     Py_CLEAR(app);
     return ret;
 }
