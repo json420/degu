@@ -1856,6 +1856,20 @@ class Connection:
 ################################################################################
 # degu.applib components
 
+
+def _check_appmap(label, appmap):
+    _check_dict(label, appmap)
+    for (key, value) in appmap.items():
+        if key is not None:
+            _check_str('{} key'.format(label), key, 0)
+        if type(value) is dict:
+            _check_appmap('{}[{!r}]'.format(label, key), value)
+        elif not callable(value):
+            raise TypeError(
+                '{}[{!r}]: value not callable: {!r}'.format(label, key, value)
+            )
+
+
 class Router:
     """
     Generic RGI routing middleware.
@@ -1876,21 +1890,18 @@ class Router:
     __slots__ = ('appmap',)
 
     def __init__(self, appmap):
-        _check_dict('appmap', appmap)
-        for (key, value) in appmap.items():
-            if key is not None:
-                _check_str("appmap key", key, 0)
-            if not callable(value):
-                raise TypeError(
-                    'appmap[{!r}]: value not callable: {!r}'.format(key, value)
-                )
+        _check_appmap('appmap', appmap)
         self.appmap = appmap
 
     def __call__(self, session, request, api):
-        handler = self.appmap.get(request.shift_path())
-        if handler is None:
-            return (410, 'Gone', {}, None)
-        return handler(session, request, api)
+        appmap = self.appmap
+        while True:
+            handler = appmap.get(request.shift_path())
+            if handler is None:
+                return (410, 'Gone', {}, None)
+            if not isinstance(handler, dict):
+                return handler(session, request, api)
+            appmap = handler
 
 
 class ProxyApp:
