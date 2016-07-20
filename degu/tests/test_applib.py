@@ -504,6 +504,8 @@ class TestRouter(TestCase):
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
         self.assertEqual(r.mount, keys)
         self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
         del app
         for key in keys:
             self.assertEqual(sys.getrefcount(appmap), 2)
@@ -526,6 +528,8 @@ class TestRouter(TestCase):
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
         self.assertEqual(r.mount, keys)
         self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
         keys.append(random_id())
         last[keys[-2]] = {keys[-1]: foo_app}
         uri = '/' + '/'.join(keys)
