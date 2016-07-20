@@ -25,6 +25,7 @@ Unit tests for the `degu.applib` module.
 
 from unittest import TestCase
 import os
+import sys
 from collections import OrderedDict
 from random import SystemRandom
 
@@ -345,6 +346,23 @@ class TestRouter(TestCase):
             TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
         )
 
+        # Nested appmap:
+        key = random_id()
+        end = {key: foo_app}
+        appmap = end
+        for i in range(9):
+            appmap = {random_id(): appmap}
+        app = applib.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+
+        # Nested appmap that exceeds max depth:
+        appmap = {random_id(): appmap}
+        with self.assertRaises(ValueError) as cm:
+            applib.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+
     def test_call(self):
         def foo_app(session, request, api):
             return (200, 'OK', {}, b'foo')
@@ -473,6 +491,63 @@ class TestRouter(TestCase):
         self.assertEqual(r.mount, ['foo', 'bar'])
         self.assertEqual(r.path, [])
         self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        # Nested appmap:
+        keys = [random_id() for i in range(10)]
+        appmap = foo_app
+        for key in keys:
+            appmap = {key: appmap}
+        keys.reverse()
+        uri = '/' + '/'.join(keys)
+        app = applib.Router(appmap)
+        r = mkreq('GET', uri)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, keys)
+        self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
+        del app
+        for key in keys:
+            self.assertEqual(sys.getrefcount(appmap), 2)
+            self.assertEqual(sys.getrefcount(key), 4)
+            appmap = appmap[key]
+            self.assertEqual(sys.getrefcount(key), 3)
+
+        # Nested appmap, exceeds ROUTER_MAX_DEPTH:
+        keys = [random_id() for i in range(10)]
+        appmap = None
+        for key in keys:
+            if appmap is None:
+                last = appmap = {key: foo_app}
+            else:
+                appmap = {key: appmap}
+        keys.reverse()
+        uri = '/' + '/'.join(keys)
+        app = applib.Router(appmap)
+        r = mkreq('GET', uri)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, keys)
+        self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
+        keys.append(random_id())
+        last[keys[-2]] = {keys[-1]: foo_app}
+        uri = '/' + '/'.join(keys)
+        r = mkreq('GET', uri)
+        with self.assertRaises(ValueError) as cm:
+            app(None, r, None)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+        self.assertEqual(r.mount, keys[:-1])
+        self.assertEqual(r.path, keys[-1:])
+        del last
+        del app
+        for key in keys:
+            self.assertEqual(sys.getrefcount(appmap), 2)
+            self.assertEqual(sys.getrefcount(key), 4)
+            appmap = appmap[key]
+            self.assertEqual(sys.getrefcount(key), 3)
 
 
 class TestProxyApp(TestCase):

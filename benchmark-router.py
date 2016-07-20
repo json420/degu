@@ -33,6 +33,9 @@ parser.add_argument('--requests', type=int, metavar='N', default=REQUESTS,
 parser.add_argument('--runs', type=int, metavar='N', default=RUNS,
     help='Number of runs; default={}'.format(RUNS)
 )
+parser.add_argument('--flat', action='store_true', default=False,
+    help='Use flat appmap instead of nested'
+)
 parser.add_argument('--py', action='store_true', default=False,
     help='Use Python instead of C implementation of Router'
 )
@@ -59,15 +62,29 @@ def app(session, request, bodies):
     return (200, 'OK', {}, None)
 
 
-router = Router({'a':
-    Router({'b':
-        Router({'c':
-            Router({'d':
-                Router({'e': app})
+if args.flat:
+    router = Router({'a':
+        Router({'b':
+            Router({'c':
+                Router({'d':
+                    Router({'e': app})
+                })
             })
         })
     })
-})
+else:
+    appmap = {
+        'a': {
+            'b': {
+                'c': {
+                    'd': {
+                        'e': app,
+                    },
+                },
+            },
+        },
+    }
+    router = Router(appmap)
 
 
 if args.unix:

@@ -64,6 +64,7 @@
 #define DELETE_BIT (1 << 4)
 #define PUT_POST_MASK (PUT_BIT | POST_BIT)
 
+#define ROUTER_MAX_DEPTH 10
 
 #if PY_MINOR_VERSION >= 5
     #define _TP_AS_ASYNC .tp_as_async
