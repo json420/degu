@@ -64,6 +64,8 @@ _METHODS = {
 
 _OK = 'OK'
 
+ROUTER_MAX_DEPTH = 10
+
 
 APIType = API = namedtuple('API',
     'Body ChunkedBody BodyIter ChunkedBodyIter Range ContentRange'
@@ -1856,17 +1858,25 @@ class Connection:
 ################################################################################
 # degu.applib components
 
+def _router_depth_error():
+    raise ValueError(
+        'Router: max appmap depth {!r} exceeded'.format(ROUTER_MAX_DEPTH)
+    )
 
-def _check_appmap(label, appmap):
-    _check_dict(label, appmap)
+
+def _router_check_appmap(appmap, depth):
+    assert isinstance(depth, int) and depth >= 0
+    if depth >= ROUTER_MAX_DEPTH:
+        _router_depth_error()
+    _check_dict('appmap', appmap)
     for (key, value) in appmap.items():
         if key is not None:
-            _check_str('{} key'.format(label), key, 0)
+            _check_str('appmap key', key, 0)
         if type(value) is dict:
-            _check_appmap('{}[{!r}]'.format(label, key), value)
+            _router_check_appmap(value, depth + 1)
         elif not callable(value):
             raise TypeError(
-                '{}[{!r}]: value not callable: {!r}'.format(label, key, value)
+                'appmap[{!r}]: value not callable: {!r}'.format(key, value)
             )
 
 
@@ -1890,18 +1900,19 @@ class Router:
     __slots__ = ('appmap',)
 
     def __init__(self, appmap):
-        _check_appmap('appmap', appmap)
+        _router_check_appmap(appmap, 0)
         self.appmap = appmap
 
     def __call__(self, session, request, api):
         appmap = self.appmap
-        while True:
+        for depth in range(ROUTER_MAX_DEPTH):
             handler = appmap.get(request.shift_path())
             if handler is None:
                 return (410, 'Gone', {}, None)
             if not isinstance(handler, dict):
                 return handler(session, request, api)
             appmap = handler
+        _router_depth_error()
 
 
 class ProxyApp:

@@ -5197,16 +5197,23 @@ Router_dealloc(Router *self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static int
-Router_init(Router *self, PyObject *args, PyObject *kw)
+static void
+_router_depth_error(void)
 {
-    static char *keys[] = {"appmap", NULL};
-    PyObject *appmap = NULL;
+    PyErr_Format(PyExc_ValueError,
+        "Router: max appmap depth %zu exceeded", ROUTER_MAX_DEPTH
+    );
+}
+
+static bool
+_router_check_appmap(PyObject *appmap, const uint8_t depth)
+{
     ssize_t pos = 0;
     PyObject *key = NULL;
     PyObject *val = NULL;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Router", keys, &appmap)) {
+    if (depth >= ROUTER_MAX_DEPTH) {
+        _router_depth_error();
         goto error;
     }
     if (! _check_dict("appmap", appmap)) {
@@ -5216,12 +5223,37 @@ Router_init(Router *self, PyObject *args, PyObject *kw)
         if (key != Py_None && !_check_str("appmap key", key, 0)) {
             goto error;
         }
-        if (Py_TYPE(val) != &PyDict_Type && !PyCallable_Check(val)) {
-            PyErr_Format(PyExc_TypeError,
-                "appmap[%R]: value not callable: %R", key, val
-            );
-            goto error;
+        if (Py_TYPE(val) == &PyDict_Type) {
+            if (! _router_check_appmap(val, depth + 1)) {
+                goto error;
+            }
         }
+        else {
+            if (! PyCallable_Check(val)) {
+                PyErr_Format(PyExc_TypeError,
+                    "appmap[%R]: value not callable: %R", key, val
+                );
+                goto error;
+            }
+        }
+    }
+    return true;
+
+error:
+    return false;
+}
+
+static int
+Router_init(Router *self, PyObject *args, PyObject *kw)
+{
+    static char *keys[] = {"appmap", NULL};
+    PyObject *appmap = NULL;
+
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Router", keys, &appmap)) {
+        goto error;
+    }
+    if (! _router_check_appmap(appmap, 0)) {
+        goto error;
     }
     _SET_AND_INC(self->appmap, appmap)
     return 0;
@@ -5250,7 +5282,7 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
     PyObject *val = NULL;
     PyObject *ret = NULL;
     PyObject *appmap = NULL;
-    size_t i;
+    uint8_t depth;
 
     /* `key` and `app` are owned references that must be cleared */
     PyObject *key = NULL;
@@ -5269,7 +5301,7 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
     }
 
     appmap = self->appmap;
-    for (i = 0; i < MAX_ROUTER_DEPTH; i++) {
+    for (depth = 0; depth < ROUTER_MAX_DEPTH; depth++) {
         _SET(key, Request_shift_path(REQUEST(request)))
         val = PyDict_GetItem(appmap, key);
         if (val == NULL) {
@@ -5285,10 +5317,7 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
         Py_CLEAR(key);
         appmap = val;
     }
-    PyErr_Format(PyExc_ValueError,
-        "MAX_ROUTER_DEPTH %zu exceeded: recursive references in appmap?",
-        MAX_ROUTER_DEPTH
-    );
+    _router_depth_error();
 
 error:
 cleanup:
