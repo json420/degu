@@ -105,6 +105,8 @@ leaf-application components for common scenarios.
 
     Generic RGI routing middleware.
 
+    For example:
+
     >>> def foo_app(session, request, api):
     ...     return (200, 'OK', {}, b'foo')
     ... 
@@ -114,9 +116,33 @@ leaf-application components for common scenarios.
     >>> from degu.applib import Router
     >>> router = Router({'foo': foo_app, 'bar': bar_app})
 
+    You can also use a multi-level (nested) *appmap*, for example:
+
+    >>> def my_app(session, request, api):
+    ...     return (200, 'OK', {}, None)
+    ... 
+    >>> appmap = {
+    ...     'a': {
+    ...         'b': {
+    ...             'c': {
+    ...                 'd': {
+    ...                     'e': my_app,
+    ...                 },
+    ...             },
+    ...         },
+    ...     },
+    ... }
+    ...
+    >>> router = Router(appmap)
+
+    .. note::
+        :class:`degu.applib.Router` currently enforces a max *appmap* depth of
+        ``10``.  This is to prevent recursive *appmap* references.
+
     .. versionchanged:: 0.17
 
-        This class was renamed from ``RouterApp`` to :class:`Router`.
+        This class was renamed from ``RouterApp`` to :class:`Router`, plus the
+        *appmap* can now be multi-level.
 
     .. attribute:: appmap
 

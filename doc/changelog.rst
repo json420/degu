@@ -30,6 +30,27 @@ New API additions:
         yet still undergo backward-incompatible API changes, be renamed, or be
         removed entirely.
 
+    *   :class:`degu.applib.Router` now supports nested *appmap* arguments, for
+        example:
+
+        >>> from degu.applib import Router
+        >>> def my_app(session, request, api):
+        ...     return (200, 'OK', {}, None)
+        ... 
+        >>> appmap = {
+        ...     'a': {
+        ...         'b': {
+        ...             'c': {
+        ...                 'd': {
+        ...                     'e': my_app,
+        ...                 },
+        ...             },
+        ...         },
+        ...     },
+        ... }
+        ...
+        >>> router = Router(appmap)
+
 
 Performance improvements:
 
