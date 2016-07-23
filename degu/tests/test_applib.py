@@ -363,6 +363,19 @@ class TestRouter(TestCase):
             'Router: max appmap depth 10 exceeded'
         )
 
+        # Recursive appmap
+        key1 = random_id()
+        key2 = random_id()
+        appmap1 = {}
+        appmap2 = {}
+        appmap1[key1] = appmap2
+        appmap2[key2] = appmap1
+        with self.assertRaises(ValueError) as cm:
+            applib.Router(appmap1)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+
     def test_call(self):
         def foo_app(session, request, api):
             return (200, 'OK', {}, b'foo')
@@ -548,6 +561,22 @@ class TestRouter(TestCase):
             self.assertEqual(sys.getrefcount(key), 4)
             appmap = appmap[key]
             self.assertEqual(sys.getrefcount(key), 3)
+
+        # Recursive appmap
+        key1 = random_id()
+        key2 = random_id()
+        uri = '/' + '/'.join([key1, key2] * 5)
+        appmap1 = {}
+        app = applib.Router(appmap1)
+        appmap2 = {}
+        appmap1[key1] = appmap2
+        appmap2[key2] = appmap1
+        r = mkreq('GET', uri)
+        with self.assertRaises(ValueError) as cm:
+            app(None, r, None)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
 
 
 class TestProxyApp(TestCase):
