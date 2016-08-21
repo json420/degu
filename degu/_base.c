@@ -138,7 +138,6 @@ error:
 /******************************************************************************
  * DeguSrc globals
  ******************************************************************************/
-_DEGU_SRC_CONSTANT(LF, "\n")
 _DEGU_SRC_CONSTANT(CRLF, "\r\n")
 _DEGU_SRC_CONSTANT(CRLFCRLF, "\r\n\r\n")
 _DEGU_SRC_CONSTANT(SPACE, " ")
