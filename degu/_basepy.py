@@ -68,6 +68,7 @@ _METHODS = {
     b'HEAD': ('HEAD', HEAD_BIT),
     b'DELETE': ('DELETE', DELETE_BIT),
 }
+_METHODS_STR = dict((k.decode(), v) for (k, v) in _METHODS.items())
 
 _OK = 'OK'
 
@@ -684,7 +685,7 @@ class Request:
     )
 
     def __init__(self, method, uri, headers, body, mount, path, query):
-        (self._method, self._m) = parse_method(method)
+        (self._method, self._m) = _check_method(method)
         self._uri = uri
         self._headers = headers
         self._body = body
@@ -803,8 +804,10 @@ def parse_response(method, preamble, rfile):
 
 def _check_method(method):
     _check_str('method', method)
-    if method not in {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}:
+    pair = _METHODS_STR.get(method)
+    if pair is None:
         raise ValueError('bad method: {!r}'.format(method))
+    return pair
 
 def _validate_chunk(chunk):
     _check_tuple('chunk', chunk, 2)

@@ -50,7 +50,15 @@ except ImportError:
 
 random = SystemRandom()
 
+
+# Subclasses to check that strict type checking is done:
 class UserInt(int):
+    pass
+
+class UserStr(str):
+    pass
+
+class UserBytes(bytes):
     pass
 
 
@@ -403,6 +411,21 @@ class TestRequest_Py(BackendTestCase):
                 yield (method, uri, {}, None, [], path, query)
 
     def test_init(self):
+        # Make sure method type is checked:
+        for method in GOOD_METHODS:
+            for bad in [method.encode(), UserStr(method)]:
+                with self.assertRaises(TypeError) as cm:
+                    self.Request(bad, '/', {}, None, [], [], None)
+                self.assertEqual(str(cm.exception),
+                    TYPE_ERROR.format('method', str, type(bad), bad)
+                )
+
+        # Make sure method value is checked:
+        for bad in BAD_METHODS:
+            with self.assertRaises(ValueError) as cm:
+                self.Request(bad, '/', {}, None, [], [], None)
+            self.assertEqual(str(cm.exception), 'bad method: {!r}'.format(bad))
+
         parse_method = self.getattr('parse_method')
         mp = parse_method('GET')
         request = self.Request('GET', '/', {}, None, [], [], None)
@@ -3040,9 +3063,6 @@ class DummyWriter:
     def flush(self):
         self._calls.append('flush')
 
-
-class UserBytes(bytes):
-    pass
 
 
 class TestFunctions_Py(BackendTestCase):
