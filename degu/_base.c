@@ -1095,8 +1095,7 @@ Request_dealloc(Request *self)
 static int
 Request_init(Request *self, PyObject *args, PyObject *kw)
 {
-    const uint8_t *buf = NULL;
-    size_t len = 0;
+    PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
     static char *keys[] = {
         "method",
@@ -1108,13 +1107,13 @@ Request_init(Request *self, PyObject *args, PyObject *kw)
         "query",
         NULL,
     };
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "s#OOOOOO:Request", keys,
-            &buf, &len, &dr.uri, &dr.headers, &dr.body,
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOOOOOO:Request", keys,
+            &method, &dr.uri, &dr.headers, &dr.body,
             &dr.mount, &dr.path, &dr.query)
     ) {
         goto error;
     }
-    if (_parse_method(DEGU_SRC(buf, len), &dr) && _Request_fill_args(self, &dr)) {
+    if (_check_method(method, &dr) && _Request_fill_args(self, &dr)) {
         return 0;
     }
 

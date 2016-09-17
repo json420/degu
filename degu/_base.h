@@ -210,6 +210,9 @@ typedef struct {
 static bool _parse_method(DeguSrc, DeguRequest *)
     __attribute__ ((warn_unused_result));
 
+static bool _check_method(PyObject *, DeguRequest *)
+    __attribute__ ((warn_unused_result));
+
 /******************************************************************************
  * Exported Python functions
  ******************************************************************************/
