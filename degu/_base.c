@@ -1055,6 +1055,7 @@ _Request_fill_args(Request *self, DeguRequest *dr)
         _SET_AND_INC(self->mount,   dr->mount)
         _SET_AND_INC(self->path,    dr->path)
         _SET_AND_INC(self->query,   dr->query)
+        self->m = dr->m;
         return true;
     }
 
@@ -1094,6 +1095,8 @@ Request_dealloc(Request *self)
 static int
 Request_init(Request *self, PyObject *args, PyObject *kw)
 {
+    const uint8_t *buf = NULL;
+    size_t len = 0;
     DeguRequest dr = NEW_DEGU_REQUEST;
     static char *keys[] = {
         "method",
@@ -1105,16 +1108,18 @@ Request_init(Request *self, PyObject *args, PyObject *kw)
         "query",
         NULL,
     };
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOOOOOO:Request", keys,
-            &dr.method, &dr.uri, &dr.headers, &dr.body,
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "s#OOOOOO:Request", keys,
+            &buf, &len, &dr.uri, &dr.headers, &dr.body,
             &dr.mount, &dr.path, &dr.query)
     ) {
-        return -1;
+        goto error;
     }
-    if (! _Request_fill_args(self, &dr)) {
-        return -1; 
+    if (_parse_method(DEGU_SRC(buf, len), &dr) && _Request_fill_args(self, &dr)) {
+        return 0;
     }
-    return 0;
+
+error:
+    return -1;
 }
 
 static PyObject *

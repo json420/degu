@@ -428,9 +428,11 @@ class TestRequest_Py(BackendTestCase):
         )
 
         for args in self.iter_random_args():
+            mp = parse_method(args[0])
             request = self.Request(*args)
             self.assertIsInstance(request, self.Request)
-            self.assertIs(request.method,  args[0])
+            self.assertIs(request.method,  mp[0])
+            self.assertEqual(request.m,    mp[1])
             self.assertIs(request.uri,     args[1])
             self.assertIs(request.headers, args[2])
             self.assertIs(request.body,    args[3])

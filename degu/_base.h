@@ -205,6 +205,12 @@ typedef struct {
 
 
 /******************************************************************************
+ * Internal parsing and rendering API
+ ******************************************************************************/
+static bool _parse_method(DeguSrc, DeguRequest *)
+    __attribute__ ((warn_unused_result));
+
+/******************************************************************************
  * Exported Python functions
  ******************************************************************************/
 
@@ -460,6 +466,7 @@ typedef struct {
     PyObject * mount;
     PyObject * path;
     PyObject * query;
+    uint8_t m;
 } Request;
 
 static PyObject * Request_shift_path(Request *);
@@ -479,6 +486,7 @@ static PyMemberDef Request_members[] = {
     {"mount",   T_OBJECT, offsetof(Request, mount),   READONLY, NULL},
     {"path",    T_OBJECT, offsetof(Request, path),    READONLY, NULL},
     {"query",   T_OBJECT, offsetof(Request, query),   READONLY, NULL},
+    {"m",       T_UBYTE,  offsetof(Request, m),       READONLY, NULL},
     {NULL}
 };
 
