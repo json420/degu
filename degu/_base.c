@@ -470,26 +470,8 @@ _check_str(const char *name, PyObject *obj, const ssize_t minlen)
 
 
 /******************************************************************************
- * Internal API for working with DeguSrc and DeguDst memory buffers
+ * Internal API for working with DeguSrc and DeguDst memory buffers ("slices")
  ******************************************************************************/
-static inline bool
-_isempty(DeguSrc src)
-{
-    if (src.buf == NULL || src.len == 0) {
-        return true;
-    }
-    return false;
-}
-
-static inline bool
-_dst_isempty(DeguDst dst)
-{
-    if (dst.buf == NULL || dst.len == 0) {
-        return true;
-    }
-    return false;
-}
-
 static DeguSrc
 _slice(DeguSrc src, const size_t start, const size_t stop)
 {
@@ -515,6 +497,24 @@ _slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
         Py_FatalError("_slice_src_from_dst(): bad internal call");
     }
     return DEGU_SRC(dst.buf + start, stop - start);
+}
+
+static inline bool
+_isempty(DeguSrc src)
+{
+    if (src.buf == NULL || src.len == 0) {
+        return true;
+    }
+    return false;
+}
+
+static inline bool
+_dst_isempty(DeguDst dst)
+{
+    if (dst.buf == NULL || dst.len == 0) {
+        return true;
+    }
+    return false;
 }
 
 static bool
