@@ -715,15 +715,24 @@ done:
     return dst;
 }
 
-static DeguDst
-_calloc_dst(const size_t len)
+static uint8_t *
+_calloc_buf(const size_t len)
 {
     if (len == 0) {
-        Py_FatalError("_call_dst(): bad internal call");
+        Py_FatalError("_calloc_buf(): bad internal call");
     }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
+    }
+    return buf;
+}
+
+static inline DeguDst
+_calloc_dst(const size_t len)
+{
+    uint8_t *buf = _calloc_buf(len);
+    if (buf == NULL) {
         return NULL_DeguDst;
     }
     return DEGU_DST(buf, len);
@@ -744,12 +753,6 @@ _dst_frompybuf(Py_buffer *pybuf)
     return DEGU_DST(pybuf->buf, (size_t)pybuf->len);
 }
 
-
-/*******************************************************************************
- * Internal API: Misc:
- *     _min()
- *     _calloc_buf()
- */
 static inline size_t
 _min(const size_t a, const size_t b)
 {
@@ -757,19 +760,6 @@ _min(const size_t a, const size_t b)
         return a;
     }
     return b;
-}
-
-static uint8_t *
-_calloc_buf(const size_t len)
-{
-    if (len == 0) {
-        Py_FatalError("_calloc_buf(): bad internal call");
-    }
-    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (buf == NULL) {
-        PyErr_NoMemory();
-    }
-    return buf;
 }
 
 
