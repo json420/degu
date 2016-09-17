@@ -502,6 +502,15 @@ _dst_slice(DeguDst dst, const size_t start, const size_t stop)
     return DEGU_DST(dst.buf + start, stop - start);
 }
 
+static DeguSrc
+_slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
+{
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
+        Py_FatalError("_slice_src_from_dst(): bad internal call");
+    }
+    return DEGU_SRC(dst.buf + start, stop - start);
+}
+
 static bool
 _equal(DeguSrc a, DeguSrc b) {
     if (a.buf == NULL || b.buf == NULL) {
@@ -704,15 +713,6 @@ error:
 
 done:
     return dst;
-}
-
-static DeguSrc
-_slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
-{
-    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
-    }
-    return DEGU_SRC(dst.buf + start, stop - start);
 }
 
 static DeguDst
