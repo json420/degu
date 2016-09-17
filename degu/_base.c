@@ -1481,7 +1481,7 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
     if (! _parse_key(rawkey, scratch)) {
         goto error;
     }
-    DeguSrc keysrc = {scratch.buf, rawkey.len};
+    DeguSrc keysrc = _slice_src_from_dst(scratch, 0, rawkey.len);
 
     /* Validate header value (with special handling and fast-paths) */
     if (_equal(keysrc, CONTENT_LENGTH)) {
