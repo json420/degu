@@ -494,10 +494,10 @@ _slice(DeguSrc src, const size_t start, const size_t stop)
 }
 
 static DeguDst
-_dst_slice(DeguDst dst, const size_t start, const size_t stop)
+_slice_dst(DeguDst dst, const size_t start, const size_t stop)
 {
     if (dst.buf == NULL || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
+        Py_FatalError("_slice_dst(): bad internal call");
     }
     return DEGU_DST(dst.buf + start, stop - start);
 }
@@ -580,7 +580,7 @@ _copy(DeguDst dst, DeguSrc src)
 static bool
 _copy_into(DeguOutput *o, DeguSrc src)
 {
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->dst.len);
     if (src.buf == NULL) {
         return false;  /* Assuming an error has already been set */
     }
@@ -2565,7 +2565,7 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
         return false;
     }
 
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->dst.len);
     if (src.len > dst.len) {
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
@@ -2773,7 +2773,7 @@ _render_status(DeguOutput *o, const size_t s)
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->stop + 4);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->stop + 4);
     dst.buf[0] = 48 + (s / 100);
     dst.buf[1] = 48 + (s % 100 / 10);
     dst.buf[2] = 48 + (s % 10);
@@ -3000,7 +3000,7 @@ _readinto(PyObject *method, DeguDst dst)
     ssize_t received;
 
     while (start < dst.len) {
-        received = _recv_into(method, _dst_slice(dst, start, dst.len));
+        received = _recv_into(method, _slice_dst(dst, start, dst.len));
         if (received < 0) {
             return false;
         }
@@ -3448,7 +3448,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
 
     /* Now read till found */
     while (self->stop < size) {
-        added = _recv_into(self->recv_into, _dst_slice(dst, self->stop, dst.len));
+        added = _recv_into(self->recv_into, _slice_dst(dst, self->stop, dst.len));
         if (added < 0) {
             return NULL_DeguSrc;
         }
@@ -3491,7 +3491,7 @@ _Reader_readinto(Reader *self, DeguDst dst)
     if (cur.len > 0) {
         _copy(dst, cur);
     }
-    if (_readinto(self->recv_into, _dst_slice(dst, cur.len, dst.len))) {
+    if (_readinto(self->recv_into, _slice_dst(dst, cur.len, dst.len))) {
         self->rawtell += dst.len;
         return true;
     }
@@ -3690,7 +3690,7 @@ static DeguDst
 _Writer_get_dst(Writer *self)
 {
     DeguDst raw = {self->buf, BUF_LEN};
-    return _dst_slice(raw, self->stop, raw.len);
+    return _slice_dst(raw, self->stop, raw.len);
 }
 
 static DeguSrc
@@ -4062,7 +4062,7 @@ _Body_write_to(Body *self, DeguWObj *w)
     DeguDst dst = {dst_buf, iosize};
     while (self->remaining > 0) {
         size = _min(dst.len, self->remaining);
-        if (! _Body_readinto(self, _dst_slice(dst, 0, size))) {
+        if (! _Body_readinto(self, _slice_dst(dst, 0, size))) {
             goto error;
         }
         wrote = _write_to(w, _slice_src_from_dst(dst, 0, size));
@@ -4344,7 +4344,7 @@ ChunkedBody_read(ChunkedBody *self)
     const ssize_t count = PyList_GET_SIZE(list);
     for (i = 0; i < count; i++) {
         start += _copy(
-            _dst_slice(dst, start, dst.len),
+            _slice_dst(dst, start, dst.len),
             _shrink_chunk_data(PyList_GetItem(list, i))
         );
     }
