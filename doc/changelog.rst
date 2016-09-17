@@ -112,7 +112,7 @@ Breaking API changes:
         to the namedtuple exposing the standard RGI API.
 
         Because this standard RGI API now exposes more that just IO abstraction
-        classes for creating HTTP request and response bodies, it made since to
+        classes for creating HTTP request and response bodies, it made sense to
         rename this namedtuple from ``Bodies`` to the more generic ``API``.
 
     *   The ``degu.base.bodies`` constant has been renamed to
