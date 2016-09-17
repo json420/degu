@@ -1448,10 +1448,9 @@ static bool
 _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
 {
     ssize_t index;
-    size_t keystop, valstart;
-    bool success = true;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
+    bool success = false;
+    PyObject *pykey = NULL;
+    PyObject *pyval = NULL;
 
     /* Split header line, validate & casefold header name */
     if (src.len < 4) {
@@ -1463,72 +1462,67 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         _value_error("bad header line: %R", src);
         goto error;
     }
-    keystop = (size_t)index;
-    valstart = keystop + SEP.len;
-    DeguSrc rawkey = _slice(src, 0, keystop);
-    DeguSrc valsrc = _slice(src, valstart, src.len);
+    DeguSrc rawkey = _slice(src, 0, (size_t)index);
     if (! _parse_key(rawkey, scratch)) {
         goto error;
     }
-    DeguSrc keysrc = _slice_src_from_dst(scratch, 0, rawkey.len);
+    DeguSrc key = _slice_src_from_dst(scratch, 0, rawkey.len);
+    DeguSrc val = _slice(src, key.len + SEP.len, src.len);
 
     /* Validate header value (with special handling and fast-paths) */
-    if (_equal(keysrc, CONTENT_LENGTH)) {
-        int64_t length = _parse_content_length(valsrc);
+    if (_equal(key, CONTENT_LENGTH)) {
+        int64_t length = _parse_content_length(val);
         if (length < 0) {
             goto error;
         }
         dh->content_length = (uint64_t)length;
         dh->flags |= CONTENT_LENGTH_BIT;
-        _SET_AND_INC(key, key_content_length)
-        _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
+        _SET_AND_INC(pykey, key_content_length)
+        _SET(pyval, PyLong_FromUnsignedLongLong(dh->content_length))
     }
-    else if (_equal(keysrc, TRANSFER_ENCODING)) {
-        if (! _equal(valsrc, CHUNKED)) {
-            _value_error("bad transfer-encoding: %R", valsrc);
+    else if (_equal(key, TRANSFER_ENCODING)) {
+        if (! _equal(val, CHUNKED)) {
+            _value_error("bad transfer-encoding: %R", val);
             goto error;
         }
-        _SET_AND_INC(key, key_transfer_encoding)
-        _SET_AND_INC(val, val_chunked)
+        _SET_AND_INC(pykey, key_transfer_encoding)
+        _SET_AND_INC(pyval, val_chunked)
         dh->flags |= TRANSFER_ENCODING_BIT;
     }
-    else if (_equal(keysrc, RANGE)) {
-        _SET_AND_INC(key, key_range)
-        _SET(val, _parse_range(valsrc))
+    else if (_equal(key, RANGE)) {
+        _SET_AND_INC(pykey, key_range)
+        _SET(pyval, _parse_range(val))
         dh->flags |= RANGE_BIT;
     }
-    else if (_equal(keysrc, CONTENT_RANGE)) {
-        _SET_AND_INC(key, key_content_range)
-        _SET(val, _parse_content_range(valsrc))
+    else if (_equal(key, CONTENT_RANGE)) {
+        _SET_AND_INC(pykey, key_content_range)
+        _SET(pyval, _parse_content_range(val))
         dh->flags |= CONTENT_RANGE_BIT;
     }
-    else if (_equal(keysrc, CONTENT_TYPE)) {
-        _SET_AND_INC(key, key_content_type)
-        if (_equal(valsrc, APPLICATION_JSON)) {
-            _SET_AND_INC(val, val_application_json)
+    else if (_equal(key, CONTENT_TYPE)) {
+        _SET_AND_INC(pykey, key_content_type)
+        if (_equal(val, APPLICATION_JSON)) {
+            _SET_AND_INC(pyval, val_application_json)
         }
         else {
-            _SET(val, _parse_val(valsrc))
+            _SET(pyval, _parse_val(val))
         }
     }
     else {
-        _SET(key, _tostr(keysrc))
-        _SET(val, _parse_val(valsrc))
+        _SET(pykey, _tostr(key))
+        _SET(pyval, _parse_val(val))
     }
 
     /* Store in headers dict, make sure it's not a duplicate key */
-    if (PyDict_SetDefault(dh->headers, key, val) != val) {
+    if (PyDict_SetDefault(dh->headers, pykey, pyval) != pyval) {
         _value_error("duplicate header: %R", src);
         goto error;
     }
-    goto cleanup;
+    success = true;
 
 error:
-    success = false;
-
-cleanup:
-    Py_CLEAR(key);
-    Py_CLEAR(val);
+    Py_CLEAR(pykey);
+    Py_CLEAR(pyval);
     return success;
 }
 
