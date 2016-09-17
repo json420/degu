@@ -4939,7 +4939,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
-    if (base_headers != Py_None && !_check_type("base_headers", base_headers, &PyTuple_Type)) {
+    if (base_headers != Py_None && !_check_tuple("base_headers", base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
