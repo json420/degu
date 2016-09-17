@@ -1995,16 +1995,19 @@ parse_method(PyObject *self, PyObject *args)
     size_t len = 0;
     DeguRequest dr = NEW_DEGU_REQUEST;
     PyObject *m = NULL;
+    PyObject *ret = NULL;
 
     if (PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         if (_parse_method(DEGU_SRC(buf, len), &dr)) {
             m = PyLong_FromUnsignedLong(dr.m);
             if (m != NULL) {
-                return PyTuple_Pack(2, dr.method, m);
+                ret = PyTuple_Pack(2, dr.method, m);
             }
         }
     }
-    return NULL;
+    Py_CLEAR(dr.method);
+    Py_CLEAR(m);
+    return ret;
 }
 
 static PyObject *
