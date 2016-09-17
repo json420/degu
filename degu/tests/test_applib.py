@@ -56,7 +56,6 @@ BAD_METHODS = [
 ]
 BAD_METHODS.extend(m.lower() for m in METHODS)
 BAD_METHODS = tuple(BAD_METHODS)
-ALL_METHODS = METHODS + BAD_METHODS
 
 
 class TestAllowedMethods(TestCase):
@@ -205,7 +204,7 @@ class TestMethodFilter(TestCase):
         # No methods allowed:
         allowed_methods = applib.AllowedMethods()
         inst = applib.MethodFilter(app, allowed_methods)
-        for m in ALL_METHODS:
+        for m in METHODS:
             self.assertEqual(inst(None, mkreq(m, '/'), None),
                 (405, 'Method Not Allowed', {}, None)
             )
@@ -225,24 +224,15 @@ class TestMethodFilter(TestCase):
                     self.assertEqual(response,
                         (405, 'Method Not Allowed', {}, None)
                     )
-            for m in BAD_METHODS:
-                self.assertEqual(inst(None, mkreq(m, '/'), None),
-                    (405, 'Method Not Allowed', {}, None)
-                )
 
         # All *good* methods allowed:
         good = list(METHODS)
-        random.shuffle(good)
         random.shuffle(good)
         allowed_methods = applib.AllowedMethods(*good)
         inst = applib.MethodFilter(app, allowed_methods)
         for m in METHODS:
             self.assertEqual(inst(None, mkreq(m, '/'), None),
                 (200, 'OK', {}, marker)
-            )
-        for m in BAD_METHODS:
-            self.assertEqual(inst(None, mkreq(m, '/'), None),
-                (405, 'Method Not Allowed', {}, None)
             )
 
 

@@ -680,11 +680,11 @@ mount={!r}, path={!r}, query={!r})'
 
 class Request:
     __slots__ = (
-        '_method', '_uri', '_headers', '_body', '_mount', '_path', '_query'
+        '_method', '_m', '_uri', '_headers', '_body', '_mount', '_path', '_query'
     )
 
     def __init__(self, method, uri, headers, body, mount, path, query):
-        self._method = method
+        (self._method, self._m) = parse_method(method)
         self._uri = uri
         self._headers = headers
         self._body = body
@@ -706,6 +706,10 @@ class Request:
     @property
     def method(self):
         return self._method
+
+    @property
+    def m(self):
+        return self._m
 
     @property
     def uri(self):

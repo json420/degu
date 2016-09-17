@@ -403,9 +403,12 @@ class TestRequest_Py(BackendTestCase):
                 yield (method, uri, {}, None, [], path, query)
 
     def test_init(self):
+        parse_method = self.getattr('parse_method')
+        mp = parse_method('GET')
         request = self.Request('GET', '/', {}, None, [], [], None)
         self.assertIsInstance(request, self.Request)
-        self.assertEqual(request.method, 'GET')
+        self.assertIs(request.method, mp[0])
+        self.assertEqual(request.m, mp[1])
         self.assertEqual(request.uri, '/')
         self.assertEqual(request.headers, {})
         self.assertIsNone(request.body)
@@ -439,7 +442,7 @@ class TestRequest_Py(BackendTestCase):
 
         # Test refrences counting:
         args = (
-            random_id(),
+            b'GET / HTTP/1.1'.decode()[0:3],
             random_id(),
             {random_id(): random_id()},
             random_id(),
@@ -447,30 +450,37 @@ class TestRequest_Py(BackendTestCase):
             [random_id(), random_id()],
             random_id(),
         )
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
         request = self.Request(*args)
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 4)
+        for i in range(len(args)):
+            count = (2 if i == 0 else 3)
+            self.assertEqual(sys.getrefcount(args[i]), count)
         del request
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
 
         # Attributes should be read-only:
-        names = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
         request = self.Request(*args)
-        for (name, arg) in zip(names, args):
+        attributes = (
+            'method',
+            'm',
+            'uri',
+            'headers',
+            'body',
+            'mount',
+            'path',
+            'query',
+        )
+        for name in attributes:
+            orig = getattr(request, name)
             with self.assertRaises(AttributeError):
                 setattr(request, name, random_id())
-            self.assertIs(getattr(request, name), arg)
-            self.assertEqual(sys.getrefcount(arg), 5)
-            with self.assertRaises(AttributeError):
-                delattr(request, name)
-            self.assertIs(getattr(request, name), arg)
-            self.assertEqual(sys.getrefcount(arg), 5)
+            self.assertIs(getattr(request, name), orig)
+            del orig
         del request
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
 
     def test_shift_path(self):
         def mk_request(mount, path):
