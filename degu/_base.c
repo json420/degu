@@ -749,7 +749,6 @@ _dst_frompybuf(Py_buffer *pybuf)
  * Internal API: Misc:
  *     _min()
  *     _calloc_buf()
- *     _get_callable()
  */
 static inline size_t
 _min(const size_t a, const size_t b)
@@ -764,7 +763,7 @@ static uint8_t *
 _calloc_buf(const size_t len)
 {
     if (len == 0) {
-        Py_FatalError("_call_buf(): bad internal call");
+        Py_FatalError("_calloc_buf(): bad internal call");
     }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
