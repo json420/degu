@@ -57,11 +57,11 @@
 #define CONTENT_RANGE_BIT 8u
 #define BODY_MASK 3u
 
-#define GET_BIT    (1 << 0)
-#define PUT_BIT    (1 << 1)
-#define POST_BIT   (1 << 2)
-#define HEAD_BIT   (1 << 3)
-#define DELETE_BIT (1 << 4)
+#define GET_BIT       (1 << 0)
+#define PUT_BIT       (1 << 1)
+#define POST_BIT      (1 << 2)
+#define HEAD_BIT      (1 << 3)
+#define DELETE_BIT    (1 << 4)
 #define PUT_POST_MASK (PUT_BIT | POST_BIT)
 
 #define ROUTER_MAX_DEPTH 10

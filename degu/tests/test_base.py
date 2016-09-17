@@ -177,9 +177,9 @@ def _permute_insert(method):
 
 GOOD_METHODS = (
     'GET',
-    'HEAD',
-    'POST',
     'PUT',
+    'POST',
+    'HEAD',
     'DELETE',
 )
 BAD_METHODS = [
@@ -3037,18 +3037,24 @@ class TestFunctions_Py(BackendTestCase):
     def test_parse_method(self):
         parse_method = self.getattr('parse_method')
 
-        for method in GOOD_METHODS:
+        self.assertEqual(parse_method(b'GET'),    ('GET',     1))
+        self.assertEqual(parse_method(b'PUT'),    ('PUT',     2))
+        self.assertEqual(parse_method(b'POST'),   ('POST',    4))
+        self.assertEqual(parse_method(b'HEAD'),   ('HEAD',    8))
+        self.assertEqual(parse_method(b'DELETE'), ('DELETE', 16))
+
+        for (i, method) in enumerate(GOOD_METHODS):
             # Input is str:
             result = parse_method(method)
-            self.assertIs(type(result),  str)
-            self.assertEqual(result, method)
-            self.assertIs(parse_method(method), result)
+            self.assertIs(type(result),  tuple)
+            self.assertEqual(result, (method, 1 << i))
+            self.assertIs(parse_method(method)[0], result[0])
 
             # Input is bytes:
             result = parse_method(method.encode())
-            self.assertIs(type(result),  str)
-            self.assertEqual(result, method)
-            self.assertIs(parse_method(method), result)
+            self.assertIs(type(result),  tuple)
+            self.assertEqual(result, (method, 1 << i))
+            self.assertIs(parse_method(method)[0], result[0])
 
             # Lowercase str:
             with self.assertRaises(ValueError) as cm:

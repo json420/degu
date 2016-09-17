@@ -54,12 +54,19 @@ BODY_STARTED = 1
 BODY_CONSUMED = 2
 BODY_ERROR = 3
 
+GET_BIT       = (1 << 0)
+PUT_BIT       = (1 << 1)
+POST_BIT      = (1 << 2)
+HEAD_BIT      = (1 << 3)
+DELETE_BIT    = (1 << 4)
+PUT_POST_MASK = (PUT_BIT | POST_BIT)
+
 _METHODS = {
-    b'GET': 'GET',
-    b'PUT': 'PUT',
-    b'POST': 'POST',
-    b'HEAD': 'HEAD',
-    b'DELETE': 'DELETE',
+    b'GET': ('GET', GET_BIT),
+    b'PUT': ('PUT', PUT_BIT),
+    b'POST': ('POST', POST_BIT),
+    b'HEAD': ('HEAD', HEAD_BIT),
+    b'DELETE': ('DELETE', DELETE_BIT),
 }
 
 _OK = 'OK'
@@ -585,10 +592,10 @@ def parse_headers(src, isresponse=False):
 
 def _parse_method(src):
     assert isinstance(src, bytes)
-    method = _METHODS.get(src)
-    if method is None:
+    pair = _METHODS.get(src)
+    if pair is None:
         raise ValueError('bad HTTP method: {!r}'.format(src))
-    return method
+    return pair
 
 
 def parse_method(src):
@@ -647,7 +654,7 @@ def parse_request_line(line):
     items = src.split(b' /', 1)
     if len(items) < 2:
         raise ValueError('bad request line: {!r}'.format(line))
-    method = _parse_method(items[0])
+    method = _parse_method(items[0])[0]
     (uri, mount, path, query) = parse_uri(b'/' + items[1])
     return (method, uri, mount, path, query)
 
