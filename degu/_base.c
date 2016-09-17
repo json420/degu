@@ -1055,6 +1055,7 @@ _Request_fill_args(Request *self, DeguRequest *dr)
         _SET_AND_INC(self->mount,   dr->mount)
         _SET_AND_INC(self->path,    dr->path)
         _SET_AND_INC(self->query,   dr->query)
+        self->m = dr->m;
         return true;
     }
 
@@ -1094,6 +1095,7 @@ Request_dealloc(Request *self)
 static int
 Request_init(Request *self, PyObject *args, PyObject *kw)
 {
+    PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
     static char *keys[] = {
         "method",
@@ -1106,15 +1108,17 @@ Request_init(Request *self, PyObject *args, PyObject *kw)
         NULL,
     };
     if (! PyArg_ParseTupleAndKeywords(args, kw, "OOOOOOO:Request", keys,
-            &dr.method, &dr.uri, &dr.headers, &dr.body,
+            &method, &dr.uri, &dr.headers, &dr.body,
             &dr.mount, &dr.path, &dr.query)
     ) {
-        return -1;
+        goto error;
     }
-    if (! _Request_fill_args(self, &dr)) {
-        return -1; 
+    if (_check_method(method, &dr) && _Request_fill_args(self, &dr)) {
+        return 0;
     }
-    return 0;
+
+error:
+    return -1;
 }
 
 static PyObject *
@@ -1990,13 +1994,20 @@ parse_method(PyObject *self, PyObject *args)
     const uint8_t *buf = NULL;
     size_t len = 0;
     DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *m = NULL;
+    PyObject *ret = NULL;
 
     if (PyArg_ParseTuple(args, "s#:parse_method", &buf, &len)) {
         if (_parse_method(DEGU_SRC(buf, len), &dr)) {
-            return dr.method;
+            m = PyLong_FromUnsignedLong(dr.m);
+            if (m != NULL) {
+                ret = PyTuple_Pack(2, dr.method, m);
+            }
         }
     }
-    return NULL;
+    Py_CLEAR(dr.method);
+    Py_CLEAR(m);
+    return ret;
 }
 
 static PyObject *
@@ -4990,7 +5001,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Only POST and PUT requests can have a body */
-    if (dr->body != Py_None && dr->method != str_POST && dr->method != str_PUT) {
+    if (dr->body != Py_None && (dr->m & PUT_POST_MASK) == 0) {
         PyErr_Format(PyExc_ValueError,
             "when method is %R, body must be None; got a %R",
             dr->method, Py_TYPE(dr->body)

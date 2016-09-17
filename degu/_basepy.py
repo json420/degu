@@ -54,13 +54,21 @@ BODY_STARTED = 1
 BODY_CONSUMED = 2
 BODY_ERROR = 3
 
+GET_BIT       = (1 << 0)
+PUT_BIT       = (1 << 1)
+POST_BIT      = (1 << 2)
+HEAD_BIT      = (1 << 3)
+DELETE_BIT    = (1 << 4)
+PUT_POST_MASK = (PUT_BIT | POST_BIT)
+
 _METHODS = {
-    b'GET': 'GET',
-    b'PUT': 'PUT',
-    b'POST': 'POST',
-    b'HEAD': 'HEAD',
-    b'DELETE': 'DELETE',
+    b'GET': ('GET', GET_BIT),
+    b'PUT': ('PUT', PUT_BIT),
+    b'POST': ('POST', POST_BIT),
+    b'HEAD': ('HEAD', HEAD_BIT),
+    b'DELETE': ('DELETE', DELETE_BIT),
 }
+_METHODS_STR = dict((k.decode(), v) for (k, v) in _METHODS.items())
 
 _OK = 'OK'
 
@@ -585,10 +593,10 @@ def parse_headers(src, isresponse=False):
 
 def _parse_method(src):
     assert isinstance(src, bytes)
-    method = _METHODS.get(src)
-    if method is None:
+    pair = _METHODS.get(src)
+    if pair is None:
         raise ValueError('bad HTTP method: {!r}'.format(src))
-    return method
+    return pair
 
 
 def parse_method(src):
@@ -647,7 +655,7 @@ def parse_request_line(line):
     items = src.split(b' /', 1)
     if len(items) < 2:
         raise ValueError('bad request line: {!r}'.format(line))
-    method = _parse_method(items[0])
+    method = _parse_method(items[0])[0]
     (uri, mount, path, query) = parse_uri(b'/' + items[1])
     return (method, uri, mount, path, query)
 
@@ -673,11 +681,11 @@ mount={!r}, path={!r}, query={!r})'
 
 class Request:
     __slots__ = (
-        '_method', '_uri', '_headers', '_body', '_mount', '_path', '_query'
+        '_method', '_m', '_uri', '_headers', '_body', '_mount', '_path', '_query'
     )
 
     def __init__(self, method, uri, headers, body, mount, path, query):
-        self._method = method
+        (self._method, self._m) = _check_method(method)
         self._uri = uri
         self._headers = headers
         self._body = body
@@ -699,6 +707,10 @@ class Request:
     @property
     def method(self):
         return self._method
+
+    @property
+    def m(self):
+        return self._m
 
     @property
     def uri(self):
@@ -792,8 +804,10 @@ def parse_response(method, preamble, rfile):
 
 def _check_method(method):
     _check_str('method', method)
-    if method not in {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}:
+    pair = _METHODS_STR.get(method)
+    if pair is None:
         raise ValueError('bad method: {!r}'.format(method))
+    return pair
 
 def _validate_chunk(chunk):
     _check_tuple('chunk', chunk, 2)

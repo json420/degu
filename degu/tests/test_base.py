@@ -50,7 +50,15 @@ except ImportError:
 
 random = SystemRandom()
 
+
+# Subclasses to check that strict type checking is done:
 class UserInt(int):
+    pass
+
+class UserStr(str):
+    pass
+
+class UserBytes(bytes):
     pass
 
 
@@ -177,9 +185,9 @@ def _permute_insert(method):
 
 GOOD_METHODS = (
     'GET',
-    'HEAD',
-    'POST',
     'PUT',
+    'POST',
+    'HEAD',
     'DELETE',
 )
 BAD_METHODS = [
@@ -403,9 +411,27 @@ class TestRequest_Py(BackendTestCase):
                 yield (method, uri, {}, None, [], path, query)
 
     def test_init(self):
+        # Make sure method type is checked:
+        for method in GOOD_METHODS:
+            for bad in [method.encode(), UserStr(method)]:
+                with self.assertRaises(TypeError) as cm:
+                    self.Request(bad, '/', {}, None, [], [], None)
+                self.assertEqual(str(cm.exception),
+                    TYPE_ERROR.format('method', str, type(bad), bad)
+                )
+
+        # Make sure method value is checked:
+        for bad in BAD_METHODS:
+            with self.assertRaises(ValueError) as cm:
+                self.Request(bad, '/', {}, None, [], [], None)
+            self.assertEqual(str(cm.exception), 'bad method: {!r}'.format(bad))
+
+        parse_method = self.getattr('parse_method')
+        mp = parse_method('GET')
         request = self.Request('GET', '/', {}, None, [], [], None)
         self.assertIsInstance(request, self.Request)
-        self.assertEqual(request.method, 'GET')
+        self.assertIs(request.method, mp[0])
+        self.assertEqual(request.m, mp[1])
         self.assertEqual(request.uri, '/')
         self.assertEqual(request.headers, {})
         self.assertIsNone(request.body)
@@ -425,9 +451,11 @@ class TestRequest_Py(BackendTestCase):
         )
 
         for args in self.iter_random_args():
+            mp = parse_method(args[0])
             request = self.Request(*args)
             self.assertIsInstance(request, self.Request)
-            self.assertIs(request.method,  args[0])
+            self.assertIs(request.method,  mp[0])
+            self.assertEqual(request.m,    mp[1])
             self.assertIs(request.uri,     args[1])
             self.assertIs(request.headers, args[2])
             self.assertIs(request.body,    args[3])
@@ -439,7 +467,7 @@ class TestRequest_Py(BackendTestCase):
 
         # Test refrences counting:
         args = (
-            random_id(),
+            b'GET / HTTP/1.1'.decode()[0:3],
             random_id(),
             {random_id(): random_id()},
             random_id(),
@@ -447,30 +475,37 @@ class TestRequest_Py(BackendTestCase):
             [random_id(), random_id()],
             random_id(),
         )
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
         request = self.Request(*args)
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 4)
+        for i in range(len(args)):
+            count = (2 if i == 0 else 3)
+            self.assertEqual(sys.getrefcount(args[i]), count)
         del request
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
 
         # Attributes should be read-only:
-        names = ('method', 'uri', 'headers', 'body', 'mount', 'path', 'query')
         request = self.Request(*args)
-        for (name, arg) in zip(names, args):
+        attributes = (
+            'method',
+            'm',
+            'uri',
+            'headers',
+            'body',
+            'mount',
+            'path',
+            'query',
+        )
+        for name in attributes:
+            orig = getattr(request, name)
             with self.assertRaises(AttributeError):
                 setattr(request, name, random_id())
-            self.assertIs(getattr(request, name), arg)
-            self.assertEqual(sys.getrefcount(arg), 5)
-            with self.assertRaises(AttributeError):
-                delattr(request, name)
-            self.assertIs(getattr(request, name), arg)
-            self.assertEqual(sys.getrefcount(arg), 5)
+            self.assertIs(getattr(request, name), orig)
+            del orig
         del request
-        for arg in args:
-            self.assertEqual(sys.getrefcount(arg), 3)
+        for i in range(len(args)):
+            self.assertEqual(sys.getrefcount(args[i]), 2)
 
     def test_shift_path(self):
         def mk_request(mount, path):
@@ -3029,26 +3064,29 @@ class DummyWriter:
         self._calls.append('flush')
 
 
-class UserBytes(bytes):
-    pass
-
 
 class TestFunctions_Py(BackendTestCase):
     def test_parse_method(self):
         parse_method = self.getattr('parse_method')
 
-        for method in GOOD_METHODS:
+        self.assertEqual(parse_method(b'GET'),    ('GET',     1))
+        self.assertEqual(parse_method(b'PUT'),    ('PUT',     2))
+        self.assertEqual(parse_method(b'POST'),   ('POST',    4))
+        self.assertEqual(parse_method(b'HEAD'),   ('HEAD',    8))
+        self.assertEqual(parse_method(b'DELETE'), ('DELETE', 16))
+
+        for (i, method) in enumerate(GOOD_METHODS):
             # Input is str:
             result = parse_method(method)
-            self.assertIs(type(result),  str)
-            self.assertEqual(result, method)
-            self.assertIs(parse_method(method), result)
+            self.assertIs(type(result),  tuple)
+            self.assertEqual(result, (method, 1 << i))
+            self.assertIs(parse_method(method)[0], result[0])
 
             # Input is bytes:
             result = parse_method(method.encode())
-            self.assertIs(type(result),  str)
-            self.assertEqual(result, method)
-            self.assertIs(parse_method(method), result)
+            self.assertIs(type(result),  tuple)
+            self.assertEqual(result, (method, 1 << i))
+            self.assertIs(parse_method(method)[0], result[0])
 
             # Lowercase str:
             with self.assertRaises(ValueError) as cm:

@@ -57,11 +57,11 @@
 #define CONTENT_RANGE_BIT 8u
 #define BODY_MASK 3u
 
-#define GET_BIT    (1 << 0)
-#define PUT_BIT    (1 << 1)
-#define POST_BIT   (1 << 2)
-#define HEAD_BIT   (1 << 3)
-#define DELETE_BIT (1 << 4)
+#define GET_BIT       (1 << 0)
+#define PUT_BIT       (1 << 1)
+#define POST_BIT      (1 << 2)
+#define HEAD_BIT      (1 << 3)
+#define DELETE_BIT    (1 << 4)
 #define PUT_POST_MASK (PUT_BIT | POST_BIT)
 
 #define ROUTER_MAX_DEPTH 10
@@ -203,6 +203,15 @@ typedef struct {
 #define NEW_DEGU_CHUNK \
     ((DeguChunk){NULL, NULL, NULL, 0})
 
+
+/******************************************************************************
+ * Internal parsing and rendering API
+ ******************************************************************************/
+static bool _parse_method(DeguSrc, DeguRequest *)
+    __attribute__ ((warn_unused_result));
+
+static bool _check_method(PyObject *, DeguRequest *)
+    __attribute__ ((warn_unused_result));
 
 /******************************************************************************
  * Exported Python functions
@@ -460,6 +469,7 @@ typedef struct {
     PyObject * mount;
     PyObject * path;
     PyObject * query;
+    uint8_t m;
 } Request;
 
 static PyObject * Request_shift_path(Request *);
@@ -479,6 +489,7 @@ static PyMemberDef Request_members[] = {
     {"mount",   T_OBJECT, offsetof(Request, mount),   READONLY, NULL},
     {"path",    T_OBJECT, offsetof(Request, path),    READONLY, NULL},
     {"query",   T_OBJECT, offsetof(Request, query),   READONLY, NULL},
+    {"m",       T_UBYTE,  offsetof(Request, m),       READONLY, NULL},
     {NULL}
 };
 
