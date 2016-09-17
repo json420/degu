@@ -490,7 +490,7 @@ _slice(DeguSrc src, const size_t start, const size_t stop)
     if (src.buf == NULL || start > stop || stop > src.len) {
         Py_FatalError("_slice(): bad internal call");
     }
-    return (DeguSrc){src.buf + start, stop - start};
+    return DEGU_SRC(src.buf + start, stop - start);
 }
 
 static DeguDst
@@ -499,7 +499,7 @@ _dst_slice(DeguDst dst, const size_t start, const size_t stop)
     if (dst.buf == NULL || start > stop || stop > dst.len) {
         Py_FatalError("_dst_slice(): bad internal call");
     }
-    return (DeguDst){dst.buf + start, stop - start};
+    return DEGU_DST(dst.buf + start, stop - start);
 }
 
 static bool
@@ -617,10 +617,10 @@ _frombytes(PyObject *bytes)
     if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
         Py_FatalError("_frombytes(): bad internal call");
     }
-    return (DeguSrc){
+    return DEGU_SRC(
         (uint8_t *)PyBytes_AS_STRING(bytes),
         (size_t)PyBytes_GET_SIZE(bytes)
-    };
+    );
 }
 
 static inline DeguSrc
@@ -629,10 +629,10 @@ _src_from_str(const char *name, PyObject *obj)
     if (! _check_str(name, obj, 1)) {
         return NULL_DeguSrc;
     }
-    return (DeguSrc){
+    return DEGU_SRC(
         PyUnicode_1BYTE_DATA(obj),
         (size_t)PyUnicode_GET_LENGTH(obj)
-    };
+    );
 }
 
 static DeguDst
@@ -641,10 +641,10 @@ _dst_frombytes(PyObject *bytes)
     if (bytes == NULL || !PyBytes_CheckExact(bytes)) {
         Py_FatalError("_frombytes(): bad internal call");
     }
-    return (DeguDst){
+    return DEGU_DST(
         (uint8_t *)PyBytes_AS_STRING(bytes),
         (size_t)PyBytes_GET_SIZE(bytes)
-    };
+    );
 }
 
 static void
@@ -712,7 +712,7 @@ _slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
     if (_dst_isempty(dst) || start > stop || stop > dst.len) {
         Py_FatalError("_dst_slice(): bad internal call");
     }
-    return (DeguSrc){dst.buf + start, stop - start};
+    return DEGU_SRC(dst.buf + start, stop - start);
 }
 
 static DeguDst
@@ -726,7 +726,7 @@ _calloc_dst(const size_t len)
         PyErr_NoMemory();
         return NULL_DeguDst;
     }
-    return (DeguDst){buf, len};
+    return DEGU_DST(buf, len);
 }
 
 static DeguDst
@@ -741,7 +741,7 @@ _dst_frompybuf(Py_buffer *pybuf)
     if (pybuf->readonly) {
         Py_FatalError("_frompybuf(): buffer is read-only");
     }
-    return (DeguDst){pybuf->buf, (size_t)pybuf->len};
+    return DEGU_DST(pybuf->buf, (size_t)pybuf->len);
 }
 
 
@@ -1148,10 +1148,10 @@ Request_shift_path(Request *self)
 static inline DeguSrc
 _simple_src_from_str(PyObject *obj)
 {
-    return (DeguSrc){
+    return DEGU_SRC(
         PyUnicode_1BYTE_DATA(obj),
         (size_t)PyUnicode_GET_LENGTH(obj)
-    };
+    );
 }
 
 static PyObject *
@@ -1657,7 +1657,7 @@ parse_content_length(PyObject *self, PyObject *args)
     if (! PyArg_ParseTuple(args, "y#:parse_content_length", &buf, &len)) {
         return NULL;
     }
-    const int64_t value = _parse_content_length((DeguSrc){buf, len});
+    const int64_t value = _parse_content_length(DEGU_SRC(buf, len));
     if (value < 0) {
         return NULL;
     }
@@ -3365,13 +3365,13 @@ error:
 static DeguSrc
 _Reader_preamble_src(Reader *self)
 {
-    return (DeguSrc){self->buf, BUF_LEN};
+    return DEGU_SRC(self->buf, BUF_LEN);
 }
 
 static DeguDst
 _Reader_scratch_dst(Reader *self)
 {
-    return (DeguDst){self->buf + BUF_LEN, SCRATCH_LEN};
+    return DEGU_DST(self->buf + BUF_LEN, SCRATCH_LEN);
 }
 
 static DeguSrc
