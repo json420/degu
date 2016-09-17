@@ -328,6 +328,30 @@ _check_int(const char *name, PyObject *obj)
     return _check_type(name, obj, &PyLong_Type);
 }
 
+static inline bool
+_check_dict(const char *name, PyObject *obj)
+{
+    return _check_type(name, obj, &PyDict_Type);
+}
+
+static inline bool
+_check_tuple(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyTuple_Type);
+}
+
+static inline bool
+_check_list(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyList_Type);
+}
+
+static inline bool
+_check_bytes(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyBytes_Type);
+}
+
 static ssize_t
 _get_size(const char *name, PyObject *obj, const size_t min, const size_t max)
 {
@@ -379,16 +403,10 @@ _get_length(const char *name, PyObject *obj)
     return (int64_t)length;
 }
 
-static inline bool
-_check_dict(const char *name, PyObject *obj)
-{
-    return _check_type(name, obj, &PyDict_Type);
-}
-
 static bool
-_check_tuple(const char *name, PyObject *obj, ssize_t len)
+_check_tuple_size(const char *name, PyObject *obj, ssize_t len)
 {
-    if (! _check_type2(name, obj, &PyTuple_Type)) {
+    if (! _check_tuple(name, obj)) {
         return false;
     }
     if (PyTuple_GET_SIZE(obj) != len) {
@@ -399,18 +417,6 @@ _check_tuple(const char *name, PyObject *obj, ssize_t len)
         return false;
     }
     return true;
-}
-
-static inline bool
-_check_list(const char *name, PyObject *obj)
-{
-    return _check_type2(name, obj, &PyList_Type);
-}
-
-static inline bool
-_check_bytes(const char *name, PyObject *obj)
-{
-    return _check_type2(name, obj, &PyBytes_Type);
 }
 
 static ssize_t
@@ -2863,14 +2869,14 @@ _unpack_chunk(PyObject *chunk, DeguChunk *dc)
     bool ret = true;
 
     /* chunk itself */
-    if (! _check_tuple("chunk", chunk, 2)) {
+    if (! _check_tuple_size("chunk", chunk, 2)) {
         goto error;
     }
 
     /* chunk[0]: extension */
     _SET(ext, PyTuple_GET_ITEM(chunk, 0))
     if (ext != Py_None) {
-        if (! _check_tuple("chunk[0]", ext, 2)) {
+        if (! _check_tuple_size("chunk[0]", ext, 2)) {
             goto error;
         }
         _SET_AND_INC(dc->key, PyTuple_GET_ITEM(ext, 0))
@@ -4678,7 +4684,7 @@ Session_init(Session *self, PyObject *args, PyObject *kw)
         goto error;
     }
     if (credentials != Py_None) {
-        if (! _check_tuple("credentials", credentials, 3)) {
+        if (! _check_tuple_size("credentials", credentials, 3)) {
             goto error;
         }
     }
@@ -4788,7 +4794,7 @@ _unpack_response(PyObject *obj, DeguResponse *dr)
         _SET(dr->body,    PyStructSequence_GET_ITEM(obj, 3))
     }
     else {
-        if (! _check_tuple("response", obj, 4)) {
+        if (! _check_tuple_size("response", obj, 4)) {
             goto error;
         }
         _SET(dr->status,  PyTuple_GET_ITEM(obj, 0))
