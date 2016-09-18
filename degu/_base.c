@@ -1730,6 +1730,21 @@ cleanup:
 
 
 /******************************************************************************
+ * Common request & response preamble parsing - internal C API
+ ******************************************************************************/
+static inline DeguPreamble
+_parse_preamble(DeguSrc src)
+{
+    const size_t o1 = _search(src, CRLF);
+    const size_t o2 = (o1 < src.len) ? (o1 + CRLF.len) : src.len;
+    return (DeguPreamble){
+        .line    = _slice(src, 0, o1),
+        .headers = _slice(src, o2, src.len),
+    };
+}
+
+
+/******************************************************************************
  * Request parsing - internal C API
  ******************************************************************************/
 
@@ -1971,14 +1986,11 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
     }
 
     /* Parse request preamble */
-    const size_t stop = _search(src, CRLF);
-    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line = _slice(src, 0, stop);
-    DeguSrc headers = _slice(src, start, src.len);
-    if (! _parse_request_line(line, dr)) {
+    DeguPreamble p = _parse_preamble(src);
+    if (! _parse_request_line(p.line, dr)) {
         return false;
     }
-    if (! _parse_headers(headers, scratch, (DeguHeaders *)dr, false)) {
+    if (! _parse_headers(p.headers, scratch, (DeguHeaders *)dr, false)) {
         return false;
     }
 
@@ -2190,21 +2202,22 @@ static bool
 _parse_response(PyObject *method, DeguSrc src, PyObject *rfile, DeguDst scratch,
                 DeguResponse *dr)
 {
+    /* Check for empty premable */
     if (src.len == 0) {
         PyErr_SetString(EmptyPreambleError, "response preamble is empty");
         goto error;
     }
-    const size_t stop = _search(src, CRLF);
-    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line = _slice(src, 0, stop);
-    DeguSrc headers = _slice(src, start, src.len);
-    if (! _parse_response_line(line, dr)) {
+
+    /* Parse response preamble */
+    DeguPreamble p = _parse_preamble(src);
+    if (! _parse_response_line(p.line, dr)) {
         goto error;
     }
-    if (! _parse_headers(headers, scratch, (DeguHeaders *)dr, true)) {
+    if (! _parse_headers(p.headers, scratch, (DeguHeaders *)dr, true)) {
         goto error;
     }
-    /* Create request body */
+
+    /* Create response body */
     if (method == str_HEAD) {
         _SET_AND_INC(dr->body, Py_None);
     }
