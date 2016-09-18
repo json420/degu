@@ -468,6 +468,22 @@ _check_str(const char *name, PyObject *obj, const ssize_t minlen)
     return true;
 }
 
+static bool
+_check_args(const char *name, PyObject *args, const ssize_t number)
+{
+    if (args == NULL || Py_TYPE(args) != &PyTuple_Type || number < 1) {
+        Py_FatalError("_check_args(): bad internal call");
+    }
+    if (PyTuple_GET_SIZE(args) != number) {
+        PyErr_Format(PyExc_TypeError,
+            "%s() requires %zd arguments; got %zd",
+            name, number, PyTuple_GET_SIZE(args)
+        );
+        return false;
+    }
+    return true;
+}
+
 
 /******************************************************************************
  * Internal API for working with DeguSrc and DeguDst memory buffers ("slices")
@@ -784,28 +800,14 @@ _Range_New(uint64_t start, uint64_t stop)
     return (PyObject *)PyObject_INIT(self, &RangeType);
 }
 
-static PyObject *
+static inline PyObject *
 _Range_PyNew(PyObject *arg0, PyObject *arg1)
 {
-    int64_t start, stop;
-
-    start = _get_length("start", arg0);
-    if (start < 0) {
-        return NULL;
-    }
-    stop = _get_length("stop", arg1);
-    if (stop < 0) {
-        return NULL;
-    }
-    if (start >= stop) {
-        PyErr_Format(PyExc_ValueError,
-            "need start < stop; got %lld >= %lld", start, stop
-        );
-        return NULL;
-    }
-    return _Range_New((uint64_t)start, (uint64_t)stop);
+    return PyObject_CallFunctionObjArgs(
+        (PyObject *)&RangeType, arg0, arg1, NULL
+    );
 }
- 
+
 static void
 Range_dealloc(Range *self)
 {
@@ -815,20 +817,16 @@ Range_dealloc(Range *self)
 static int
 Range_init(Range *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"start", "stop", NULL};
-    PyObject *arg0 = NULL;
-    PyObject *arg1 = NULL;
     int64_t start, stop;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys,
-            &arg0, &arg1)) {
+    if (! _check_args("Range.__init__", args, 2)) {
         return -1;
     }
-    start = _get_length("start", arg0);
+    start = _get_length("start", PyTuple_GET_ITEM(args, 0));
     if (start < 0) {
         return -1;
     }
-    stop = _get_length("stop", arg1);
+    stop = _get_length("stop", PyTuple_GET_ITEM(args, 1));
     if (stop < 0) {
         return -1;
     }
@@ -927,25 +925,20 @@ ContentRange_dealloc(ContentRange *self)
 static int
 ContentRange_init(ContentRange *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"start", "stop", "total", NULL};
-    PyObject *arg0 = NULL;
-    PyObject *arg1 = NULL;
-    PyObject *arg2 = NULL;
     int64_t start, stop, total;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOO:ContentRange", keys,
-            &arg0, &arg1, &arg2)) {
+    if (! _check_args("ContentRange.__init__", args, 3)) {
         return -1;
     }
-    start = _get_length("start", arg0);
+    start = _get_length("start", PyTuple_GET_ITEM(args, 0));
     if (start < 0) {
         return -1;
     }
-    stop = _get_length("stop", arg1);
+    stop = _get_length("stop", PyTuple_GET_ITEM(args, 1));
     if (stop < 0) {
         return -1;
     }
-    total = _get_length("total", arg2);
+    total = _get_length("total", PyTuple_GET_ITEM(args, 2));
     if (total < 0) {
         return -1;
     }
@@ -5083,11 +5076,7 @@ Connection_request(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 4) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.request() requires 4 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.request", args, 4)) {
         return NULL;
     }
     if (! _check_method(PyTuple_GET_ITEM(args, 0), &dr)) {
@@ -5104,11 +5093,7 @@ Connection_put(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.put() requires 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.put", args, 3)) {
         return NULL;
     }
     dr.m = PUT_BIT;
@@ -5124,11 +5109,7 @@ Connection_post(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.post() requires 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.post", args, 3)) {
         return NULL;
     }
     dr.m = POST_BIT;
@@ -5144,11 +5125,7 @@ Connection_get(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.get() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.get", args, 2)) {
         return NULL;
     }
     dr.m = GET_BIT;
@@ -5164,11 +5141,7 @@ Connection_head(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.head() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.head", args, 2)) {
         return NULL;
     }
     dr.m = HEAD_BIT;
@@ -5184,11 +5157,7 @@ Connection_delete(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.delete() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.delete", args, 2)) {
         return NULL;
     }
     dr.m = DELETE_BIT;
@@ -5206,11 +5175,7 @@ Connection_get_range(Connection *self, PyObject *args)
     PyObject *range = NULL;
     PyObject *ret = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 4) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.get_range() requires 4 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.get_range", args, 4)) {
         return NULL;
     }
     dr.m = GET_BIT;
@@ -5333,11 +5298,7 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
     PyObject *key = NULL;
     PyObject *app = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Router.__call__() requires exactly 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Router.__call__", args, 3)) {
         goto error;
     }
     _SET(request, PyTuple_GET_ITEM(args, 1))
@@ -5410,11 +5371,7 @@ ProxyApp_call(ProxyApp *self, PyObject *args, PyObject *kw)
     PyObject *conn = NULL; 
     PyObject *ret = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "ProxyApp.__call__() requires exactly 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("ProxyApp.__call__", args, 3)) {
         goto error;
     }
     PyObject *session = PyTuple_GET_ITEM(args, 0);
