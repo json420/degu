@@ -1943,7 +1943,8 @@ class Router:
         _router_check_appmap(appmap, 0)
         self.appmap = appmap
 
-    def __call__(self, session, request, api):
+    def __call__(self, *args):
+        (session, request, api) = _check_args('Router.__call__', args, 3)
         appmap = self.appmap
         for depth in range(ROUTER_MAX_DEPTH):
             handler = appmap.get(request.shift_path())
@@ -1966,7 +1967,8 @@ class ProxyApp:
         self.client = client
         self.key = key
 
-    def __call__(self, session, request, api):
+    def __call__(self, *args):
+        (session, request, api) = _check_args('ProxyApp.__call__', args, 3)
         conn = session.store.get(self.key)
         if conn is None:
             conn = self.client.connect()

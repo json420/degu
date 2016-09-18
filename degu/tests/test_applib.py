@@ -236,7 +236,24 @@ class TestMethodFilter(TestCase):
             )
 
 
-class TestRouter(TestCase):
+class SpecialTestCase(TestCase):
+    def check_arg_count(self, inst, name, number):
+        assert isinstance(number, int) and number > 0
+        method = getattr(inst, name)
+        fullname = '.'.join([inst.__class__.__name__, name])
+        args1 = tuple(random_id() for i in range(number - 1))
+        args2 = tuple(random_id() for i in range(number + 1))
+        for args in (args1, args2):
+            with self.assertRaises(TypeError) as cm:
+                method(*args)
+            self.assertEqual(str(cm.exception),
+                '{}() requires {} arguments; got {}'.format(
+                    fullname, number, len(args)
+                )
+            )
+
+
+class TestRouter(SpecialTestCase):
     def test_init(self):
         def foo_app(session, request, api):
             return (200, 'OK', {}, b'foo')
@@ -367,6 +384,9 @@ class TestRouter(TestCase):
         )
 
     def test_call(self):
+        app = applib.Router({})
+        self.check_arg_count(app, '__call__', 3)
+
         def foo_app(session, request, api):
             return (200, 'OK', {}, b'foo')
 
@@ -569,7 +589,34 @@ class TestRouter(TestCase):
         )
 
 
-class TestProxyApp(TestCase):
+class TestProxyApp(SpecialTestCase):
+    def test_init(self):
+        client = random_id()
+        self.assertEqual(sys.getrefcount(client), 2)
+        app = applib.ProxyApp(client)
+        self.assertEqual(sys.getrefcount(client), 3)
+        self.assertIs(type(app), applib.ProxyApp)
+        self.assertIs(app.client, client)
+        self.assertEqual(app.key, 'conn')
+        del app
+        self.assertEqual(sys.getrefcount(client), 2)
+
+        key = random_id()
+        self.assertEqual(sys.getrefcount(key), 2)
+        app = applib.ProxyApp(client, key)
+        self.assertEqual(sys.getrefcount(client), 3)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertIs(type(app), applib.ProxyApp)
+        self.assertIs(app.client, client)
+        self.assertIs(app.key, key)
+        del app
+        self.assertEqual(sys.getrefcount(client), 2)
+        self.assertEqual(sys.getrefcount(key), 2)
+
+    def test_call(self):
+        app = applib.ProxyApp(random_id())
+        self.check_arg_count(app, '__call__', 3)
+
     def test_live(self):
         class Endpoint:
             def __init__(self, marker):

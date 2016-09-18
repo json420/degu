@@ -5321,11 +5321,7 @@ Router_call(Router *self, PyObject *args, PyObject *kw)
     PyObject *key = NULL;
     PyObject *app = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Router.__call__() requires exactly 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Router.__call__", args, 3)) {
         goto error;
     }
     _SET(request, PyTuple_GET_ITEM(args, 1))
@@ -5398,11 +5394,7 @@ ProxyApp_call(ProxyApp *self, PyObject *args, PyObject *kw)
     PyObject *conn = NULL; 
     PyObject *ret = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "ProxyApp.__call__() requires exactly 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("ProxyApp.__call__", args, 3)) {
         goto error;
     }
     PyObject *session = PyTuple_GET_ITEM(args, 0);
