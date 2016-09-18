@@ -6223,6 +6223,18 @@ class TestConnection_Py(BackendTestCase):
     def ContentRange(self):
         return getattr(self.backend, 'ContentRange')
 
+    def iter_bodies(self):
+        data = b'hello, world'
+        yield data
+        yield self.api.Body(io.BytesIO(data), len(data))
+        yield self.api.BodyIter([data], len(data))
+        yield self.api.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+        yield self.api.ChunkedBodyIter([(None, b'')])
+
+    def iter_all_bodies(self):
+        yield None
+        yield from self.iter_bodies()
+
     def test_init(self):
         # no sock.recv_into() attribute:
         class BadSocket1(BaseMockSocket):
@@ -6489,34 +6501,35 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
             self.assertEqual(sys.getrefcount(bh), 2)
 
-        # body must be None when method is 'GET', 'HEAD', or 'DELETE':
-        # Test when connection is closed:
-        def iter_bodies():
-            data = b'hello, world'
-            yield data
-            yield self.api.Body(io.BytesIO(data), len(data))
-            yield self.api.BodyIter([data], len(data))
-            yield self.api.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
-            yield self.api.ChunkedBodyIter([(None, b'')])
-
-        for method in ('GET', 'HEAD', 'DELETE'):
-            for body in iter_bodies():
-                sock = NewMockSocket()
+        for method in GOOD_METHODS:
+            for body in self.iter_bodies():
+                sock = NewMockSocket(recv)
                 conn = self.Connection(sock, None)
                 h = {}
-                with self.assertRaises(ValueError) as cm:
-                    conn.request(method, '/foo', h, body)
-                self.assertEqual(str(cm.exception),
-                    'when method is {!r}, body must be None; got a {!r}'.format(
-                        method, type(body)   
+                if method in {'PUT', 'POST'}:
+                    response = conn.request(method, '/', h, body)
+                    self.assertEqual(len(h), 1)
+                    self.assertEqual(sys.getrefcount(h), 2)
+                    self.assertIs(type(response), self.ResponseType)
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.reason, 'OK')
+                    self.assertEqual(response.headers, {'content-length': 12})
+                    self.assertIs(type(response.body), self.Body)
+                    self.assertEqual(response.body.read(), b'hello, world')
+                else:
+                    with self.assertRaises(ValueError) as cm:
+                        conn.request(method, '/foo', h, body)
+                    self.assertEqual(str(cm.exception),
+                        'when method is {!r}, body must be None; got a {!r}'.format(
+                            method, type(body)   
+                        )
                     )
-                )
-                self.assertEqual(h, {})
-                self.assertIs(conn.closed, True)
-                self.assertEqual(sock._calls, [
-                    ('shutdown', socket.SHUT_RDWR),
-                    'close',
-                ])
+                    self.assertEqual(h, {})
+                    self.assertIs(conn.closed, True)
+                    self.assertEqual(sock._calls, [
+                        ('shutdown', socket.SHUT_RDWR),
+                        'close',
+                    ])
 
     def test_put(self):
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
@@ -6527,6 +6540,14 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._wfile.getvalue(), b'PUT / HTTP/1.1\r\n\r\n')
         del conn
         self.assertEqual(sys.getrefcount(sock), 2)
+        for body in self.iter_all_bodies():
+            sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+            conn = self.Connection(sock, None)
+            response = conn.put('/', {}, body)
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response, (200, 'OK', {}, None))
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_post(self):
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
@@ -6537,6 +6558,14 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._wfile.getvalue(), b'POST / HTTP/1.1\r\n\r\n')
         del conn
         self.assertEqual(sys.getrefcount(sock), 2)
+        for body in self.iter_all_bodies():
+            sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+            conn = self.Connection(sock, None)
+            response = conn.post('/', {}, body)
+            self.assertIs(type(response), self.ResponseType)
+            self.assertEqual(response, (200, 'OK', {}, None))
+            del conn
+            self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_get(self):
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')

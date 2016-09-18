@@ -1748,6 +1748,11 @@ _parse_preamble(DeguSrc src)
  * Request parsing - internal C API
  ******************************************************************************/
 
+static inline bool
+_request_body_allowed(DeguRequest *dr) {
+    return (dr->m & PUT_POST_MASK) != 0;
+}
+
 static bool
 _match_method(DeguSrc src, DeguRequest *dr)
 {
@@ -1991,7 +1996,7 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 
     /* Request body is only allowed with PUT and POST methods */
     const uint8_t bflags = (dr->flags & BODY_MASK);
-    if (bflags && (dr->m & PUT_POST_MASK) == 0) {
+    if (bflags && !_request_body_allowed(dr)) {
         PyErr_Format(PyExc_ValueError,
             "%R request with a %R header",
             dr->method, _get_request_body_header_key(bflags)
@@ -5014,6 +5019,10 @@ _Connection_request(Connection *self, DeguRequest *dr)
     DeguResponse r = NEW_DEGU_RESPONSE;
     PyObject *response = NULL;
 
+    if (dr->m == 0 || dr->method == NULL || dr->body == NULL) {
+         Py_FatalError("_Connection_request(): bad internal call");
+    }
+
     /* Check if Connection is closed */
     if (self->closed) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
@@ -5021,7 +5030,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Only POST and PUT requests can have a body */
-    if (dr->body != Py_None && (dr->m & PUT_POST_MASK) == 0) {
+    if (dr->body != Py_None && !_request_body_allowed(dr)) {
         PyErr_Format(PyExc_ValueError,
             "when method is %R, body must be None; got a %R",
             dr->method, Py_TYPE(dr->body)
@@ -5102,6 +5111,7 @@ Connection_put(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = PUT_BIT;
     dr.method = str_PUT;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5121,6 +5131,7 @@ Connection_post(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = POST_BIT;
     dr.method = str_POST;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5140,6 +5151,7 @@ Connection_get(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = GET_BIT;
     dr.method = str_GET;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5159,6 +5171,7 @@ Connection_head(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = HEAD_BIT;
     dr.method = str_HEAD;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5178,6 +5191,7 @@ Connection_delete(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = DELETE_BIT;
     dr.method = str_DELETE;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5199,6 +5213,7 @@ Connection_get_range(Connection *self, PyObject *args)
         );
         return NULL;
     }
+    dr.m = GET_BIT;
     dr.method = str_GET;
     dr.uri = PyTuple_GET_ITEM(args, 0);
     dr.headers = PyTuple_GET_ITEM(args, 1);
@@ -5430,6 +5445,7 @@ ProxyApp_call(ProxyApp *self, PyObject *args, PyObject *kw)
 
     /* Build proxy URI and fill-in DeguRequest */
     _SET(dr.uri, Request_build_proxy_uri(REQUEST(request)))
+    dr.m = REQUEST(request)->m;
     dr.method = REQUEST(request)->method;
     dr.headers = REQUEST(request)->headers;
     dr.body = REQUEST(request)->body;
