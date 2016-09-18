@@ -529,16 +529,16 @@ _equal(DeguSrc a, DeguSrc b) {
 }
 
 static size_t
-_search(DeguSrc haystack, DeguSrc needle)
+_search(DeguSrc src, DeguSrc end)
 {
-    if (haystack.buf == NULL || needle.buf == NULL) {
+    if (src.buf == NULL || end.buf == NULL) {
         Py_FatalError("_searh(): bad internal call");
     }
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    uint8_t *ptr = memmem(src.buf, src.len, end.buf, end.len);
     if (ptr == NULL) {
-        return haystack.len;
+        return src.len;
     }
-    return (size_t)(ptr - haystack.buf);
+    return (size_t)(ptr - src.buf);
 }
 
 static ssize_t
@@ -557,9 +557,9 @@ _find(DeguSrc src, DeguSrc end)
 static ssize_t
 _find_in_slice(DeguSrc src, const size_t start, const size_t stop, DeguSrc end)
 {
-    ssize_t index = _find(_slice(src, start, stop), end);
+    const ssize_t index = _find(_slice(src, start, stop), end);
     if (index < 0) {
-        return -1;
+        return index;
     }
     return index + (ssize_t)start;
 }
