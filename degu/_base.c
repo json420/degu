@@ -819,7 +819,7 @@ Range_init(Range *self, PyObject *args, PyObject *kw)
 {
     int64_t start, stop;
 
-    if (! _check_args("Range", args, 2)) {
+    if (! _check_args("Range.__init__", args, 2)) {
         return -1;
     }
     start = _get_length("start", PyTuple_GET_ITEM(args, 0));
@@ -927,7 +927,7 @@ ContentRange_init(ContentRange *self, PyObject *args, PyObject *kw)
 {
     int64_t start, stop, total;
 
-    if (! _check_args("ContentRange", args, 3)) {
+    if (! _check_args("ContentRange.__init__", args, 3)) {
         return -1;
     }
     start = _get_length("start", PyTuple_GET_ITEM(args, 0));

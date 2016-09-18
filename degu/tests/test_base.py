@@ -402,7 +402,7 @@ class BackendTestCase(TestCase):
     def mkreq(self, uri, headers=None, body=None, shift=0):
         return mkreq(uri, headers, body, shift, cls=self.Request)
 
-    def check_args(self, cobj, name, number, pymsg):
+    def check_args(self, cobj, name, number, missing, fullname):
         assert isinstance(number, int) and number > 0
         args1 = tuple(random_id() for i in range(number - 1))
         args2 = tuple(random_id() for i in range(number + 1))
@@ -410,29 +410,22 @@ class BackendTestCase(TestCase):
             with self.assertRaises(TypeError) as cm:
                 cobj(*args)
             if self.backend is _base:
-                self.assertEqual(str(cm.exception),
-                    ARG_MSG_C.format(name, number, len(args))
-                )
+                msg = ARG_MSG_C.format(fullname, number, len(args))
+            elif len(args) < number:
+                msg = ARG_MSG_Py_1.format(name, missing)
             else:
-                msg = (pymsg[0] if len(args) < number else pymsg[1])
-                self.assertEqual(str(cm.exception), msg, len(args))
+                msg = ARG_MSG_Py_2.format(name, number + 1, number + 2)
+            self.assertEqual(str(cm.exception), msg)
 
     def check_method_args(self, inst, name, number, missing):
         method = getattr(inst, name)
         fullname = '.'.join([inst.__class__.__name__, name])
-        pymsg = (
-            ARG_MSG_Py_1.format(name, missing),
-            ARG_MSG_Py_2.format(name, number + 1, number + 2),
-        )
-        self.check_args(method, fullname, number, pymsg)
+        self.check_args(method, name, number, missing, fullname)
 
     def check_init_args(self, cls, number, missing):
-        name = cls.__name__
-        pymsg = (
-            ARG_MSG_Py_1.format('__init__', missing),
-            ARG_MSG_Py_2.format('__init__', number + 1, number + 2),
-        )
-        self.check_args(cls, name, number, pymsg)
+        name = '__init__'
+        fullname = '.'.join([cls.__name__, name])
+        self.check_args(cls, name, number, missing, fullname)
 
 REQUEST_ARGS_REPR = ', '.join([
     'method={!r}',  # method
