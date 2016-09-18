@@ -328,6 +328,30 @@ _check_int(const char *name, PyObject *obj)
     return _check_type(name, obj, &PyLong_Type);
 }
 
+static inline bool
+_check_dict(const char *name, PyObject *obj)
+{
+    return _check_type(name, obj, &PyDict_Type);
+}
+
+static inline bool
+_check_tuple(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyTuple_Type);
+}
+
+static inline bool
+_check_list(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyList_Type);
+}
+
+static inline bool
+_check_bytes(const char *name, PyObject *obj)
+{
+    return _check_type2(name, obj, &PyBytes_Type);
+}
+
 static ssize_t
 _get_size(const char *name, PyObject *obj, const size_t min, const size_t max)
 {
@@ -379,16 +403,10 @@ _get_length(const char *name, PyObject *obj)
     return (int64_t)length;
 }
 
-static inline bool
-_check_dict(const char *name, PyObject *obj)
-{
-    return _check_type(name, obj, &PyDict_Type);
-}
-
 static bool
-_check_tuple(const char *name, PyObject *obj, ssize_t len)
+_check_tuple_size(const char *name, PyObject *obj, ssize_t len)
 {
-    if (! _check_type2(name, obj, &PyTuple_Type)) {
+    if (! _check_tuple(name, obj)) {
         return false;
     }
     if (PyTuple_GET_SIZE(obj) != len) {
@@ -399,18 +417,6 @@ _check_tuple(const char *name, PyObject *obj, ssize_t len)
         return false;
     }
     return true;
-}
-
-static inline bool
-_check_list(const char *name, PyObject *obj)
-{
-    return _check_type2(name, obj, &PyList_Type);
-}
-
-static inline bool
-_check_bytes(const char *name, PyObject *obj)
-{
-    return _check_type2(name, obj, &PyBytes_Type);
 }
 
 static ssize_t
@@ -464,8 +470,35 @@ _check_str(const char *name, PyObject *obj, const ssize_t minlen)
 
 
 /******************************************************************************
- * Internal API for working with DeguSrc and DeguDst memory buffers
+ * Internal API for working with DeguSrc and DeguDst memory buffers ("slices")
  ******************************************************************************/
+static DeguSrc
+_slice(DeguSrc src, const size_t start, const size_t stop)
+{
+    if (src.buf == NULL || start > stop || stop > src.len) {
+        Py_FatalError("_slice(): bad internal call");
+    }
+    return DEGU_SRC(src.buf + start, stop - start);
+}
+
+static DeguDst
+_slice_dst(DeguDst dst, const size_t start, const size_t stop)
+{
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
+        Py_FatalError("_slice_dst(): bad internal call");
+    }
+    return DEGU_DST(dst.buf + start, stop - start);
+}
+
+static DeguSrc
+_slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
+{
+    if (dst.buf == NULL || start > stop || stop > dst.len) {
+        Py_FatalError("_slice_src_from_dst(): bad internal call");
+    }
+    return DEGU_SRC(dst.buf + start, stop - start);
+}
+
 static inline bool
 _isempty(DeguSrc src)
 {
@@ -484,24 +517,6 @@ _dst_isempty(DeguDst dst)
     return false;
 }
 
-static DeguSrc
-_slice(DeguSrc src, const size_t start, const size_t stop)
-{
-    if (src.buf == NULL || start > stop || stop > src.len) {
-        Py_FatalError("_slice(): bad internal call");
-    }
-    return DEGU_SRC(src.buf + start, stop - start);
-}
-
-static DeguDst
-_dst_slice(DeguDst dst, const size_t start, const size_t stop)
-{
-    if (dst.buf == NULL || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
-    }
-    return DEGU_DST(dst.buf + start, stop - start);
-}
-
 static bool
 _equal(DeguSrc a, DeguSrc b) {
     if (a.buf == NULL || b.buf == NULL) {
@@ -514,16 +529,16 @@ _equal(DeguSrc a, DeguSrc b) {
 }
 
 static size_t
-_search(DeguSrc haystack, DeguSrc needle)
+_search(DeguSrc src, DeguSrc end)
 {
-    if (haystack.buf == NULL || needle.buf == NULL) {
+    if (src.buf == NULL || end.buf == NULL) {
         Py_FatalError("_searh(): bad internal call");
     }
-    uint8_t *ptr = memmem(haystack.buf, haystack.len, needle.buf, needle.len);
+    uint8_t *ptr = memmem(src.buf, src.len, end.buf, end.len);
     if (ptr == NULL) {
-        return haystack.len;
+        return src.len;
     }
-    return (size_t)(ptr - haystack.buf);
+    return (size_t)(ptr - src.buf);
 }
 
 static ssize_t
@@ -542,9 +557,9 @@ _find(DeguSrc src, DeguSrc end)
 static ssize_t
 _find_in_slice(DeguSrc src, const size_t start, const size_t stop, DeguSrc end)
 {
-    ssize_t index = _find(_slice(src, start, stop), end);
+    const ssize_t index = _find(_slice(src, start, stop), end);
     if (index < 0) {
-        return -1;
+        return index;
     }
     return index + (ssize_t)start;
 }
@@ -571,7 +586,7 @@ _copy(DeguDst dst, DeguSrc src)
 static bool
 _copy_into(DeguOutput *o, DeguSrc src)
 {
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->dst.len);
     if (src.buf == NULL) {
         return false;  /* Assuming an error has already been set */
     }
@@ -706,24 +721,24 @@ done:
     return dst;
 }
 
-static DeguSrc
-_slice_src_from_dst(DeguDst dst, const size_t start, const size_t stop)
-{
-    if (_dst_isempty(dst) || start > stop || stop > dst.len) {
-        Py_FatalError("_dst_slice(): bad internal call");
-    }
-    return DEGU_SRC(dst.buf + start, stop - start);
-}
-
-static DeguDst
-_calloc_dst(const size_t len)
+static uint8_t *
+_calloc_buf(const size_t len)
 {
     if (len == 0) {
-        Py_FatalError("_call_dst(): bad internal call");
+        Py_FatalError("_calloc_buf(): bad internal call");
     }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
+    }
+    return buf;
+}
+
+static inline DeguDst
+_calloc_dst(const size_t len)
+{
+    uint8_t *buf = _calloc_buf(len);
+    if (buf == NULL) {
         return NULL_DeguDst;
     }
     return DEGU_DST(buf, len);
@@ -744,13 +759,6 @@ _dst_frompybuf(Py_buffer *pybuf)
     return DEGU_DST(pybuf->buf, (size_t)pybuf->len);
 }
 
-
-/*******************************************************************************
- * Internal API: Misc:
- *     _min()
- *     _calloc_buf()
- *     _get_callable()
- */
 static inline size_t
 _min(const size_t a, const size_t b)
 {
@@ -758,19 +766,6 @@ _min(const size_t a, const size_t b)
         return a;
     }
     return b;
-}
-
-static uint8_t *
-_calloc_buf(const size_t len)
-{
-    if (len == 0) {
-        Py_FatalError("_call_buf(): bad internal call");
-    }
-    uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
-    if (buf == NULL) {
-        PyErr_NoMemory();
-    }
-    return buf;
 }
 
 
@@ -1459,10 +1454,9 @@ static bool
 _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
 {
     ssize_t index;
-    size_t keystop, valstart;
-    bool success = true;
-    PyObject *key = NULL;
-    PyObject *val = NULL;
+    bool success = false;
+    PyObject *pykey = NULL;
+    PyObject *pyval = NULL;
 
     /* Split header line, validate & casefold header name */
     if (src.len < 4) {
@@ -1474,72 +1468,67 @@ _parse_header_line(DeguSrc src, DeguDst scratch, DeguHeaders *dh)
         _value_error("bad header line: %R", src);
         goto error;
     }
-    keystop = (size_t)index;
-    valstart = keystop + SEP.len;
-    DeguSrc rawkey = _slice(src, 0, keystop);
-    DeguSrc valsrc = _slice(src, valstart, src.len);
+    DeguSrc rawkey = _slice(src, 0, (size_t)index);
     if (! _parse_key(rawkey, scratch)) {
         goto error;
     }
-    DeguSrc keysrc = {scratch.buf, rawkey.len};
+    DeguSrc key = _slice_src_from_dst(scratch, 0, rawkey.len);
+    DeguSrc val = _slice(src, key.len + SEP.len, src.len);
 
     /* Validate header value (with special handling and fast-paths) */
-    if (_equal(keysrc, CONTENT_LENGTH)) {
-        int64_t length = _parse_content_length(valsrc);
+    if (_equal(key, CONTENT_LENGTH)) {
+        int64_t length = _parse_content_length(val);
         if (length < 0) {
             goto error;
         }
         dh->content_length = (uint64_t)length;
         dh->flags |= CONTENT_LENGTH_BIT;
-        _SET_AND_INC(key, key_content_length)
-        _SET(val, PyLong_FromUnsignedLongLong(dh->content_length))
+        _SET_AND_INC(pykey, key_content_length)
+        _SET(pyval, PyLong_FromUnsignedLongLong(dh->content_length))
     }
-    else if (_equal(keysrc, TRANSFER_ENCODING)) {
-        if (! _equal(valsrc, CHUNKED)) {
-            _value_error("bad transfer-encoding: %R", valsrc);
+    else if (_equal(key, TRANSFER_ENCODING)) {
+        if (! _equal(val, CHUNKED)) {
+            _value_error("bad transfer-encoding: %R", val);
             goto error;
         }
-        _SET_AND_INC(key, key_transfer_encoding)
-        _SET_AND_INC(val, val_chunked)
+        _SET_AND_INC(pykey, key_transfer_encoding)
+        _SET_AND_INC(pyval, val_chunked)
         dh->flags |= TRANSFER_ENCODING_BIT;
     }
-    else if (_equal(keysrc, RANGE)) {
-        _SET_AND_INC(key, key_range)
-        _SET(val, _parse_range(valsrc))
+    else if (_equal(key, RANGE)) {
+        _SET_AND_INC(pykey, key_range)
+        _SET(pyval, _parse_range(val))
         dh->flags |= RANGE_BIT;
     }
-    else if (_equal(keysrc, CONTENT_RANGE)) {
-        _SET_AND_INC(key, key_content_range)
-        _SET(val, _parse_content_range(valsrc))
+    else if (_equal(key, CONTENT_RANGE)) {
+        _SET_AND_INC(pykey, key_content_range)
+        _SET(pyval, _parse_content_range(val))
         dh->flags |= CONTENT_RANGE_BIT;
     }
-    else if (_equal(keysrc, CONTENT_TYPE)) {
-        _SET_AND_INC(key, key_content_type)
-        if (_equal(valsrc, APPLICATION_JSON)) {
-            _SET_AND_INC(val, val_application_json)
+    else if (_equal(key, CONTENT_TYPE)) {
+        _SET_AND_INC(pykey, key_content_type)
+        if (_equal(val, APPLICATION_JSON)) {
+            _SET_AND_INC(pyval, val_application_json)
         }
         else {
-            _SET(val, _parse_val(valsrc))
+            _SET(pyval, _parse_val(val))
         }
     }
     else {
-        _SET(key, _tostr(keysrc))
-        _SET(val, _parse_val(valsrc))
+        _SET(pykey, _tostr(key))
+        _SET(pyval, _parse_val(val))
     }
 
     /* Store in headers dict, make sure it's not a duplicate key */
-    if (PyDict_SetDefault(dh->headers, key, val) != val) {
+    if (PyDict_SetDefault(dh->headers, pykey, pyval) != pyval) {
         _value_error("duplicate header: %R", src);
         goto error;
     }
-    goto cleanup;
+    success = true;
 
 error:
-    success = false;
-
-cleanup:
-    Py_CLEAR(key);
-    Py_CLEAR(val);
+    Py_CLEAR(pykey);
+    Py_CLEAR(pyval);
     return success;
 }
 
@@ -2565,7 +2554,7 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
         return false;
     }
 
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->dst.len);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->dst.len);
     if (src.len > dst.len) {
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
@@ -2773,7 +2762,7 @@ _render_status(DeguOutput *o, const size_t s)
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
-    DeguDst dst = _dst_slice(o->dst, o->stop, o->stop + 4);
+    DeguDst dst = _slice_dst(o->dst, o->stop, o->stop + 4);
     dst.buf[0] = 48 + (s / 100);
     dst.buf[1] = 48 + (s % 100 / 10);
     dst.buf[2] = 48 + (s % 10);
@@ -2880,14 +2869,14 @@ _unpack_chunk(PyObject *chunk, DeguChunk *dc)
     bool ret = true;
 
     /* chunk itself */
-    if (! _check_tuple("chunk", chunk, 2)) {
+    if (! _check_tuple_size("chunk", chunk, 2)) {
         goto error;
     }
 
     /* chunk[0]: extension */
     _SET(ext, PyTuple_GET_ITEM(chunk, 0))
     if (ext != Py_None) {
-        if (! _check_tuple("chunk[0]", ext, 2)) {
+        if (! _check_tuple_size("chunk[0]", ext, 2)) {
             goto error;
         }
         _SET_AND_INC(dc->key, PyTuple_GET_ITEM(ext, 0))
@@ -3000,7 +2989,7 @@ _readinto(PyObject *method, DeguDst dst)
     ssize_t received;
 
     while (start < dst.len) {
-        received = _recv_into(method, _dst_slice(dst, start, dst.len));
+        received = _recv_into(method, _slice_dst(dst, start, dst.len));
         if (received < 0) {
             return false;
         }
@@ -3448,7 +3437,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
 
     /* Now read till found */
     while (self->stop < size) {
-        added = _recv_into(self->recv_into, _dst_slice(dst, self->stop, dst.len));
+        added = _recv_into(self->recv_into, _slice_dst(dst, self->stop, dst.len));
         if (added < 0) {
             return NULL_DeguSrc;
         }
@@ -3491,7 +3480,7 @@ _Reader_readinto(Reader *self, DeguDst dst)
     if (cur.len > 0) {
         _copy(dst, cur);
     }
-    if (_readinto(self->recv_into, _dst_slice(dst, cur.len, dst.len))) {
+    if (_readinto(self->recv_into, _slice_dst(dst, cur.len, dst.len))) {
         self->rawtell += dst.len;
         return true;
     }
@@ -3690,7 +3679,7 @@ static DeguDst
 _Writer_get_dst(Writer *self)
 {
     DeguDst raw = {self->buf, BUF_LEN};
-    return _dst_slice(raw, self->stop, raw.len);
+    return _slice_dst(raw, self->stop, raw.len);
 }
 
 static DeguSrc
@@ -4062,7 +4051,7 @@ _Body_write_to(Body *self, DeguWObj *w)
     DeguDst dst = {dst_buf, iosize};
     while (self->remaining > 0) {
         size = _min(dst.len, self->remaining);
-        if (! _Body_readinto(self, _dst_slice(dst, 0, size))) {
+        if (! _Body_readinto(self, _slice_dst(dst, 0, size))) {
             goto error;
         }
         wrote = _write_to(w, _slice_src_from_dst(dst, 0, size));
@@ -4344,7 +4333,7 @@ ChunkedBody_read(ChunkedBody *self)
     const ssize_t count = PyList_GET_SIZE(list);
     for (i = 0; i < count; i++) {
         start += _copy(
-            _dst_slice(dst, start, dst.len),
+            _slice_dst(dst, start, dst.len),
             _shrink_chunk_data(PyList_GetItem(list, i))
         );
     }
@@ -4695,7 +4684,7 @@ Session_init(Session *self, PyObject *args, PyObject *kw)
         goto error;
     }
     if (credentials != Py_None) {
-        if (! _check_tuple("credentials", credentials, 3)) {
+        if (! _check_tuple_size("credentials", credentials, 3)) {
             goto error;
         }
     }
@@ -4805,7 +4794,7 @@ _unpack_response(PyObject *obj, DeguResponse *dr)
         _SET(dr->body,    PyStructSequence_GET_ITEM(obj, 3))
     }
     else {
-        if (! _check_tuple("response", obj, 4)) {
+        if (! _check_tuple_size("response", obj, 4)) {
             goto error;
         }
         _SET(dr->status,  PyTuple_GET_ITEM(obj, 0))
@@ -4950,7 +4939,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
-    if (base_headers != Py_None && !_check_type("base_headers", base_headers, &PyTuple_Type)) {
+    if (base_headers != Py_None && !_check_tuple("base_headers", base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)

@@ -6280,7 +6280,7 @@ class TestConnection_Py(BackendTestCase):
         with self.assertRaises(TypeError) as cm:
             self.Connection(sock, base_headers)
         self.assertEqual(str(cm.exception),
-            TYPE_ERROR.format('base_headers', tuple, list, base_headers)
+            TYPE_ERROR2.format('base_headers', tuple, list)
         )
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(base_headers), 2)
