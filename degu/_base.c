@@ -1882,8 +1882,6 @@ _parse_query(DeguSrc src)
 static bool
 _parse_uri(DeguSrc src, DeguRequest *dr)
 {
-    size_t path_stop, query_start;
-
     if (src.buf == NULL) {
         Py_FatalError("_parse_uri(): bad internal call");
         goto error;
@@ -1892,12 +1890,12 @@ _parse_uri(DeguSrc src, DeguRequest *dr)
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-    path_stop = _search(src, QMARK);
+    const size_t path_stop = _search(src, QMARK);
     _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
     _SET(dr->mount, PyList_New(0))
     _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
     if (path_stop < src.len) {
-        query_start = path_stop + QMARK.len;
+        const size_t query_start = path_stop + QMARK.len;
         _SET(dr->query, _parse_query(_slice(src, query_start, src.len)))
     }
     else {
@@ -1913,7 +1911,6 @@ static bool
 _parse_request_line(DeguSrc line, DeguRequest *dr)
 {
     ssize_t index;
-    size_t method_stop, uri_start;
 
     /* Reject any request line shorter than 14 bytes:
      *     "GET / HTTP/1.1"[0:14]
@@ -1949,13 +1946,11 @@ _parse_request_line(DeguSrc line, DeguRequest *dr)
         _value_error("bad request line: %R", line);
         goto error;
     }
-    method_stop = (size_t)index;
-    uri_start = method_stop + 1;
-    DeguSrc method_src = _slice(src, 0, method_stop);
-    DeguSrc uri_src = _slice(src, uri_start, src.len);
+    DeguSrc method = _slice(src, 0, (size_t)index);
+    DeguSrc uri = _slice(src, method.len + 1, src.len);
 
-    /* _parse_method(), _parse_uri() handle the rest */
-    if (_parse_method(method_src, dr) && _parse_uri(uri_src, dr)) {
+    /* _parse_method() and _parse_uri() handle the rest */
+    if (_parse_method(method, dr) && _parse_uri(uri, dr)) {
         return true;
     }
 
