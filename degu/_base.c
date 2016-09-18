@@ -1948,6 +1948,19 @@ error:
     return false;
 }
 
+static PyObject *
+_get_request_body_header_key(const uint8_t bflags)
+{
+    if (bflags == CONTENT_LENGTH_BIT) {
+        return key_content_length;
+    }
+    if (bflags == TRANSFER_ENCODING_BIT) {
+        return key_transfer_encoding;
+    }
+    Py_FatalError("_get_request_body_header_key: bad internal call");
+    return NULL;
+}
+
 static bool
 _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
 {
@@ -1960,12 +1973,22 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
     /* Parse request preamble */
     const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line_src = _slice(src, 0, stop);
-    DeguSrc headers_src = _slice(src, start, src.len);
-    if (! _parse_request_line(line_src, dr)) {
+    DeguSrc line = _slice(src, 0, stop);
+    DeguSrc headers = _slice(src, start, src.len);
+    if (! _parse_request_line(line, dr)) {
         return false;
     }
-    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, false)) {
+    if (! _parse_headers(headers, scratch, (DeguHeaders *)dr, false)) {
+        return false;
+    }
+
+    /* Request body is only allowed with PUT and POST methods */
+    const uint8_t bflags = (dr->flags & BODY_MASK);
+    if (bflags && (dr->m & PUT_POST_MASK) == 0) {
+        PyErr_Format(PyExc_ValueError,
+            "%R request with a %R header",
+            dr->method, _get_request_body_header_key(bflags)
+        );
         return false;
     }
 

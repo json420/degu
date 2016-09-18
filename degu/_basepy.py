@@ -660,6 +660,11 @@ def parse_request_line(line):
     return (method, uri, mount, path, query)
 
 
+def _check_request_body(method, key):
+    if method not in {'PUT', 'POST'}:
+        raise ValueError('{!r} request with a {!r} header'.format(method, key))
+
+
 def parse_request(preamble, rfile):
     if preamble == b'':
         raise EmptyPreambleError('request preamble is empty')
@@ -667,8 +672,10 @@ def parse_request(preamble, rfile):
     (method, uri, mount, path, query) = parse_request_line(first_line)
     headers = _parse_header_lines(header_lines)
     if 'content-length' in headers:
+        _check_request_body(method, 'content-length')
         body = Body(rfile, headers['content-length'])
     elif 'transfer-encoding' in headers:
+        _check_request_body(method, 'transfer-encoding')
         body = ChunkedBody(rfile)
     else:
         body = None
