@@ -1769,16 +1769,6 @@ def _handle_requests(app, session, sock):
         session._response_complete(status, reason)
 
 
-def _check_args(name, args, number):
-    assert type(args) is tuple
-    assert type(number) is int and number > 0
-    if len(args) != number:
-        raise TypeError(
-            '{}() requires {} arguments; got {}'.format(name, number, len(args))
-        )
-    return args
-
-
 class Connection:
     __slots__ = (
         'sock',
@@ -1934,8 +1924,7 @@ class Router:
         _router_check_appmap(appmap, 0)
         self.appmap = appmap
 
-    def __call__(self, *args):
-        (session, request, api) = _check_args('Router.__call__', args, 3)
+    def __call__(self, session, request, api):
         appmap = self.appmap
         for depth in range(ROUTER_MAX_DEPTH):
             handler = appmap.get(request.shift_path())
@@ -1958,8 +1947,7 @@ class ProxyApp:
         self.client = client
         self.key = key
 
-    def __call__(self, *args):
-        (session, request, api) = _check_args('ProxyApp.__call__', args, 3)
+    def __call__(self, session, request, api):
         conn = session.store.get(self.key)
         if conn is None:
             conn = self.client.connect()

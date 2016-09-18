@@ -30,12 +30,14 @@ import sys
 from random import SystemRandom
 import types
 import socket
+from collections import OrderedDict
 
 from . import helpers
 from .helpers import random_chunks, iter_bad, MockSocket
 from .helpers import random_chunks2, random_chunk, random_data, MockSocket2
 from .helpers import iter_random_uri
 from degu.sslhelpers import random_id
+from degu.misc import mkreq
 from degu import base, _basepy
 
 
@@ -388,6 +390,13 @@ class BackendTestCase(TestCase):
     def api(self):
         return self.getattr('api')
 
+    @property
+    def Request(self):
+        return self.getattr('Request')
+
+    def mkreq(self, uri, headers=None, body=None, shift=0):
+        return mkreq(uri, headers, body, shift, cls=self.Request)
+
     def check_args(self, cobj, name, number):
         assert isinstance(number, int) and number > 0
         args1 = tuple(random_id() for i in range(number - 1))
@@ -395,11 +404,12 @@ class BackendTestCase(TestCase):
         for args in (args1, args2):
             with self.assertRaises(TypeError) as cm:
                 cobj(*args)
-            self.assertEqual(str(cm.exception),
-                '{}() requires {} arguments; got {}'.format(
-                    name, number, len(args)
+            if self.backend is _base:
+                self.assertEqual(str(cm.exception),
+                    '{}() requires {} arguments; got {}'.format(
+                        name, number, len(args)
+                    )
                 )
-            )
 
     def check_method_args(self, inst, name, number):
         method = getattr(inst, name)
@@ -6651,9 +6661,6 @@ class TestConnection_Py(BackendTestCase):
         del r
         self.assertEqual(sys.getrefcount(sock), 2)
 
-class TestConnection_C(TestConnection_Py):
-    backend = _base
-
     def test_callables(self):
         pairs = (
             ('request', 4),
@@ -6670,4 +6677,388 @@ class TestConnection_C(TestConnection_Py):
             with self.subTest(name=name, number=number):
                 self.check_method_args(conn, name, number)
                 self.assertIs(conn.closed, False)
+
+class TestConnection_C(TestConnection_Py):
+    backend = _base
+
+
+class TestRouter_Py(BackendTestCase):
+    @property
+    def Router(self):
+        return self.getattr('Router')
+
+    def test_init(self):
+        def foo_app(session, request, api):
+            return (200, 'OK', {}, b'foo')
+
+        def bar_app(session, request, api):
+            return (200, 'OK', {}, b'bar')
+
+        # appmap not a dict instance:
+        appmap = [('foo', foo_app), ('bar', bar_app)]
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            'appmap: need a {!r}; got a {!r}: {!r}'.format(dict, list, appmap)
+        )
+
+        # appmap has key that is not None or str instance:
+        appmap = {'foo': foo_app, 17: bar_app}
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            'appmap key: need a {!r}; got a {!r}: {!r}'.format(
+                str, int, 17
+            )
+        )
+
+        # appmap has value that isn't callable:
+        bar_value = random_id()
+        appmap = {'foo': foo_app, 'bar': bar_value}
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            "appmap['bar']: value not callable: {!r}".format(bar_value)
+        )
+
+        # Empty appmap:
+        appmap = {}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+        self.assertEqual(app.appmap, {})
+
+        appmap = OrderedDict(appmap)
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
+
+        # appmap single str key:
+        appmap = {'foo': foo_app}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+        self.assertEqual(app.appmap, {'foo': foo_app})
+
+        appmap = OrderedDict(appmap)
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
+
+        # appmap single key that is None:
+        appmap = {None: foo_app}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+        self.assertEqual(app.appmap, {None: foo_app})
+        
+        appmap = OrderedDict(appmap)
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
+
+        # appmap has two keys, both str:
+        appmap = {'foo': foo_app, 'bar': bar_app}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        appmap = OrderedDict(appmap)
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
+
+        # appmap has two keys, one a str and the other None:
+        appmap = {'foo': foo_app, None: bar_app}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        appmap = OrderedDict(appmap)
+        with self.assertRaises(TypeError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            TYPE_ERROR.format("appmap", dict, OrderedDict, appmap)
+        )
+
+        # Nested appmap:
+        key = random_id()
+        end = {key: foo_app}
+        appmap = end
+        for i in range(9):
+            appmap = {random_id(): appmap}
+        app = self.Router(appmap)
+        self.assertIs(app.appmap, appmap)
+
+        # Nested appmap that exceeds max depth:
+        appmap = {random_id(): appmap}
+        with self.assertRaises(ValueError) as cm:
+            self.Router(appmap)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+
+        # Recursive appmap
+        key1 = random_id()
+        key2 = random_id()
+        appmap1 = {}
+        appmap2 = {}
+        appmap1[key1] = appmap2
+        appmap2[key2] = appmap1
+        with self.assertRaises(ValueError) as cm:
+            self.Router(appmap1)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+
+    def test_call(self):
+        app = self.Router({})
+        self.check_method_args(app, '__call__', 3)
+
+        Request = self.getattr('Request')
+
+        def foo_app(session, request, api):
+            return (200, 'OK', {}, b'foo')
+
+        def bar_app(session, request, api):
+            return (200, 'OK', {}, b'bar')
+
+        # appmap is empty:
+        app = self.Router({})
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
+
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {})
+
+        # One appmap key, a str:
+        app = self.Router({'foo': foo_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app})
+
+        r = Request('GET', '/bar', {}, None, [], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app})
+
+        # One appmap key, an empty str:
+        app = self.Router({'': foo_app})
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app})
+
+        r = Request('GET', '/foo/bar', {}, None, ['foo'], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', 'bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app})
+
+        # One appmap key, None:
+        app = self.Router({None: foo_app})
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {None: foo_app})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {None: foo_app})
+
+        # Two appmap keys, both str:
+        app = self.Router({'foo': foo_app, 'bar': bar_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        r = Request('GET', '/bar', {}, None, [], ['bar'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, ['bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        r = Request('GET', '/baz', {}, None, [], ['baz'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['baz'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, 'bar': bar_app})
+
+        # Two appmap keys, one str one None:
+        app = self.Router({'foo': foo_app, None: bar_app})
+        r = Request('GET', '/foo', {}, None, [], ['foo'], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'foo': foo_app, None: bar_app})
+
+        # Two appmap keys, one empty str one None:
+        app = self.Router({'': foo_app, None: bar_app})
+        r = Request('GET', '/foo/', {}, None, ['foo'], [''], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, ['foo', ''])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        r = Request('GET', '/', {}, None, [], [], None)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'bar'))
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        r = Request('GET', '/foo/bar', {}, None, ['foo'], ['bar'], None)
+        self.assertEqual(app(None, r, None), (410, 'Gone', {}, None))
+        self.assertEqual(r.mount, ['foo', 'bar'])
+        self.assertEqual(r.path, [])
+        self.assertEqual(app.appmap, {'': foo_app, None: bar_app})
+
+        # Nested appmap:
+        keys = [random_id() for i in range(10)]
+        appmap = foo_app
+        for key in keys:
+            appmap = {key: appmap}
+        keys.reverse()
+        uri = '/' + '/'.join(keys)
+        app = self.Router(appmap)
+        r = mkreq('GET', uri)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, keys)
+        self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
+        del app
+        for key in keys:
+            self.assertEqual(sys.getrefcount(appmap), 2)
+            self.assertEqual(sys.getrefcount(key), 4)
+            appmap = appmap[key]
+            self.assertEqual(sys.getrefcount(key), 3)
+
+        # Nested appmap, exceeds ROUTER_MAX_DEPTH:
+        keys = [random_id() for i in range(10)]
+        appmap = None
+        for key in keys:
+            if appmap is None:
+                last = appmap = {key: foo_app}
+            else:
+                appmap = {key: appmap}
+        keys.reverse()
+        uri = '/' + '/'.join(keys)
+        app = self.Router(appmap)
+        r = mkreq('GET', uri)
+        self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
+        self.assertEqual(r.mount, keys)
+        self.assertEqual(r.path, [])
+        for k in r.mount:
+            self.assertEqual(sys.getrefcount(k), 3)
+        keys.append(random_id())
+        last[keys[-2]] = {keys[-1]: foo_app}
+        uri = '/' + '/'.join(keys)
+        r = mkreq('GET', uri)
+        with self.assertRaises(ValueError) as cm:
+            app(None, r, None)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+        self.assertEqual(r.mount, keys[:-1])
+        self.assertEqual(r.path, keys[-1:])
+        del last
+        del app
+        for key in keys:
+            self.assertEqual(sys.getrefcount(appmap), 2)
+            self.assertEqual(sys.getrefcount(key), 4)
+            appmap = appmap[key]
+            self.assertEqual(sys.getrefcount(key), 3)
+
+        # Recursive appmap
+        key1 = random_id()
+        key2 = random_id()
+        uri = '/' + '/'.join([key1, key2] * 5)
+        appmap1 = {}
+        app = self.Router(appmap1)
+        appmap2 = {}
+        appmap1[key1] = appmap2
+        appmap2[key2] = appmap1
+        r = mkreq('GET', uri)
+        with self.assertRaises(ValueError) as cm:
+            app(None, r, None)
+        self.assertEqual(str(cm.exception),
+            'Router: max appmap depth 10 exceeded'
+        )
+
+class TestRouter_C(TestRouter_Py):
+    backend = _base
+
+
+class TestProxyApp_Py(BackendTestCase):
+    @property
+    def ProxyApp(self):
+        return self.getattr('ProxyApp')
+
+    def test_init(self):
+        client = random_id()
+        self.assertEqual(sys.getrefcount(client), 2)
+        app = self.ProxyApp(client)
+        self.assertEqual(sys.getrefcount(client), 3)
+        self.assertIs(type(app), self.ProxyApp)
+        self.assertIs(app.client, client)
+        self.assertEqual(app.key, 'conn')
+        del app
+        self.assertEqual(sys.getrefcount(client), 2)
+
+        key = random_id()
+        self.assertEqual(sys.getrefcount(key), 2)
+        app = self.ProxyApp(client, key)
+        self.assertEqual(sys.getrefcount(client), 3)
+        self.assertEqual(sys.getrefcount(key), 3)
+        self.assertIs(type(app), self.ProxyApp)
+        self.assertIs(app.client, client)
+        self.assertIs(app.key, key)
+        del app
+        self.assertEqual(sys.getrefcount(client), 2)
+        self.assertEqual(sys.getrefcount(key), 2)
+
+    def test_call(self):
+        app = self.ProxyApp(random_id())
+        self.check_method_args(app, '__call__', 3)
+
+class TestProxyApp_C(TestProxyApp_Py):
+    backend = _base
 

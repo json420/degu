@@ -54,7 +54,7 @@ __all__ = ('parse_headers', 'write_chunk')
 log = logging.getLogger(__name__)
 
 
-def mkreq(method, uri, headers=None, body=None, shift=0):
+def mkreq(method, uri, headers=None, body=None, shift=0, cls=Request):
     """
     Shortcut for making a `Request` object for unit testing and demonstration.
 
@@ -81,7 +81,7 @@ def mkreq(method, uri, headers=None, body=None, shift=0):
         mount.append(path.pop(0)) 
     query = (parts[1] if len(parts) == 2 else None)
     headers = ({} if headers is None else headers)
-    return Request(method, uri, headers, body, mount, path, query)
+    return cls(method, uri, headers, body, mount, path, query)
 
 
 def mkuri(*path, query=None):
