@@ -2196,12 +2196,12 @@ _parse_response(PyObject *method, DeguSrc src, PyObject *rfile, DeguDst scratch,
     }
     const size_t stop = _search(src, CRLF);
     const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line_src = _slice(src, 0, stop);
-    DeguSrc headers_src = _slice(src, start, src.len);
-    if (! _parse_response_line(line_src, dr)) {
+    DeguSrc line = _slice(src, 0, stop);
+    DeguSrc headers = _slice(src, start, src.len);
+    if (! _parse_response_line(line, dr)) {
         goto error;
     }
-    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, true)) {
+    if (! _parse_headers(headers, scratch, (DeguHeaders *)dr, true)) {
         goto error;
     }
     /* Create request body */
