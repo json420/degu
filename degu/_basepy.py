@@ -1769,6 +1769,16 @@ def _handle_requests(app, session, sock):
         session._response_complete(status, reason)
 
 
+def _check_args(name, args, number):
+    assert type(args) is tuple
+    assert type(number) is int and number > 0
+    if len(args) != number:
+        raise TypeError(
+            '{}() requires {} arguments; got {}'.format(name, number, len(args))
+        )
+    return args
+
+
 class Connection:
     __slots__ = (
         'sock',
@@ -1830,7 +1840,9 @@ class Connection:
     def close(self):
         self._shutdown()
 
-    def request(self, method, uri, headers, body):
+    def request(self, *args):
+        _check_args('Connection.request', args, 4)
+        (method, uri, headers, body) = args
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
@@ -1855,22 +1867,29 @@ class Connection:
             self._shutdown()
             raise
 
-    def put(self, uri, headers, body):
+    def put(self, *args):
+        (uri, headers, body) = _check_args('Connection.put', args, 3)
         return self.request('PUT', uri, headers, body)
 
-    def post(self, uri, headers, body):
+    def post(self, *args):
+        (uri, headers, body) = _check_args('Connection.post', args, 3)
         return self.request('POST', uri, headers, body)
 
-    def get(self, uri, headers):
+    def get(self, *args):
+        (uri, headers) = _check_args('Connection.get', args, 2)
         return self.request('GET', uri, headers, None)
 
-    def head(self, uri, headers):
+    def head(self, *args):
+        (uri, headers) = _check_args('Connection.head', args, 2)
         return self.request('HEAD', uri, headers, None)
 
-    def delete(self, uri, headers):
+    def delete(self, *args):
+        (uri, headers) = _check_args('Connection.delete', args, 2)
         return self.request('DELETE', uri, headers, None)
 
-    def get_range(self, uri, headers, start, stop):
+    def get_range(self, *args):
+        _check_args('Connection.get_range', args, 4)
+        (uri, headers, start, stop) = args
         set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)
 

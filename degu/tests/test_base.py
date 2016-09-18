@@ -6384,7 +6384,26 @@ class TestConnection_Py(BackendTestCase):
             'close',
         ])
 
+    def check_num_args(self, name, number):
+        assert isinstance(number, int) and number > 0
+        sock = NewMockSocket()
+        conn = self.Connection(sock, None)
+        method = getattr(conn, name)
+        args1 = tuple(random_id() for i in range(number - 1))
+        args2 = tuple(random_id() for i in range(number + 1))
+        for args in (args1, args2):
+            with self.assertRaises(TypeError) as cm:
+                method(*args)
+            self.assertEqual(str(cm.exception),
+                'Connection.{}() requires {} arguments; got {}'.format(
+                    name, number, len(args)
+                )
+            )
+            self.assertIs(conn.closed, False)
+
     def test_request(self):
+        self.check_num_args('request', 4)
+
         # Make sure method is validated:
         for method in GOOD_METHODS:
             for bad in (method.encode(), str_subclass(method)):
@@ -6532,6 +6551,8 @@ class TestConnection_Py(BackendTestCase):
                     ])
 
     def test_put(self):
+        self.check_num_args('put', 3)
+
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.put('/', {}, None)
@@ -6550,6 +6571,8 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_post(self):
+        self.check_num_args('post', 3)
+
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.post('/', {}, None)
@@ -6568,6 +6591,8 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_get(self):
+        self.check_num_args('get', 2)
+
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.get('/', {})
@@ -6578,6 +6603,8 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_head(self):
+        self.check_num_args('head', 2)
+
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.head('/', {})
@@ -6588,6 +6615,8 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_delete(self):
+        self.check_num_args('delete', 2)
+
         sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.delete('/', {})
@@ -6598,6 +6627,8 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_get_range(self):
+        self.check_num_args('get_range', 4)
+
         parts = (
             b'HTTP/1.1 200 OK\r\n',
             b'Content-Length: 3\r\n',
