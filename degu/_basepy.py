@@ -1840,9 +1840,7 @@ class Connection:
     def close(self):
         self._shutdown()
 
-    def request(self, *args):
-        _check_args('Connection.request', args, 4)
-        (method, uri, headers, body) = args
+    def request(self, method, uri, headers, body):
         if self._closed is not False:
             raise ValueError('Connection is closed')
         try:
@@ -1867,29 +1865,22 @@ class Connection:
             self._shutdown()
             raise
 
-    def put(self, *args):
-        (uri, headers, body) = _check_args('Connection.put', args, 3)
+    def put(self, uri, headers, body):
         return self.request('PUT', uri, headers, body)
 
-    def post(self, *args):
-        (uri, headers, body) = _check_args('Connection.post', args, 3)
+    def post(self, uri, headers, body):
         return self.request('POST', uri, headers, body)
 
-    def get(self, *args):
-        (uri, headers) = _check_args('Connection.get', args, 2)
+    def get(self, uri, headers):
         return self.request('GET', uri, headers, None)
 
-    def head(self, *args):
-        (uri, headers) = _check_args('Connection.head', args, 2)
+    def head(self, uri, headers):
         return self.request('HEAD', uri, headers, None)
 
-    def delete(self, *args):
-        (uri, headers) = _check_args('Connection.delete', args, 2)
+    def delete(self, uri, headers):
         return self.request('DELETE', uri, headers, None)
 
-    def get_range(self, *args):
-        _check_args('Connection.get_range', args, 4)
-        (uri, headers, start, stop) = args
+    def get_range(self, uri, headers, start, stop):
         set_default_header(headers, 'range', Range(start, stop))
         return self.request('GET', uri, headers, None)
 
