@@ -925,25 +925,20 @@ ContentRange_dealloc(ContentRange *self)
 static int
 ContentRange_init(ContentRange *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"start", "stop", "total", NULL};
-    PyObject *arg0 = NULL;
-    PyObject *arg1 = NULL;
-    PyObject *arg2 = NULL;
     int64_t start, stop, total;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OOO:ContentRange", keys,
-            &arg0, &arg1, &arg2)) {
+    if (! _check_args("ContentRange", args, 3)) {
         return -1;
     }
-    start = _get_length("start", arg0);
+    start = _get_length("start", PyTuple_GET_ITEM(args, 0));
     if (start < 0) {
         return -1;
     }
-    stop = _get_length("stop", arg1);
+    stop = _get_length("stop", PyTuple_GET_ITEM(args, 1));
     if (stop < 0) {
         return -1;
     }
-    total = _get_length("total", arg2);
+    total = _get_length("total", PyTuple_GET_ITEM(args, 2));
     if (total < 0) {
         return -1;
     }

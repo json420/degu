@@ -322,6 +322,11 @@ class TestAliases(TestCase):
             self.check(name)
 
 
+ARG_MSG_C = '{}() requires {} arguments; got {}'
+ARG_MSG_Py_1 = '{}() missing 1 required positional argument: {!r}'
+ARG_MSG_Py_2 = '{}() takes {} positional arguments but {} were given'
+
+
 class BackendTestCase(TestCase):
     backend = _basepy
 
@@ -397,7 +402,7 @@ class BackendTestCase(TestCase):
     def mkreq(self, uri, headers=None, body=None, shift=0):
         return mkreq(uri, headers, body, shift, cls=self.Request)
 
-    def check_args(self, cobj, name, number):
+    def check_args(self, cobj, name, number, pymsg):
         assert isinstance(number, int) and number > 0
         args1 = tuple(random_id() for i in range(number - 1))
         args2 = tuple(random_id() for i in range(number + 1))
@@ -406,19 +411,28 @@ class BackendTestCase(TestCase):
                 cobj(*args)
             if self.backend is _base:
                 self.assertEqual(str(cm.exception),
-                    '{}() requires {} arguments; got {}'.format(
-                        name, number, len(args)
-                    )
+                    ARG_MSG_C.format(name, number, len(args))
                 )
+            else:
+                msg = (pymsg[0] if len(args) < number else pymsg[1])
+                self.assertEqual(str(cm.exception), msg, len(args))
 
-    def check_init_args(self, cls, number):
-        name = cls.__name__
-        self.check_args(cls, name, number)
-
-    def check_method_args(self, inst, name, number):
+    def check_method_args(self, inst, name, number, missing):
         method = getattr(inst, name)
         fullname = '.'.join([inst.__class__.__name__, name])
-        self.check_args(method, fullname, number)
+        pymsg = (
+            ARG_MSG_Py_1.format(name, missing),
+            ARG_MSG_Py_2.format(name, number + 1, number + 2),
+        )
+        self.check_args(method, fullname, number, pymsg)
+
+    def check_init_args(self, cls, number, missing):
+        name = cls.__name__
+        pymsg = (
+            ARG_MSG_Py_1.format('__init__', missing),
+            ARG_MSG_Py_2.format('__init__', number + 1, number + 2),
+        )
+        self.check_args(cls, name, number, pymsg)
 
 REQUEST_ARGS_REPR = ', '.join([
     'method={!r}',  # method
@@ -695,7 +709,7 @@ class TestRange_Py(BackendTestCase):
         return self.getattr('Range')
 
     def test_init(self):
-        self.check_init_args(self.Range, 2)
+        self.check_init_args(self.Range, 2, 'stop')
 
         # start isn't an int:
         for bad in ['16', 16.0, UserInt(16), None]:
@@ -942,6 +956,8 @@ class TestContentRange_Py(BackendTestCase):
         return self.getattr('ContentRange')
 
     def test_init(self):
+        self.check_init_args(self.ContentRange, 3, 'total')
+
         # start isn't an int:
         for bad in ['16', 16.0, UserInt(16), None]:
             with self.assertRaises(TypeError) as cm:
@@ -6666,20 +6682,20 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_callables(self):
-        pairs = (
-            ('request', 4),
-            ('put', 3),
-            ('post', 3),
-            ('get', 2),
-            ('head', 2),
-            ('delete', 2),
-            ('get_range', 4),
+        items = (
+            ('request',   4, 'body'),
+            ('put',       3, 'body'),
+            ('post',      3, 'body'),
+            ('get',       2, 'headers'),
+            ('head',      2, 'headers'),
+            ('delete',    2, 'headers'),
+            ('get_range', 4, 'stop'),
         )
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
-        for (name, number) in pairs:
+        for (name, number, missing) in items:
             with self.subTest(name=name, number=number):
-                self.check_method_args(conn, name, number)
+                self.check_method_args(conn, name, number, missing)
                 self.assertIs(conn.closed, False)
 
 class TestConnection_C(TestConnection_Py):
@@ -6822,7 +6838,7 @@ class TestRouter_Py(BackendTestCase):
 
     def test_call(self):
         app = self.Router({})
-        self.check_method_args(app, '__call__', 3)
+        self.check_method_args(app, '__call__', 3, 'api')
 
         Request = self.getattr('Request')
 
@@ -7061,7 +7077,7 @@ class TestProxyApp_Py(BackendTestCase):
 
     def test_call(self):
         app = self.ProxyApp(random_id())
-        self.check_method_args(app, '__call__', 3)
+        self.check_method_args(app, '__call__', 3, 'api')
 
 class TestProxyApp_C(TestProxyApp_Py):
     backend = _base
