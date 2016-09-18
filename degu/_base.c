@@ -817,20 +817,16 @@ Range_dealloc(Range *self)
 static int
 Range_init(Range *self, PyObject *args, PyObject *kw)
 {
-    static char *keys[] = {"start", "stop", NULL};
-    PyObject *arg0 = NULL;
-    PyObject *arg1 = NULL;
     int64_t start, stop;
 
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Range", keys,
-            &arg0, &arg1)) {
+    if (! _check_args("Range", args, 2)) {
         return -1;
     }
-    start = _get_length("start", arg0);
+    start = _get_length("start", PyTuple_GET_ITEM(args, 0));
     if (start < 0) {
         return -1;
     }
-    stop = _get_length("stop", arg1);
+    stop = _get_length("stop", PyTuple_GET_ITEM(args, 1));
     if (stop < 0) {
         return -1;
     }

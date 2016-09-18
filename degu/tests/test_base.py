@@ -388,20 +388,23 @@ class BackendTestCase(TestCase):
     def api(self):
         return self.getattr('api')
 
-    def check_arg_count(self, inst, name, number):
+    def check_args(self, cobj, name, number):
         assert isinstance(number, int) and number > 0
-        method = getattr(inst, name)
-        fullname = '.'.join([inst.__class__.__name__, name])
         args1 = tuple(random_id() for i in range(number - 1))
         args2 = tuple(random_id() for i in range(number + 1))
         for args in (args1, args2):
             with self.assertRaises(TypeError) as cm:
-                method(*args)
+                cobj(*args)
             self.assertEqual(str(cm.exception),
                 '{}() requires {} arguments; got {}'.format(
-                    fullname, number, len(args)
+                    name, number, len(args)
                 )
             )
+
+    def check_method_args(self, inst, name, number):
+        method = getattr(inst, name)
+        fullname = '.'.join([inst.__class__.__name__, name])
+        self.check_args(method, fullname, number)
 
 REQUEST_ARGS_REPR = ', '.join([
     'method={!r}',  # method
@@ -914,6 +917,9 @@ class TestRange_Py(BackendTestCase):
 
 class TestRange_C(TestRange_Py):
     backend = _base
+
+    def test_init_args(self):
+        self.check_args(self.Range, 'Range', 2)
 
 
 class TestContentRange_Py(BackendTestCase):
@@ -6401,7 +6407,7 @@ class TestConnection_Py(BackendTestCase):
     def check_num_args(self, name, number):
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
-        self.check_arg_count(conn, name, number)
+        self.check_method_args(conn, name, number)
         self.assertIs(conn.closed, False)
 
     def test_request(self):
