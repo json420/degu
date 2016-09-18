@@ -411,6 +411,10 @@ class BackendTestCase(TestCase):
                     )
                 )
 
+    def check_init_args(self, cls, number):
+        name = cls.__name__
+        self.check_args(cls, name, number)
+
     def check_method_args(self, inst, name, number):
         method = getattr(inst, name)
         fullname = '.'.join([inst.__class__.__name__, name])
@@ -691,6 +695,8 @@ class TestRange_Py(BackendTestCase):
         return self.getattr('Range')
 
     def test_init(self):
+        self.check_init_args(self.Range, 2)
+
         # start isn't an int:
         for bad in ['16', 16.0, UserInt(16), None]:
             with self.assertRaises(TypeError) as cm:
@@ -925,11 +931,9 @@ class TestRange_Py(BackendTestCase):
                     t != o
                 self.assertEqual(str(cm.exception), msg)
 
+
 class TestRange_C(TestRange_Py):
     backend = _base
-
-    def test_init_args(self):
-        self.check_args(self.Range, 'Range', 2)
 
 
 class TestContentRange_Py(BackendTestCase):
@@ -6958,7 +6962,7 @@ class TestRouter_Py(BackendTestCase):
         keys.reverse()
         uri = '/' + '/'.join(keys)
         app = self.Router(appmap)
-        r = mkreq('GET', uri)
+        r = self.mkreq('GET', uri)
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
         self.assertEqual(r.mount, keys)
         self.assertEqual(r.path, [])
@@ -6982,7 +6986,7 @@ class TestRouter_Py(BackendTestCase):
         keys.reverse()
         uri = '/' + '/'.join(keys)
         app = self.Router(appmap)
-        r = mkreq('GET', uri)
+        r = self.mkreq('GET', uri)
         self.assertEqual(app(None, r, None), (200, 'OK', {}, b'foo'))
         self.assertEqual(r.mount, keys)
         self.assertEqual(r.path, [])
@@ -6991,7 +6995,7 @@ class TestRouter_Py(BackendTestCase):
         keys.append(random_id())
         last[keys[-2]] = {keys[-1]: foo_app}
         uri = '/' + '/'.join(keys)
-        r = mkreq('GET', uri)
+        r = self.mkreq('GET', uri)
         with self.assertRaises(ValueError) as cm:
             app(None, r, None)
         self.assertEqual(str(cm.exception),
@@ -7016,7 +7020,7 @@ class TestRouter_Py(BackendTestCase):
         appmap2 = {}
         appmap1[key1] = appmap2
         appmap2[key2] = appmap1
-        r = mkreq('GET', uri)
+        r = self.mkreq('GET', uri)
         with self.assertRaises(ValueError) as cm:
             app(None, r, None)
         self.assertEqual(str(cm.exception),
