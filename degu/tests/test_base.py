@@ -388,6 +388,20 @@ class BackendTestCase(TestCase):
     def api(self):
         return self.getattr('api')
 
+    def check_arg_count(self, inst, name, number):
+        assert isinstance(number, int) and number > 0
+        method = getattr(inst, name)
+        fullname = '.'.join([inst.__class__.__name__, name])
+        args1 = tuple(random_id() for i in range(number - 1))
+        args2 = tuple(random_id() for i in range(number + 1))
+        for args in (args1, args2):
+            with self.assertRaises(TypeError) as cm:
+                method(*args)
+            self.assertEqual(str(cm.exception),
+                '{}() requires {} arguments; got {}'.format(
+                    fullname, number, len(args)
+                )
+            )
 
 REQUEST_ARGS_REPR = ', '.join([
     'method={!r}',  # method
@@ -6385,21 +6399,10 @@ class TestConnection_Py(BackendTestCase):
         ])
 
     def check_num_args(self, name, number):
-        assert isinstance(number, int) and number > 0
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
-        method = getattr(conn, name)
-        args1 = tuple(random_id() for i in range(number - 1))
-        args2 = tuple(random_id() for i in range(number + 1))
-        for args in (args1, args2):
-            with self.assertRaises(TypeError) as cm:
-                method(*args)
-            self.assertEqual(str(cm.exception),
-                'Connection.{}() requires {} arguments; got {}'.format(
-                    name, number, len(args)
-                )
-            )
-            self.assertIs(conn.closed, False)
+        self.check_arg_count(conn, name, number)
+        self.assertIs(conn.closed, False)
 
     def test_request(self):
         self.check_num_args('request', 4)

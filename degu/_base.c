@@ -468,6 +468,22 @@ _check_str(const char *name, PyObject *obj, const ssize_t minlen)
     return true;
 }
 
+static bool
+_check_args(const char *name, PyObject *args, const ssize_t number)
+{
+    if (args == NULL || Py_TYPE(args) != &PyTuple_Type || number < 1) {
+        Py_FatalError("_check_args(): bad internal call");
+    }
+    if (PyTuple_GET_SIZE(args) != number) {
+        PyErr_Format(PyExc_TypeError,
+            "%s() requires %zd arguments; got %zd",
+            name, number, PyTuple_GET_SIZE(args)
+        );
+        return false;
+    }
+    return true;
+}
+
 
 /******************************************************************************
  * Internal API for working with DeguSrc and DeguDst memory buffers ("slices")
@@ -5076,22 +5092,6 @@ error:
 cleanup:
     _clear_degu_response(&r);
     return response;
-}
-
-static bool
-_check_args(const char *name, PyObject *args, const ssize_t number)
-{
-    if (args == NULL || Py_TYPE(args) != &PyTuple_Type || number < 1) {
-        Py_FatalError("_check_args(): bad internal call");
-    }
-    if (PyTuple_GET_SIZE(args) != number) {
-        PyErr_Format(PyExc_TypeError,
-            "%s() requires %zd arguments; got %zd",
-            name, number, PyTuple_GET_SIZE(args)
-        );
-        return false;
-    }
-    return true;
 }
 
 static PyObject *
