@@ -800,28 +800,14 @@ _Range_New(uint64_t start, uint64_t stop)
     return (PyObject *)PyObject_INIT(self, &RangeType);
 }
 
-static PyObject *
+static inline PyObject *
 _Range_PyNew(PyObject *arg0, PyObject *arg1)
 {
-    int64_t start, stop;
-
-    start = _get_length("start", arg0);
-    if (start < 0) {
-        return NULL;
-    }
-    stop = _get_length("stop", arg1);
-    if (stop < 0) {
-        return NULL;
-    }
-    if (start >= stop) {
-        PyErr_Format(PyExc_ValueError,
-            "need start < stop; got %lld >= %lld", start, stop
-        );
-        return NULL;
-    }
-    return _Range_New((uint64_t)start, (uint64_t)stop);
+    return PyObject_CallFunctionObjArgs(
+        (PyObject *)&RangeType, arg0, arg1, NULL
+    );
 }
- 
+
 static void
 Range_dealloc(Range *self)
 {
