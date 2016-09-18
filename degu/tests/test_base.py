@@ -1142,28 +1142,6 @@ class TestContentRange_Py(BackendTestCase):
         lessers  = tuple(iter_types([(15, 21, 23), (16, 20, 23)]))
         greaters = tuple(iter_types([(17, 21, 23), (16, 22, 23)]))
 
-#        # __lt__():
-#        for o in lessers:
-#            self.assertIs(cr < o, False)
-#            self.assertIs(o < cr, True)
-#        for o in equals:
-#            self.assertIs(cr < o, False)
-#            self.assertIs(o < cr, False)
-#        for o in greaters:
-#            self.assertIs(cr < o, True)
-#            self.assertIs(o < cr, False)
-
-#        # __le__():
-#        for o in lessers:
-#            self.assertIs(cr <= o, False)
-#            self.assertIs(o <= cr, True)
-#        for o in equals:
-#            self.assertIs(cr <= o, True)
-#            self.assertIs(o <= cr, True)
-#        for o in greaters:
-#            self.assertIs(cr <= o, True)
-#            self.assertIs(o <= cr, False)
-
         # __eq__():
         for o in lessers:
             self.assertIs(cr == o, False)
@@ -1185,29 +1163,6 @@ class TestContentRange_Py(BackendTestCase):
         for o in greaters:
             self.assertIs(cr != o, True)
             self.assertIs(o != cr, True)
-
-#        # __gt__():
-#        for o in lessers:
-#            self.assertIs(cr > o, True)
-#            self.assertIs(o > cr, False)
-#        for o in equals:
-#            self.assertIs(cr > o, False)
-#            self.assertIs(o > cr, False)
-#        for o in greaters:
-#            self.assertIs(cr > o, False)
-#            self.assertIs(o > cr, True)
-
-#        # __ge__():
-#        for o in lessers:
-#            self.assertIs(cr >= o, True)
-#            self.assertIs(o >= cr, False)
-#        for o in equals:
-#            self.assertIs(cr >= o, True)
-#            self.assertIs(o >= cr, True)
-#        for o in greaters:
-#            self.assertIs(cr >= o, False)
-#            self.assertIs(o >= cr, True)
-
 
 class TestContentRange_C(TestContentRange_Py):
     backend = _base
