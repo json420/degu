@@ -1807,6 +1807,17 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
 
+        r = parse_request(b'GET /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile)
+        self.assertIs(type(r), Request)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/foo')
+        self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+        self.assertIs(type(r.body), api.ChunkedBody)
+        self.assertIs(r.body.rfile, rfile)
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, ['foo'])
+        self.assertIsNone(r.query)
+
     def test_parse_response(self):
         api = self.api
         parse_response = self.getattr('parse_response')
