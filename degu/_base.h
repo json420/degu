@@ -203,6 +203,12 @@ typedef struct {
 #define NEW_DEGU_CHUNK \
     ((DeguChunk){NULL, NULL, NULL, 0})
 
+/* Structured for parsing the preamble into (first line, all header lines) */
+typedef const struct {
+    DeguSrc line;
+    DeguSrc headers;
+} DeguPreamble;
+
 
 /******************************************************************************
  * Internal parsing and rendering API

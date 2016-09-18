@@ -1730,6 +1730,21 @@ cleanup:
 
 
 /******************************************************************************
+ * Common request & response preamble parsing - internal C API
+ ******************************************************************************/
+static inline DeguPreamble
+_parse_preamble(DeguSrc src)
+{
+    const size_t o1 = _search(src, CRLF);
+    const size_t o2 = (o1 < src.len) ? (o1 + CRLF.len) : src.len;
+    return (DeguPreamble){
+        .line    = _slice(src, 0, o1),
+        .headers = _slice(src, o2, src.len),
+    };
+}
+
+
+/******************************************************************************
  * Request parsing - internal C API
  ******************************************************************************/
 
@@ -1867,8 +1882,6 @@ _parse_query(DeguSrc src)
 static bool
 _parse_uri(DeguSrc src, DeguRequest *dr)
 {
-    size_t path_stop, query_start;
-
     if (src.buf == NULL) {
         Py_FatalError("_parse_uri(): bad internal call");
         goto error;
@@ -1877,12 +1890,12 @@ _parse_uri(DeguSrc src, DeguRequest *dr)
         PyErr_SetString(PyExc_ValueError, "uri is empty");
         goto error;
     }
-    path_stop = _search(src, QMARK);
+    const size_t path_stop = _search(src, QMARK);
     _SET(dr->uri, _decode(src, URI_MASK, "bad bytes in uri: %R"))
     _SET(dr->mount, PyList_New(0))
     _SET(dr->path, _parse_path(_slice(src, 0, path_stop)))
     if (path_stop < src.len) {
-        query_start = path_stop + QMARK.len;
+        const size_t query_start = path_stop + QMARK.len;
         _SET(dr->query, _parse_query(_slice(src, query_start, src.len)))
     }
     else {
@@ -1898,7 +1911,6 @@ static bool
 _parse_request_line(DeguSrc line, DeguRequest *dr)
 {
     ssize_t index;
-    size_t method_stop, uri_start;
 
     /* Reject any request line shorter than 14 bytes:
      *     "GET / HTTP/1.1"[0:14]
@@ -1934,18 +1946,29 @@ _parse_request_line(DeguSrc line, DeguRequest *dr)
         _value_error("bad request line: %R", line);
         goto error;
     }
-    method_stop = (size_t)index;
-    uri_start = method_stop + 1;
-    DeguSrc method_src = _slice(src, 0, method_stop);
-    DeguSrc uri_src = _slice(src, uri_start, src.len);
+    DeguSrc method = _slice(src, 0, (size_t)index);
+    DeguSrc uri = _slice(src, method.len + 1, src.len);
 
-    /* _parse_method(), _parse_uri() handle the rest */
-    if (_parse_method(method_src, dr) && _parse_uri(uri_src, dr)) {
+    /* _parse_method() and _parse_uri() handle the rest */
+    if (_parse_method(method, dr) && _parse_uri(uri, dr)) {
         return true;
     }
 
 error:
     return false;
+}
+
+static PyObject *
+_get_request_body_header_key(const uint8_t bflags)
+{
+    if (bflags == CONTENT_LENGTH_BIT) {
+        return key_content_length;
+    }
+    if (bflags == TRANSFER_ENCODING_BIT) {
+        return key_transfer_encoding;
+    }
+    Py_FatalError("_get_request_body_header_key: bad internal call");
+    return NULL;
 }
 
 static bool
@@ -1958,14 +1981,21 @@ _parse_request(DeguSrc src, PyObject *rfile, DeguDst scratch, DeguRequest *dr)
     }
 
     /* Parse request preamble */
-    const size_t stop = _search(src, CRLF);
-    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line_src = _slice(src, 0, stop);
-    DeguSrc headers_src = _slice(src, start, src.len);
-    if (! _parse_request_line(line_src, dr)) {
+    DeguPreamble p = _parse_preamble(src);
+    if (! _parse_request_line(p.line, dr)) {
         return false;
     }
-    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, false)) {
+    if (! _parse_headers(p.headers, scratch, (DeguHeaders *)dr, false)) {
+        return false;
+    }
+
+    /* Request body is only allowed with PUT and POST methods */
+    const uint8_t bflags = (dr->flags & BODY_MASK);
+    if (bflags && (dr->m & PUT_POST_MASK) == 0) {
+        PyErr_Format(PyExc_ValueError,
+            "%R request with a %R header",
+            dr->method, _get_request_body_header_key(bflags)
+        );
         return false;
     }
 
@@ -2167,21 +2197,22 @@ static bool
 _parse_response(PyObject *method, DeguSrc src, PyObject *rfile, DeguDst scratch,
                 DeguResponse *dr)
 {
+    /* Check for empty premable */
     if (src.len == 0) {
         PyErr_SetString(EmptyPreambleError, "response preamble is empty");
         goto error;
     }
-    const size_t stop = _search(src, CRLF);
-    const size_t start = (stop < src.len) ? (stop + CRLF.len) : src.len;
-    DeguSrc line_src = _slice(src, 0, stop);
-    DeguSrc headers_src = _slice(src, start, src.len);
-    if (! _parse_response_line(line_src, dr)) {
+
+    /* Parse response preamble */
+    DeguPreamble p = _parse_preamble(src);
+    if (! _parse_response_line(p.line, dr)) {
         goto error;
     }
-    if (! _parse_headers(headers_src, scratch, (DeguHeaders *)dr, true)) {
+    if (! _parse_headers(p.headers, scratch, (DeguHeaders *)dr, true)) {
         goto error;
     }
-    /* Create request body */
+
+    /* Create response body */
     if (method == str_HEAD) {
         _SET_AND_INC(dr->body, Py_None);
     }

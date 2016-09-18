@@ -1734,8 +1734,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
-        # FIXME:
-        #self.assertEqual(r, ('GET', '/', {}, None, [], [], None))
 
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), Request)
@@ -1746,10 +1744,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
-        # FIXME:
-        #self.assertEqual(r,
-        #    ('GET', '/', {'range': 'bytes=17-20'}, None, [], [], None)
-        #)
+
         _range = r.headers['range']
         self.assertIs(type(_range), Range)
         self.assertEqual(_range.start, 17)
@@ -1768,8 +1763,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertEqual(r.query, '')
-        # FIXME:
-        #self.assertEqual(r, ('GET', '/foo?', {}, None, [], ['foo'], ''))
 
         r = parse_request(b'GET /foo/bar/?stuff=junk HTTP/1.1', rfile)
         self.assertIs(type(r), Request)
@@ -1780,10 +1773,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo', 'bar', ''])
         self.assertEqual(r.query, 'stuff=junk')
-        # FIXME:
-        #self.assertEqual(r,
-        #    ('GET', '/foo/bar/?stuff=junk', {}, None, [], ['foo', 'bar', ''], 'stuff=junk')
-        #)
 
         r = parse_request(b'PUT /foo HTTP/1.1', rfile)
         self.assertIs(type(r), Request)
@@ -1794,8 +1783,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        # FIXME:
-        #self.assertEqual(r, ('PUT', '/foo', {}, None, [], ['foo'], None))
 
         r = parse_request(b'PUT /foo HTTP/1.1\r\nContent-Length: 17', rfile)
         self.assertIs(type(r), Request)
@@ -1808,10 +1795,6 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        # FIXME:
-        #self.assertEqual(r,
-        #    ('PUT', '/foo', {'content-length': 17}, r.body, [], ['foo'], None)
-        #)
 
         r = parse_request(b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked', rfile)
         self.assertIs(type(r), Request)
@@ -1823,10 +1806,47 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.mount, [])
         self.assertEqual(r.path, ['foo'])
         self.assertIsNone(r.query)
-        # FIXME:
-        #self.assertEqual(r,
-        #    ('PUT', '/foo', {'transfer-encoding': 'chunked'}, r.body, [], ['foo'], None)
-        #)
+
+        # Make sure that 'content-length' and 'transfer-encoding' headers are
+        # only allowed when the method is 'PUT' or 'POST':
+        templates = (
+            '{} /bar?hello HTTP/1.1\r\nContent-Length: 18',
+            '{} /baz?answer=42 HTTP/1.1\r\nTransfer-Encoding: chunked',
+        )
+        keys = ('content-length', 'transfer-encoding')
+        for method in GOOD_METHODS:
+            sources = tuple(t.format(method).encode() for t in templates)
+            if method in ('PUT', 'POST'):
+                # With 'content-length':
+                r = parse_request(sources[0], rfile)
+                self.assertIs(type(r), Request)
+                self.assertEqual(r.method, method)
+                self.assertEqual(r.uri, '/bar?hello')
+                self.assertEqual(r.headers, {'content-length': 18})
+                self.assertIs(type(r.body), api.Body)
+                self.assertIs(r.body.rfile, rfile)
+                self.assertEqual(r.mount, [])
+                self.assertEqual(r.path, ['bar'])
+                self.assertEqual(r.query, 'hello')
+
+                # With 'transfer-encoding':
+                r = parse_request(sources[1], rfile)
+                self.assertIs(type(r), Request)
+                self.assertEqual(r.method, method)
+                self.assertEqual(r.uri, '/baz?answer=42')
+                self.assertEqual(r.headers, {'transfer-encoding': 'chunked'})
+                self.assertIs(type(r.body), api.ChunkedBody)
+                self.assertIs(r.body.rfile, rfile)
+                self.assertEqual(r.mount, [])
+                self.assertEqual(r.path, ['baz'])
+                self.assertEqual(r.query, 'answer=42')
+            else:
+                for (src, key) in zip(sources, keys):
+                    with self.assertRaises(ValueError) as cm:
+                        parse_request(src, rfile)
+                    self.assertEqual(str(cm.exception),
+                        "{!r} request with a {!r} header".format(method, key)
+                    )
 
     def test_parse_response(self):
         api = self.api
