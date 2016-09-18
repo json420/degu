@@ -1777,7 +1777,7 @@ class Connection:
         self._closed = False
         self.sock = sock
         if base_headers is not None:
-            _check_type('base_headers', base_headers, tuple)
+            _check_type2('base_headers', base_headers, tuple)
         self.base_headers = base_headers
         self._reader = Reader(sock)
         self._writer = Writer(sock)
