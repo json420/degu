@@ -5078,16 +5078,28 @@ cleanup:
     return response;
 }
 
+static bool
+_check_args(const char *name, PyObject *args, const ssize_t number)
+{
+    if (args == NULL || Py_TYPE(args) != &PyTuple_Type || number < 1) {
+        Py_FatalError("_check_args(): bad internal call");
+    }
+    if (PyTuple_GET_SIZE(args) != number) {
+        PyErr_Format(PyExc_TypeError,
+            "%s() requires %zd arguments; got %zd",
+            name, number, PyTuple_GET_SIZE(args)
+        );
+        return false;
+    }
+    return true;
+}
+
 static PyObject *
 Connection_request(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 4) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.request() requires 4 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.request", args, 4)) {
         return NULL;
     }
     if (! _check_method(PyTuple_GET_ITEM(args, 0), &dr)) {
@@ -5104,11 +5116,7 @@ Connection_put(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.put() requires 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.put", args, 3)) {
         return NULL;
     }
     dr.m = PUT_BIT;
@@ -5124,11 +5132,7 @@ Connection_post(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 3) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.post() requires 3 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.post", args, 3)) {
         return NULL;
     }
     dr.m = POST_BIT;
@@ -5144,11 +5148,7 @@ Connection_get(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.get() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.get", args, 2)) {
         return NULL;
     }
     dr.m = GET_BIT;
@@ -5164,11 +5164,7 @@ Connection_head(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.head() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.head", args, 2)) {
         return NULL;
     }
     dr.m = HEAD_BIT;
@@ -5184,11 +5180,7 @@ Connection_delete(Connection *self, PyObject *args)
 {
     DeguRequest dr = NEW_DEGU_REQUEST;
 
-    if (PyTuple_GET_SIZE(args) != 2) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.delete() requires 2 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.delete", args, 2)) {
         return NULL;
     }
     dr.m = DELETE_BIT;
@@ -5206,11 +5198,7 @@ Connection_get_range(Connection *self, PyObject *args)
     PyObject *range = NULL;
     PyObject *ret = NULL;
 
-    if (PyTuple_GET_SIZE(args) != 4) {
-        PyErr_Format(PyExc_TypeError,
-            "Connection.get_range() requires 4 arguments; got %zd",
-            PyTuple_GET_SIZE(args)
-        );
+    if (! _check_args("Connection.get_range", args, 4)) {
         return NULL;
     }
     dr.m = GET_BIT;
