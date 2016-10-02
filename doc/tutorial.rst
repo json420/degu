@@ -928,6 +928,7 @@ Well, that's all the time we have today for fancy!
 >>> server.terminate()
 
 
+.. _http-subset:
 
 HTTP/1.1 subset
 ---------------

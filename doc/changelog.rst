@@ -18,14 +18,62 @@ Breaking API changes:
         :class:`degu.applib.Router` is an RGI middleware component (as opposed
         to :class:`degu.applib.ProxyApp`, which is an RGI leaf application).
 
+    *   The public constructor for :class:`degu.server.Request` now does strict
+        validation of the *method* argument, only allows the methods currently
+        supported by the Degu client and server::
+
+            {'GET', 'PUT', 'POST', 'HEAD', 'DELETE'}
+
+        As the equivalent validation was already done when parsing an incoming
+        request, this change does *not* break backward compatibility for
+        existing Degu/RGI server applications during normal run-time operation.
+
+        However, this change could potentially break the units tests for
+        existing Degu/RGI server applications (depending on the nature of the
+        unit tests).  In short, you can no longer construct a
+        :class:`degu.server.Request` instance with a method that the Degu server
+        would reject as invalid when parsing an incoming request.
+
+        In the (rather unlikely) event that you had such unit tests, please
+        consider using a mocked ``Request`` object.
+
 
 Bug fixes:
 
-    *   `lp:1590459`_ --- fix compilation of `C extension`_ under GCC 6.
+    *   `lp:1590459`_ --- fix compilation of the Degu `C extension`_ under GCC
+        6.
 
         The unused ``LF`` global (``_DEGU_SRC_CONSTANT()``) was dropped.  It
         wasn't needed, plus it caused the build to fail under the stricter
         checks done by GCC 6.
+
+    *   When parsing a request, the Degu server now (again) only allows a
+        request body when the request method is ``'PUT'`` or ``'POST'``.
+
+        In other words, the Degu server will now reject any ``'GET'``,
+        ``'HEAD'``, or ``'DELETE'`` requests that include a Content-Length or a
+        Transfer-Encoding header.
+
+        This properly restricts the Degu server to the long documented
+        :ref:`http-subset` it aims to support.  In fact, the server in Degu 0.12
+        and earlier did enforce these exact restrictions aside from one leniency
+        (``'GET'`` and ``'HEAD'`` requests were allowed to have a Content-Length
+        header, but only if that header value was ``'0'``).
+
+        Degu 0.13 through Degu 0.16 mistakingly did not enforce these
+        restrictions on the server-side, although Degu did still enforce them on
+        the client-side (the Degu client would raise an exception instead of
+        letting you send such a semantically fuzzy request to any server).
+
+        This change does *not* break any Python API backward compatibility for
+        Degu server or client consumers themselves.  This change likewise
+        doesn't alter the allowed semantics when using the Degu client to make
+        requests to a Degu server.
+
+        But this change does potentially alter the allowed semantics when using
+        *other* HTTP clients to connect to a Degu server.  If this change is
+        problematic for your Degu server use-case, please `file a bug`_ with a
+        strong rationale for why your use-case is important enough to support.
 
 
 New API additions:
@@ -1873,5 +1921,6 @@ Two things motivated these breaking API changes:
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 .. _`your feedback`: https://bugs.launchpad.net/degu
+.. _`file a bug`: https://bugs.launchpad.net/degu
 .. _`Dmedia`: https://launchpad.net/dmedia
 
