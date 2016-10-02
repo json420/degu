@@ -589,7 +589,7 @@ _move(DeguDst dst, DeguSrc src)
     memmove(dst.buf, src.buf, src.len);
 }
 
-static inline size_t
+static size_t
 _copy(DeguDst dst, DeguSrc src)
 {
     if (dst.buf == NULL || src.buf == NULL || dst.len < src.len) {
