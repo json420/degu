@@ -165,5 +165,5 @@ tuples:
 .. _`multiprocessing.Process.terminate()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.terminate
 .. _`multiprocessing.Process.join()`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process.join
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
-.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
 

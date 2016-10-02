@@ -1003,13 +1003,13 @@ could prove invaluable for debugging.
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 .. _`socket`: https://docs.python.org/3/library/socket.html
 .. _`socket.socket.bind()`: https://docs.python.org/3/library/socket.html#socket.socket.bind
-.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`socket.socket`: https://docs.python.org/3/library/socket.html#socket-objects
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl.SSLSocket
 .. _`socket.socket.getsockname()`: https://docs.python.org/3/library/socket.html#socket.socket.getsockname
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
-.. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
-.. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
+.. _`CRIME-like attacks`: https://en.wikipedia.org/wiki/CRIME
+.. _`perfect forward secrecy`: https://en.wikipedia.org/wiki/Forward_secrecy
 .. _`logging`: https://docs.python.org/3/library/logging.html
 

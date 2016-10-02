@@ -104,6 +104,6 @@ preamble.
 
 .. _`file a bug`: https://bugs.launchpad.net/degu
 .. _`socket.socket.recv_into()`: https://docs.python.org/3/library/socket.html#socket.socket.recv_into
-.. _`degu/_base.h`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.h
-.. _`degu/tables.py`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/tables.py
+.. _`degu/_base.h`: https://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.h
+.. _`degu/tables.py`: https://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/tables.py
 

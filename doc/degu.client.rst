@@ -1107,10 +1107,10 @@ For example:
 .. _`socket.create_connection()`: https://docs.python.org/3/library/socket.html#socket.create_connection
 .. _`socket.socket.connect()`: https://docs.python.org/3/library/socket.html#socket.socket.connect
 .. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
-.. _`HTTP/1.1`: http://www.w3.org/Protocols/rfc2616/rfc2616.html
+.. _`HTTP/1.1`: https://www.w3.org/Protocols/rfc2616/rfc2616.html
 .. _`Apache 2.4`: https://httpd.apache.org/docs/2.4/
-.. _`CRIME-like attacks`: http://en.wikipedia.org/wiki/CRIME
-.. _`perfect forward secrecy`: http://en.wikipedia.org/wiki/Forward_secrecy
+.. _`CRIME-like attacks`: https://en.wikipedia.org/wiki/CRIME
+.. _`perfect forward secrecy`: https://en.wikipedia.org/wiki/Forward_secrecy
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Process
 
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
@@ -1122,3 +1122,4 @@ For example:
 .. _`ssl.SSLSocket`: https://docs.python.org/3/library/ssl.html#ssl-sockets
 
 .. _`io`: https://docs.python.org/3/library/io.html
+

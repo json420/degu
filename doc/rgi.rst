@@ -802,10 +802,10 @@ underlying Python3 `socket API`_.
 
 
 .. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
-.. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`CGI`: https://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`Dmedia`: https://launchpad.net/dmedia
 .. _`socket API`: https://docs.python.org/3/library/socket.html
 .. _`chunked transfer encoding`: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
-.. _`CouchDB`: http://couchdb.apache.org/
+.. _`CouchDB`: https://couchdb.apache.org/
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile

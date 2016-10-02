@@ -67,9 +67,9 @@ Contents:
 .. _`Degu`: https://launchpad.net/degu
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
-.. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`CGI`: https://en.wikipedia.org/wiki/Common_Gateway_Interface
 
-.. _`LGPLv3+`: http://www.gnu.org/licenses/lgpl-3.0.html
+.. _`LGPLv3+`: https://www.gnu.org/licenses/lgpl-3.0.html
 .. _`Novacut`: https://wiki.ubuntu.com/Novacut
 .. _`Novacut Stable Releases PPA`: https://launchpad.net/~novacut/+archive/ubuntu/stable
 .. _`Novacut Daily Builds PPA`: https://launchpad.net/~novacut/+archive/ubuntu/daily

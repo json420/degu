@@ -1019,19 +1019,20 @@ In particular, Degu is restrictive when it comes to:
 
 
 .. _`gunicorn`: http://gunicorn.org/
-.. _`modwsgi`: https://code.google.com/p/modwsgi/
+.. _`modwsgi`: https://github.com/GrahamDumpleton/mod_wsgi
 .. _`WSGI`: https://www.python.org/dev/peps/pep-3333/
-.. _`CGI`: http://en.wikipedia.org/wiki/Common_Gateway_Interface
+.. _`CGI`: https://en.wikipedia.org/wiki/Common_Gateway_Interface
 .. _`Python3`: https://docs.python.org/3/
 .. _`Avahi`: http://avahi.org/
 .. _`multiprocessing.Process`: https://docs.python.org/3/library/multiprocessing.html#the-process-class
 .. _`http.client`: https://docs.python.org/3/library/http.client.html
 .. _`Dmedia`: https://launchpad.net/dmedia
-.. _`CouchDB`: http://couchdb.apache.org/
-.. _`Apache 2.4`: http://httpd.apache.org/docs/2.4/
-.. _`reverse-proxy`: http://en.wikipedia.org/wiki/Reverse_proxy
+.. _`CouchDB`: https://couchdb.apache.org/
+.. _`Apache 2.4`: https://httpd.apache.org/docs/2.4/
+.. _`reverse-proxy`: https://en.wikipedia.org/wiki/Reverse_proxy
 .. _`ssl.SSLContext`: https://docs.python.org/3/library/ssl.html#ssl-contexts
-.. _`link-local addresses`: http://en.wikipedia.org/wiki/Link-local_address#IPv6
+.. _`link-local addresses`: https://en.wikipedia.org/wiki/Link-local_address#IPv6
 .. _`HTTP/1.1`: https://www.ietf.org/rfc/rfc2616.txt
 .. _`file a bug`: https://bugs.launchpad.net/degu
 .. _`Novacut`: https://launchpad.net/novacut
+

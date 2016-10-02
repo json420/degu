@@ -582,7 +582,7 @@ Header values
 
 .. _`BadStatusLine`: https://docs.python.org/3/library/http.client.html#http.client.BadStatusLine
 .. _`socket.socket.makefile()`: https://docs.python.org/3/library/socket.html#socket.socket.makefile
-.. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
+.. _`C extension`: https://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 
 .. _`io.RawIOBase.readinto()`: https://docs.python.org/3/library/io.html#io.RawIOBase.readinto
 .. _`io.RawIOBase.write()`: https://docs.python.org/3/library/io.html#io.RawIOBase.write

@@ -1927,7 +1927,7 @@ Two things motivated these breaking API changes:
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
-.. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
+.. _`C extension`: https://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 .. _`your feedback`: https://bugs.launchpad.net/degu
 .. _`file a bug`: https://bugs.launchpad.net/degu
 .. _`Dmedia`: https://launchpad.net/dmedia
