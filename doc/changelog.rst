@@ -19,6 +19,15 @@ Breaking API changes:
         to :class:`degu.applib.ProxyApp`, which is an RGI leaf application).
 
 
+Bug fixes:
+
+    *   `lp:1590459`_ --- fix compilation of `C extension`_ under GCC 6.
+
+        The unused ``LF`` global (``_DEGU_SRC_CONSTANT()``) was dropped.  It
+        wasn't needed, plus caused the build to fail under the stricter checks
+        done by GCC 6.
+
+
 New API additions:
 
     *   The :class:`degu.applib.AllowedMethods` and
@@ -1850,9 +1859,12 @@ Two things motivated these breaking API changes:
 .. _`Download Degu 0.6`: https://launchpad.net/degu/+milestone/0.6
 .. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
 
+.. _`lp:1590459`: https://bugs.launchpad.net/degu/+bug/1590459
+
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request
 .. _`io`: https://docs.python.org/3/library/io.html
 .. _`BoundedSemaphore`: https://docs.python.org/3/library/threading.html#threading.BoundedSemaphore
 .. _`C extension`: http://bazaar.launchpad.net/~dmedia/degu/trunk/view/head:/degu/_base.c
 .. _`your feedback`: https://bugs.launchpad.net/degu
 .. _`Dmedia`: https://launchpad.net/dmedia
+
