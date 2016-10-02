@@ -165,6 +165,34 @@ class TestFunctions(TestCase):
             b'bar: baz\r\nfoo: bar'
         )
 
+    def test_format_request(self):
+        self.assertEqual(
+            misc.format_request('GET', '/', {}),
+            b'GET / HTTP/1.1'
+        )
+        self.assertEqual(
+            misc.format_request('GET', '/', {'foo': 'bar'}),
+            b'GET / HTTP/1.1\r\nfoo: bar'
+        )
+        self.assertEqual(
+            misc.format_request('GET', '/', {'foo': 'bar', 'bar': 'baz'}),
+            b'GET / HTTP/1.1\r\nbar: baz\r\nfoo: bar'
+        )
+
+    def test_format_response(self):
+        self.assertEqual(
+            misc.format_response(200, 'OK', {}),
+            b'HTTP/1.1 200 OK'
+        )
+        self.assertEqual(
+            misc.format_response(200, 'OK', {'foo': 'bar'}),
+            b'HTTP/1.1 200 OK\r\nfoo: bar'
+        )
+        self.assertEqual(
+            misc.format_response(200, 'OK', {'foo': 'bar', 'bar': 'baz'}),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: bar'
+        )
+
 
 class TestTempPKI(TestCase):
     def test_init(self):
