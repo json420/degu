@@ -109,9 +109,26 @@ def mkuri(*path, query=None):
     return '?'.join([uri, query])
 
 
-def format_headers(headers):
+def _format_header_lines(headers):
     lines = ['{}: {}'.format(*kv) for kv in headers.items()]
     lines.sort()
+    return lines
+
+
+def format_headers(headers):
+    lines = _format_header_lines(headers)
+    return '\r\n'.join(lines).encode()
+
+
+def format_request(method, uri, headers):
+    lines = ['{} {} HTTP/1.1'.format(method, uri)]
+    lines.extend(_format_header_lines(headers))
+    return '\r\n'.join(lines).encode()
+
+
+def format_response(status, reason, headers):
+    lines = ['HTTP/1.1 {} {}'.format(status, reason)]
+    lines.extend(_format_header_lines(headers))
     return '\r\n'.join(lines).encode()
 
 
