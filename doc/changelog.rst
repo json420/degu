@@ -65,7 +65,7 @@ New API additions:
 
         These two functions are aimed at unit-testing, benchmarking, and
         illustration.  They do not reflect the behavior of the real Degu
-        backend, which does must stricter argument validation.
+        backend, which does much stricter argument validation.
 
 
 Performance improvements:
