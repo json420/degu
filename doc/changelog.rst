@@ -3,8 +3,8 @@ Changelog
 
 .. _version-0.17:
 
-0.17 (unreleased)
------------------
+0.17 (October 2016)
+-------------------
 
 `Download Degu 0.17`_
 
@@ -141,6 +141,14 @@ Performance improvements:
         rather small (in the range of 1 to 2%), this was an easy change and the
         performance improvement can be greater in cache-constrained systems like
         a Raspberry Pi 2, etc.
+
+
+Other changes:
+
+    *   There was significant refactoring and cleanup in the Degu
+        `C extension`_, in particular to support the new internal fast-paths
+        used by the :class:`degu.applib.Router` and
+        :class:`degu.applib.ProxyApp` C implementations.
 
 
 
