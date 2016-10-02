@@ -427,20 +427,59 @@ Parsing/formatting
 
     Format headers for use as the input to :func:`parse_headers()`.
 
-    .. versionchanged:: 0.16
-        This function was moved to the :mod:`degu.misc` module to the
-        :mod:`degu.base` module.
-
-    Note this is just a simple convenience function and isn't actually what the
-    real Degu backend uses.  In particular, this function does no validation on
-    the header keys, whereas the real backend requires that all keys be lower
-    case.
-
     For example:
 
     >>> from degu.misc import format_headers
     >>> format_headers({'One': 'two', 'FOO': 'bar'})
     b'FOO: bar\r\nOne: two'
+
+    .. note::
+
+        This is a convenience function aimed at unit testing and benchmarking;
+        it does not reflect the behavior of the real Degu backend, which does
+        much stricter validation.
+
+    .. versionchanged:: 0.16
+        This function was moved to the :mod:`degu.misc` module from the
+        :mod:`degu.base` module.
+
+
+.. function:: format_request(method, uri, headers)
+
+    Format request preamble.
+
+    For example:
+
+    >>> from degu.misc import format_request
+    >>> format_request('POST', '/foo', {'Content-Length': 17})
+    b'POST /foo HTTP/1.1\r\nContent-Length: 17'
+
+    .. note::
+
+        This is a convenience function aimed at unit testing and benchmarking;
+        it does not reflect the behavior of the real Degu backend, which does
+        much stricter validation.
+
+    .. versionadded:: 0.17
+
+
+.. function:: format_response(status, reason, headers)
+
+    Format response preamble.
+
+    For example:
+
+    >>> from degu.misc import format_response
+    >>> format_response(200, 'OK', {'Content-Length': 17})
+    b'HTTP/1.1 200 OK\r\nContent-Length: 17'
+
+    .. note::
+
+        This is a convenience function aimed at unit testing and benchmarking;
+        it does not reflect the behavior of the real Degu backend, which does
+        much stricter validation.
+
+    .. versionadded:: 0.17
 
 
 

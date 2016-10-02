@@ -24,8 +24,8 @@ Bug fixes:
     *   `lp:1590459`_ --- fix compilation of `C extension`_ under GCC 6.
 
         The unused ``LF`` global (``_DEGU_SRC_CONSTANT()``) was dropped.  It
-        wasn't needed, plus caused the build to fail under the stricter checks
-        done by GCC 6.
+        wasn't needed, plus it caused the build to fail under the stricter
+        checks done by GCC 6.
 
 
 New API additions:
@@ -59,6 +59,13 @@ New API additions:
         ... }
         ...
         >>> router = Router(appmap)
+
+    *   The :func:`degu.misc.format_request()` and
+        :func:`degu.misc.format_response()` functions were added.
+
+        These two functions are aimed at unit-testing, benchmarking, and
+        illustration.  They do not reflect the behavior of the real Degu
+        backend, which does much stricter argument validation.
 
 
 Performance improvements:
