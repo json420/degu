@@ -577,6 +577,7 @@ _degu_io_dst(DeguIO *io) {
     return DEGU_DST(io->buf, BUF_LEN);
 }
 
+
 typedef struct {
     PyObject_HEAD
     PyObject *recv_into;
@@ -683,8 +684,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *send;
     uint64_t tell;
-    size_t stop;
-    uint8_t w_buf[BUF_LEN];
+    DeguIO w_io;
 } Writer;
 
 static ssize_t _Writer_write(Writer *, DeguSrc);

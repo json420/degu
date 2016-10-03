@@ -3362,12 +3362,19 @@ write_chunk(PyObject *self, PyObject *args)
  ******************************************************************************/
 
 static DeguSrc
-_degu_io_peek(DeguIO *io, const size_t size)
+_degu_io_full_peek(DeguIO *io)
 {
     if (io->start >= io->stop && io->start != 0) {
         Py_FatalError("_degu_io_peek(): io->start >= io->stop && io->start != 0");
     }
-    DeguSrc cur = _slice(_degu_io_src(io), io->start, io->stop);
+    return _slice(_degu_io_src(io), io->start, io->stop);
+}
+
+
+static DeguSrc
+_degu_io_peek(DeguIO *io, const size_t size)
+{
+    DeguSrc cur = _degu_io_full_peek(io);
     return _slice(cur, 0, _min(cur.len, size));
 }
 
@@ -3381,6 +3388,13 @@ _degu_io_drain(DeguIO *io, const size_t size)
         io->stop = 0;
     }
     return  cur;
+}
+
+static DeguDst
+_degu_io_dst_avail(DeguIO *io)
+{
+    DeguDst raw = _degu_io_dst(io);
+    return _slice_dst(raw, io->stop, raw.len);
 }
 
 static void
@@ -3705,7 +3719,8 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
     }
     _SET(self->send, _getcallable("sock", sock, attr_send))
     self->tell = 0;
-    self->stop = 0;
+    self->w_io.start = 0;
+    self->w_io.stop = 0;
     goto cleanup;
 
 error:
@@ -3718,15 +3733,13 @@ cleanup:
 static DeguDst
 _Writer_get_dst(Writer *self)
 {
-    DeguDst raw = {self->w_buf, BUF_LEN};
-    return _slice_dst(raw, self->stop, raw.len);
+    return _degu_io_dst_avail(&(self->w_io));
 }
 
 static DeguSrc
 _Writer_get_src(Writer *self)
 {
-    DeguSrc raw = {self->w_buf, BUF_LEN};
-    return _slice(raw, 0, self->stop);
+    return _degu_io_full_peek(&(self->w_io));
 }
 
 static ssize_t
@@ -3742,11 +3755,11 @@ _Writer_raw_write(Writer *self, DeguSrc src)
 static bool
 _Writer_flush(Writer *self)
 {
-    if (self->stop == 0) {
+    if (self->w_io.stop == 0) {
         return true;
     }
     DeguSrc src = _Writer_get_src(self);
-    self->stop = 0;
+    self->w_io.stop = 0;
     if (_Writer_raw_write(self, src) < 0) {
         return false;
     }
@@ -3756,13 +3769,13 @@ _Writer_flush(Writer *self)
 static ssize_t
 _Writer_write(Writer *self, DeguSrc src)
 {
-    if (self->stop == 0) {
+    if (self->w_io.stop == 0) {
         return _Writer_raw_write(self, src);
     }
 
     DeguDst dst = _Writer_get_dst(self);
     if (src.len <= dst.len) {
-        self->stop += _copy(dst, src);
+        self->w_io.stop += _copy(dst, src);
         if (! _Writer_flush(self)) {
             return -1;
         }
@@ -3836,7 +3849,7 @@ _Writer_write_request(Writer *self, DeguRequest *dr)
     if (! _render_request(&o, dr)) {
         return -1;
     }
-    self->stop = o.stop;
+    self->w_io.stop = o.stop;
     wrote = _Writer_write_body(self, dr->body);
     if (wrote < 0) {
         return -1;
@@ -3859,7 +3872,7 @@ _Writer_write_response(Writer *self, DeguResponse *dr)
     if (! _render_response(&o, dr)) {
         return -1;
     }
-    self->stop = o.stop;
+    self->w_io.stop = o.stop;
     wrote = _Writer_write_body(self, dr->body);
     if (wrote < 0) {
         return -1;
