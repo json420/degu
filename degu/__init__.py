@@ -23,7 +23,7 @@
 `degu` - an embedded HTTP server and client library.
 """
 
-__version__ = '0.17.0'
+__version__ = '0.18.0'
 
 
 # Common IPv6 and IPv6 *address* constants:
