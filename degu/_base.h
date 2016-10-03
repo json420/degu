@@ -668,9 +668,9 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *send;
-    uint8_t *buf;
     uint64_t tell;
     size_t stop;
+    uint8_t w_buf[BUF_LEN];
 } Writer;
 
 static ssize_t _Writer_write(Writer *, DeguSrc);

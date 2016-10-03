@@ -3676,10 +3676,6 @@ static void
 Writer_dealloc(Writer *self)
 {
     Py_CLEAR(self->send);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
-    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3693,7 +3689,6 @@ Writer_init(Writer *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET(self->send, _getcallable("sock", sock, attr_send))
-    _SET(self->buf, _calloc_buf(BUF_LEN))
     self->tell = 0;
     self->stop = 0;
     goto cleanup;
@@ -3708,14 +3703,14 @@ cleanup:
 static DeguDst
 _Writer_get_dst(Writer *self)
 {
-    DeguDst raw = {self->buf, BUF_LEN};
+    DeguDst raw = {self->w_buf, BUF_LEN};
     return _slice_dst(raw, self->stop, raw.len);
 }
 
 static DeguSrc
 _Writer_get_src(Writer *self)
 {
-    DeguSrc raw = {self->buf, BUF_LEN};
+    DeguSrc raw = {self->w_buf, BUF_LEN};
     return _slice(raw, 0, self->stop);
 }
 
