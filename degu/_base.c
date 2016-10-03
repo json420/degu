@@ -3408,6 +3408,19 @@ _iobuf_dst(DeguIOBuf *io)
     return _slice_dst(raw, io->stop, raw.len);
 }
 
+static bool
+_iobuf_append(DeguIOBuf *io, DeguSrc src)
+{
+    if (io->stop > 0) {
+        DeguDst dst = _iobuf_dst(io);
+        if (src.len <= dst.len) {
+            io->stop += _copy(dst, src);
+            return true;
+        }
+    }
+    return false;
+}
+
 static void
 Reader_dealloc(Reader *self)
 {
@@ -3773,28 +3786,14 @@ _Writer_flush(Writer *self)
 static ssize_t
 _Writer_write(Writer *self, DeguSrc src)
 {
-    DeguIOBuf *io = &(self->w_io);
-
-    if (io->stop == 0) {
-        return _Writer_raw_write(self, src);
+    const bool appended = _iobuf_append(&(self->w_io), src);
+    if (! _Writer_flush(self)) {
+        return -1;
     }
-
-    DeguDst dst = _iobuf_dst(io);
-    if (src.len <= dst.len) {
-        io->stop += _copy(dst, src);
-        if (! _Writer_flush(self)) {
-            return -1;
-        }
+    if (appended) {
+        return (ssize_t)src.len;
     }
-    else {
-        if (! _Writer_flush(self)) {
-            return -1;
-        }
-        if (_Writer_raw_write(self, src) < 0) {
-            return -1;
-        }
-    }
-    return (ssize_t)src.len;
+    return _Writer_raw_write(self, src);
 }
 
 static int64_t

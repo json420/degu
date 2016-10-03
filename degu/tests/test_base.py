@@ -5663,6 +5663,64 @@ class TestWriter_C(TestWriter_Py):
     backend = _base
 
 
+class TestSocketWrapper_Py(BackendTestCase):
+    @property
+    def SocketWrapper(self):
+        return self.getattr('SocketWrapper')
+
+    def test_init(self):
+        class WithCallables:
+            def __init__(self, *names, missing=None, notcallable=None):
+                for name in names:
+                    if name == missing:
+                        continue
+                    obj = ('nope' if name == notcallable else self._callable)
+                    setattr(self, name, obj)
+
+            def _callable(self):
+                pass
+    
+        names = ('recv_into', 'send', 'close')
+        for n in names:
+            sock = WithCallables(*names, missing=n)
+            with self.assertRaises(AttributeError) as cm:
+                self.SocketWrapper(sock)
+            self.assertEqual(str(cm.exception),
+                "'WithCallables' object has no attribute {!r}".format(n)
+            )
+            sock = WithCallables(*names, notcallable=n)
+            with self.assertRaises(TypeError) as cm:
+                self.SocketWrapper(sock)
+            self.assertEqual(str(cm.exception),
+                'sock.{}() is not callable'.format(n)
+            )
+
+        class MockSocket:  
+            def __init__(self):
+                self._calls = 0
+
+            def recv_into(self, dst):
+                assert False
+
+            def send(self, src):
+                assert False
+
+            def close(self):
+                self._calls += 1
+
+        sock = MockSocket()
+        self.assertEqual(sys.getrefcount(sock), 2)
+        wrapper = self.SocketWrapper(sock)
+        self.assertIs(wrapper.sock, sock)
+        self.assertEqual(sys.getrefcount(sock), 6)
+        del wrapper
+        self.assertEqual(sys.getrefcount(sock), 2)
+
+
+class TestSocketWrapper_C(TestSocketWrapper_Py):
+    backend = _base
+
+
 class BaseMockSocket:
     __slots__ = ('_calls',)
 

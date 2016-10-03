@@ -1239,6 +1239,27 @@ class Writer:
             status, reason, headers, body
         )
 
+
+class SocketWrapper:
+    __slots__ = (
+        '_sock',
+        '_sock_recv_into',
+        '_sock_send',
+        '_sock_close',
+    )
+
+    def __init__(self, sock):
+        self._sock = sock
+        self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
+        self._sock_send = _getcallable('sock', sock, 'send')
+        self._sock_close = _getcallable('sock', sock, 'close')
+
+    @property
+    def sock(self):
+        return self._sock
+
+
+
 def _check_body_state(name, state, max_state):
     assert max_state < BODY_CONSUMED
     if state <= max_state:
