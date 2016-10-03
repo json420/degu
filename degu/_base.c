@@ -37,6 +37,7 @@ static PyObject *api = NULL;
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
 static PyObject *attr_send             = NULL;  //  'send'
+static PyObject *attr_close            = NULL;  //  'close'
 static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_readline         = NULL;  //  'readline'
@@ -89,6 +90,7 @@ _init_all_globals(PyObject *module)
     /* Init interned attribute names */
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
     _SET(attr_send,            PyUnicode_InternFromString("send"))
+    _SET(attr_close,           PyUnicode_InternFromString("close"))
     _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_readline,        PyUnicode_InternFromString("readline"))
@@ -3939,6 +3941,45 @@ Writer_write_response(Writer *self, PyObject *args)
 
 
 /******************************************************************************
+ * SocketWrapper object.
+ ******************************************************************************/
+static void
+SocketWrapper_dealloc(SocketWrapper *self)
+{
+    Py_CLEAR(self->sock);
+    Py_CLEAR(self->recv_into);
+    Py_CLEAR(self->send);
+    Py_CLEAR(self->close);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+SocketWrapper_init(SocketWrapper *self, PyObject *args, PyObject *kw)
+{
+    PyObject *sock = NULL;
+    static char *keys[] = {"sock", NULL};
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:SocketWrapper", keys, &sock)) {
+        goto error;
+    }
+    _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
+    _SET(self->send,      _getcallable("sock", sock, attr_send))
+    _SET(self->close,     _getcallable("sock", sock, attr_close))
+    _SET_AND_INC(self->sock, sock)
+    return 0;
+
+error:
+    return -1;
+}
+
+static PyObject *
+SocketWrapper_close(SocketWrapper *self)
+{
+    self->closed = true;
+    Py_RETURN_NONE;
+}
+
+
+/******************************************************************************
  * Shared internal API for *Body*() objects.
  ******************************************************************************/
 static bool
@@ -5481,6 +5522,12 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Writer", (PyObject *)&WriterType)
+
+    SocketWrapperType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&SocketWrapperType) != 0) {
+        goto error;
+    }
+    _ADD_MODULE_ATTR(module, "SocketWrapper", (PyObject *)&SocketWrapperType)
 
     BodyType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&BodyType) != 0) {

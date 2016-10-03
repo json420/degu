@@ -1240,12 +1240,22 @@ class Writer:
         )
 
 
+class _IOBuf:
+    __slots__ = ('start', 'stop', 'buf')
+
+    def __init__(self):
+        self.start = 0
+        self.stop = 0
+        self.buf = memoryview(bytearray(BUF_LEN))
+
+
 class SocketWrapper:
     __slots__ = (
         '_sock',
         '_sock_recv_into',
         '_sock_send',
         '_sock_close',
+        '_closed',
     )
 
     def __init__(self, sock):
@@ -1253,10 +1263,18 @@ class SocketWrapper:
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._sock_send = _getcallable('sock', sock, 'send')
         self._sock_close = _getcallable('sock', sock, 'close')
+        self._closed = False
 
     @property
     def sock(self):
         return self._sock
+
+    @property
+    def closed(self):
+        return self._closed
+
+    def close(self):
+        self._closed = True
 
 
 

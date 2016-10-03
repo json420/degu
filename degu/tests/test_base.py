@@ -5679,7 +5679,7 @@ class TestSocketWrapper_Py(BackendTestCase):
 
             def _callable(self):
                 pass
-    
+
         names = ('recv_into', 'send', 'close')
         for n in names:
             sock = WithCallables(*names, missing=n)
@@ -5712,6 +5712,9 @@ class TestSocketWrapper_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         wrapper = self.SocketWrapper(sock)
         self.assertIs(wrapper.sock, sock)
+        self.assertIs(wrapper.closed, False)
+        self.assertIsNone(wrapper.close())
+        self.assertIs(wrapper.closed, True)
         self.assertEqual(sys.getrefcount(sock), 6)
         del wrapper
         self.assertEqual(sys.getrefcount(sock), 2)
