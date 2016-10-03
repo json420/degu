@@ -564,10 +564,11 @@ static PyTypeObject RequestType = {
 typedef struct {
     PyObject_HEAD
     PyObject *recv_into;
-    uint8_t *buf;
     uint64_t rawtell;
     size_t start;
     size_t stop;
+    uint8_t r_buf[BUF_LEN];
+    uint8_t s_buf[SCRATCH_LEN];
 } Reader;
 
 static bool _Reader_readinto(Reader *, DeguDst);

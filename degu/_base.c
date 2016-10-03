@@ -3364,10 +3364,6 @@ static void
 Reader_dealloc(Reader *self)
 {
     Py_CLEAR(self->recv_into);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
-    }
     Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
 }
 
@@ -3381,7 +3377,6 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->buf, _calloc_buf(BUF_LEN + SCRATCH_LEN))
     self->rawtell = 0;
     self->start = 0;
     self->stop = 0;
@@ -3394,13 +3389,19 @@ error:
 static DeguSrc
 _Reader_preamble_src(Reader *self)
 {
-    return DEGU_SRC(self->buf, BUF_LEN);
+    return DEGU_SRC(self->r_buf, BUF_LEN);
+}
+
+static DeguDst
+_Reader_preamble_dst(Reader *self)
+{
+    return DEGU_DST(self->r_buf, BUF_LEN);
 }
 
 static DeguDst
 _Reader_scratch_dst(Reader *self)
 {
-    return DEGU_DST(self->buf + BUF_LEN, SCRATCH_LEN);
+    return DEGU_DST(self->s_buf, SCRATCH_LEN);
 }
 
 static DeguSrc
@@ -3437,7 +3438,7 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
     if (_isempty(end)) {
         Py_FatalError("_Reader_read_until(): bad internal call");
     }
-    DeguDst dst = {self->buf, BUF_LEN};
+    DeguDst dst = _Reader_preamble_dst(self);
     if (size < end.len || size > dst.len) {
         PyErr_Format(PyExc_ValueError,
             "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
