@@ -565,25 +565,26 @@ typedef struct {
     size_t start;
     size_t stop;
     uint8_t buf[BUF_LEN];
-} DeguIO;
+} DeguIOBuf;
 
 static inline DeguSrc
-_degu_io_src(DeguIO *io) {
+_iobuf_raw_src(DeguIOBuf *io)
+{
     return DEGU_SRC(io->buf, BUF_LEN);
 }
 
 static inline DeguDst
-_degu_io_dst(DeguIO *io) {
+_iobuf_raw_dst(DeguIOBuf *io)
+{
     return DEGU_DST(io->buf, BUF_LEN);
 }
-
 
 typedef struct {
     PyObject_HEAD
     PyObject *recv_into;
     uint64_t rawtell;
     uint8_t s_buf[SCRATCH_LEN];
-    DeguIO r_io;
+    DeguIOBuf r_io;
 } Reader;
 
 static bool _Reader_readinto(Reader *, DeguDst);
@@ -684,7 +685,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *send;
     uint64_t tell;
-    DeguIO w_io;
+    DeguIOBuf w_io;
 } Writer;
 
 static ssize_t _Writer_write(Writer *, DeguSrc);

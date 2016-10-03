@@ -3362,38 +3362,49 @@ write_chunk(PyObject *self, PyObject *args)
  ******************************************************************************/
 
 static DeguSrc
-_degu_io_full_peek(DeguIO *io)
+_iobuf_src(DeguIOBuf *io)
 {
     if (io->start >= io->stop && io->start != 0) {
-        Py_FatalError("_degu_io_peek(): io->start >= io->stop && io->start != 0");
+        Py_FatalError("_iobuf_src(): io->start >= io->stop && io->start != 0");
     }
-    return _slice(_degu_io_src(io), io->start, io->stop);
-}
-
-
-static DeguSrc
-_degu_io_peek(DeguIO *io, const size_t size)
-{
-    DeguSrc cur = _degu_io_full_peek(io);
-    return _slice(cur, 0, _min(cur.len, size));
+    return _slice(_iobuf_raw_src(io), io->start, io->stop);
 }
 
 static DeguSrc
-_degu_io_drain(DeguIO *io, const size_t size)
+_iobuf_peek(DeguIOBuf *io, const size_t size)
 {
-    DeguSrc cur = _degu_io_peek(io, size);
-    io->start += cur.len;
+    DeguSrc src = _iobuf_src(io);
+    return _slice(src, 0, _min(src.len, size));
+}
+
+static DeguSrc
+_iobuf_drain(DeguIOBuf *io, const size_t size)
+{
+    DeguSrc src = _iobuf_peek(io, size);
+    io->start += src.len;
     if (io->start == io->stop) {
         io->start = 0;
         io->stop = 0;
     }
-    return  cur;
+    return src;
+}
+
+static DeguSrc
+_iobuf_flush(DeguIOBuf *io)
+{
+    DeguSrc src = _iobuf_src(io);
+    io->start = 0;
+    io->stop = 0;
+    return src;
 }
 
 static DeguDst
-_degu_io_dst_avail(DeguIO *io)
+_iobuf_dst(DeguIOBuf *io)
 {
-    DeguDst raw = _degu_io_dst(io);
+    DeguDst raw = _iobuf_raw_dst(io);
+    if (io->start >= io->stop && io->start != 0) {
+        Py_FatalError("_iobuf_dst(): io->start >= io->stop && io->start != 0");
+    }
     return _slice_dst(raw, io->stop, raw.len);
 }
 
@@ -3423,7 +3434,7 @@ error:
     return -1;
 }
 
-static inline DeguIO *
+static inline DeguIOBuf *
 _Reader_r_io(Reader *self) {
     return &(self->r_io);
 }
@@ -3431,13 +3442,13 @@ _Reader_r_io(Reader *self) {
 static DeguSrc
 _Reader_preamble_src(Reader *self)
 {
-    return _degu_io_src(_Reader_r_io(self));
+    return _iobuf_raw_src(_Reader_r_io(self));
 }
 
 static DeguDst
 _Reader_preamble_dst(Reader *self)
 {
-    return _degu_io_dst(_Reader_r_io(self));
+    return _iobuf_raw_dst(_Reader_r_io(self));
 }
 
 static DeguDst
@@ -3449,13 +3460,13 @@ _Reader_scratch_dst(Reader *self)
 static DeguSrc
 _Reader_peek(Reader *self, const size_t size)
 {
-    return _degu_io_peek(_Reader_r_io(self), size);
+    return _iobuf_peek(_Reader_r_io(self), size);
 }
 
 static DeguSrc
 _Reader_drain(Reader *self, const size_t size)
 {
-    return _degu_io_drain(_Reader_r_io(self), size);
+    return _iobuf_drain(_Reader_r_io(self), size);
 }
 
 static DeguSrc
@@ -3733,13 +3744,7 @@ cleanup:
 static DeguDst
 _Writer_get_dst(Writer *self)
 {
-    return _degu_io_dst_avail(&(self->w_io));
-}
-
-static DeguSrc
-_Writer_get_src(Writer *self)
-{
-    return _degu_io_full_peek(&(self->w_io));
+    return _iobuf_dst(&(self->w_io));
 }
 
 static ssize_t
@@ -3755,11 +3760,10 @@ _Writer_raw_write(Writer *self, DeguSrc src)
 static bool
 _Writer_flush(Writer *self)
 {
-    if (self->w_io.stop == 0) {
+    DeguSrc src = _iobuf_flush(&(self->w_io));
+    if (src.len == 0) {
         return true;
     }
-    DeguSrc src = _Writer_get_src(self);
-    self->w_io.stop = 0;
     if (_Writer_raw_write(self, src) < 0) {
         return false;
     }
@@ -3769,13 +3773,15 @@ _Writer_flush(Writer *self)
 static ssize_t
 _Writer_write(Writer *self, DeguSrc src)
 {
-    if (self->w_io.stop == 0) {
+    DeguIOBuf *io = &(self->w_io);
+
+    if (io->stop == 0) {
         return _Writer_raw_write(self, src);
     }
 
-    DeguDst dst = _Writer_get_dst(self);
+    DeguDst dst = _iobuf_dst(io);
     if (src.len <= dst.len) {
-        self->w_io.stop += _copy(dst, src);
+        io->stop += _copy(dst, src);
         if (! _Writer_flush(self)) {
             return -1;
         }
