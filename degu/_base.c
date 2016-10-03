@@ -3360,6 +3360,29 @@ write_chunk(PyObject *self, PyObject *args)
 /******************************************************************************
  * Reader object
  ******************************************************************************/
+
+static DeguSrc
+_degu_io_peek(DeguIO *io, const size_t size)
+{
+    if (io->start >= io->stop && io->start != 0) {
+        Py_FatalError("_degu_io_peek(): io->start >= io->stop && io->start != 0");
+    }
+    DeguSrc cur = _slice(_degu_io_src(io), io->start, io->stop);
+    return _slice(cur, 0, _min(cur.len, size));
+}
+
+static DeguSrc
+_degu_io_drain(DeguIO *io, const size_t size)
+{
+    DeguSrc cur = _degu_io_peek(io, size);
+    io->start += cur.len;
+    if (io->start == io->stop) {
+        io->start = 0;
+        io->stop = 0;
+    }
+    return  cur;
+}
+
 static void
 Reader_dealloc(Reader *self)
 {
@@ -3377,25 +3400,30 @@ Reader_init(Reader *self, PyObject *args, PyObject *kw)
         return -1;
     }
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    self->rawtell = 0;
-    self->start = 0;
-    self->stop = 0;
+    self->r_io.rawtell = 0;
+    self->r_io.start = 0;
+    self->r_io.stop = 0;
     return 0;
 
 error:
     return -1;
 }
 
+static inline DeguIO *
+_Reader_r_io(Reader *self) {
+    return &(self->r_io);
+}
+
 static DeguSrc
 _Reader_preamble_src(Reader *self)
 {
-    return DEGU_SRC(self->r_buf, BUF_LEN);
+    return _degu_io_src(_Reader_r_io(self));
 }
 
 static DeguDst
 _Reader_preamble_dst(Reader *self)
 {
-    return DEGU_DST(self->r_buf, BUF_LEN);
+    return _degu_io_dst(_Reader_r_io(self));
 }
 
 static DeguDst
@@ -3407,26 +3435,13 @@ _Reader_scratch_dst(Reader *self)
 static DeguSrc
 _Reader_peek(Reader *self, const size_t size)
 {
-    if (self->start >= self->stop && self->start != 0) {
-        Py_FatalError("_Reader_peak: start >= stop && start != 0");
-    }
-    DeguSrc cur = _slice(_Reader_preamble_src(self), self->start, self->stop);
-    if (cur.len == 0) {
-        return cur;
-    }
-    return _slice(cur, 0, _min(cur.len, size));
+    return _degu_io_peek(_Reader_r_io(self), size);
 }
 
 static DeguSrc
 _Reader_drain(Reader *self, const size_t size)
 {
-    DeguSrc cur = _Reader_peek(self, size);
-    self->start += cur.len;
-    if (self->start == self->stop) {
-        self->start = 0;
-        self->stop = 0;
-    }
-    return  cur;
+    return _degu_io_drain(_Reader_r_io(self), size);
 }
 
 static DeguSrc
@@ -3459,23 +3474,23 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
     }
 
     /* If needed, shift current buffer content */
-    if (self->start > 0) {
+    if (self->r_io.start > 0) {
         _move(dst, cur);
-        self->start = 0;
-        self->stop = cur.len;
+        self->r_io.start = 0;
+        self->r_io.stop = cur.len;
     }
 
     /* Now read till found */
-    while (self->stop < size) {
-        added = _recv_into(self->recv_into, _slice_dst(dst, self->stop, dst.len));
+    while (self->r_io.stop < size) {
+        added = _recv_into(self->recv_into, _slice_dst(dst, self->r_io.stop, dst.len));
         if (added < 0) {
             return NULL_DeguSrc;
         }
         if (added == 0) {
             break;
         }
-        self->stop += (size_t)added;
-        self->rawtell += (uint64_t)added;
+        self->r_io.stop += (size_t)added;
+        self->r_io.rawtell += (uint64_t)added;
         index = _find(_Reader_peek(self, size), end);
         if (index >= 0) {
             goto found;
@@ -3511,7 +3526,7 @@ _Reader_readinto(Reader *self, DeguDst dst)
         _copy(dst, cur);
     }
     if (_readinto(self->recv_into, _slice_dst(dst, cur.len, dst.len))) {
-        self->rawtell += dst.len;
+        self->r_io.rawtell += dst.len;
         return true;
     }
     return false;
@@ -3519,16 +3534,16 @@ _Reader_readinto(Reader *self, DeguDst dst)
 
 static PyObject *
 Reader_rawtell(Reader *self) {
-    return PyLong_FromUnsignedLongLong(self->rawtell);
+    return PyLong_FromUnsignedLongLong(self->r_io.rawtell);
 }
 
 static PyObject *
 Reader_tell(Reader *self) {
     DeguSrc cur = _Reader_peek(self, BUF_LEN);
-    if (cur.len > self->rawtell) {
+    if (cur.len > self->r_io.rawtell) {
         Py_FatalError("Reader_tell(): cur.len > self->rawtell");
     }
-    return PyLong_FromUnsignedLongLong(self->rawtell - cur.len);
+    return PyLong_FromUnsignedLongLong(self->r_io.rawtell - cur.len);
 }
 
 static PyObject *
