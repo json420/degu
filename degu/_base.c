@@ -797,7 +797,7 @@ _Range_New(uint64_t start, uint64_t stop)
     }
     self->start = start;
     self->stop = stop;
-    return (PyObject *)PyObject_INIT(self, &RangeType);
+    return (PyObject *)self;
 }
 
 static inline PyObject *
@@ -913,7 +913,7 @@ _ContentRange_New(uint64_t start, uint64_t stop, uint64_t total)
     self->start = start;
     self->stop = stop;
     self->total = total;
-    return (PyObject *)PyObject_INIT(self, &ContentRangeType);
+    return (PyObject *)self;
 }
 
 static void
@@ -1070,7 +1070,7 @@ _Request_New(DeguRequest *dr)
         PyObject_Del((PyObject *)self);
         return NULL;
     }
-    return (PyObject *)PyObject_INIT(self, &RequestType);
+    return (PyObject *)self;
 }
 
 static void
@@ -4005,7 +4005,7 @@ _Body_New(PyObject *rfile, const uint64_t content_length)
         PyObject_Del((PyObject *)self);
         return NULL;
     }
-    return (PyObject *)PyObject_INIT(self, &BodyType);
+    return (PyObject *)self;
 }
 
 static int
@@ -4242,7 +4242,7 @@ _ChunkedBody_New(PyObject *rfile)
         PyObject_Del((PyObject *)self);
         return NULL;
     }
-    return (PyObject *)PyObject_INIT(self, &ChunkedBodyType);
+    return (PyObject *)self;
 }
 
 static int
