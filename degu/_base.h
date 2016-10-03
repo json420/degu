@@ -562,7 +562,6 @@ static PyTypeObject RequestType = {
  * Reader object.
  ******************************************************************************/
 typedef struct {
-    uint64_t rawtell;
     size_t start;
     size_t stop;
     uint8_t buf[BUF_LEN];
@@ -581,6 +580,7 @@ _degu_io_dst(DeguIO *io) {
 typedef struct {
     PyObject_HEAD
     PyObject *recv_into;
+    uint64_t rawtell;
     uint8_t s_buf[SCRATCH_LEN];
     DeguIO r_io;
 } Reader;
