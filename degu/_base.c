@@ -3943,9 +3943,36 @@ Writer_write_response(Writer *self, PyObject *args)
 /******************************************************************************
  * SocketWrapper object.
  ******************************************************************************/
+static bool
+_SocketWrapper_close(SocketWrapper *self)
+{
+    if (self->closed) {
+        return true;
+    }
+    self->closed = true;
+    if (self->close == NULL) {
+        return true;
+    }
+    PyObject *result = PyObject_CallFunctionObjArgs(self->close, NULL);
+    const bool success = (result != NULL);
+    Py_CLEAR(result);
+    return success; 
+}
+
+static void
+_SocketWrapper_close_unraisable(SocketWrapper *self)
+{
+    if (! _SocketWrapper_close(self)) {
+        PyErr_WriteUnraisable((PyObject *)self);
+        PyErr_Clear();
+    }
+        
+}
+
 static void
 SocketWrapper_dealloc(SocketWrapper *self)
 {
+    _SocketWrapper_close_unraisable(self);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->recv_into);
     Py_CLEAR(self->send);
@@ -3971,12 +3998,109 @@ error:
     return -1;
 }
 
+
 static PyObject *
 SocketWrapper_close(SocketWrapper *self)
 {
-    self->closed = true;
-    Py_RETURN_NONE;
+    if (_SocketWrapper_close(self)) {
+        Py_RETURN_NONE;
+    }
+    return NULL;
 }
+
+static DeguSrc
+_SocketWrapper_read_until(SocketWrapper *self, const size_t size, DeguSrc end)
+{
+    ssize_t index = -1;
+    ssize_t added;
+    DeguIOBuf *io = &(self->r_io);
+    DeguDst dst = _iobuf_raw_dst(io);
+
+    if (_isempty(end) || size < end.len || size > dst.len) {
+        Py_FatalError("_SocketWrapper_read_until(): bad internal call");
+    }
+
+    /* First, see if end is in the current buffer content */
+    DeguSrc cur = _iobuf_peek(io, size);
+    if (cur.len >= end.len) {
+        index = _find(cur, end);
+        if (index >= 0) {
+            goto found;
+        }
+        if (cur.len >= size) {
+            goto not_found;
+        }
+    }
+
+    /* If needed, shift current buffer content */
+    if (io->start > 0) {
+        _move(dst, cur);
+        io->start = 0;
+        io->stop = cur.len;
+    }
+
+    /* Now read till found */
+    while (io->stop < size) {
+        added = _recv_into(self->recv_into, _slice_dst(dst, io->stop, dst.len));
+        if (added < 0) {
+            return NULL_DeguSrc;
+        }
+        if (added == 0) {
+            break;
+        }
+        io->stop += (size_t)added;
+        index = _find(_iobuf_peek(io, size), end);
+        if (index >= 0) {
+            goto found;
+        }
+    }
+
+not_found:
+    if (index >= 0) {
+        Py_FatalError("_SocketWrapper_read_until(): not_found, but index >= 0");
+    }
+    DeguSrc tmp = _iobuf_peek(io, size);
+    if (tmp.len == 0) {
+        return tmp;
+    }
+    _value_error2(
+        "%R not found in %R...", end, _slice(tmp, 0, _min(tmp.len, 32))
+    );
+    return NULL_DeguSrc;
+
+found:
+    if (index < 0) {
+        Py_FatalError("_SocketWrapper_read_until(): found, but index < 0");
+    }
+    DeguSrc src = _iobuf_drain(io, (size_t)index + end.len);
+    return _slice(src, 0, src.len - end.len);
+}
+
+
+static PyObject *
+SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
+{
+    size_t size = 0;
+    uint8_t *buf = NULL;
+    size_t len = 0;
+
+    if (! PyArg_ParseTuple(args, "ny#:read_until", &size, &buf, &len)) {
+        return NULL;
+    }
+    DeguSrc end = {buf, len};
+    if (end.len == 0) {
+        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
+        return NULL;
+    }
+    if (size < end.len || size > BUF_LEN) {
+        PyErr_Format(PyExc_ValueError,
+            "need %zu <= size <= %zu; got %zd", end.len, BUF_LEN, size
+        );
+        return NULL;
+    }
+    return _tobytes(_SocketWrapper_read_until(self, size, end));
+}
+
 
 
 /******************************************************************************

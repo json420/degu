@@ -777,12 +777,16 @@ typedef struct {
     PyObject *send;
     PyObject *close;
     bool closed;
+    DeguIOBuf r_io;
+    DeguIOBuf w_io;
 } SocketWrapper;
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
+static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
 
 static PyMethodDef SocketWrapper_methods[] = {
-    {"close", (PyCFunction)SocketWrapper_close, METH_NOARGS, NULL},
+    {"close",      (PyCFunction)SocketWrapper_close,      METH_NOARGS,  NULL},
+    {"read_until", (PyCFunction)SocketWrapper_read_until, METH_VARARGS, NULL},
     {NULL}
 };
 

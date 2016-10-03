@@ -1248,6 +1248,29 @@ class _IOBuf:
         self.stop = 0
         self.buf = memoryview(bytearray(BUF_LEN))
 
+    def peek(self, size=-1):
+        stop = (self.stop if size < 0 else min(self.stop, self.start + size))
+        return self.buf[self.start:stop].tobytes()
+
+    def drain(self, size=-1):
+        src = self.peek(size)
+        self.start += len(src)
+        if self.start == self.stop:
+            self.start = 0
+            self.stop = 0
+        return src
+
+    def shift_if_needed(self):
+        if self.start > 0:
+            src = self.drain()
+            assert len(src) > 0
+            self.buf[0:len(src)] = src
+            self.start = 0
+            self.stop = len(src)
+
+    def get_dst(self):
+        return self.buf[self.stop:]
+
 
 class SocketWrapper:
     __slots__ = (
@@ -1256,14 +1279,21 @@ class SocketWrapper:
         '_sock_send',
         '_sock_close',
         '_closed',
+        '_r_io',
+        '_w_io',
     )
 
     def __init__(self, sock):
+        self._closed = False
         self._sock = sock
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._sock_send = _getcallable('sock', sock, 'send')
         self._sock_close = _getcallable('sock', sock, 'close')
-        self._closed = False
+        self._r_io = _IOBuf()
+        self._w_io = _IOBuf()
+
+    def __del__(self):
+        self.close()
 
     @property
     def sock(self):
@@ -1274,8 +1304,63 @@ class SocketWrapper:
         return self._closed
 
     def close(self):
-        self._closed = True
+        if not self._closed:
+            self._closed = True
+            self._sock_close()
 
+    def _recv_into(self, buf):
+        added = self._sock_recv_into(buf)
+        _validate_size('received', added, len(buf))
+        return added
+
+    def _found(self, index, end):
+        src = self._r_io.drain(index + len(end))
+        return src[0:-len(end)]
+
+    def _not_found(self, cur, end):
+        if len(cur) == 0:
+            return cur
+        raise ValueError(
+            '{!r} not found in {!r}...'.format(end, cur[:32])
+        )
+
+    def read_until(self, size, end):
+        io = self._r_io
+        assert type(size) is int
+        end = memoryview(end).tobytes()
+        if not end:
+            raise ValueError('end cannot be empty')
+        if not (len(end) <= size <= len(io.buf)):
+            raise ValueError(
+                'need {} <= size <= {}; got {}'.format(
+                    len(end), len(io.buf), size
+                )
+            )
+
+        # First, search current buffer:
+        cur = io.peek(size)
+        index = cur.find(end)
+        if index >= 0:
+            return self._found(index, end)
+        if len(cur) == size:
+            return self._not_found(cur, end)
+
+        # Shift buffer if needed:
+        io.shift_if_needed()
+
+        # Now search till found:
+        while io.stop < size:
+            added = self._recv_into(io.get_dst())
+            if added == 0:
+                break
+            io.stop += added
+            cur = io.peek(size)
+            index = cur.find(end)
+            if index >= 0:
+                return self._found(index, end)
+
+        # Didn't find it:
+        return self._not_found(cur, end)
 
 
 def _check_body_state(name, state, max_state):

@@ -5713,11 +5713,136 @@ class TestSocketWrapper_Py(BackendTestCase):
         wrapper = self.SocketWrapper(sock)
         self.assertIs(wrapper.sock, sock)
         self.assertIs(wrapper.closed, False)
+        self.assertEqual(sock._calls, 0)
         self.assertIsNone(wrapper.close())
+        self.assertEqual(sock._calls, 1)
         self.assertIs(wrapper.closed, True)
         self.assertEqual(sys.getrefcount(sock), 6)
+        self.assertEqual(sock._calls, 1)
         del wrapper
         self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, 1)
+
+    def new(self, data=b'', rcvbuf=None, sndbuf=None):
+        sock = NewMockSocket(data, rcvbuf, sndbuf)
+        wrapper = self.SocketWrapper(sock)
+        return (sock, wrapper)
+
+    def test_del(self):
+        sock = NewMockSocket()
+        self.assertEqual(sys.getrefcount(sock), 2)
+        wrapper = self.SocketWrapper(sock)
+        self.assertEqual(sys.getrefcount(sock), 6)
+        self.assertEqual(sock._calls, [])
+        del wrapper
+        self.assertEqual(sys.getrefcount(sock), 2)
+        self.assertEqual(sock._calls, ['close'])
+
+    def test_read_until(self):
+        default = self.BUF_LEN
+        end = b'\r\n'
+
+        data = os.urandom(2 * default)
+        (sock, wrapper) = self.new(data)
+
+        # len(end) == 0:
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(4096, b'')
+        self.assertEqual(str(cm.exception), 'end cannot be empty')
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        # size < 0:
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(-1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got -1'.format(default)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        # size < 1:
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(0, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got 0'.format(default)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        # size < len(end):
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got 1'.format(default)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(15, os.urandom(16))
+        self.assertEqual(str(cm.exception),
+            'need 16 <= size <= {}; got 15'.format(default)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        # size > default:
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_until(default + 1, end)
+        self.assertEqual(str(cm.exception),
+            'need 2 <= size <= {}; got {}'.format(default, default + 1)
+        )
+        self.assertEqual(sock._rfile.tell(), 0)
+        self.assertEqual(sock._calls, [])
+        self.assertIs(wrapper.closed, False)
+
+        # No data:
+        (sock, wrapper) = self.new()
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(wrapper.read_until(4096, end), b'')
+        self.assertEqual(sock._calls, [('recv_into', default)])
+
+        # Main event:
+        part1 = os.urandom(1234)
+        part2 = os.urandom(2345)
+        end = os.urandom(16)
+        data = part1 + end + part2 + end
+        size = len(data)
+
+        (sock, wrapper) = self.new(data)
+        self.assertIsNone(sock._rcvbuf)
+        self.assertEqual(wrapper.read_until(size, end), part1)
+        self.assertEqual(sock._calls, [('recv_into', default)])
+        self.assertEqual(wrapper.read_until(size, end), part2)
+        self.assertEqual(sock._calls, [('recv_into', default)])
+
+        nope = os.urandom(16)
+        marker = os.urandom(16)
+        suffix = os.urandom(666)
+        for i in range(318):
+            prefix = os.urandom(i)
+            data = prefix + marker
+            total_data = data + suffix
+
+            # Found:
+            (sock, wrapper) = self.new(total_data, 333)
+            self.assertEqual(wrapper.read_until(333, marker), prefix)
+            self.assertEqual(sock._calls, [('recv_into', default)])
+
+            # Not found:
+            (sock, wrapper) = self.new(total_data, 333)
+            with self.assertRaises(ValueError) as cm:
+                wrapper.read_until(333, nope)
+            self.assertEqual(str(cm.exception),
+                '{!r} not found in {!r}...'.format(nope, total_data[:32])
+            )
+            self.assertEqual(sock._calls, [('recv_into', default)])
 
 
 class TestSocketWrapper_C(TestSocketWrapper_Py):
