@@ -4076,7 +4076,6 @@ found:
     return _slice(src, 0, src.len - end.len);
 }
 
-
 static PyObject *
 SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
 {
@@ -4099,6 +4098,30 @@ SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
         return NULL;
     }
     return _tobytes(_SocketWrapper_read_until(self, size, end));
+}
+
+static PyObject *
+SocketWrapper_read_request(SocketWrapper *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+SocketWrapper_read_response(SocketWrapper *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+SocketWrapper_write_request(SocketWrapper *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+SocketWrapper_write_response(SocketWrapper *self, PyObject *args)
+{
+    Py_RETURN_NONE;
 }
 
 
