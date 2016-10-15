@@ -264,7 +264,7 @@ def _write(method, src):
 def _write_to(wobj, src):
     if len(src) == 0:
         return 0
-    if type(wobj) is Writer:
+    if type(wobj) in (Writer, SocketWrapper):
         return wobj._write(src)
     return _write(wobj, src)
 
@@ -282,7 +282,7 @@ def _get_readline(rfile):
 
 
 def _get_wobj(wfile):
-    if type(wfile) is Writer:
+    if type(wfile) in (Writer, SocketWrapper):
         return wfile
     return _getcallable('wfile', wfile, 'write')
 
@@ -1271,6 +1271,16 @@ class _IOBuf:
     def get_dst(self):
         return self.buf[self.stop:]
 
+    def copy_into_if_possible(self, src):
+        assert 0 <= self.start < self.stop <= len(self.buf)
+        dst = self.get_dst()
+        if len(src) > len(dst):
+            return False
+        src_len = len(src)
+        dst[0:src_len] = src
+        self.stop += src_len
+        return True
+
 
 class SocketWrapper:
     __slots__ = (
@@ -1361,6 +1371,56 @@ class SocketWrapper:
 
         # Didn't find it:
         return self._not_found(cur, end)
+
+    def _raw_write(self, src):
+        return _write(self._sock_send, src)
+
+    def _flush(self):
+        src = self._w_io.drain()
+        self._raw_write(src)
+
+    def _write(self, src):
+        io = self._w_io
+        if io.copy_into_if_possible(src):
+            return len(src)
+        else:
+            self._flush()
+            return self._raw_write(src)
+
+    def _write_output(self, func, arg1, arg2, headers, body):
+        io = self._w_io
+        total = func(io.get_dst(), arg1, arg2, headers)
+        assert total > 0
+        io.stop += total
+        if type(body) is bytes:
+            if len(body) > MAX_IO_SIZE:
+                raise ValueError(
+                    'need len(body) <= {}; got {}'.format(
+                        MAX_IO_SIZE, len(body)
+                    )
+                )
+            total += self._write(body)
+        elif type(body) in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
+            total += body.write_to(self)
+        elif body is not None:
+            raise TypeError(
+                'bad body type: {!r}: {!r}'.format(type(body), body)
+            )
+        self._flush()
+        return total
+
+    def write_request(self, method, uri, headers, body):
+        _check_method(method)
+        set_output_headers(headers, body)
+        return self._write_output(render_request,
+            method, uri, headers, body
+        )
+
+    def write_response(self, status, reason, headers, body):
+        set_output_headers(headers, body)
+        return self._write_output(render_response,
+            status, reason, headers, body
+        )
 
 
 def _check_body_state(name, state, max_state):

@@ -3966,7 +3966,6 @@ _SocketWrapper_close_unraisable(SocketWrapper *self)
         PyErr_WriteUnraisable((PyObject *)self);
         PyErr_Clear();
     }
-        
 }
 
 static void
