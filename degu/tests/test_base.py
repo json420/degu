@@ -5947,6 +5947,109 @@ class TestSocketWrapper_Py(BackendTestCase):
             b'GET / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
         )
 
+    def test_write_response(self):
+        # Empty headers, no body:
+        (sock, wrapper) = self.new()
+        headers = {}
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, None), 19)
+        self.assertEqual(headers, {})
+        self.assertEqual(sock._wfile.tell(), 19)
+        self.assertEqual(sock._wfile.getvalue(), b'HTTP/1.1 200 OK\r\n\r\n')
+
+        # One header:
+        (sock, wrapper) = self.new()
+        headers = {'foo': 17}  # Make sure to test with int header value
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, None), 28)
+        self.assertEqual(headers, {'foo': 17})
+        self.assertEqual(sock._wfile.tell(), 28)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nfoo: 17\r\n\r\n'
+        )
+
+        # Two headers:
+        (sock, wrapper) = self.new()
+        headers = {'foo': 17, 'bar': 'baz'}
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, None), 38)
+        self.assertEqual(headers, {'foo': 17, 'bar': 'baz'})
+        self.assertEqual(sock._wfile.tell(), 38)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\nbar: baz\r\nfoo: 17\r\n\r\n'
+        )
+
+        # body is bytes:
+        (sock, wrapper) = self.new()
+        headers = {}
+        self.assertEqual(
+            wrapper.write_response(200, 'OK', headers, b'hello'),
+            43
+        )
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(sock._wfile.tell(), 43)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is bytes longer than MAX_IO_SIZE:
+        MAX_IO_SIZE = self.MAX_IO_SIZE
+        (sock, wrapper) = self.new()
+        headers = {}
+        body = os.urandom(MAX_IO_SIZE + 1)
+        with self.assertRaises(ValueError) as cm:
+            wrapper.write_response(200, 'OK', headers, body)
+        self.assertEqual(str(cm.exception),
+            'need len(body) <= {}; got {}'.format(MAX_IO_SIZE, len(body))
+        )
+
+        # body is base.BodyIter:
+        (sock, wrapper) = self.new()
+        headers = {}
+        body = self.api.BodyIter((b'hell', b'o'), 5)
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, body), 43)
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(sock._wfile.tell(), 43)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBodyIter:
+        (sock, wrapper) = self.new()
+        headers = {}
+        body = self.api.ChunkedBodyIter(
+            ((None, b'hello'), (None, b''))
+        )
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, body), 62)
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(sock._wfile.tell(), 62)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
+        # body is base.Body:
+        (sock, wrapper) = self.new()
+        headers = {}
+        rfile = io.BytesIO(b'hello')
+        body = self.api.Body(rfile, 5)
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, body), 43)
+        self.assertEqual(headers, {'content-length': 5})
+        self.assertEqual(rfile.tell(), 5)
+        self.assertEqual(sock._wfile.tell(), 43)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello'
+        )
+
+        # body is base.ChunkedBody:
+        (sock, wrapper) = self.new()
+        headers = {}
+        rfile = io.BytesIO(b'5\r\nhello\r\n0\r\n\r\n')
+        body = self.api.ChunkedBody(rfile)
+        self.assertEqual(wrapper.write_response(200, 'OK', headers, body), 62)
+        self.assertEqual(headers, {'transfer-encoding': 'chunked'})
+        self.assertEqual(rfile.tell(), 15)
+        self.assertEqual(sock._wfile.tell(), 62)
+        self.assertEqual(sock._wfile.getvalue(),
+            b'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'
+        )
+
 
 class TestSocketWrapper_C(TestSocketWrapper_Py):
     backend = _base
