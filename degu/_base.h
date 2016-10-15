@@ -759,13 +759,6 @@ static PyTypeObject WriterType = {
 #define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
 #define WRITER(obj) ((Writer *)(obj))
 
-typedef struct {
-    Writer *writer;
-    PyObject *write;
-} DeguWObj;
-
-#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
-
 
 /******************************************************************************
  * SocketWrapper object.
@@ -780,6 +773,8 @@ typedef struct {
     DeguIOBuf r_io;
     DeguIOBuf w_io;
 } SocketWrapper;
+
+static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
 static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
@@ -857,6 +852,17 @@ static PyTypeObject SocketWrapperType = {
     .tp_version_tag    = 0,
     .tp_finalize       = NULL,
 };
+
+typedef struct {
+    Writer *writer;
+    SocketWrapper *wrapper;
+    PyObject *write;
+} DeguWObj;
+
+#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL, NULL})
+
+#define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
+#define WRAPPER(obj) ((SocketWrapper *)(obj))
 
 
 /******************************************************************************

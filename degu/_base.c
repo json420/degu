@@ -3153,6 +3153,9 @@ _init_wobj(PyObject *wfile, DeguWObj *w)
     if (IS_WRITER(wfile)) {
         _SET(w->writer, WRITER(wfile))
     }
+    if (IS_WRAPPER(wfile)) {
+        _SET(w->wrapper, WRAPPER(wfile))
+    }
     else {
         _SET(w->write, _getcallable("wfile", wfile, attr_write))
     }
@@ -3167,6 +3170,9 @@ _write_to(DeguWObj *w, DeguSrc src)
 {
     if (w->writer != NULL) {
         return _Writer_write(w->writer, src);
+    }
+    if (w->wrapper != NULL) {
+        return _SocketWrapper_write(w->wrapper, src);
     }
     if (w->write != NULL) {
         return _write(w->write, src);
@@ -3814,7 +3820,7 @@ _Writer_write_bytes_body(Writer *self, PyObject *body)
 static int64_t
 _Writer_write_body(Writer *self, PyObject *body)
 {
-    DeguWObj w = {self, NULL};
+    DeguWObj w = {self, NULL, NULL};
 
     if (body == Py_None) {
         return 0;
@@ -4099,6 +4105,8 @@ SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
     return _tobytes(_SocketWrapper_read_until(self, size, end));
 }
 
+
+
 static PyObject *
 SocketWrapper_read_request(SocketWrapper *self, PyObject *args)
 {
@@ -4111,16 +4119,175 @@ SocketWrapper_read_response(SocketWrapper *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static ssize_t
+_SocketWrapper_raw_write(SocketWrapper *self, DeguSrc src)
+{
+    const ssize_t wrote = _write(self->send, src);
+    return wrote;
+}
+
+static bool
+_SocketWrapper_flush(SocketWrapper *self)
+{
+    DeguSrc src = _iobuf_flush(&(self->w_io));
+    if (src.len == 0) {
+        return true;
+    }
+    if (_SocketWrapper_raw_write(self, src) < 0) {
+        return false;
+    }
+    return true;
+}
+
+static ssize_t
+_SocketWrapper_write(SocketWrapper *self, DeguSrc src)
+{
+    const bool appended = _iobuf_append(&(self->w_io), src);
+    if (! _SocketWrapper_flush(self)) {
+        return -1;
+    }
+    if (appended) {
+        return (ssize_t)src.len;
+    }
+    return _SocketWrapper_raw_write(self, src);
+}
+
+static int64_t
+_SocketWrapper_write_bytes_body(SocketWrapper *self, PyObject *body)
+{
+    DeguSrc src = _frombytes(body);
+    if (src.len > MAX_IO_SIZE) {
+        PyErr_Format(PyExc_ValueError,
+            "need len(body) <= %zu; got %zu", MAX_IO_SIZE, src.len
+        );
+        return -1;
+    }
+    return _SocketWrapper_write(self, src);
+}
+
+static int64_t
+_SocketWrapper_write_body(SocketWrapper *self, PyObject *body)
+{
+    DeguWObj w = {NULL, self, NULL};
+
+    if (body == Py_None) {
+        return 0;
+    }
+    if (PyBytes_CheckExact(body)) {
+        return _SocketWrapper_write_bytes_body(self, body);
+    }
+    if (IS_BODY(body)) {
+        return _Body_write_to(BODY(body), &w);
+    }
+    if (IS_CHUNKED_BODY(body)) {
+        return _ChunkedBody_write_to(CHUNKED_BODY(body), &w);
+    }
+    if (IS_BODY_ITER(body)) {
+        return _BodyIter_write_to(BODY_ITER(body), &w);
+    }
+    if (IS_CHUNKED_BODY_ITER(body)) {
+        return _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &w);
+    }
+
+    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
+    return -1;
+}
+
+static int64_t
+_SocketWrapper_write_request(SocketWrapper *self, DeguRequest *dr)
+{
+    int64_t wrote;
+    DeguIOBuf *io = &(self->w_io);
+    DeguOutput o = {_iobuf_raw_dst(io), 0};
+
+    if (! _set_output_headers(dr->headers, dr->body)) {
+        return -1;
+    }
+    if (! _render_request(&o, dr)) {
+        return -1;
+    }
+    io->stop = o.stop;
+    wrote = _SocketWrapper_write_body(self, dr->body);
+    if (wrote < 0) {
+        return -1;
+    }
+    if (! _SocketWrapper_flush(self)) {
+        return -1;
+    }
+    return wrote + (int64_t)o.stop;
+}
+
+static int64_t
+_SocketWrapper_write_response(SocketWrapper *self, DeguResponse *dr)
+{
+    int64_t wrote;
+    DeguIOBuf *io = &(self->w_io);
+    DeguOutput o = {_iobuf_raw_dst(io), 0};
+
+    if (! _set_output_headers(dr->headers, dr->body)) {
+        return -1;
+    }
+    if (! _render_response(&o, dr)) {
+        return -1;
+    }
+    self->w_io.stop = o.stop;
+    wrote = _SocketWrapper_write_body(self, dr->body);
+    if (wrote < 0) {
+        return -1;
+    }
+    if (! _SocketWrapper_flush(self)) {
+        return -1;
+    }
+    return wrote + (int64_t)o.stop;
+}
+
 static PyObject *
 SocketWrapper_write_request(SocketWrapper *self, PyObject *args)
 {
-    Py_RETURN_NONE;
+    PyObject *method = NULL;
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    int64_t wrote = -2;
+
+    if (! PyArg_ParseTuple(args, "OOOO:write_request",
+            &method, &dr.uri, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    if (! _check_method(method, &dr)) {
+        goto error;
+    }
+    wrote = _SocketWrapper_write_request(self, &dr);
+    goto cleanup;
+
+error:
+    wrote = -1;
+
+cleanup:
+    if (wrote < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(wrote);
 }
 
 static PyObject *
 SocketWrapper_write_response(SocketWrapper *self, PyObject *args)
 {
-    Py_RETURN_NONE;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+    ssize_t s;
+
+    if (! PyArg_ParseTuple(args, "OUOO:",
+            &dr.status, &dr.reason, &dr.headers, &dr.body)) {
+        return NULL;
+    }
+    s = _get_status(dr.status);
+    if (s < 0) {
+        return NULL;
+    }
+    dr.s = (size_t)s;
+    const int64_t total = _SocketWrapper_write_response(self, &dr);
+    if (total < 0) {
+        return NULL;
+    }
+    return PyLong_FromLongLong(total);
 }
 
 
