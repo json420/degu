@@ -3220,6 +3220,7 @@ _filelike_close(DeguFileLike *fl)
     }
 }
 
+/*
 static ssize_t
 _filelike_write(DeguFileLike *fl, DeguSrc src)
 {
@@ -3232,6 +3233,7 @@ _filelike_write(DeguFileLike *fl, DeguSrc src)
     Py_FatalError("_filelike_write(): bad internal call");
     return -1;
 }
+*/
 
 static bool
 _filelike_readinto(DeguFileLike *fl, DeguDst dst)
@@ -3338,6 +3340,43 @@ _read_chunk_from(DeguRObj *r, DeguChunk *dc)
 error:
     return false;
 }
+
+static bool
+_filelike_read_chunkline(DeguFileLike *fl, DeguChunk *dc)
+{
+    if (fl->wrapper != NULL) {
+        return _SocketWrapper_read_chunkline(fl->wrapper, dc);
+    }
+    if (fl->readline != NULL) {
+        return _read_chunkline(fl->readline, dc);
+    }
+    Py_FatalError("_filelink_read_chunkline(): bad internal call");
+    return false;
+}
+
+static bool
+_filelike_read_chunk(DeguFileLike *fl, DeguChunk *dc)
+{
+    if (! _filelike_read_chunkline(fl, dc)) {
+        goto error;
+    }
+    const ssize_t size = (ssize_t)dc->size + 2;
+    _SET(dc->data, PyBytes_FromStringAndSize(NULL, size))
+    DeguDst dst = _dst_frombytes(dc->data);
+    if (! _filelike_readinto(fl, dst)) {
+        goto error;
+    }
+    DeguSrc end = _slice_src_from_dst(dst, dst.len - 2, dst.len);
+    if (! _equal(end, CRLF)) {
+        _value_error("bad chunk data termination: %R", end);
+        goto error;
+    }
+    return true;
+
+error:
+    return false;
+}
+
 
 static ssize_t
 _write_chunk_to(DeguWObj *w, DeguChunk *dc)
@@ -3963,8 +4002,8 @@ _rfile_repr(PyObject *rfile)
 static void
 Body_dealloc(Body *self)
 {
-    Py_CLEAR(self->rfile);
     _filelike_clear(&(self->fl));
+    Py_CLEAR(self->rfile);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3992,8 +4031,8 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 
 error:
     self->state = BODY_ERROR;
-    Py_CLEAR(self->rfile);
     _filelike_clear(&(self->fl));
+    Py_CLEAR(self->rfile);
     return false;
 }
 
@@ -4005,7 +4044,7 @@ _Body_New(PyObject *rfile, const uint64_t content_length)
         return NULL;
     }
     self->rfile = NULL;
-    self->fl = NEW_DEGU_FILELIKE;
+    self->fl = NEW_DEGU_FILE_LIKE;
     self->state = BODY_ERROR;
     if (! _Body_fill_args(self, rfile, content_length)) {
         PyObject_Del((PyObject *)self);
@@ -4211,16 +4250,20 @@ Body_next(Body *self)
 static void
 ChunkedBody_dealloc(ChunkedBody *self)
 {
+    _filelike_clear(&(self->fl));
     Py_CLEAR(self->rfile);
-    _clear_robj(&(self->robj));
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static bool
 _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
 {
+
+    if (self == NULL || rfile == NULL) {
+        Py_FatalError("_ChunkedBody_fill_args(): bad internal call");
+    }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _init_robj(rfile, &(self->robj), true)) {
+    if (! _filelike_init(rfile, &(self->fl), FL_READINTO_BIT | FL_READLINE_BIT)) {
         goto error;
     }
     self->chunked = true;
@@ -4228,8 +4271,8 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
     return true;
 
 error:
+    _filelike_clear(&(self->fl));
     Py_CLEAR(self->rfile);
-    _clear_robj(&(self->robj));
     self->state = BODY_ERROR;
     return false;
 }
@@ -4242,7 +4285,7 @@ _ChunkedBody_New(PyObject *rfile)
         return NULL;
     }
     self->rfile = NULL;
-    self->robj = NEW_DEGU_ROBJ;
+    self->fl = NEW_DEGU_FILE_LIKE;
     self->state = BODY_ERROR;
     if (! _ChunkedBody_fill_args(self, rfile)) {
         PyObject_Del((PyObject *)self);
@@ -4281,9 +4324,7 @@ static void
 _ChunkedBody_do_error(ChunkedBody *self)
 {
     self->state = BODY_ERROR;
-    if (self->robj.wrapper != NULL) {
-        _SocketWrapper_close_unraisable(WRAPPER(self->robj.wrapper));
-    }
+    _filelike_close(&(self->fl));
 }
 
 static bool
@@ -4293,7 +4334,7 @@ _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
         return false;
     }
     self->state = BODY_STARTED;
-    if (! _read_chunk_from(&(self->robj), dc)) {
+    if (! _filelike_read_chunk(&(self->fl), dc)) {
         goto error;
     }
     if (dc->size == 0) {
@@ -4383,7 +4424,7 @@ ChunkedBody_read(ChunkedBody *self)
     }
     self->state = BODY_CONSUMED;
     goto cleanup;
-    
+
 error:
     self->state = BODY_ERROR;
     Py_CLEAR(ret);

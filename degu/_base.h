@@ -710,7 +710,7 @@ typedef struct {
     PyObject *readline;
 } DeguFileLike;
 
-#define NEW_DEGU_FILELIKE ((DeguFileLike){NULL, NULL, NULL, NULL})
+#define NEW_DEGU_FILE_LIKE ((DeguFileLike){NULL, NULL, NULL, NULL})
 
 
 /******************************************************************************
@@ -813,7 +813,7 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguRObj robj;
+    DeguFileLike fl;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
