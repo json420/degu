@@ -696,7 +696,7 @@ typedef struct {
     PyObject *readline;
 } DeguFileObj;
 
-#define NEW_DeguFileObj ((DeguFileObj){NULL, NULL, NULL, NULL})
+#define NEW_DEGU_FILE_OBJ ((DeguFileObj){NULL, NULL, NULL, NULL})
 
 
 /******************************************************************************
