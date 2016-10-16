@@ -5412,11 +5412,10 @@ cleanup:
 static void
 Connection_dealloc(Connection *self)
 {
-    _Connection_shutdown(self);
+    Py_CLEAR(self->wrapper);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
     Py_CLEAR(self->api);
-    Py_CLEAR(self->wrapper);
     Py_CLEAR(self->response_body);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -5435,12 +5434,12 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
+    _SET(self->wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
     if (base_headers != Py_None && !_check_tuple("base_headers", base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
     _SET_AND_INC(self->api, api)
-    _SET(self->wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
     self->response_body = NULL;
     return 0;
 
@@ -5448,28 +5447,14 @@ error:
     return -1;
 }
 
-static void
-_Connection_shutdown(Connection *self)
-{
-    PyObject *err_type, *err_value, *err_traceback, *result;
-
-    if (self->closed || self->sock == NULL) {
-        return;
-    }
-    self->closed = true;
-    PyErr_Fetch(&err_type, &err_value, &err_traceback);
-    result = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
-    Py_CLEAR(result);
-    result = PyObject_CallMethod(self->sock, "close", NULL);
-    Py_CLEAR(result);
-    PyErr_Restore(err_type, err_value, err_traceback);
-}
-
 static PyObject *
 Connection_close(Connection *self)
 {
-    _Connection_shutdown(self);
-    Py_RETURN_NONE;
+    self->closed = true;
+    if (_SocketWrapper_close(WRAPPER(self->wrapper))) {
+        Py_RETURN_NONE;
+    }
+    return NULL;
 }
 
 static PyObject *
@@ -5530,7 +5515,8 @@ _Connection_request(Connection *self, DeguRequest *dr)
     goto cleanup;
 
 error:
-    _Connection_shutdown(self);
+    self->closed = true;
+    _SocketWrapper_close_unraisable(WRAPPER(self->wrapper));
 
 cleanup:
     _clear_degu_response(&r);

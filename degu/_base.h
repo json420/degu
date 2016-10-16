@@ -1270,7 +1270,6 @@ static PyMethodDef Connection_methods[] = {
     {NULL}
 };
 
-static void _Connection_shutdown(Connection *);
 static void Connection_dealloc(Connection *);
 static int Connection_init(Connection *, PyObject *, PyObject *);
 
