@@ -6053,6 +6053,32 @@ class TestSocketWrapper_Py(BackendTestCase):
                     'bad status: {!r}'.format('{:03d}'.format(status).encode())
                 )
 
+        # With Body:
+        marker = os.urandom(16)
+        data = b'HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n' + marker
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        response = wrapper.read_response('GET')
+        self.assertIsInstance(response, ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'content-length': 16})
+        self.assertIsInstance(response.body, self.api.Body)
+        self.assertEqual(response.body.content_length, 16)
+        self.assertEqual(response.body.read(), marker)
+
+        # With ChunkedBody:
+        marker = os.urandom(15)
+        body = b'f\r\n' + marker + b'\r\n0\r\n\r\n'
+        data = b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n' + body
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        response = wrapper.read_response('GET')
+        self.assertIsInstance(response, ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsInstance(response.body, self.api.ChunkedBody)
+        self.assertEqual(list(response.body), [(None, marker), (None, b'')])
+
     def test_read_response(self):
         for rcvbuf in (None, 1, 2, 3):
             self.check_read_response(rcvbuf)
