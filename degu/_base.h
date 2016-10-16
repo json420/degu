@@ -598,6 +598,7 @@ typedef struct {
 static bool _SocketWrapper_readinto(SocketWrapper *, DeguDst);
 static bool _SocketWrapper_read_chunkline(SocketWrapper *, DeguChunk *);
 static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
+static void _SocketWrapper_close_unraisable(SocketWrapper *);
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
 static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
@@ -680,20 +681,26 @@ static PyTypeObject SocketWrapperType = {
 #define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
 #define WRAPPER(obj) ((SocketWrapper *)(obj))
 
+
+/******************************************************************************
+ * DeguFileObj API.
+ ******************************************************************************/
 typedef struct {
     SocketWrapper *wrapper;
     PyObject *write;
-} DeguWObj;
-
-#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
-
-typedef struct {
-    SocketWrapper *wrapper;
     PyObject *readinto;
     PyObject *readline;
-} DeguRObj;
+} DeguFileObj;
 
-#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
+#define NEW_DEGU_FILE_OBJ ((DeguFileObj){NULL, NULL, NULL, NULL})
+
+#define FO_WRITE_BIT      (1 << 0)
+#define FO_READINTO_BIT   (1 << 1)
+#define FO_READLINE_BIT   (1 << 2)
+#define FO_ALLOWED_MASK   (FO_WRITE_BIT | FO_READINTO_BIT | FO_READLINE_BIT)
+#define FILEOBJ_WRITE     (FO_WRITE_BIT)
+#define FILEOBJ_READ      (FO_READINTO_BIT)
+#define FILEOBJ_READLINE  (FO_READINTO_BIT | FO_READLINE_BIT)
 
 
 /******************************************************************************
@@ -702,7 +709,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguRObj robj;
+    DeguFileObj fobj;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -710,7 +717,7 @@ typedef struct {
 } Body;
 
 static PyObject * _Body_New(PyObject *, uint64_t);
-static int64_t _Body_write_to(Body *, DeguWObj *);
+static int64_t _Body_write_to(Body *, DeguFileObj *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT,    offsetof(Body, rfile),          READONLY, NULL},
@@ -796,13 +803,13 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguRObj robj;
+    DeguFileObj fobj;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
 
 static PyObject * _ChunkedBody_New(PyObject *);
-static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguFileObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -893,7 +900,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
+static int64_t _BodyIter_write_to(BodyIter *, DeguFileObj *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT, offsetof(BodyIter, source), READONLY, NULL},
@@ -977,7 +984,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguFileObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT, offsetof(ChunkedBodyIter, source), READONLY, NULL},

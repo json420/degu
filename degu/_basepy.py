@@ -1250,6 +1250,11 @@ class Body:
             _rfile_repr(self._rfile), self._content_length
         )
 
+    def _do_error(self):
+        self._state = BODY_ERROR
+        if type(self._rfile) is SocketWrapper:
+            self._rfile.close()
+
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)
         self._state = BODY_STARTED
@@ -1266,7 +1271,7 @@ class Body:
                 _readinto_from(robj, sub)
                 yield sub.tobytes()
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         assert remaining == 0
         self._remaining = remaining
@@ -1289,7 +1294,7 @@ class Body:
                 self._state = BODY_CONSUMED
             return dst.tobytes()
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
 
     def write_to(self, wfile):
@@ -1402,6 +1407,11 @@ class ChunkedBody:
     def chunked(self):
         return self._chunked
 
+    def _do_error(self):
+        self._state = BODY_ERROR
+        if type(self._rfile) is SocketWrapper:
+            self._rfile.close()
+
     def readchunk(self):
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
         self._state = BODY_STARTED
@@ -1410,7 +1420,7 @@ class ChunkedBody:
             if len(chunk[1]) == 0:
                 self._state = BODY_CONSUMED
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         return chunk
 
@@ -1434,7 +1444,7 @@ class ChunkedBody:
                 )
             ret =  b''.join(accum)
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         self._state = BODY_CONSUMED
         return ret
@@ -1465,7 +1475,7 @@ class ChunkedBody:
                 if size == 0:
                     break
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         self._state = BODY_CONSUMED
         return total
@@ -1673,10 +1683,9 @@ class Session:
             self.close('max_requests')
 
 
-def _handle_requests(app, session, sock):
+def _handle_requests_inner(wrapper, app, session, sock):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
-    wrapper = SocketWrapper(sock)
     while not session._closed:
         request = wrapper.read_request()
         response = app(session, request, api)
@@ -1708,6 +1717,15 @@ def _handle_requests(app, session, sock):
 
         # Update request counter, possibly close based on status:
         session._response_complete(status, reason)
+
+
+def _handle_requests(app, session, sock):
+    wrapper = SocketWrapper(sock)
+    try:
+        return _handle_requests_inner(wrapper, app, session, sock)
+    finally:
+        wrapper.close()
+        
 
 
 class Connection:
