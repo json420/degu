@@ -3176,6 +3176,78 @@ _write_to(DeguWObj *w, DeguSrc src)
 }
 
 
+/* DeguRObj: absracted reader object */
+static void
+_filelike_clear(DeguFileLike *fl)
+{
+    fl->wrapper = NULL;  /* If not NULL, this is a borrowed reference */
+    Py_CLEAR(fl->write);
+    Py_CLEAR(fl->readinto);
+    Py_CLEAR(fl->readline);
+}
+
+static bool
+_filelike_init(PyObject *obj, DeguFileLike *fl, const uint8_t flags)
+{
+    if (obj == NULL || (flags & FL_ALLOWED_MASK) == 0) {
+        Py_FatalError("_filelike_init(): bad internal call");
+    }
+    if (IS_WRAPPER(obj)) {
+        _SET(fl->wrapper, WRAPPER(obj))
+    }
+    else {
+        if (flags & FL_WRITE_BIT) {
+            _SET(fl->write, _getcallable("wfile", obj, attr_write))
+        }
+        if (flags & FL_READINTO_BIT) {
+            _SET(fl->readinto, _getcallable("rfile", obj, attr_readinto))
+        }
+        if (flags & FL_READLINE_BIT) {
+            _SET(fl->readline, _getcallable("rfile", obj, attr_readline))
+        }
+    }
+    return true;
+
+error:
+    return false;
+}
+
+static void
+_filelike_close(DeguFileLike *fl)
+{
+    if (fl->wrapper != NULL) {
+        _SocketWrapper_close_unraisable(fl->wrapper);
+    }
+}
+
+static ssize_t
+_filelike_write(DeguFileLike *fl, DeguSrc src)
+{
+    if (fl->wrapper != NULL) {
+        return _SocketWrapper_write(fl->wrapper, src);
+    }
+    if (fl->write != NULL) {
+        return _write(fl->write, src);
+    }
+    Py_FatalError("_filelike_write(): bad internal call");
+    return -1;
+}
+
+static bool
+_filelike_readinto(DeguFileLike *fl, DeguDst dst)
+{
+    if (fl->wrapper != NULL) {
+        return _SocketWrapper_readinto(fl->wrapper, dst);
+    }
+    if (fl->readinto != NULL) {
+        return _readinto(fl->readinto, dst);
+    }
+    Py_FatalError("_filelike_readinto(): bad internal call");
+    return false;
+}
+
+
+
 /* Chunk helpers to abstract Reader.read_until() vs. wfile.readline() */
 static bool
 _read_chunkline(PyObject *readline, DeguChunk *dc)
@@ -3892,7 +3964,7 @@ static void
 Body_dealloc(Body *self)
 {
     Py_CLEAR(self->rfile);
-    _clear_robj(&(self->robj));
+    _filelike_clear(&(self->fl));
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3900,9 +3972,7 @@ static void
 _Body_do_error(Body *self)
 {
     self->state = BODY_ERROR;
-    if (self->robj.wrapper != NULL) {
-        _SocketWrapper_close_unraisable(WRAPPER(self->robj.wrapper));
-    }
+    _filelike_close(&(self->fl));
 }
 
 static bool
@@ -3912,7 +3982,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
         Py_FatalError("_Body_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _init_robj(rfile, &(self->robj), false)) {
+    if (! _filelike_init(rfile, &(self->fl), FL_READINTO_BIT)) {
         goto error;
     }
     self->remaining = self->content_length = content_length;
@@ -3923,7 +3993,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 error:
     self->state = BODY_ERROR;
     Py_CLEAR(self->rfile);
-    _clear_robj(&(self->robj));
+    _filelike_clear(&(self->fl));
     return false;
 }
 
@@ -3935,7 +4005,7 @@ _Body_New(PyObject *rfile, const uint64_t content_length)
         return NULL;
     }
     self->rfile = NULL;
-    self->robj = NEW_DEGU_ROBJ;
+    self->fl = NEW_DEGU_FILELIKE;
     self->state = BODY_ERROR;
     if (! _Body_fill_args(self, rfile, content_length)) {
         PyObject_Del((PyObject *)self);
@@ -3983,7 +4053,7 @@ _Body_readinto(Body *self, DeguDst dst)
     if (dst.len > self->remaining) {
         Py_FatalError("_Body_readinto(): bad internal call");
     }
-    if (_readinto_from(&(self->robj), dst)) {
+    if (_filelike_readinto(&(self->fl), dst)) {
         self->remaining -= dst.len;
         return true;
     }

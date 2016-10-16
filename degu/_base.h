@@ -598,6 +598,7 @@ typedef struct {
 static bool _SocketWrapper_readinto(SocketWrapper *, DeguDst);
 static bool _SocketWrapper_read_chunkline(SocketWrapper *, DeguChunk *);
 static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
+static void _SocketWrapper_close_unraisable(SocketWrapper *);
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
 static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
@@ -693,7 +694,23 @@ typedef struct {
     PyObject *readline;
 } DeguRObj;
 
-#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
+#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL})
+
+
+
+#define FL_WRITE_BIT     (1 << 0)
+#define FL_READINTO_BIT  (1 << 1)
+#define FL_READLINE_BIT  (1 << 2)
+#define FL_ALLOWED_MASK  (FL_WRITE_BIT | FL_READINTO_BIT | FL_READLINE_BIT)
+
+typedef struct {
+    SocketWrapper *wrapper;
+    PyObject *write;
+    PyObject *readinto;
+    PyObject *readline;
+} DeguFileLike;
+
+#define NEW_DEGU_FILELIKE ((DeguFileLike){NULL, NULL, NULL, NULL})
 
 
 /******************************************************************************
@@ -702,7 +719,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguRObj robj;
+    DeguFileLike fl;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
