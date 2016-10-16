@@ -3149,13 +3149,8 @@ _init_wobj(PyObject *wfile, DeguWObj *w)
 {
     if (wfile == NULL) {
         Py_FatalError("_init_wobj(): wfile == NULL");
-        goto error;
     }
-
-    if (IS_WRITER(wfile)) {
-        _SET(w->writer, WRITER(wfile))
-    }
-    else if (IS_WRAPPER(wfile)) {
+    if (IS_WRAPPER(wfile)) {
         _SET(w->wrapper, WRAPPER(wfile))
     }
     else {
@@ -3170,16 +3165,13 @@ error:
 static ssize_t
 _write_to(DeguWObj *w, DeguSrc src)
 {
-    if (w->writer != NULL) {
-        return _Writer_write(w->writer, src);
-    }
     if (w->wrapper != NULL) {
         return _SocketWrapper_write(w->wrapper, src);
     }
     if (w->write != NULL) {
         return _write(w->write, src);
     }
-    Py_FatalError("_write_to: w->writer == NULL && w->write == NULL");
+    Py_FatalError("_write_to: bad internal call");
     return -1;
 }
 
@@ -3428,222 +3420,6 @@ _iobuf_append(DeguIOBuf *io, DeguSrc src)
         }
     }
     return false;
-}
-
-
-/******************************************************************************
- * Writer object.
- ******************************************************************************/
-static void
-Writer_dealloc(Writer *self)
-{
-    Py_CLEAR(self->send);
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static int
-Writer_init(Writer *self, PyObject *args, PyObject *kw)
-{
-    int ret = 0;
-    PyObject *sock = NULL;
-    static char *keys[] = {"sock", NULL};
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Writer", keys, &sock)) {
-        goto error;
-    }
-    _SET(self->send, _getcallable("sock", sock, attr_send))
-    self->tell = 0;
-    self->w_io.start = 0;
-    self->w_io.stop = 0;
-    goto cleanup;
-
-error:
-    ret = -1;
-
-cleanup:
-    return ret;
-}
-
-static DeguDst
-_Writer_get_dst(Writer *self)
-{
-    return _iobuf_dst(&(self->w_io));
-}
-
-static ssize_t
-_Writer_raw_write(Writer *self, DeguSrc src)
-{
-    const ssize_t wrote = _write(self->send, src);
-    if (wrote > 0) {
-        self->tell += (uint64_t)wrote;
-    }
-    return wrote;
-}
-
-static bool
-_Writer_flush(Writer *self)
-{
-    DeguSrc src = _iobuf_flush(&(self->w_io));
-    if (src.len == 0) {
-        return true;
-    }
-    if (_Writer_raw_write(self, src) < 0) {
-        return false;
-    }
-    return true;
-}
-
-static ssize_t
-_Writer_write(Writer *self, DeguSrc src)
-{
-    const bool appended = _iobuf_append(&(self->w_io), src);
-    if (! _Writer_flush(self)) {
-        return -1;
-    }
-    if (appended) {
-        return (ssize_t)src.len;
-    }
-    return _Writer_raw_write(self, src);
-}
-
-static int64_t
-_Writer_write_bytes_body(Writer *self, PyObject *body)
-{
-    DeguSrc src = _frombytes(body);
-    if (src.len > MAX_IO_SIZE) {
-        PyErr_Format(PyExc_ValueError,
-            "need len(body) <= %zu; got %zu", MAX_IO_SIZE, src.len
-        );
-        return -1;
-    }
-    return _Writer_write(self, src);
-}
-
-static int64_t
-_Writer_write_body(Writer *self, PyObject *body)
-{
-    DeguWObj w = {self, NULL, NULL};
-
-    if (body == Py_None) {
-        return 0;
-    }
-    if (PyBytes_CheckExact(body)) {
-        return _Writer_write_bytes_body(self, body);
-    }
-    if (IS_BODY(body)) {
-        return _Body_write_to(BODY(body), &w);
-    }
-    if (IS_CHUNKED_BODY(body)) {
-        return _ChunkedBody_write_to(CHUNKED_BODY(body), &w);
-    }
-    if (IS_BODY_ITER(body)) {
-        return _BodyIter_write_to(BODY_ITER(body), &w);
-    }
-    if (IS_CHUNKED_BODY_ITER(body)) {
-        return _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &w);
-    }
-
-    PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
-    return -1;
-}
-
-static PyObject *
-Writer_tell(Writer *self) {
-    return PyLong_FromUnsignedLongLong(self->tell);
-}
-
-static int64_t
-_Writer_write_request(Writer *self, DeguRequest *dr)
-{
-    int64_t wrote;
-    DeguOutput o = {_Writer_get_dst(self), 0};
-
-    if (! _set_output_headers(dr->headers, dr->body)) {
-        return -1;
-    }
-    if (! _render_request(&o, dr)) {
-        return -1;
-    }
-    self->w_io.stop = o.stop;
-    wrote = _Writer_write_body(self, dr->body);
-    if (wrote < 0) {
-        return -1;
-    }
-    if (! _Writer_flush(self)) {
-        return -1;
-    }
-    return wrote + (int64_t)o.stop;
-}
-
-static int64_t
-_Writer_write_response(Writer *self, DeguResponse *dr)
-{
-    int64_t wrote;
-    DeguOutput o = {_Writer_get_dst(self), 0};
-
-    if (! _set_output_headers(dr->headers, dr->body)) {
-        return -1;
-    }
-    if (! _render_response(&o, dr)) {
-        return -1;
-    }
-    self->w_io.stop = o.stop;
-    wrote = _Writer_write_body(self, dr->body);
-    if (wrote < 0) {
-        return -1;
-    }
-    if (! _Writer_flush(self)) {
-        return -1;
-    }
-    return wrote + (int64_t)o.stop;
-}
-
-static PyObject *
-Writer_write_request(Writer *self, PyObject *args)
-{
-    PyObject *method = NULL;
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    int64_t wrote = -2;
-
-    if (! PyArg_ParseTuple(args, "OOOO:write_request",
-            &method, &dr.uri, &dr.headers, &dr.body)) {
-        return NULL;
-    }
-    if (! _check_method(method, &dr)) {
-        goto error;
-    }
-    wrote = _Writer_write_request(self, &dr);
-    goto cleanup;
-
-error:
-    wrote = -1;
-
-cleanup:
-    if (wrote < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(wrote);
-}
-
-static PyObject *
-Writer_write_response(Writer *self, PyObject *args)
-{
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-    ssize_t s;
-
-    if (! PyArg_ParseTuple(args, "OUOO:",
-            &dr.status, &dr.reason, &dr.headers, &dr.body)) {
-        return NULL;
-    }
-    s = _get_status(dr.status);
-    if (s < 0) {
-        return NULL;
-    }
-    dr.s = (size_t)s;
-    const int64_t total = _Writer_write_response(self, &dr);
-    if (total < 0) {
-        return NULL;
-    }
-    return PyLong_FromLongLong(total);
 }
 
 
@@ -3936,7 +3712,7 @@ _SocketWrapper_write_bytes_body(SocketWrapper *self, PyObject *body)
 static int64_t
 _SocketWrapper_write_body(SocketWrapper *self, PyObject *body)
 {
-    DeguWObj w = {NULL, self, NULL};
+    DeguWObj w = {self, NULL};
 
     if (body == Py_None) {
         return 0;
@@ -5574,12 +5350,6 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Request", (PyObject *)&RequestType)
-
-    WriterType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&WriterType) != 0) {
-        goto error;
-    }
-    _ADD_MODULE_ATTR(module, "Writer", (PyObject *)&WriterType)
 
     SocketWrapperType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&SocketWrapperType) != 0) {
