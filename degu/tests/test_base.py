@@ -4150,6 +4150,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
                 '{!r} not found in {!r}...'.format(b'\r\n', bad)
             )
             self.assertEqual(body.state, self.BODY_ERROR)
+            self.assertIs(rfile.closed, True)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
             self.assertEqual(str(cm.exception),
@@ -4158,6 +4159,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             self.assertEqual(body.state, self.BODY_ERROR)
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
+            self.assertIs(rfile.closed, True)
 
         sock = MockSocket(b'c\r\nhello, worl\r\n', None)
         rfile = self.SocketWrapper(sock)
@@ -4168,6 +4170,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             'expected to read 1 bytes, but received 0'
         )
         self.assertEqual(body.state, self.BODY_ERROR)
+        self.assertIs(rfile.closed, True)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
         self.assertEqual(str(cm.exception),
@@ -4176,6 +4179,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(body.state, self.BODY_ERROR)
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
+        self.assertIs(rfile.closed, True)
 
         for i in range(1, 5):
             chunks = random_chunks2(i)

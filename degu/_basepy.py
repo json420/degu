@@ -1407,6 +1407,11 @@ class ChunkedBody:
     def chunked(self):
         return self._chunked
 
+    def _do_error(self):
+        self._state = BODY_ERROR
+        if type(self._rfile) is SocketWrapper:
+            self._rfile.close()
+
     def readchunk(self):
         _check_body_state('ChunkedBody', self._state, BODY_STARTED)
         self._state = BODY_STARTED
@@ -1415,7 +1420,7 @@ class ChunkedBody:
             if len(chunk[1]) == 0:
                 self._state = BODY_CONSUMED
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         return chunk
 
@@ -1439,7 +1444,7 @@ class ChunkedBody:
                 )
             ret =  b''.join(accum)
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         self._state = BODY_CONSUMED
         return ret
@@ -1470,7 +1475,7 @@ class ChunkedBody:
                 if size == 0:
                     break
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         self._state = BODY_CONSUMED
         return total
