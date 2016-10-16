@@ -31,7 +31,6 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
-import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -233,7 +232,7 @@ def _readinto(method, dst):
     return start
 
 def _readinto_from(robj, dst):
-    if type(robj) is Reader:
+    if type(robj) is SocketWrapper:
         return robj.readinto(dst)
     return _readinto(robj, dst)
 
@@ -264,25 +263,25 @@ def _write(method, src):
 def _write_to(wobj, src):
     if len(src) == 0:
         return 0
-    if type(wobj) is Writer:
+    if type(wobj) is SocketWrapper:
         return wobj._write(src)
     return _write(wobj, src)
 
 
 def _get_robj(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) is SocketWrapper:
         return rfile
     return _getcallable('rfile', rfile, 'readinto')
 
 
 def _get_readline(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) is SocketWrapper:
         return rfile
     return _getcallable('rfile', rfile, 'readline')
 
 
 def _get_wobj(wfile):
-    if type(wfile) is Writer:
+    if type(wfile) is SocketWrapper:
         return wfile
     return _getcallable('wfile', wfile, 'write')
 
@@ -945,196 +944,6 @@ def render_response(dst, status, reason, headers):
     return o.stop
 
 
-################################################################################
-# Reader:
-
-class Reader:
-    __slots__ = (
-        '_sock_recv_into',
-        '_rawtell',
-        '_rawbuf',
-        '_start',
-        '_buf',
-        '_closed',
-    )
-
-    def __init__(self, sock):
-        self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
-        self._rawtell = 0
-        self._rawbuf = memoryview(bytearray(BUF_LEN))
-        self._start = 0
-        self._buf = b''
-        self._closed = False
-
-    def rawtell(self):
-        return self._rawtell
-
-    def tell(self):
-        return self._rawtell - len(self._buf)
-
-    def _recv_into(self, buf):
-        added = self._sock_recv_into(buf)
-        _validate_size('received', added, len(buf))
-        self._rawtell += added
-        return added
-
-    def _update(self, start, size):
-        """
-        Valid transitions::
-
-            ===========================
-            -->|<--            |  Empty
-               |<---- buf <--  |  Shift
-               |      buf ---->|  Fill
-               |  --> buf      |  Drain
-            ===========================
-        """
-        # Check previous state:
-        assert 0 <= self._start <= self._start + len(self._buf) <= len(self._rawbuf)
-
-        # Check new state:
-        assert 0 <= start <= start + size <= len(self._rawbuf)
-
-        # _update() should only be called when there is a change:
-        assert start != self._start or size != len(self._buf)
-
-        # Check that previous to new is one of the four valid transitions:
-        if size == 0:
-            # empty
-            assert start == 0
-            assert len(self._buf) > 0
-        elif size == len(self._buf):
-            # shift
-            assert size > 0
-            assert start == 0
-            assert self._start > 0
-        elif size > len(self._buf):
-            # fill
-            assert size > 0
-            assert start == self._start == 0
-        elif size < len(self._buf):
-            # drain
-            assert size > 0
-            assert start + size == self._start + len(self._buf)
-        else:
-            raise ValueError(
-                'invalid buffer update: ({},{}) --> ({}, {})'.format(
-                    self._start, len(self._buf), start, size
-                )
-            )
-
-        # Update start, buf:
-        self._start = start
-        self._buf = self._rawbuf[start:start+size].tobytes()
-
-    def expose(self):
-        return self._rawbuf.tobytes()
-
-    def peek(self, size):
-        assert isinstance(size, int)
-        if size < 0:
-            return self._buf
-        return self._buf[0:size]
-
-    def _drain(self, size):
-        avail = len(self._buf)
-        src = self.peek(size)
-        if len(src) == 0:
-            return src
-        if len(src) == avail:
-            self._update(0, 0)
-        else:
-            self._update(self._start + len(src), avail - len(src))
-        return src
-
-    def _found(self, index, end):
-        src = self._drain(index + len(end))
-        return src[0:-len(end)]
-
-    def _not_found(self, cur, end):
-        if len(cur) == 0:
-            return cur
-        raise ValueError(
-            '{!r} not found in {!r}...'.format(end, cur[:32])
-        )
-
-    def read_until(self, size, end):
-        end = memoryview(end).tobytes()
-        assert type(size) is int
-
-        if not end:
-            raise ValueError('end cannot be empty')
-        if not (len(end) <= size <= len(self._rawbuf)):
-            raise ValueError(
-                'need {} <= size <= {}; got {}'.format(
-                    len(end), len(self._rawbuf), size
-                )
-            )
-
-        # First, search current buffer:
-        cur = self.peek(size)
-        index = cur.find(end)
-        if index >= 0:
-            return self._found(index, end)
-        if len(cur) == size:
-            return self._not_found(cur, end)
-
-        # Shift buffer if needed:
-        if self._start > 0:
-            assert len(cur) > 0
-            self._rawbuf[0:len(cur)] = cur
-            self._update(0, len(cur))
-
-        # Now search till found:
-        start = len(cur)
-        while start < size:
-            dst = self._rawbuf[start:]
-            added = self._recv_into(dst)
-            if added == 0:
-                break
-            start += added
-            self._update(0, start)
-            cur = self.peek(size)
-            index = cur.find(end)
-            if index >= 0:
-                return self._found(index, end)
-
-        # Didn't find it:
-        return self._not_found(cur, end)
-
-    def read_request(self):
-        preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
-        return parse_request(preamble, self)
-
-    def read_response(self, method):
-        _check_method(method)
-        preamble = self.read_until(len(self._rawbuf), b'\r\n\r\n')
-        return parse_response(method, preamble, self)
-
-    def readchunkline(self):
-        line = self.read_until(4096, b'\r\n')
-        return parse_chunk(line)
-
-    def readinto(self, dst):
-        dst = memoryview(dst)
-        dst_len = len(dst)
-        if not (1 <= dst_len <= MAX_IO_SIZE):
-            raise ValueError(
-                'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
-            )
-        src = self._drain(dst_len)
-        src_len = len(src)
-        dst[0:src_len] = src
-        added = _readinto(self._sock_recv_into, dst[src_len:])
-        assert added is not None
-        self._rawtell += added
-        assert dst_len == src_len + added
-        return dst_len
-
-
-################################################################################
-# Writer:
-
 def set_default_header(headers, key, val):
     assert isinstance(headers, dict)
     assert isinstance(key, str)
@@ -1158,55 +967,189 @@ def set_output_headers(headers, body):
         raise TypeError(
             'bad body type: {!r}: {!r}'.format(type(body), body)
         )
-    
 
 
-class Writer:
+class _IOBuf:
+    __slots__ = ('start', 'stop', 'buf')
+
+    def __init__(self):
+        self.start = 0
+        self.stop = 0
+        self.buf = memoryview(bytearray(BUF_LEN))
+
+    def peek(self, size=-1):
+        stop = (self.stop if size < 0 else min(self.stop, self.start + size))
+        return self.buf[self.start:stop].tobytes()
+
+    def drain(self, size=-1):
+        src = self.peek(size)
+        self.start += len(src)
+        if self.start == self.stop:
+            self.start = 0
+            self.stop = 0
+        return src
+
+    def shift_if_needed(self):
+        if self.start > 0:
+            src = self.drain()
+            assert len(src) > 0
+            self.buf[0:len(src)] = src
+            self.start = 0
+            self.stop = len(src)
+
+    def get_dst(self):
+        return self.buf[self.stop:]
+
+    def copy_into_if_possible(self, src):
+        assert 0 <= self.start < self.stop <= len(self.buf)
+        dst = self.get_dst()
+        if len(src) > len(dst):
+            return False
+        src_len = len(src)
+        dst[0:src_len] = src
+        self.stop += src_len
+        return True
+
+
+class SocketWrapper:
     __slots__ = (
+        '_sock',
+        '_sock_recv_into',
         '_sock_send',
-        '_tell',
-        '_buf',
-        '_stop',
+        '_sock_close',
+        '_closed',
+        '_r_io',
+        '_w_io',
     )
 
     def __init__(self, sock):
+        self._sock = sock
+        self._closed = False
+        self._sock_close = _getcallable('sock', sock, 'close')
+        self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._sock_send = _getcallable('sock', sock, 'send')
-        self._tell = 0
-        self._buf = memoryview(bytearray(BUF_LEN))
-        self._stop = 0
+        self._r_io = _IOBuf()
+        self._w_io = _IOBuf()
 
-    def tell(self):
-        return self._tell
+    def __del__(self):
+        self.close()
+
+    @property
+    def sock(self):
+        return self._sock
+
+    @property
+    def closed(self):
+        return self._closed
+
+    def close(self):
+        if self._closed is not True:
+            self._closed = True
+            sock_close = getattr(self, '_sock_close', None)
+            if sock_close is not None:
+                return sock_close()
+
+    def _recv_into(self, buf):
+        added = self._sock_recv_into(buf)
+        _validate_size('received', added, len(buf))
+        return added
+
+    def _found(self, index, end):
+        src = self._r_io.drain(index + len(end))
+        return src[0:-len(end)]
+
+    def _not_found(self, cur, end):
+        if len(cur) == 0:
+            return cur
+        raise ValueError(
+            '{!r} not found in {!r}...'.format(end, cur[:32])
+        )
+
+    def read_until(self, size, end):
+        io = self._r_io
+        assert type(size) is int
+        end = memoryview(end).tobytes()
+        if not end:
+            raise ValueError('end cannot be empty')
+        if not (len(end) <= size <= len(io.buf)):
+            raise ValueError(
+                'need {} <= size <= {}; got {}'.format(
+                    len(end), len(io.buf), size
+                )
+            )
+
+        # First, search current buffer:
+        cur = io.peek(size)
+        index = cur.find(end)
+        if index >= 0:
+            return self._found(index, end)
+        if len(cur) == size:
+            return self._not_found(cur, end)
+
+        # Shift buffer if needed:
+        io.shift_if_needed()
+
+        # Now search till found:
+        while io.stop < size:
+            added = self._recv_into(io.get_dst())
+            if added == 0:
+                break
+            io.stop += added
+            cur = io.peek(size)
+            index = cur.find(end)
+            if index >= 0:
+                return self._found(index, end)
+
+        # Didn't find it:
+        return self._not_found(cur, end)
+
+    def read_request(self):
+        preamble = self.read_until(BUF_LEN, b'\r\n\r\n')
+        return parse_request(preamble, self)
+
+    def read_response(self, method):
+        _check_method(method)
+        preamble = self.read_until(BUF_LEN, b'\r\n\r\n')
+        return parse_response(method, preamble, self)
+
+    def readchunkline(self):
+        line = self.read_until(4096, b'\r\n')
+        return parse_chunk(line)
+
+    def readinto(self, dst):
+        dst = memoryview(dst)
+        dst_len = len(dst)
+        if not (1 <= dst_len <= MAX_IO_SIZE):
+            raise ValueError(
+                'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
+            )
+        src = self._r_io.drain(dst_len)
+        src_len = len(src)
+        dst[0:src_len] = src
+        added = _readinto(self._sock_recv_into, dst[src_len:])
+        assert dst_len == src_len + added
+        return dst_len
 
     def _raw_write(self, src):
-        size = _write(self._sock_send, src)
-        assert size == len(src)
-        self._tell += size
-        return size
+        return _write(self._sock_send, src)
 
     def _flush(self):
-        assert 0 <= self._stop <= len(self._buf)
-        src = self._buf[0:self._stop]
+        src = self._w_io.drain()
         self._raw_write(src)
-        self._stop = 0
 
     def _write(self, src):
-        if self._stop > 0 and self._stop + len(src) <= len(self._buf):
-            start = self._stop
-            self._stop += len(src)
-            self._buf[start:self._stop] = src
-            self._flush()
+        io = self._w_io
+        if io.copy_into_if_possible(src):
             return len(src)
-        self._flush()
-        return self._raw_write(src)
+        else:
+            self._flush()
+            return self._raw_write(src)
 
     def _write_output(self, func, arg1, arg2, headers, body):
-        orig_tell = self._tell
-        assert self._stop == 0
-
-        total = func(self._buf, arg1, arg2, headers)
+        io = self._w_io
+        total = func(io.get_dst(), arg1, arg2, headers)
         assert total > 0
-        self._stop = total
+        io.stop += total
         if type(body) is bytes:
             if len(body) > MAX_IO_SIZE:
                 raise ValueError(
@@ -1222,8 +1165,6 @@ class Writer:
                 'bad body type: {!r}: {!r}'.format(type(body), body)
             )
         self._flush()
-        assert self._stop == 0
-        assert self._tell == orig_tell + total
         return total
 
     def write_request(self, method, uri, headers, body):
@@ -1238,6 +1179,7 @@ class Writer:
         return self._write_output(render_response,
             status, reason, headers, body
         )
+
 
 def _check_body_state(name, state, max_state):
     assert max_state < BODY_CONSUMED
@@ -1261,7 +1203,7 @@ def _check_body_state(name, state, max_state):
 
 
 def _rfile_repr(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) is SocketWrapper:
         return '<reader>'
     return '<rfile>'
 
@@ -1281,7 +1223,7 @@ class Body:
         self._rfile = rfile
         self._remaining = self._content_length = content_length
         self._state = BODY_READY
-        if type(rfile) is Reader:
+        if type(rfile) is SocketWrapper:
             self._robj = rfile
         else:
             self._robj = _getcallable('rfile', rfile, 'readinto')
@@ -1414,7 +1356,7 @@ def _readchunkline(readline):
 
 
 def _readchunk_from(robj, readline, nopack=False):
-    if type(robj) is Reader:
+    if type(robj) is SocketWrapper:
         (size, ext) = robj.readchunkline()
     else:
         (size, ext) = _readchunkline(readline)
@@ -1734,10 +1676,9 @@ class Session:
 def _handle_requests(app, session, sock):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
-    reader = Reader(sock)
-    writer = Writer(sock)
+    wrapper = SocketWrapper(sock)
     while not session._closed:
-        request = reader.read_request()
+        request = wrapper.read_request()
         response = app(session, request, api)
         (status, reason, headers, body) = _unpack_response(response)
         _check_status(status)
@@ -1763,7 +1704,7 @@ def _handle_requests(app, session, sock):
             # to a HEAD request
 
         # Write response:
-        writer.write_response(status, reason, headers, body)
+        wrapper.write_response(status, reason, headers, body)
 
         # Update request counter, possibly close based on status:
         session._response_complete(status, reason)
@@ -1773,28 +1714,23 @@ class Connection:
     __slots__ = (
         'sock',
         'base_headers',
-        '_reader',
-        '_writer',
+        '_wrapper',
         '_response_body',
-        '_closed',
         '_api',
     )
 
     def __init__(self, sock, base_headers):
-        self._closed = False
         self.sock = sock
+        self._wrapper = SocketWrapper(sock)
         if base_headers is not None:
             _check_type2('base_headers', base_headers, tuple)
         self.base_headers = base_headers
-        self._reader = Reader(sock)
-        self._writer = Writer(sock)
         self._response_body = None
-        self._closed = False
         self._api = api
 
     @property
     def closed(self):
-        return self._closed
+        return self._wrapper.closed
 
     @property
     def api(self):
@@ -1812,26 +1748,11 @@ class Connection:
         """
         return self._api
 
-    def __del__(self):
-        self._shutdown()
-
-    def _shutdown(self, how=socket.SHUT_RDWR):
-        if self._closed is not True:
-            self._closed = True
-            try:
-                self.sock.shutdown(how)
-            except:
-                pass
-            try:
-                self.sock.close()
-            except:
-                pass
-
     def close(self):
-        self._shutdown()
+        return self._wrapper.close()
 
     def request(self, method, uri, headers, body):
-        if self._closed is not False:
+        if self._wrapper.closed is not False:
             raise ValueError('Connection is closed')
         try:
             _check_method(method)
@@ -1847,12 +1768,12 @@ class Connection:
                 )
             if self.base_headers is not None:
                 headers.update(self.base_headers)
-            self._writer.write_request(method, uri, headers, body)
-            response = self._reader.read_response(method)
+            self._wrapper.write_request(method, uri, headers, body)
+            response = self._wrapper.read_response(method)
             self._response_body = response.body
             return response
         except Exception:
-            self._shutdown()
+            self.close()
             raise
 
     def put(self, uri, headers, body):

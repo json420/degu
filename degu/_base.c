@@ -37,6 +37,7 @@ static PyObject *api = NULL;
 /* Interned `str` for fast attribute lookup */
 static PyObject *attr_recv_into        = NULL;  //  'recv_into'
 static PyObject *attr_send             = NULL;  //  'send'
+static PyObject *attr_close            = NULL;  //  'close'
 static PyObject *attr_readinto         = NULL;  //  'readinto'
 static PyObject *attr_write            = NULL;  //  'write'
 static PyObject *attr_readline         = NULL;  //  'readline'
@@ -89,6 +90,7 @@ _init_all_globals(PyObject *module)
     /* Init interned attribute names */
     _SET(attr_recv_into,       PyUnicode_InternFromString("recv_into"))
     _SET(attr_send,            PyUnicode_InternFromString("send"))
+    _SET(attr_close,           PyUnicode_InternFromString("close"))
     _SET(attr_readinto,        PyUnicode_InternFromString("readinto"))
     _SET(attr_write,           PyUnicode_InternFromString("write"))
     _SET(attr_readline,        PyUnicode_InternFromString("readline"))
@@ -3106,8 +3108,8 @@ _init_robj(PyObject *rfile, DeguRObj *r, const bool readline)
     if (rfile == NULL) {
         Py_FatalError("_init_robj(): rfile == NULL");
     }
-    if (IS_READER(rfile)) {
-        _SET(r->reader, READER(rfile))
+    if (IS_WRAPPER(rfile)) {
+        _SET(r->wrapper, WRAPPER(rfile))
     }
     else {
         _SET(r->readinto, _getcallable("rfile", rfile, attr_readinto))
@@ -3124,13 +3126,13 @@ error:
 static bool
 _readinto_from(DeguRObj *r, DeguDst dst)
 {
-    if (r->reader != NULL) {
-        return _Reader_readinto(r->reader, dst);
+    if (r->wrapper != NULL) {
+        return _SocketWrapper_readinto(r->wrapper, dst);
     }
     if (r->readinto != NULL) {
         return _readinto(r->readinto, dst);
     }
-    Py_FatalError("_readinto_from(): r->reader == NULL && r->readinto == NULL");
+    Py_FatalError("_readinto_from(): bad internal call");
     return false;
 }
 
@@ -3148,8 +3150,8 @@ _init_wobj(PyObject *wfile, DeguWObj *w)
     if (wfile == NULL) {
         Py_FatalError("_init_wobj(): wfile == NULL");
     }
-    if (IS_WRITER(wfile)) {
-        _SET(w->writer, WRITER(wfile))
+    if (IS_WRAPPER(wfile)) {
+        _SET(w->wrapper, WRAPPER(wfile))
     }
     else {
         _SET(w->write, _getcallable("wfile", wfile, attr_write))
@@ -3163,13 +3165,13 @@ error:
 static ssize_t
 _write_to(DeguWObj *w, DeguSrc src)
 {
-    if (w->writer != NULL) {
-        return _Writer_write(w->writer, src);
+    if (w->wrapper != NULL) {
+        return _SocketWrapper_write(w->wrapper, src);
     }
     if (w->write != NULL) {
         return _write(w->write, src);
     }
-    Py_FatalError("_write_to: w->writer == NULL && w->write == NULL");
+    Py_FatalError("_write_to: bad internal call");
     return -1;
 }
 
@@ -3232,13 +3234,13 @@ cleanup:
 static bool
 _read_chunkline_from(DeguRObj *r, DeguChunk *dc)
 {
-    if (r->reader != NULL) {
-        return _Reader_read_chunkline(r->reader, dc);
+    if (r->wrapper != NULL) {
+        return _SocketWrapper_read_chunkline(r->wrapper, dc);
     }
     if (r->readline != NULL) {
         return _read_chunkline(r->readline, dc);
     }
-    Py_FatalError("_readinto_from(): r->reader == NULL && r->readinto == NULL");
+    Py_FatalError("_read_chunkline_from(): bad internal call");
     return false;
 }
 
@@ -3358,95 +3360,142 @@ write_chunk(PyObject *self, PyObject *args)
 
 
 /******************************************************************************
- * Reader object
+ * DeguIOBuf API
  ******************************************************************************/
-static void
-Reader_dealloc(Reader *self)
+static DeguSrc
+_iobuf_src(DeguIOBuf *io)
 {
-    Py_CLEAR(self->recv_into);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
+    if (io->start >= io->stop && io->start != 0) {
+        Py_FatalError("_iobuf_src(): io->start >= io->stop && io->start != 0");
     }
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
+    return _slice(_iobuf_raw_src(io), io->start, io->stop);
+}
+
+static DeguSrc
+_iobuf_peek(DeguIOBuf *io, const size_t size)
+{
+    DeguSrc src = _iobuf_src(io);
+    return _slice(src, 0, _min(src.len, size));
+}
+
+static DeguSrc
+_iobuf_drain(DeguIOBuf *io, const size_t size)
+{
+    DeguSrc src = _iobuf_peek(io, size);
+    io->start += src.len;
+    if (io->start == io->stop) {
+        io->start = 0;
+        io->stop = 0;
+    }
+    return src;
+}
+
+static DeguSrc
+_iobuf_flush(DeguIOBuf *io)
+{
+    DeguSrc src = _iobuf_src(io);
+    io->start = 0;
+    io->stop = 0;
+    return src;
+}
+
+static DeguDst
+_iobuf_dst(DeguIOBuf *io)
+{
+    DeguDst raw = _iobuf_raw_dst(io);
+    if (io->start >= io->stop && io->start != 0) {
+        Py_FatalError("_iobuf_dst(): io->start >= io->stop && io->start != 0");
+    }
+    return _slice_dst(raw, io->stop, raw.len);
+}
+
+static bool
+_iobuf_append(DeguIOBuf *io, DeguSrc src)
+{
+    if (io->stop > 0) {
+        DeguDst dst = _iobuf_dst(io);
+        if (src.len <= dst.len) {
+            io->stop += _copy(dst, src);
+            return true;
+        }
+    }
+    return false;
+}
+
+
+/******************************************************************************
+ * SocketWrapper object.
+ ******************************************************************************/
+static PyObject *
+_SocketWrapper_close(SocketWrapper *self)
+{
+    if (self->closed || self->close == NULL) {
+        Py_RETURN_NONE;
+    }
+    self->closed = true;
+    return PyObject_CallFunctionObjArgs(self->close, NULL);
+}
+
+static void
+_SocketWrapper_close_unraisable(SocketWrapper *self)
+{
+    PyObject *err_type, *err_value, *err_traceback, *result;
+
+    PyErr_Fetch(&err_type, &err_value, &err_traceback);
+    result = _SocketWrapper_close(self);
+    Py_CLEAR(result);
+    PyErr_Restore(err_type, err_value, err_traceback);
+}
+
+static void
+SocketWrapper_dealloc(SocketWrapper *self)
+{
+    _SocketWrapper_close_unraisable(self);
+    Py_CLEAR(self->sock);
+    Py_CLEAR(self->recv_into);
+    Py_CLEAR(self->send);
+    Py_CLEAR(self->close);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int
-Reader_init(Reader *self, PyObject *args, PyObject *kw)
+SocketWrapper_init(SocketWrapper *self, PyObject *args, PyObject *kw)
 {
     PyObject *sock = NULL;
     static char *keys[] = {"sock", NULL};
-
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Reader", keys, &sock)) {
-        return -1;
+    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:SocketWrapper", keys, &sock)) {
+        goto error;
     }
+    _SET(self->close,     _getcallable("sock", sock, attr_close))
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    _SET(self->buf, _calloc_buf(BUF_LEN + SCRATCH_LEN))
-    self->rawtell = 0;
-    self->start = 0;
-    self->stop = 0;
+    _SET(self->send,      _getcallable("sock", sock, attr_send))
+    _SET_AND_INC(self->sock, sock)
     return 0;
 
 error:
     return -1;
 }
 
-static DeguSrc
-_Reader_preamble_src(Reader *self)
+static PyObject *
+SocketWrapper_close(SocketWrapper *self)
 {
-    return DEGU_SRC(self->buf, BUF_LEN);
-}
-
-static DeguDst
-_Reader_scratch_dst(Reader *self)
-{
-    return DEGU_DST(self->buf + BUF_LEN, SCRATCH_LEN);
+    return _SocketWrapper_close(self);
 }
 
 static DeguSrc
-_Reader_peek(Reader *self, const size_t size)
-{
-    if (self->start >= self->stop && self->start != 0) {
-        Py_FatalError("_Reader_peak: start >= stop && start != 0");
-    }
-    DeguSrc cur = _slice(_Reader_preamble_src(self), self->start, self->stop);
-    if (cur.len == 0) {
-        return cur;
-    }
-    return _slice(cur, 0, _min(cur.len, size));
-}
-
-static DeguSrc
-_Reader_drain(Reader *self, const size_t size)
-{
-    DeguSrc cur = _Reader_peek(self, size);
-    self->start += cur.len;
-    if (self->start == self->stop) {
-        self->start = 0;
-        self->stop = 0;
-    }
-    return  cur;
-}
-
-static DeguSrc
-_Reader_read_until(Reader *self, const size_t size, DeguSrc end)
+_SocketWrapper_read_until(SocketWrapper *self, const size_t size, DeguSrc end)
 {
     ssize_t index = -1;
     ssize_t added;
+    DeguIOBuf *io = &(self->r_io);
+    DeguDst dst = _iobuf_raw_dst(io);
 
-    if (_isempty(end)) {
-        Py_FatalError("_Reader_read_until(): bad internal call");
-    }
-    DeguDst dst = {self->buf, BUF_LEN};
-    if (size < end.len || size > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
-        );
-        return NULL_DeguSrc;
+    if (_isempty(end) || size < end.len || size > dst.len) {
+        Py_FatalError("_SocketWrapper_read_until(): bad internal call");
     }
 
     /* First, see if end is in the current buffer content */
-    DeguSrc cur = _Reader_peek(self, size);
+    DeguSrc cur = _iobuf_peek(io, size);
     if (cur.len >= end.len) {
         index = _find(cur, end);
         if (index >= 0) {
@@ -3458,24 +3507,23 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
     }
 
     /* If needed, shift current buffer content */
-    if (self->start > 0) {
+    if (io->start > 0) {
         _move(dst, cur);
-        self->start = 0;
-        self->stop = cur.len;
+        io->start = 0;
+        io->stop = cur.len;
     }
 
     /* Now read till found */
-    while (self->stop < size) {
-        added = _recv_into(self->recv_into, _slice_dst(dst, self->stop, dst.len));
+    while (io->stop < size) {
+        added = _recv_into(self->recv_into, _slice_dst(dst, io->stop, dst.len));
         if (added < 0) {
             return NULL_DeguSrc;
         }
         if (added == 0) {
             break;
         }
-        self->stop += (size_t)added;
-        self->rawtell += (uint64_t)added;
-        index = _find(_Reader_peek(self, size), end);
+        io->stop += (size_t)added;
+        index = _find(_iobuf_peek(io, size), end);
         if (index >= 0) {
             goto found;
         }
@@ -3483,9 +3531,9 @@ _Reader_read_until(Reader *self, const size_t size, DeguSrc end)
 
 not_found:
     if (index >= 0) {
-        Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
+        Py_FatalError("_SocketWrapper_read_until(): not_found, but index >= 0");
     }
-    DeguSrc tmp = _Reader_peek(self, size);
+    DeguSrc tmp = _iobuf_peek(io, size);
     if (tmp.len == 0) {
         return tmp;
     }
@@ -3496,56 +3544,14 @@ not_found:
 
 found:
     if (index < 0) {
-        Py_FatalError("_Reader_read_until(): found, but index < 0");
+        Py_FatalError("_SocketWrapper_read_until(): found, but index < 0");
     }
-    DeguSrc src = _Reader_drain(self, (size_t)index + end.len);
+    DeguSrc src = _iobuf_drain(io, (size_t)index + end.len);
     return _slice(src, 0, src.len - end.len);
 }
 
-static bool
-_Reader_readinto(Reader *self, DeguDst dst)
-{
-    DeguSrc cur = _Reader_drain(self, dst.len);
-    if (cur.len > 0) {
-        _copy(dst, cur);
-    }
-    if (_readinto(self->recv_into, _slice_dst(dst, cur.len, dst.len))) {
-        self->rawtell += dst.len;
-        return true;
-    }
-    return false;
-}
-
 static PyObject *
-Reader_rawtell(Reader *self) {
-    return PyLong_FromUnsignedLongLong(self->rawtell);
-}
-
-static PyObject *
-Reader_tell(Reader *self) {
-    DeguSrc cur = _Reader_peek(self, BUF_LEN);
-    if (cur.len > self->rawtell) {
-        Py_FatalError("Reader_tell(): cur.len > self->rawtell");
-    }
-    return PyLong_FromUnsignedLongLong(self->rawtell - cur.len);
-}
-
-static PyObject *
-Reader_expose(Reader *self) {
-    return _tobytes(_Reader_preamble_src(self));
-}
-
-static PyObject *
-Reader_peek(Reader *self, PyObject *args) {
-    size_t size = 0;
-    if (! PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_peek(self, size));
-}
-
-static PyObject *
-Reader_read_until(Reader *self, PyObject *args)
+SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
 {
     size_t size = 0;
     uint8_t *buf = NULL;
@@ -3559,72 +3565,18 @@ Reader_read_until(Reader *self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "end cannot be empty");
         return NULL;
     }
-    return _tobytes(_Reader_read_until(self, size, end));
-}
-
-
-static bool
-_Reader_read_request(Reader *self, DeguRequest *dr) {
-    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
-    if (src.buf == NULL) {
-        return false;
-    }
-    PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = _Reader_scratch_dst(self);
-    return _parse_request(src, rfile, scratch, dr);
-}
-
-
-static PyObject *
-Reader_read_request(Reader *self) {
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *ret = NULL;
-
-    if (_Reader_read_request(self, &dr)) {
-        ret = _Request_New(&dr);
-    }
-    _clear_degu_request(&dr);
-    return ret;
-}
-
-static bool
-_Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
-{
-    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
-    if (src.buf == NULL) {
-        return false;
-    }
-    PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = _Reader_scratch_dst(self);
-    return _parse_response(method, src, rfile, scratch, dr);
-}
-
-static PyObject *
-Reader_read_response(Reader *self, PyObject *args)
-{
-    PyObject *method = NULL;
-    PyObject *ret = NULL;
-    DeguRequest tmp = NEW_DEGU_REQUEST;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-
-    if (! PyArg_ParseTuple(args, "O:read_response", &method)) {
+    if (size < end.len || size > BUF_LEN) {
+        PyErr_Format(PyExc_ValueError,
+            "need %zu <= size <= %zu; got %zd", end.len, BUF_LEN, size
+        );
         return NULL;
     }
-    if (! _check_method(method, &tmp)) {
-        return NULL;
-    }
-    if (_Reader_read_response(self, tmp.method, &dr)) {
-        _SET(ret, _Response(&dr))
-    }
-
-error:
-    _clear_degu_response(&dr);
-    return ret;
+    return _tobytes(_SocketWrapper_read_until(self, size, end));
 }
 
 static bool
-_Reader_read_chunkline(Reader *self, DeguChunk *dc) {
-    DeguSrc line = _Reader_read_until(self, 4096, CRLF);
+_SocketWrapper_read_chunkline(SocketWrapper *self, DeguChunk *dc) {
+    DeguSrc line = _SocketWrapper_read_until(self, 4096, CRLF);
     if (line.buf == NULL) {
         goto error;
     }
@@ -3637,138 +3589,115 @@ error:
     return false;
 }
 
-static PyObject *
-Reader_readinto(Reader *self, PyObject *args)
+static bool
+_SocketWrapper_readinto(SocketWrapper *self, DeguDst dst)
 {
-    Py_buffer pybuf;
-    PyObject *ret = NULL;
-
-    if (! PyArg_ParseTuple(args, "w*", &pybuf)) {
-        goto error;
+    DeguIOBuf *io = &(self->r_io);
+    DeguSrc src = _iobuf_drain(io, dst.len);
+    if (src.len > 0) {
+        _copy(dst, src);
     }
-    if (pybuf.len < 1 || (size_t)pybuf.len > MAX_IO_SIZE) {
-        PyErr_Format(PyExc_ValueError,
-            "need 1 <= len(buf) <= %zu; got %zd", MAX_IO_SIZE, pybuf.len
-        );
-        goto error;
-    }
-    DeguDst dst = _dst_frompybuf(&pybuf);
-    if (! _Reader_readinto(self, dst)) {
-        goto error;
-    }
-    _SET(ret, PyLong_FromSize_t(dst.len))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    PyBuffer_Release(&pybuf);
-    return ret;
-}
-
-
-/******************************************************************************
- * Writer object.
- ******************************************************************************/
-static void
-Writer_dealloc(Writer *self)
-{
-    Py_CLEAR(self->send);
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
-    }
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static int
-Writer_init(Writer *self, PyObject *args, PyObject *kw)
-{
-    int ret = 0;
-    PyObject *sock = NULL;
-    static char *keys[] = {"sock", NULL};
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Writer", keys, &sock)) {
-        goto error;
-    }
-    _SET(self->send, _getcallable("sock", sock, attr_send))
-    _SET(self->buf, _calloc_buf(BUF_LEN))
-    self->tell = 0;
-    self->stop = 0;
-    goto cleanup;
-
-error:
-    ret = -1;
-
-cleanup:
-    return ret;
+    return _readinto(self->recv_into, _slice_dst(dst, src.len, dst.len));
 }
 
 static DeguDst
-_Writer_get_dst(Writer *self)
+_SocketWrapper_scratch_dst(SocketWrapper *self)
 {
-    DeguDst raw = {self->buf, BUF_LEN};
-    return _slice_dst(raw, self->stop, raw.len);
+    return DEGU_DST(self->scratch, SCRATCH_LEN);
 }
 
-static DeguSrc
-_Writer_get_src(Writer *self)
-{
-    DeguSrc raw = {self->buf, BUF_LEN};
-    return _slice(raw, 0, self->stop);
+static bool
+_SocketWrapper_read_request(SocketWrapper *self, DeguRequest *dr) {
+    DeguSrc src = _SocketWrapper_read_until(self, BUF_LEN, CRLFCRLF);
+    if (src.buf == NULL) {
+        return false;
+    }
+    PyObject *rfile = (PyObject *)self;
+    DeguDst scratch = _SocketWrapper_scratch_dst(self);
+    return _parse_request(src, rfile, scratch, dr);
 }
 
+static PyObject *
+SocketWrapper_read_request(SocketWrapper *self) {
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *ret = NULL;
+
+    if (_SocketWrapper_read_request(self, &dr)) {
+        ret = _Request_New(&dr);
+    }
+    _clear_degu_request(&dr);
+    return ret;
+}
+
+static bool
+_SocketWrapper_read_response(SocketWrapper *self, PyObject *method, DeguResponse *dr)
+{
+    DeguSrc src = _SocketWrapper_read_until(self, BUF_LEN, CRLFCRLF);
+    if (src.buf == NULL) {
+        return false;
+    }
+    PyObject *rfile = (PyObject *)self;
+    DeguDst scratch = _SocketWrapper_scratch_dst(self);
+    return _parse_response(method, src, rfile, scratch, dr);
+}
+
+static PyObject *
+SocketWrapper_read_response(SocketWrapper *self, PyObject *args)
+{
+    PyObject *method = NULL;
+    PyObject *ret = NULL;
+    DeguRequest tmp = NEW_DEGU_REQUEST;
+    DeguResponse dr = NEW_DEGU_RESPONSE;
+
+    if (! PyArg_ParseTuple(args, "O:read_response", &method)) {
+        return NULL;
+    }
+    if (! _check_method(method, &tmp)) {
+        return NULL;
+    }
+    if (_SocketWrapper_read_response(self, tmp.method, &dr)) {
+        _SET(ret, _Response(&dr))
+    }
+
+error:
+    _clear_degu_response(&dr);
+    return ret;
+}
 static ssize_t
-_Writer_raw_write(Writer *self, DeguSrc src)
+_SocketWrapper_raw_write(SocketWrapper *self, DeguSrc src)
 {
     const ssize_t wrote = _write(self->send, src);
-    if (wrote > 0) {
-        self->tell += (uint64_t)wrote;
-    }
     return wrote;
 }
 
 static bool
-_Writer_flush(Writer *self)
+_SocketWrapper_flush(SocketWrapper *self)
 {
-    if (self->stop == 0) {
+    DeguSrc src = _iobuf_flush(&(self->w_io));
+    if (src.len == 0) {
         return true;
     }
-    DeguSrc src = _Writer_get_src(self);
-    self->stop = 0;
-    if (_Writer_raw_write(self, src) < 0) {
+    if (_SocketWrapper_raw_write(self, src) < 0) {
         return false;
     }
     return true;
 }
 
 static ssize_t
-_Writer_write(Writer *self, DeguSrc src)
+_SocketWrapper_write(SocketWrapper *self, DeguSrc src)
 {
-    if (self->stop == 0) {
-        return _Writer_raw_write(self, src);
+    const bool appended = _iobuf_append(&(self->w_io), src);
+    if (! _SocketWrapper_flush(self)) {
+        return -1;
     }
-
-    DeguDst dst = _Writer_get_dst(self);
-    if (src.len <= dst.len) {
-        self->stop += _copy(dst, src);
-        if (! _Writer_flush(self)) {
-            return -1;
-        }
+    if (appended) {
+        return (ssize_t)src.len;
     }
-    else {
-        if (! _Writer_flush(self)) {
-            return -1;
-        }
-        if (_Writer_raw_write(self, src) < 0) {
-            return -1;
-        }
-    }
-    return (ssize_t)src.len;
+    return _SocketWrapper_raw_write(self, src);
 }
 
 static int64_t
-_Writer_write_bytes_body(Writer *self, PyObject *body)
+_SocketWrapper_write_bytes_body(SocketWrapper *self, PyObject *body)
 {
     DeguSrc src = _frombytes(body);
     if (src.len > MAX_IO_SIZE) {
@@ -3777,11 +3706,11 @@ _Writer_write_bytes_body(Writer *self, PyObject *body)
         );
         return -1;
     }
-    return _Writer_write(self, src);
+    return _SocketWrapper_write(self, src);
 }
 
 static int64_t
-_Writer_write_body(Writer *self, PyObject *body)
+_SocketWrapper_write_body(SocketWrapper *self, PyObject *body)
 {
     DeguWObj w = {self, NULL};
 
@@ -3789,7 +3718,7 @@ _Writer_write_body(Writer *self, PyObject *body)
         return 0;
     }
     if (PyBytes_CheckExact(body)) {
-        return _Writer_write_bytes_body(self, body);
+        return _SocketWrapper_write_bytes_body(self, body);
     }
     if (IS_BODY(body)) {
         return _Body_write_to(BODY(body), &w);
@@ -3808,16 +3737,12 @@ _Writer_write_body(Writer *self, PyObject *body)
     return -1;
 }
 
-static PyObject *
-Writer_tell(Writer *self) {
-    return PyLong_FromUnsignedLongLong(self->tell);
-}
-
 static int64_t
-_Writer_write_request(Writer *self, DeguRequest *dr)
+_SocketWrapper_write_request(SocketWrapper *self, DeguRequest *dr)
 {
     int64_t wrote;
-    DeguOutput o = {_Writer_get_dst(self), 0};
+    DeguIOBuf *io = &(self->w_io);
+    DeguOutput o = {_iobuf_raw_dst(io), 0};
 
     if (! _set_output_headers(dr->headers, dr->body)) {
         return -1;
@@ -3825,22 +3750,23 @@ _Writer_write_request(Writer *self, DeguRequest *dr)
     if (! _render_request(&o, dr)) {
         return -1;
     }
-    self->stop = o.stop;
-    wrote = _Writer_write_body(self, dr->body);
+    io->stop = o.stop;
+    wrote = _SocketWrapper_write_body(self, dr->body);
     if (wrote < 0) {
         return -1;
     }
-    if (! _Writer_flush(self)) {
+    if (! _SocketWrapper_flush(self)) {
         return -1;
     }
     return wrote + (int64_t)o.stop;
 }
 
 static int64_t
-_Writer_write_response(Writer *self, DeguResponse *dr)
+_SocketWrapper_write_response(SocketWrapper *self, DeguResponse *dr)
 {
     int64_t wrote;
-    DeguOutput o = {_Writer_get_dst(self), 0};
+    DeguIOBuf *io = &(self->w_io);
+    DeguOutput o = {_iobuf_raw_dst(io), 0};
 
     if (! _set_output_headers(dr->headers, dr->body)) {
         return -1;
@@ -3848,19 +3774,19 @@ _Writer_write_response(Writer *self, DeguResponse *dr)
     if (! _render_response(&o, dr)) {
         return -1;
     }
-    self->stop = o.stop;
-    wrote = _Writer_write_body(self, dr->body);
+    self->w_io.stop = o.stop;
+    wrote = _SocketWrapper_write_body(self, dr->body);
     if (wrote < 0) {
         return -1;
     }
-    if (! _Writer_flush(self)) {
+    if (! _SocketWrapper_flush(self)) {
         return -1;
     }
     return wrote + (int64_t)o.stop;
 }
 
 static PyObject *
-Writer_write_request(Writer *self, PyObject *args)
+SocketWrapper_write_request(SocketWrapper *self, PyObject *args)
 {
     PyObject *method = NULL;
     DeguRequest dr = NEW_DEGU_REQUEST;
@@ -3873,7 +3799,7 @@ Writer_write_request(Writer *self, PyObject *args)
     if (! _check_method(method, &dr)) {
         goto error;
     }
-    wrote = _Writer_write_request(self, &dr);
+    wrote = _SocketWrapper_write_request(self, &dr);
     goto cleanup;
 
 error:
@@ -3887,7 +3813,7 @@ cleanup:
 }
 
 static PyObject *
-Writer_write_response(Writer *self, PyObject *args)
+SocketWrapper_write_response(SocketWrapper *self, PyObject *args)
 {
     DeguResponse dr = NEW_DEGU_RESPONSE;
     ssize_t s;
@@ -3901,12 +3827,13 @@ Writer_write_response(Writer *self, PyObject *args)
         return NULL;
     }
     dr.s = (size_t)s;
-    const int64_t total = _Writer_write_response(self, &dr);
+    const int64_t total = _SocketWrapper_write_response(self, &dr);
     if (total < 0) {
         return NULL;
     }
     return PyLong_FromLongLong(total);
 }
+
 
 
 /******************************************************************************
@@ -3951,7 +3878,7 @@ _rfile_repr(PyObject *rfile)
     if (rfile == NULL) {
         return repr_null;
     }
-    if (IS_READER(rfile)) {
+    if (IS_WRAPPER(rfile)) {
         return repr_reader;
     }
     return repr_rfile;
@@ -4850,9 +4777,8 @@ _handle_requests(PyObject *self, PyObject *args)
     PyObject *session = NULL;
     bool success = true;
 
-    /* These 5 all need to be freed */
-    PyObject *reader = NULL;
-    PyObject *writer = NULL;
+    /* These 4 all need to be freed */
+    PyObject *wrapper = NULL;
     PyObject *request = NULL;
     PyObject *response = NULL;
     DeguRequest req = NEW_DEGU_REQUEST;
@@ -4869,12 +4795,11 @@ _handle_requests(PyObject *self, PyObject *args)
     if (! _check_type2("session", session, &SessionType)) {
         goto error;
     }
-    _SET(reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
-    _SET(writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
+    _SET(wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
 
     while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
-        if (! _Reader_read_request(READER(reader), &req)) {
+        if (! _SocketWrapper_read_request(WRAPPER(wrapper), &req)) {
             goto error;
         }
         _SET(request, _Request_New(&req))
@@ -4905,7 +4830,7 @@ _handle_requests(PyObject *self, PyObject *args)
         }
 
         /* Write the response */
-        if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
+        if (_SocketWrapper_write_response(WRAPPER(wrapper), &rsp) < 0) {
             goto error;
         }
 
@@ -4926,8 +4851,7 @@ error:
     success = false;
 
 cleanup:
-    Py_CLEAR(reader);           /* 1 */
-    Py_CLEAR(writer);           /* 2 */
+    Py_CLEAR(wrapper);          /* 2 */
     Py_CLEAR(request);          /* 3 */
     Py_CLEAR(response);         /* 4 */
     _clear_degu_request(&req);  /* 5 */
@@ -4944,12 +4868,10 @@ cleanup:
 static void
 Connection_dealloc(Connection *self)
 {
-    _Connection_shutdown(self);
+    Py_CLEAR(self->wrapper);
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
     Py_CLEAR(self->api);
-    Py_CLEAR(self->reader);
-    Py_CLEAR(self->writer);
     Py_CLEAR(self->response_body);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -4961,20 +4883,18 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
     PyObject *sock = NULL;
     PyObject *base_headers = NULL;
 
-    self->closed = false;
     self->sock = NULL;
     if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Connection", keys,
             &sock, &base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->sock, sock)
+    _SET(self->wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
     if (base_headers != Py_None && !_check_tuple("base_headers", base_headers)) {
         goto error;
     }
     _SET_AND_INC(self->base_headers, base_headers)
     _SET_AND_INC(self->api, api)
-    _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
-    _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
     self->response_body = NULL;
     return 0;
 
@@ -4982,28 +4902,18 @@ error:
     return -1;
 }
 
-static void
-_Connection_shutdown(Connection *self)
-{
-    PyObject *err_type, *err_value, *err_traceback, *result;
-
-    if (self->closed || self->sock == NULL) {
-        return;
-    }
-    self->closed = true;
-    PyErr_Fetch(&err_type, &err_value, &err_traceback);
-    result = PyObject_CallMethod(self->sock, "shutdown", "i", SHUT_RDWR);
-    Py_CLEAR(result);
-    result = PyObject_CallMethod(self->sock, "close", NULL);
-    Py_CLEAR(result);
-    PyErr_Restore(err_type, err_value, err_traceback);
-}
-
 static PyObject *
 Connection_close(Connection *self)
 {
-    _Connection_shutdown(self);
-    Py_RETURN_NONE;
+    return _SocketWrapper_close(WRAPPER(self->wrapper));
+}
+
+static PyObject *
+Connection_get_closed(Connection *self, void *closure) {
+    if (WRAPPER(self->wrapper)->closed) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
 }
 
 static PyObject *
@@ -5017,7 +4927,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Check if Connection is closed */
-    if (self->closed) {
+    if (WRAPPER(self->wrapper)->closed) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
         return NULL;
     }
@@ -5051,10 +4961,10 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Write request, read response */
-    if (_Writer_write_request(WRITER(self->writer), dr) < 0) {
+    if (_SocketWrapper_write_request(WRAPPER(self->wrapper), dr) < 0) {
         goto error;
     }
-    if (! _Reader_read_response(READER(self->reader), dr->method, &r)) {
+    if (! _SocketWrapper_read_response(WRAPPER(self->wrapper), dr->method, &r)) {
         goto error;
     }
 
@@ -5064,7 +4974,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     goto cleanup;
 
 error:
-    _Connection_shutdown(self);
+    _SocketWrapper_close_unraisable(WRAPPER(self->wrapper));
 
 cleanup:
     _clear_degu_response(&r);
@@ -5441,17 +5351,11 @@ _init_all_types(PyObject *module)
     }
     _ADD_MODULE_ATTR(module, "Request", (PyObject *)&RequestType)
 
-    ReaderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&ReaderType) != 0) {
+    SocketWrapperType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&SocketWrapperType) != 0) {
         goto error;
     }
-    _ADD_MODULE_ATTR(module, "Reader", (PyObject *)&ReaderType)
-
-    WriterType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&WriterType) != 0) {
-        goto error;
-    }
-    _ADD_MODULE_ATTR(module, "Writer", (PyObject *)&WriterType)
+    _ADD_MODULE_ATTR(module, "SocketWrapper", (PyObject *)&SocketWrapperType)
 
     BodyType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&BodyType) != 0) {

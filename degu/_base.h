@@ -559,50 +559,78 @@ static PyTypeObject RequestType = {
 
 
 /******************************************************************************
- * Reader object.
+ * DeguIOBuf API
+ ******************************************************************************/
+typedef struct {
+    size_t start;
+    size_t stop;
+    uint8_t buf[BUF_LEN];
+} DeguIOBuf;
+
+static inline DeguSrc
+_iobuf_raw_src(DeguIOBuf *io)
+{
+    return DEGU_SRC(io->buf, BUF_LEN);
+}
+
+static inline DeguDst
+_iobuf_raw_dst(DeguIOBuf *io)
+{
+    return DEGU_DST(io->buf, BUF_LEN);
+}
+
+
+/******************************************************************************
+ * SocketWrapper object.
  ******************************************************************************/
 typedef struct {
     PyObject_HEAD
+    PyObject *sock;
     PyObject *recv_into;
-    uint8_t *buf;
-    uint64_t rawtell;
-    size_t start;
-    size_t stop;
-} Reader;
+    PyObject *send;
+    PyObject *close;
+    bool closed;
+    uint8_t scratch[SCRATCH_LEN];
+    DeguIOBuf r_io;
+    DeguIOBuf w_io;
+} SocketWrapper;
 
-static bool _Reader_readinto(Reader *, DeguDst);
-static bool _Reader_read_chunkline(Reader *, DeguChunk *);
+static bool _SocketWrapper_readinto(SocketWrapper *, DeguDst);
+static bool _SocketWrapper_read_chunkline(SocketWrapper *, DeguChunk *);
+static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
 
-static PyObject * Reader_rawtell(Reader *);
-static PyObject * Reader_tell(Reader *);
-static PyObject * Reader_read_request(Reader *);
-static PyObject * Reader_read_response(Reader *, PyObject *);
-static PyObject * Reader_expose(Reader *);
-static PyObject * Reader_peek(Reader *, PyObject *);
-static PyObject * Reader_read_until(Reader *, PyObject *);
-static PyObject * Reader_readinto(Reader *, PyObject *);
+static PyObject * SocketWrapper_close(SocketWrapper *);
+static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
+static PyObject * SocketWrapper_read_request(SocketWrapper *);
+static PyObject * SocketWrapper_read_response(SocketWrapper *, PyObject *);
+static PyObject * SocketWrapper_write_request(SocketWrapper *, PyObject *);
+static PyObject * SocketWrapper_write_response(SocketWrapper *, PyObject *);
 
-static PyMethodDef Reader_methods[] = {
-    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS, NULL},
-    {"tell", (PyCFunction)Reader_tell, METH_NOARGS, NULL},
-    {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS, NULL},
-    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS, NULL},
-    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
-    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
-    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS, NULL},
-    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
+static PyMethodDef SocketWrapper_methods[] = {
+    {"close",      (PyCFunction)SocketWrapper_close,      METH_NOARGS,  NULL},
+    {"read_until", (PyCFunction)SocketWrapper_read_until, METH_VARARGS, NULL},
+    {"read_request", (PyCFunction)SocketWrapper_read_request, METH_NOARGS, NULL},
+    {"read_response", (PyCFunction)SocketWrapper_read_response, METH_VARARGS, NULL},
+    {"write_request", (PyCFunction)SocketWrapper_write_request, METH_VARARGS, NULL},
+    {"write_response", (PyCFunction)SocketWrapper_write_response, METH_VARARGS, NULL},
     {NULL}
 };
 
-static void Reader_dealloc(Reader *);
-static int Reader_init(Reader *, PyObject *, PyObject *);
+static PyMemberDef SocketWrapper_members[] = {
+    {"sock",    T_OBJECT,   offsetof(SocketWrapper, sock),      READONLY, NULL},
+    {"closed",  T_BOOL,     offsetof(SocketWrapper, closed),    READONLY, NULL},
+    {NULL}
+};
 
-static PyTypeObject ReaderType = {
+static void SocketWrapper_dealloc(SocketWrapper *);
+static int SocketWrapper_init(SocketWrapper *, PyObject *, PyObject *);
+
+static PyTypeObject SocketWrapperType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name           = "degu._base.Reader",
-    .tp_basicsize      = sizeof(Reader),
+    .tp_name           = "degu._base.SocketWrapper",
+    .tp_basicsize      = sizeof(SocketWrapper),
     .tp_itemsize       = 0,
-    .tp_dealloc        = (destructor)Reader_dealloc,
+    .tp_dealloc        = (destructor)SocketWrapper_dealloc,
     .tp_print          = NULL,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
@@ -618,22 +646,22 @@ static PyTypeObject ReaderType = {
     .tp_setattro       = NULL,
     .tp_as_buffer      = NULL,
     .tp_flags          = Py_TPFLAGS_DEFAULT,
-    .tp_doc            = "Reader(sock)",
+    .tp_doc            = "SocketWrapper(sock)",
     .tp_traverse       = NULL,
     .tp_clear          = NULL,
     .tp_richcompare    = NULL,
     .tp_weaklistoffset = 0,
     .tp_iter           = NULL,
     .tp_iternext       = NULL,
-    .tp_methods        = Reader_methods,
-    .tp_members        = NULL,
+    .tp_methods        = SocketWrapper_methods,
+    .tp_members        = SocketWrapper_members,
     .tp_getset         = NULL,
     .tp_base           = NULL,
     .tp_dict           = NULL,
     .tp_descr_get      = NULL,
     .tp_descr_set      = NULL,
     .tp_dictoffset     = 0,
-    .tp_init           = (initproc)Reader_init,
+    .tp_init           = (initproc)SocketWrapper_init,
     .tp_alloc          = NULL,
     .tp_new            = NULL,
     .tp_free           = NULL,
@@ -648,107 +676,24 @@ static PyTypeObject ReaderType = {
     .tp_finalize       = NULL,
 };
 
-#define READER_CLASS ((PyObject *)&ReaderType)
-#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
-#define READER(obj) ((Reader *)(obj))
+#define WRAPPER_CLASS ((PyObject *)&SocketWrapperType)
+#define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
+#define WRAPPER(obj) ((SocketWrapper *)(obj))
 
 typedef struct {
-    Reader *reader;
+    SocketWrapper *wrapper;
+    PyObject *write;
+} DeguWObj;
+
+#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
+
+typedef struct {
+    SocketWrapper *wrapper;
     PyObject *readinto;
     PyObject *readline;
 } DeguRObj;
 
 #define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
-
-
-/******************************************************************************
- * Writer object.
- ******************************************************************************/
-typedef struct {
-    PyObject_HEAD
-    PyObject *send;
-    uint8_t *buf;
-    uint64_t tell;
-    size_t stop;
-} Writer;
-
-static ssize_t _Writer_write(Writer *, DeguSrc);
-
-static PyObject * Writer_tell(Writer *);
-static PyObject * Writer_write_request(Writer *, PyObject *);
-static PyObject * Writer_write_response(Writer *, PyObject *);
-
-static PyMethodDef Writer_methods[] = {
-    {"tell", (PyCFunction)Writer_tell, METH_NOARGS, NULL},
-    {"write_request", (PyCFunction)Writer_write_request, METH_VARARGS, NULL},
-    {"write_response", (PyCFunction)Writer_write_response, METH_VARARGS, NULL},
-    {NULL}
-};
-
-static void Writer_dealloc(Writer *);
-static int Writer_init(Writer *, PyObject *, PyObject *);
-
-static PyTypeObject WriterType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name           = "degu._base.Writer",
-    .tp_basicsize      = sizeof(Writer),
-    .tp_itemsize       = 0,
-    .tp_dealloc        = (destructor)Writer_dealloc,
-    .tp_print          = NULL,
-    .tp_getattr        = NULL,
-    .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
-    .tp_repr           = NULL,
-    .tp_as_number      = NULL,
-    .tp_as_sequence    = NULL,
-    .tp_as_mapping     = NULL,
-    .tp_hash           = NULL,
-    .tp_call           = NULL,
-    .tp_str            = NULL,
-    .tp_getattro       = NULL,
-    .tp_setattro       = NULL,
-    .tp_as_buffer      = NULL,
-    .tp_flags          = Py_TPFLAGS_DEFAULT,
-    .tp_doc            = "Writer(sock)",
-    .tp_traverse       = NULL,
-    .tp_clear          = NULL,
-    .tp_richcompare    = NULL,
-    .tp_weaklistoffset = 0,
-    .tp_iter           = NULL,
-    .tp_iternext       = NULL,
-    .tp_methods        = Writer_methods,
-    .tp_members        = NULL,
-    .tp_getset         = NULL,
-    .tp_base           = NULL,
-    .tp_dict           = NULL,
-    .tp_descr_get      = NULL,
-    .tp_descr_set      = NULL,
-    .tp_dictoffset     = 0,
-    .tp_init           = (initproc)Writer_init,
-    .tp_alloc          = NULL,
-    .tp_new            = NULL,
-    .tp_free           = NULL,
-    .tp_is_gc          = NULL,
-    .tp_bases          = NULL,
-    .tp_mro            = NULL,
-    .tp_cache          = NULL,
-    .tp_subclasses     = NULL,
-    .tp_weaklist       = NULL,
-    .tp_del            = NULL,
-    .tp_version_tag    = 0,
-    .tp_finalize       = NULL,
-};
-
-#define WRITER_CLASS ((PyObject *)&WriterType)
-#define IS_WRITER(obj) (Py_TYPE((obj)) == &WriterType)
-#define WRITER(obj) ((Writer *)(obj))
-
-typedef struct {
-    Writer *writer;
-    PyObject *write;
-} DeguWObj;
-
-#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
 
 
 /******************************************************************************
@@ -1114,10 +1059,8 @@ typedef struct {
     PyObject *sock;
     PyObject *base_headers;
     PyObject *api;
-    PyObject *reader;
-    PyObject *writer;
+    PyObject *wrapper;
     PyObject *response_body;
-    bool closed;
 } Connection;
 
 static PyObject * _Connection_request(Connection *, DeguRequest *);
@@ -1127,7 +1070,6 @@ static PyMemberDef Connection_members[] = {
     {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
     {"api",          T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
     {"bodies",       T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
-    {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
 
@@ -1152,7 +1094,13 @@ static PyMethodDef Connection_methods[] = {
     {NULL}
 };
 
-static void _Connection_shutdown(Connection *);
+static PyObject * Connection_get_closed(Connection *, void *);
+
+static PyGetSetDef Connection_getset[] = {
+    {"closed", (getter)Connection_get_closed, NULL, NULL, NULL},
+    {NULL}
+};
+
 static void Connection_dealloc(Connection *);
 static int Connection_init(Connection *, PyObject *, PyObject *);
 
@@ -1186,7 +1134,7 @@ static PyTypeObject ConnectionType = {
     .tp_iternext       = NULL,
     .tp_methods        = Connection_methods,
     .tp_members        = Connection_members,
-    .tp_getset         = NULL,
+    .tp_getset         = Connection_getset,
     .tp_base           = NULL,
     .tp_dict           = NULL,
     .tp_descr_get      = NULL,
