@@ -3896,6 +3896,15 @@ Body_dealloc(Body *self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
+static void
+_Body_do_error(Body *self)
+{
+    self->state = BODY_ERROR;
+    if (self->robj.wrapper != NULL) {
+        _SocketWrapper_close_unraisable(WRAPPER(self->robj.wrapper));
+    }
+}
+
 static bool
 _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 {
@@ -3978,7 +3987,7 @@ _Body_readinto(Body *self, DeguDst dst)
         self->remaining -= dst.len;
         return true;
     }
-    self->state = BODY_ERROR;
+    _Body_do_error(self);
     return false;
 }
 
@@ -4022,7 +4031,7 @@ _Body_write_to(Body *self, DeguWObj *w)
 
 error:
     ret = -1;
-    self->state = BODY_ERROR;
+    _Body_do_error(self);
 
 cleanup:
     if (dst_buf != NULL) {
