@@ -4207,6 +4207,15 @@ ChunkedBody_repr(ChunkedBody *self) {
 
 }
 
+static void
+_ChunkedBody_do_error(ChunkedBody *self)
+{
+    self->state = BODY_ERROR;
+    if (self->robj.wrapper != NULL) {
+        _SocketWrapper_close_unraisable(WRAPPER(self->robj.wrapper));
+    }
+}
+
 static bool
 _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
 {
@@ -4223,7 +4232,7 @@ _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
     return true;
 
 error:
-    self->state = BODY_ERROR;
+    _ChunkedBody_do_error(self);
     return false;
 }
 
@@ -4344,7 +4353,7 @@ _ChunkedBody_write_to(ChunkedBody *self, DeguWObj *w)
 
 error:
     ret = -1;
-    self->state = BODY_ERROR;
+    _ChunkedBody_do_error(self);
 
 cleanup:
     _clear_degu_chunk(&dc);
