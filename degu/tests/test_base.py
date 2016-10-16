@@ -3063,30 +3063,6 @@ class TestEmptyPreambleError(TestCase):
         self.assertEqual(str(e), 'stuff and junk')
 
 
-class DummyFile:
-    def __init__(self, lines):
-        self._lines = lines
-        self._calls = []
-
-    def readline(self, size=None):
-        self._calls.append(size)
-        return self._lines.pop(0)
-
-
-class DummyWriter:
-    def __init__(self):
-        self._calls = []
-
-    def write(self, data):
-        assert isinstance(data, bytes)
-        self._calls.append(('write', data))
-        return len(data)
-
-    def flush(self):
-        self._calls.append('flush')
-
-
-
 class TestFunctions_Py(BackendTestCase):
     def test_parse_method(self):
         parse_method = self.getattr('parse_method')
@@ -3395,14 +3371,6 @@ class BodyBackendTestCase(BackendTestCase):
     @property
     def MAX_IO_SIZE(self):
         return self.getattr('MAX_IO_SIZE')
-
-    @property
-    def Reader(self):
-        return self.getattr('Reader')
-
-    @property
-    def Writer(self):
-        return self.getattr('Writer')
 
     @property
     def SocketWrapper(self):
@@ -4712,10 +4680,6 @@ class TestChunkedBodyIter_Py(BackendTestCase):
         return self.getattr('ChunkedBody')
 
     @property
-    def Writer(self):
-        return self.getattr('Writer')
-
-    @property
     def BODY_READY(self):
         return self.getattr('BODY_READY')
 
@@ -4924,34 +4888,7 @@ class BadSocket:
 
 
 ################################################################################
-# Writer:
-
-
-
-class WSocket:
-    __slots__ = ('_ret', '_fp', '_calls')
-
-    def __init__(self, **ret):
-        self._ret = ret
-        self._fp = io.BytesIO()
-        self._calls = []
-
-    def _return_or_raise(self, key, default):
-        ret = self._ret.get(key, default)
-        if isinstance(ret, Exception):
-            raise ret
-        return ret
-
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-        return None
-
-    def send(self, buf):
-        assert isinstance(buf, memoryview)
-        self._calls.append(('send', buf.tobytes()))
-        size = self._fp.write(buf)
-        return self._return_or_raise('send', size)
-
+# Socket Wrapper:
 
 class TestSocketWrapper_Py(BackendTestCase):
     @property

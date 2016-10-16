@@ -23,7 +23,6 @@
 Unit test helpers.
 """
 
-import io
 import os
 from os import path
 import tempfile
@@ -174,84 +173,6 @@ class DummySocket:
 
     def send(self, buf):
         self._calls.append(('send', buf))
-
-
-class DummyFile:
-    def __init__(self):
-        self._calls = []
-
-    def close(self):
-        self._calls.append('close')
-
-
-class MockSocket:
-    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_recv_into_calls', '_calls')
-
-    def __init__(self, data, rcvbuf=None):
-        assert rcvbuf is None or (isinstance(rcvbuf, int) and rcvbuf > 0)
-        self._rfile = io.BytesIO(data)
-        self._wfile = io.BytesIO()
-        self._rcvbuf = rcvbuf
-        self._recv_into_calls = 0
-        self._calls = []
-
-    def recv_into(self, buf):
-        assert isinstance(buf, memoryview)
-        self._calls.append(('recv_into', len(buf)))
-        if self._rcvbuf is not None and len(buf) > self._rcvbuf:
-            buf = buf[0:self._rcvbuf]
-        self._recv_into_calls += 1
-        return self._rfile.readinto(buf)
-
-    def send(self, data):
-        return self._wfile.write(data)
-
-
-class MockSocket2:
-    __slots__ = ('__rfile', '__rcvbuf')
-
-    def __init__(self, rfile, rcvbuf=None):
-        assert rcvbuf is None or (type(rcvbuf) is int and rcvbuf > 0)
-        self.__rfile = rfile
-        self.__rcvbuf = rcvbuf
-
-    def recv_into(self, buf):
-        assert isinstance(buf, memoryview)
-        if self.__rcvbuf is not None:
-            buf = buf[0:self.__rcvbuf]
-        return self.__rfile.readinto(buf)
-
-
-class MockBodies:
-    def __init__(self, **kw):
-        for (key, value) in kw.items():
-            assert key in ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
-            setattr(self, key, value)
-
-
-def iter_bodies_with_missing_object():
-    names = ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
-
-    def dummy_body():
-        pass
-
-    for name in names:
-        kw = dict((key, dummy_body) for key in names)
-        del kw[name]
-        yield (MockBodies(**kw), name)
-
-
-def iter_bodies_with_non_callable_object():
-    names = ('Body', 'BodyIter', 'ChunkedBody', 'ChunkedBodyIter')
-
-    def dummy_body():
-        pass
-
-    for name in names:
-        kw = dict((key, dummy_body) for key in names)
-        attr = random_identifier()
-        kw[name] = attr
-        yield (MockBodies(**kw), name, attr)
 
 
 def build_uri(path, query):
