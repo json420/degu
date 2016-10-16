@@ -3962,29 +3962,24 @@ Writer_write_response(Writer *self, PyObject *args)
 /******************************************************************************
  * SocketWrapper object.
  ******************************************************************************/
-static bool
+static PyObject *
 _SocketWrapper_close(SocketWrapper *self)
 {
-    if (self->closed) {
-        return true;
+    if (self->closed || self->close == NULL) {
+        Py_RETURN_NONE;
     }
     self->closed = true;
-    if (self->close == NULL) {
-        return true;
-    }
-    PyObject *result = PyObject_CallFunctionObjArgs(self->close, NULL);
-    const bool success = (result != NULL);
-    Py_CLEAR(result);
-    return success; 
+    return PyObject_CallFunctionObjArgs(self->close, NULL);
 }
 
 static void
 _SocketWrapper_close_unraisable(SocketWrapper *self)
 {
-    PyObject *err_type, *err_value, *err_traceback;
+    PyObject *err_type, *err_value, *err_traceback, *result;
 
     PyErr_Fetch(&err_type, &err_value, &err_traceback);
-    _SocketWrapper_close(self);
+    result = _SocketWrapper_close(self);
+    Py_CLEAR(result);
     PyErr_Restore(err_type, err_value, err_traceback);
 }
 
@@ -4020,10 +4015,7 @@ error:
 static PyObject *
 SocketWrapper_close(SocketWrapper *self)
 {
-    if (_SocketWrapper_close(self)) {
-        Py_RETURN_NONE;
-    }
-    return NULL;
+    return _SocketWrapper_close(self);
 }
 
 static DeguSrc
@@ -5449,10 +5441,7 @@ error:
 static PyObject *
 Connection_close(Connection *self)
 {
-    if (_SocketWrapper_close(WRAPPER(self->wrapper))) {
-        Py_RETURN_NONE;
-    }
-    return NULL;
+    return _SocketWrapper_close(WRAPPER(self->wrapper));
 }
 
 static PyObject *

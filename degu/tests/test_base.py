@@ -6983,11 +6983,47 @@ class TestConnection_Py(BackendTestCase):
         self.assertIs(conn.closed, True)
         self.assertEqual(sock._calls, ['close'])
 
-        # Calling Connection.close() again shouldn't call sock.shutdown(),
+        # Calling Connection.close() again shouldn't call sock.close(),
         # sock.close():
         self.assertIsNone(conn.close())
         self.assertIs(conn.closed, True)
         self.assertEqual(sock._calls, ['close'])
+
+        class SpecialMockSocket(NewMockSocket):
+            def __init__(self, ret, data=b'', rcvbuf=None, sndbuf=None):
+                super().__init__(data, rcvbuf, sndbuf)
+                self.ret = ret
+
+            def close(self):
+                super().close()
+                if isinstance(self.ret, Exception):
+                    raise self.ret
+                return self.ret
+
+        # Sould return value returned by sock.close():
+        marker = random_id()
+        sock = SpecialMockSocket(marker)
+        conn = self.Connection(sock, None)
+        self.assertIs(conn.close(), marker)
+        self.assertEqual(sock._calls, ['close'])
+        self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.close())
+        self.assertEqual(sock._calls, ['close'])
+        self.assertIs(conn.closed, True)
+
+        # Sould raise exception raised by sock.close():
+        exc = ValueError(marker)
+        sock = SpecialMockSocket(exc)
+        conn = self.Connection(sock, None)
+        with self.assertRaises(ValueError) as cm:
+            conn.close()
+        self.assertIs(cm.exception, exc)
+        self.assertEqual(str(cm.exception), marker)
+        self.assertEqual(sock._calls, ['close'])
+        self.assertIs(conn.closed, True)
+        self.assertIsNone(conn.close())
+        self.assertEqual(sock._calls, ['close'])
+        self.assertIs(conn.closed, True)
 
     def test_request(self):
         # Make sure method is validated:

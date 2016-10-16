@@ -1317,7 +1317,7 @@ class SocketWrapper:
             self._closed = True
             sock_close = getattr(self, '_sock_close', None)
             if sock_close is not None:
-                sock_close()
+                return sock_close()
 
     def _recv_into(self, buf):
         added = self._sock_recv_into(buf)
