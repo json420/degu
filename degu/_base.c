@@ -3107,9 +3107,14 @@ _init_robj(PyObject *rfile, DeguRObj *r, const bool readline)
 {
     if (rfile == NULL) {
         Py_FatalError("_init_robj(): rfile == NULL");
+        goto error;
     }
+
     if (IS_READER(rfile)) {
         _SET(r->reader, READER(rfile))
+    }
+    else if (IS_WRAPPER(rfile)) {
+        _SET(r->wrapper, WRAPPER(rfile))
     }
     else {
         _SET(r->readinto, _getcallable("rfile", rfile, attr_readinto))
@@ -3128,6 +3133,9 @@ _readinto_from(DeguRObj *r, DeguDst dst)
 {
     if (r->reader != NULL) {
         return _Reader_readinto(r->reader, dst);
+    }
+    if (r->wrapper != NULL) {
+        return _SocketWrapper_readinto(r->wrapper, dst);
     }
     if (r->readinto != NULL) {
         return _readinto(r->readinto, dst);
@@ -3149,11 +3157,13 @@ _init_wobj(PyObject *wfile, DeguWObj *w)
 {
     if (wfile == NULL) {
         Py_FatalError("_init_wobj(): wfile == NULL");
+        goto error;
     }
+
     if (IS_WRITER(wfile)) {
         _SET(w->writer, WRITER(wfile))
     }
-    if (IS_WRAPPER(wfile)) {
+    else if (IS_WRAPPER(wfile)) {
         _SET(w->wrapper, WRAPPER(wfile))
     }
     else {
@@ -3243,10 +3253,13 @@ _read_chunkline_from(DeguRObj *r, DeguChunk *dc)
     if (r->reader != NULL) {
         return _Reader_read_chunkline(r->reader, dc);
     }
+    if (r->wrapper != NULL) {
+        return _SocketWrapper_read_chunkline(r->wrapper, dc);
+    }
     if (r->readline != NULL) {
         return _read_chunkline(r->readline, dc);
     }
-    Py_FatalError("_readinto_from(): r->reader == NULL && r->readinto == NULL");
+    Py_FatalError("_read_chunkline_from(): bad internal call");
     return false;
 }
 
@@ -4003,7 +4016,6 @@ error:
     return -1;
 }
 
-
 static PyObject *
 SocketWrapper_close(SocketWrapper *self)
 {
@@ -4103,6 +4115,32 @@ SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
         return NULL;
     }
     return _tobytes(_SocketWrapper_read_until(self, size, end));
+}
+
+static bool
+_SocketWrapper_read_chunkline(SocketWrapper *self, DeguChunk *dc) {
+    DeguSrc line = _SocketWrapper_read_until(self, 4096, CRLF);
+    if (line.buf == NULL) {
+        goto error;
+    }
+    if (! _parse_chunk(line, dc)) {
+        goto error;
+    }
+    return true;
+
+error:
+    return false;
+}
+
+static bool
+_SocketWrapper_readinto(SocketWrapper *self, DeguDst dst)
+{
+    DeguIOBuf *io = &(self->r_io);
+    DeguSrc src = _iobuf_drain(io, dst.len);
+    if (src.len > 0) {
+        _copy(dst, src);
+    }
+    return _readinto(self->recv_into, _slice_dst(dst, src.len, dst.len));
 }
 
 static DeguDst

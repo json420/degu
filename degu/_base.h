@@ -669,14 +669,6 @@ static PyTypeObject ReaderType = {
 #define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
 #define READER(obj) ((Reader *)(obj))
 
-typedef struct {
-    Reader *reader;
-    PyObject *readinto;
-    PyObject *readline;
-} DeguRObj;
-
-#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL}) 
-
 
 /******************************************************************************
  * Writer object.
@@ -775,6 +767,8 @@ typedef struct {
     DeguIOBuf w_io;
 } SocketWrapper;
 
+static bool _SocketWrapper_readinto(SocketWrapper *, DeguDst);
+static bool _SocketWrapper_read_chunkline(SocketWrapper *, DeguChunk *);
 static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
@@ -854,6 +848,9 @@ static PyTypeObject SocketWrapperType = {
     .tp_finalize       = NULL,
 };
 
+#define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
+#define WRAPPER(obj) ((SocketWrapper *)(obj))
+
 typedef struct {
     Writer *writer;
     SocketWrapper *wrapper;
@@ -862,8 +859,14 @@ typedef struct {
 
 #define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL, NULL})
 
-#define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
-#define WRAPPER(obj) ((SocketWrapper *)(obj))
+typedef struct {
+    Reader *reader;
+    SocketWrapper *wrapper;
+    PyObject *readinto;
+    PyObject *readline;
+} DeguRObj;
+
+#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL, NULL}) 
 
 
 /******************************************************************************
