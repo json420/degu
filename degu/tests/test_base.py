@@ -31,7 +31,6 @@ from random import SystemRandom
 import types
 from collections import OrderedDict
 
-from . import helpers
 from .helpers import (
     random_chunks,
     iter_bad,
@@ -39,6 +38,8 @@ from .helpers import (
     random_chunk,
     random_data,
     iter_random_uri,
+    iter_good,
+    MockSocket,
 )
 from degu.sslhelpers import random_id
 from degu.misc import mkreq
@@ -1318,7 +1319,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     'bad content-length: {!r}'.format(bad)
                 )
         for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
-            for also_good in helpers.iter_good(good, b'123456789'):
+            for also_good in iter_good(good, b'123456789'):
                 self.assertEqual(
                     parse_content_length(also_good),
                     int(also_good)
@@ -3378,9 +3379,9 @@ class BodyBackendTestCase(BackendTestCase):
 
     def iter_rfiles(self, data):
         yield io.BytesIO(data)
-        yield self.SocketWrapper(NewMockSocket(data, None))
-        yield self.SocketWrapper(NewMockSocket(data, 1))
-        yield self.SocketWrapper(NewMockSocket(data, 2))
+        yield self.SocketWrapper(MockSocket(data, None))
+        yield self.SocketWrapper(MockSocket(data, 1))
+        yield self.SocketWrapper(MockSocket(data, 2))
 
     def check_readonly_attrs(self, body, *members):
         """
@@ -3805,7 +3806,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
     def test_init(self):
         # Test with backend.SocketWrapper:
-        sock = NewMockSocket()
+        sock = MockSocket()
         rfile = self.SocketWrapper(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
@@ -4097,7 +4098,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
         # Now test internal Socket fast-path:
         for bad in (b'', b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
-            sock = NewMockSocket(bad, None)
+            sock = MockSocket(bad, None)
             rfile = self.SocketWrapper(sock)
             body = self.ChunkedBody(rfile)
             with self.assertRaises(ValueError) as cm:
@@ -4115,7 +4116,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
-        sock = NewMockSocket(b'c\r\nhello, worl\r\n', None)
+        sock = MockSocket(b'c\r\nhello, worl\r\n', None)
         rfile = self.SocketWrapper(sock)
         body = self.ChunkedBody(rfile)
         with self.assertRaises(ValueError) as cm:
@@ -4308,7 +4309,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
 
     def get_rfile_plus_body(self, data, mock=False, rcvbuf=None):
         if mock is True:
-            sock = NewMockSocket(data, rcvbuf)
+            sock = MockSocket(data, rcvbuf)
             rfile = sock._rfile
             obj = self.SocketWrapper(sock)
         else:
@@ -4951,12 +4952,12 @@ class TestSocketWrapper_Py(BackendTestCase):
         self.assertEqual(sock._calls, 1)
 
     def new(self, data=b'', rcvbuf=None, sndbuf=None):
-        sock = NewMockSocket(data, rcvbuf, sndbuf)
+        sock = MockSocket(data, rcvbuf, sndbuf)
         wrapper = self.SocketWrapper(sock)
         return (sock, wrapper)
 
     def test_del(self):
-        sock = NewMockSocket()
+        sock = MockSocket()
         self.assertEqual(sys.getrefcount(sock), 2)
         wrapper = self.SocketWrapper(sock)
         self.assertEqual(sys.getrefcount(sock), 6)
@@ -5195,9 +5196,9 @@ class TestSocketWrapper_Py(BackendTestCase):
             '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
         )
         if rcvbuf is None:
-            self.assertEqual(sock._recv_into_calls, 2)
+            self.assertEqual(sock._calls_recv_into, 2)
         else:
-            self.assertEqual(sock._recv_into_calls, len(data) // rcvbuf + 1)
+            self.assertEqual(sock._calls_recv_into, len(data) // rcvbuf + 1)
 
         prefix = b'HTTP/1.1 200 OK'
         term = b'\r\n\r\n'
@@ -5216,9 +5217,9 @@ class TestSocketWrapper_Py(BackendTestCase):
             wrapper.read_response('GET')
         self.assertEqual(str(cm.exception), 'response preamble is empty')
         if rcvbuf is None:
-            self.assertEqual(sock._recv_into_calls, 1)
+            self.assertEqual(sock._calls_recv_into, 1)
         else:
-            self.assertEqual(sock._recv_into_calls, 1)
+            self.assertEqual(sock._calls_recv_into, 1)
 
         data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
         (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
@@ -5521,47 +5522,6 @@ class TestSocketWrapper_C(TestSocketWrapper_Py):
     backend = _base
 
 
-class BaseMockSocket:
-    __slots__ = ('_calls',)
-
-    def __init__(self):
-        self._calls = []
-
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-
-    def close(self):
-        self._calls.append('close')
-
-
-class NewMockSocket(BaseMockSocket):
-    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf', '_recv_into_calls')
-
-    def __init__(self, data=b'', rcvbuf=None, sndbuf=None):
-        assert rcvbuf is None or type(rcvbuf) is int
-        assert sndbuf is None or type(sndbuf) is int
-        self._rfile = io.BytesIO(data)
-        self._wfile = io.BytesIO()
-        self._rcvbuf = rcvbuf
-        self._sndbuf = sndbuf
-        self._recv_into_calls = 0
-        super().__init__()
-
-    def recv_into(self, dst):
-        assert type(dst) is memoryview
-        self._calls.append(('recv_into', len(dst)))
-        self._recv_into_calls += 1
-        if self._rcvbuf is not None:
-            dst = dst[0:self._rcvbuf]
-        return self._rfile.readinto(dst)
-
-    def send(self, src):
-        assert type(src) in (bytes, memoryview)
-        self._calls.append(('send', len(src)))
-        if self._sndbuf is not None:
-            src = src[0:self._sndbuf]
-        return self._wfile.write(src)
-
 
 class TestSession_Py(BackendTestCase):
     @property
@@ -5737,7 +5697,7 @@ class TestServerFunctions_Py(BackendTestCase):
             assert False
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         ses = {'client': ('127.0.0.1', 12345)}
         with self.assertRaises(TypeError) as cm:
             handle_requests(app, ses, sock)
@@ -5762,7 +5722,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(TypeError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5786,7 +5746,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5810,7 +5770,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5834,7 +5794,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(TypeError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5858,7 +5818,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5882,7 +5842,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'GET /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5907,7 +5867,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5931,7 +5891,7 @@ class TestServerFunctions_Py(BackendTestCase):
             return rsp
 
         data = b'HEAD /foo HTTP/1.1\r\n\r\n'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(TypeError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception),
@@ -5957,7 +5917,7 @@ class TestServerFunctions_Py(BackendTestCase):
             raise exc
 
         data = b'PUT /foo HTTP/1.1\r\nContent-Length: 3\r\n\r\nbar'
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         with self.assertRaises(ValueError) as cm:
             handle_requests(app, ses, sock)
         self.assertIs(cm.exception, exc)
@@ -5972,7 +5932,7 @@ class TestServerFunctions_Py(BackendTestCase):
         def app(session, request, bodies):
             assert False
 
-        sock = NewMockSocket(b'')
+        sock = MockSocket(b'')
         with self.assertRaises(self.EmptyPreambleError) as cm:
             handle_requests(app, ses, sock)
         self.assertEqual(str(cm.exception), 'request preamble is empty')
@@ -5996,7 +5956,7 @@ class TestServerFunctions_Py(BackendTestCase):
 
         indata = b'GET /foo HTTP/1.1\r\n\r\n'
         outdata = b'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nbar'
-        sock = NewMockSocket(indata * 3)
+        sock = MockSocket(indata * 3)
         ses = Session(('127.0.0.1', 12345), None, 2)
         self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 2)
@@ -6036,7 +5996,7 @@ class TestServerFunctions_Py(BackendTestCase):
         out2 = out.format(409).encode()
         out3 = out.format(412).encode()
         out4 = out.format(400).encode()
-        sock = NewMockSocket(indata * 10)
+        sock = MockSocket(indata * 10)
         ses = Session(('127.0.0.1', 12345), None, 10)
         self.assertIsNone(handle_requests(app, ses, sock))
         self.assertEqual(ses.requests, 4)
@@ -6096,6 +6056,18 @@ class TestConnection_Py(BackendTestCase):
         yield from self.iter_bodies()
 
     def test_init(self):
+        class BaseMockSocket:
+            __slots__ = ('_calls',)
+
+            def __init__(self):
+                self._calls = []
+
+            def shutdown(self, how):
+                self._calls.append(('shutdown', how))
+
+            def close(self):
+                self._calls.append('close')
+    
         # no sock.recv_into() attribute:
         class BadSocket1(BaseMockSocket):
             __slots__ = tuple()
@@ -6155,7 +6127,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, ['close'])
 
         # base_headers is neither None nor a dict:
-        sock = NewMockSocket()
+        sock = MockSocket()
         base_headers = [('foo', 'bar')]
         with self.assertRaises(TypeError) as cm:
             self.Connection(sock, base_headers)
@@ -6170,7 +6142,7 @@ class TestConnection_Py(BackendTestCase):
         # Good sock, base_headers is None:
         api = self.api
         count = sys.getrefcount(api)
-        sock = NewMockSocket()
+        sock = MockSocket()
         conn = self.Connection(sock, None)
         self.assertEqual(sys.getrefcount(sock), 7)
         self.assertIs(conn.sock, sock)
@@ -6185,7 +6157,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(api), count)
 
         # Good sock, base_headers is a tuple:
-        sock = NewMockSocket()
+        sock = MockSocket()
         k = random_id().lower()
         v = random_id()
         base_headers = ((k, v),)
@@ -6204,7 +6176,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(api), count)
 
     def test_close(self):
-        sock = NewMockSocket()
+        sock = MockSocket()
         conn = self.Connection(sock, None)
         self.assertIs(conn.closed, False)
         self.assertIsNone(conn.close())
@@ -6217,7 +6189,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertIs(conn.closed, True)
         self.assertEqual(sock._calls, ['close'])
 
-        class SpecialMockSocket(NewMockSocket):
+        class SpecialMockSocket(MockSocket):
             def __init__(self, ret, data=b'', rcvbuf=None, sndbuf=None):
                 super().__init__(data, rcvbuf, sndbuf)
                 self.ret = ret
@@ -6257,7 +6229,7 @@ class TestConnection_Py(BackendTestCase):
         # Make sure method is validated:
         for method in GOOD_METHODS:
             for bad in (method.encode(), str_subclass(method)):
-                sock = NewMockSocket()
+                sock = MockSocket()
                 conn = self.Connection(sock, None)
                 with self.assertRaises(TypeError) as cm:
                     conn.request(bad, '/foo', {}, None)
@@ -6265,7 +6237,7 @@ class TestConnection_Py(BackendTestCase):
                     TYPE_ERROR.format('method', str, type(bad), bad)
                 )
         for bad in BAD_METHODS:
-            sock = NewMockSocket()
+            sock = MockSocket()
             conn = self.Connection(sock, None)
             with self.assertRaises(ValueError) as cm:
                 conn.request(bad, '/foo', {}, None)
@@ -6274,7 +6246,7 @@ class TestConnection_Py(BackendTestCase):
             )
 
         # Test when connection is closed:
-        sock = NewMockSocket()
+        sock = MockSocket()
         conn = self.Connection(sock, None)
         self.assertIsNone(conn.close())
         self.assertEqual(sock._calls, ['close'])
@@ -6292,7 +6264,7 @@ class TestConnection_Py(BackendTestCase):
         recv = b'HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nhello, world'
 
         # Previous response body not consumed:
-        sock = NewMockSocket(recv * 2)
+        sock = MockSocket(recv * 2)
         conn = self.Connection(sock, None)
         response = conn.request('GET', '/', {}, None)
         self.assertIs(conn.closed, False)
@@ -6327,7 +6299,7 @@ class TestConnection_Py(BackendTestCase):
         v = (None, 1, 2, 3)
         comb = tuple((s, r) for s in v for r in v)
         for (r, s) in comb:
-            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            sock = MockSocket(recv, rcvbuf=r, sndbuf=s)
             conn = self.Connection(sock, None)
             h = {}
             response = conn.request('GET', '/', h, None)
@@ -6343,7 +6315,7 @@ class TestConnection_Py(BackendTestCase):
             del conn
             self.assertEqual(sys.getrefcount(sock), 2)
 
-            sock = NewMockSocket(recv, rcvbuf=r, sndbuf=s)
+            sock = MockSocket(recv, rcvbuf=r, sndbuf=s)
             k = random_id().lower()
             v = random_id()
             bh = ((k, v),)
@@ -6366,7 +6338,7 @@ class TestConnection_Py(BackendTestCase):
 
         for method in GOOD_METHODS:
             for body in self.iter_bodies():
-                sock = NewMockSocket(recv)
+                sock = MockSocket(recv)
                 conn = self.Connection(sock, None)
                 h = {}
                 if method in {'PUT', 'POST'}:
@@ -6392,7 +6364,7 @@ class TestConnection_Py(BackendTestCase):
                     self.assertEqual(sock._calls, ['close'])
 
     def test_put(self):
-        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.put('/', {}, None)
         self.assertIs(type(response), self.ResponseType)
@@ -6401,7 +6373,7 @@ class TestConnection_Py(BackendTestCase):
         del conn
         self.assertEqual(sys.getrefcount(sock), 2)
         for body in self.iter_all_bodies():
-            sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+            sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
             conn = self.Connection(sock, None)
             response = conn.put('/', {}, body)
             self.assertIs(type(response), self.ResponseType)
@@ -6410,7 +6382,7 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_post(self):
-        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.post('/', {}, None)
         self.assertIs(type(response), self.ResponseType)
@@ -6419,7 +6391,7 @@ class TestConnection_Py(BackendTestCase):
         del conn
         self.assertEqual(sys.getrefcount(sock), 2)
         for body in self.iter_all_bodies():
-            sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+            sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
             conn = self.Connection(sock, None)
             response = conn.post('/', {}, body)
             self.assertIs(type(response), self.ResponseType)
@@ -6428,7 +6400,7 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_get(self):
-        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.get('/', {})
         self.assertIs(type(response), self.ResponseType)
@@ -6438,7 +6410,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_head(self):
-        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n')
+        sock = MockSocket(b'HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.head('/', {})
         self.assertIs(type(response), self.ResponseType)
@@ -6448,7 +6420,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
 
     def test_delete(self):
-        sock = NewMockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
+        sock = MockSocket(b'HTTP/1.1 200 OK\r\n\r\n')
         conn = self.Connection(sock, None)
         response = conn.delete('/', {})
         self.assertIs(type(response), self.ResponseType)
@@ -6466,7 +6438,7 @@ class TestConnection_Py(BackendTestCase):
             b'foo',
         )
         data = b''.join(parts)
-        sock = NewMockSocket(data)
+        sock = MockSocket(data)
         conn = self.Connection(sock, None)
         h = {}
         r = conn.get_range('/', h, 17, 20)
@@ -6501,7 +6473,7 @@ class TestConnection_Py(BackendTestCase):
             ('delete',    2, 'headers'),
             ('get_range', 4, 'stop'),
         )
-        sock = NewMockSocket()
+        sock = MockSocket()
         conn = self.Connection(sock, None)
         for (name, number, missing) in items:
             with self.subTest(name=name, number=number):

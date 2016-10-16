@@ -23,6 +23,7 @@
 Unit test helpers.
 """
 
+import io
 import os
 from os import path
 import tempfile
@@ -156,23 +157,49 @@ class TempDir:
         return open(filename, 'rb')
 
 
-class DummySocket:
-    __slots__ = ('_calls',)
+class MockSocket:
+    __slots__ = (
+        '_rfile',
+        '_wfile',
+        '_rcvbuf',
+        '_sndbuf',
+        '_calls',
+        '_calls_close',
+        '_calls_recv_into',
+        '_calls_send',
+    )
 
-    def __init__(self):
+    def __init__(self, data=b'', rcvbuf=None, sndbuf=None):
+        assert rcvbuf is None or (type(rcvbuf) is int and rcvbuf > 0)
+        assert sndbuf is None or (type(sndbuf) is int and sndbuf > 0)
+        self._rfile = io.BytesIO(data)
+        self._wfile = io.BytesIO()
+        self._rcvbuf = rcvbuf
+        self._sndbuf = sndbuf
         self._calls = []
+        self._calls_close = 0
+        self._calls_recv_into = 0
+        self._calls_send = 0
 
     def close(self):
         self._calls.append('close')
+        self._calls_close += 1
 
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
+    def recv_into(self, dst):
+        assert type(dst) is memoryview
+        self._calls.append(('recv_into', len(dst)))
+        self._calls_recv_into += 1
+        if self._rcvbuf is not None:
+            dst = dst[0:self._rcvbuf]
+        return self._rfile.readinto(dst)
 
-    def recv_into(self, buf):
-        self._calls.append(('recv_into', buf))
-
-    def send(self, buf):
-        self._calls.append(('send', buf))
+    def send(self, src):
+        assert type(src) in (bytes, memoryview)
+        self._calls.append(('send', len(src)))
+        self._calls_send += 1
+        if self._sndbuf is not None:
+            src = src[0:self._sndbuf]
+        return self._wfile.write(src)
 
 
 def build_uri(path, query):

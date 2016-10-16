@@ -49,7 +49,7 @@ from degu import rgi, base, server
 random = SystemRandom()
 
 
-def standard_harness_app(session, request, bodies):
+def standard_harness_app(session, request, api):
     if len(request.path) == 3 and request.path[0] == 'status':
         code = int(request.path[1])
         reason = request.path[2]
@@ -278,45 +278,6 @@ class TestFunctions(TestCase):
             ('getsockopt', socket.SOL_SOCKET, socket.SO_PEERCRED, size)
         ])
 
-    def test_shutdown_and_close(self):
-        class MockSocket:
-            def __init__(self, exc=None):
-                self._exc = exc
-                self._calls = []
-
-            def shutdown(self, how):
-                self._calls.append(('shutdown', how))
-                if self._exc is not None:
-                    raise self._exc
-
-            def close(self):
-                self._calls.append('close')
-
-        sock = MockSocket()
-        self.assertIsNone(server._shutdown_and_close(sock))
-        self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR),
-            'close',
-        ])
-
-        sock = MockSocket(ConnectionError(random_id()))
-        self.assertIsNone(server._shutdown_and_close(sock))
-        self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR),
-            'close',
-        ])
-
-        marker = random_id()
-        exc = ValueError(marker)
-        sock = MockSocket(exc)
-        with self.assertRaises(ValueError) as cm:
-            server._shutdown_and_close(sock)
-        self.assertIs(cm.exception, exc)
-        self.assertEqual(str(cm.exception), marker)
-        self.assertEqual(sock._calls, [
-            ('shutdown', socket.SHUT_RDWR),
-        ]) 
-
 
 class BadApp:
     """
@@ -324,19 +285,19 @@ class BadApp:
     """
 
 
-def good_app(session, request, bodies):
+def good_app(session, request, api):
     return (200, 'OK', {}, None)
 
 
 class BadConnectionHandler:
-    def __call__(self, session, request, bodies):
+    def __call__(self, session, request, api):
         pass
 
     on_connect = 'nope'
 
 
 class GoodConnectionHandler:
-    def __call__(self, session, request, bodies):
+    def __call__(self, session, request, api):
         pass
 
     def on_connect(self, session, sock):
@@ -691,11 +652,11 @@ ENCODED_CHUNKS = wfile.getvalue()
 del wfile
 
 
-def chunked_request_app(session, request, bodies):
+def chunked_request_app(session, request, api):
     assert request.method == 'POST'
     assert request.mount == []
     assert request.path == []
-    assert isinstance(request.body, bodies.ChunkedBody)
+    assert isinstance(request.body, api.ChunkedBody)
     assert request.headers['transfer-encoding'] == 'chunked'
     result = []
     for (extension, data) in request.body:
@@ -705,7 +666,7 @@ def chunked_request_app(session, request, bodies):
     return (200, 'OK', headers, body)
 
 
-def chunked_response_app(session, request, bodies):
+def chunked_response_app(session, request, api):
     assert request.method == 'GET'
     assert request.mount == []
     assert request.body is None
@@ -716,7 +677,7 @@ def chunked_response_app(session, request, bodies):
         rfile = io.BytesIO(b'0\r\n\r\n')
     else:
         return (404, 'Not Found', {}, None)
-    body = bodies.ChunkedBody(rfile)
+    body = api.ChunkedBody(rfile)
     return (200, 'OK', headers, body)
 
 
@@ -725,21 +686,21 @@ DATA2 = os.urandom(3469)
 DATA = DATA1 + DATA2
 
 
-def response_app(session, request, bodies):
+def response_app(session, request, api):
     assert request.method == 'GET'
     assert request.mount == []
     assert request.body is None
     if request.path == ['foo']:
-        body = bodies.Body(io.BytesIO(DATA), len(DATA))
+        body = api.Body(io.BytesIO(DATA), len(DATA))
     elif request.path == ['bar']:
-        body = bodies.Body(io.BytesIO(), 0)
+        body = api.Body(io.BytesIO(), 0)
     else:
         return (404, 'Not Found', {}, None)
     headers = {'content-length': body.content_length}
     return (200, 'OK', headers, body)
 
 
-def timeout_app(session, request, bodies):
+def timeout_app(session, request, api):
     assert request.method == 'POST'
     assert request.mount == []
     assert request.body is None
@@ -760,7 +721,7 @@ class AppWithConnectionHandler:
         self.marker = marker
         self.accept = accept
 
-    def __call__(self, session, request, bodies):
+    def __call__(self, session, request, api):
         return (200, 'OK', {}, self.marker)
 
     def on_connect(self, session, sock):
@@ -833,26 +794,26 @@ class TestLiveServer(TestCase):
         (httpd, client) = self.build_with_app(chunked_request_app)
         conn = client.connect()
 
-        body = base.bodies.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
+        body = base.api.ChunkedBody(io.BytesIO(ENCODED_CHUNKS))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 132, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.bodies.Body)
+        self.assertIsInstance(response.body, base.api.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(chunk).hexdigest() for chunk in CHUNKS]
         )
 
-        body = base.bodies.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
+        body = base.api.ChunkedBody(io.BytesIO(b'0\r\n\r\n'))
         response = conn.request('POST', '/', {}, body)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers,
             {'content-length': 44, 'content-type': 'application/json'}
         )
-        self.assertIsInstance(response.body, base.bodies.Body)
+        self.assertIsInstance(response.body, base.api.Body)
         self.assertEqual(json.loads(response.body.read().decode('utf-8')),
             [sha1(b'').hexdigest()]
         )
@@ -867,7 +828,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
+        self.assertIsInstance(response.body, base.api.ChunkedBody)
         self.assertEqual(tuple(response.body),
             tuple((None, data) for data in CHUNKS)
         )
@@ -876,7 +837,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
+        self.assertIsInstance(response.body, base.api.ChunkedBody)
         self.assertEqual(list(response.body), [(None, b'')])
 
         response = conn.request('GET', '/baz', {}, None)
@@ -889,7 +850,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'transfer-encoding': 'chunked'})
-        self.assertIsInstance(response.body, base.bodies.ChunkedBody)
+        self.assertIsInstance(response.body, base.api.ChunkedBody)
         self.assertEqual(tuple(response.body),
             tuple((None, data) for data in CHUNKS)
         )
@@ -903,14 +864,14 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.bodies.Body)
+        self.assertIsInstance(response.body, base.api.Body)
         self.assertEqual(response.body.read(), DATA)
 
         response = conn.request('GET', '/bar', {}, None)
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': 0})
-        self.assertIsInstance(response.body, base.bodies.Body)
+        self.assertIsInstance(response.body, base.api.Body)
         self.assertEqual(response.body.read(), b'')
 
         response = conn.request('GET', '/baz', {}, None)
@@ -923,7 +884,7 @@ class TestLiveServer(TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.reason, 'OK')
         self.assertEqual(response.headers, {'content-length': len(DATA)})
-        self.assertIsInstance(response.body, base.bodies.Body)
+        self.assertIsInstance(response.body, base.api.Body)
         self.assertEqual(response.body.read(), DATA)
         httpd.terminate()
 
@@ -938,7 +899,7 @@ class TestLiveServer(TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.reason, 'OK')
                 self.assertEqual(response.headers, {'content-length': 16})
-                self.assertIsInstance(response.body, base.bodies.Body)
+                self.assertIsInstance(response.body, base.api.Body)
                 self.assertEqual(response.body.read(), marker)
             conn.close()
         httpd.terminate()
@@ -1056,7 +1017,7 @@ class TestLiveServer_AF_UNIX(TestLiveServer):
         return (httpd, Client(httpd.address))
 
 
-def ssl_app(session, request, bodies):
+def ssl_app(session, request, api):
 #    assert session['ssl_cipher'] == (
 #        'ECDHE-RSA-AES128-GCM-SHA256', 'TLSv1/SSLv3', 128
 #    )
