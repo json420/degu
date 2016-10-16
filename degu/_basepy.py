@@ -233,7 +233,7 @@ def _readinto(method, dst):
     return start
 
 def _readinto_from(robj, dst):
-    if type(robj) is Reader:
+    if type(robj) in (Reader, SocketWrapper):
         return robj.readinto(dst)
     return _readinto(robj, dst)
 
@@ -270,13 +270,13 @@ def _write_to(wobj, src):
 
 
 def _get_robj(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) in (Reader, SocketWrapper):
         return rfile
     return _getcallable('rfile', rfile, 'readinto')
 
 
 def _get_readline(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) in (Reader, SocketWrapper):
         return rfile
     return _getcallable('rfile', rfile, 'readline')
 
@@ -1381,6 +1381,24 @@ class SocketWrapper:
         preamble = self.read_until(BUF_LEN, b'\r\n\r\n')
         return parse_response(method, preamble, self)
 
+    def readchunkline(self):
+        line = self.read_until(4096, b'\r\n')
+        return parse_chunk(line)
+
+    def readinto(self, dst):
+        dst = memoryview(dst)
+        dst_len = len(dst)
+        if not (1 <= dst_len <= MAX_IO_SIZE):
+            raise ValueError(
+                'need 1 <= len(buf) <= {}; got {}'.format(MAX_IO_SIZE, dst_len)
+            )
+        src = self._r_io.drain(dst_len)
+        src_len = len(src)
+        dst[0:src_len] = src
+        added = _readinto(self._sock_recv_into, dst[src_len:])
+        assert dst_len == src_len + added
+        return dst_len
+
     def _raw_write(self, src):
         return _write(self._sock_send, src)
 
@@ -1474,7 +1492,7 @@ class Body:
         self._rfile = rfile
         self._remaining = self._content_length = content_length
         self._state = BODY_READY
-        if type(rfile) is Reader:
+        if type(rfile) in (Reader, SocketWrapper):
             self._robj = rfile
         else:
             self._robj = _getcallable('rfile', rfile, 'readinto')
@@ -1607,7 +1625,7 @@ def _readchunkline(readline):
 
 
 def _readchunk_from(robj, readline, nopack=False):
-    if type(robj) is Reader:
+    if type(robj) in (Reader, SocketWrapper):
         (size, ext) = robj.readchunkline()
     else:
         (size, ext) = _readchunkline(readline)

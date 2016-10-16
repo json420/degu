@@ -5911,6 +5911,38 @@ class TestSocketWrapper_Py(BackendTestCase):
         self.assertEqual(repr(_range), 'Range(0, 1)')
         self.assertEqual(str(_range), 'bytes=0-0')
 
+        # With Body:
+        marker = os.urandom(16)
+        data = b'PUT /foo HTTP/1.1\r\nContent-Length: 16\r\n\r\n' + marker
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        request = wrapper.read_request()
+        self.assertIsInstance(request, self.getattr('Request'))
+        self.assertEqual(request.method, 'PUT')
+        self.assertEqual(request.uri, '/foo')
+        self.assertEqual(request.headers, {'content-length': 16})
+        self.assertIsInstance(request.body, self.api.Body)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, ['foo'])
+        self.assertIsNone(request.query)
+        self.assertEqual(request.body.content_length, 16)
+        self.assertEqual(request.body.read(), marker)
+
+        # With ChunkedBody:
+        marker = os.urandom(15)
+        body = b'f\r\n' + marker + b'\r\n0\r\n\r\n'
+        data = b'PUT /foo HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n' + body
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        request = wrapper.read_request()
+        self.assertIsInstance(request, self.getattr('Request'))
+        self.assertEqual(request.method, 'PUT')
+        self.assertEqual(request.uri, '/foo')
+        self.assertEqual(request.headers, {'transfer-encoding': 'chunked'})
+        self.assertIsInstance(request.body, self.api.ChunkedBody)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, ['foo'])
+        self.assertIsNone(request.query)
+        self.assertEqual(list(request.body), [(None, marker), (None, b'')])
+
     def test_read_request(self):
         for rcvbuf in (None, 1, 2, 3):
             self.check_read_request(rcvbuf)
