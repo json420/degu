@@ -5915,6 +5915,116 @@ class TestSocketWrapper_Py(BackendTestCase):
         for rcvbuf in (None, 1, 2, 3):
             self.check_read_request(rcvbuf)
 
+    def check_read_response(self, rcvbuf):
+        ResponseType = self.getattr('ResponseType')
+
+        # Bad method:
+        for method in BAD_METHODS:
+            (sock, wrapper) = self.new()
+            with self.assertRaises(ValueError) as cm:
+                wrapper.read_response(method)
+            self.assertEqual(str(cm.exception),
+                'bad method: {!r}'.format(method)
+            )
+
+        # Test when exact b'\r\n\r\n' preamble termination is missing:
+        data = b'HTTP/1.1 200 OK\n\r\nhello, world'
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        with self.assertRaises(ValueError) as cm:
+            wrapper.read_response('GET')
+        self.assertEqual(str(cm.exception),
+            '{!r} not found in {!r}...'.format(b'\r\n\r\n', data)
+        )
+        if rcvbuf is None:
+            self.assertEqual(sock._recv_into_calls, 2)
+        else:
+            self.assertEqual(sock._recv_into_calls, len(data) // rcvbuf + 1)
+
+        prefix = b'HTTP/1.1 200 OK'
+        term = b'\r\n\r\n'
+        suffix = b'hello, world'
+        for bad in BAD_TERM:
+            data = prefix + bad + suffix
+            (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                wrapper.read_response('GET')
+            self.assertEqual(str(cm.exception),
+                 '{!r} not found in {!r}...'.format(term, data)
+            )
+
+        (sock, wrapper) = self.new(rcvbuf=rcvbuf)
+        with self.assertRaises(self.backend.EmptyPreambleError) as cm:
+            wrapper.read_response('GET')
+        self.assertEqual(str(cm.exception), 'response preamble is empty')
+        if rcvbuf is None:
+            self.assertEqual(sock._recv_into_calls, 1)
+        else:
+            self.assertEqual(sock._recv_into_calls, 1)
+
+        data = b'HTTP/1.1 200 OK\r\n\r\nHello naughty nurse!'
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        response = wrapper.read_response('GET')
+        self.assertIsInstance(response, ResponseType)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.reason, 'OK')
+        self.assertEqual(response.headers, {})
+        self.assertIs(response.body, None)
+        self.assertEqual(response, (200, 'OK', {}, None))
+
+        good = b'HTTP/1.1 200 OK'
+        suffix = b'\r\n\r\nHello naughty nurse!'
+        for i in range(len(good)):
+            bad = bytearray(good)
+            del bad[i]
+            bad = bytes(bad)
+            data = bad + suffix
+            (sock, wraper) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                wraper.read_response('GET')
+            self.assertEqual(str(cm.exception),
+                'response line too short: {!r}'.format(bad)
+            )
+        indexes = list(range(9))
+        indexes.append(12)
+        for i in indexes:
+            g = good[i]
+            for b in range(256):
+                if b == g:
+                    continue
+                bad = bytearray(good)
+                bad[i] = b
+                bad = bytes(bad)
+                data = bad + suffix
+                (sock, wraper) = self.new(data, rcvbuf=rcvbuf)
+                with self.assertRaises(ValueError) as cm:
+                    wraper.read_response('GET')
+                self.assertEqual(str(cm.exception),
+                    'bad response line: {!r}'.format(bad)
+                )
+
+        template = 'HTTP/1.1 {:03d} OK\r\n\r\nHello naughty nurse!'
+        for status in range(1000):
+            data = template.format(status).encode()
+            (sock, wraper) = self.new(data, rcvbuf=rcvbuf)
+            if 100 <= status <= 599:
+                response = wraper.read_response('GET')
+                self.assertIsInstance(response, ResponseType)
+                self.assertEqual(response.status, status)
+                self.assertEqual(response.reason, 'OK')
+                self.assertEqual(response.headers, {})
+                self.assertIs(response.body, None)
+                self.assertEqual(response, (status, 'OK', {}, None))
+            else:
+                with self.assertRaises(ValueError) as cm:
+                    wraper.read_response('GET')
+                self.assertEqual(str(cm.exception),
+                    'bad status: {!r}'.format('{:03d}'.format(status).encode())
+                )
+
+    def test_read_response(self):
+        for rcvbuf in (None, 1, 2, 3):
+            self.check_read_response(rcvbuf)
+
     def test_write_request(self):
         (sock, wrapper) = self.new()
         for method in BAD_METHODS:
@@ -6140,7 +6250,7 @@ class BaseMockSocket:
 
 
 class NewMockSocket(BaseMockSocket):
-    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf')
+    __slots__ = ('_rfile', '_wfile', '_rcvbuf', '_sndbuf', '_recv_into_calls')
 
     def __init__(self, data=b'', rcvbuf=None, sndbuf=None):
         assert rcvbuf is None or type(rcvbuf) is int
@@ -6149,11 +6259,13 @@ class NewMockSocket(BaseMockSocket):
         self._wfile = io.BytesIO()
         self._rcvbuf = rcvbuf
         self._sndbuf = sndbuf
+        self._recv_into_calls = 0
         super().__init__()
 
     def recv_into(self, dst):
         assert type(dst) is memoryview
         self._calls.append(('recv_into', len(dst)))
+        self._recv_into_calls += 1
         if self._rcvbuf is not None:
             dst = dst[0:self._rcvbuf]
         return self._rfile.readinto(dst)

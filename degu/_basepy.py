@@ -1376,6 +1376,11 @@ class SocketWrapper:
         preamble = self.read_until(BUF_LEN, b'\r\n\r\n')
         return parse_request(preamble, self)
 
+    def read_response(self, method):
+        _check_method(method)
+        preamble = self.read_until(BUF_LEN, b'\r\n\r\n')
+        return parse_response(method, preamble, self)
+
     def _raw_write(self, src):
         return _write(self._sock_send, src)
 
