@@ -1296,9 +1296,9 @@ class SocketWrapper:
     def __init__(self, sock):
         self._closed = False
         self._sock = sock
+        self._sock_close = _getcallable('sock', sock, 'close')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._sock_send = _getcallable('sock', sock, 'send')
-        self._sock_close = _getcallable('sock', sock, 'close')
         self._r_io = _IOBuf()
         self._w_io = _IOBuf()
 
@@ -1314,9 +1314,11 @@ class SocketWrapper:
         return self._closed
 
     def close(self):
-        if not self._closed:
+        if getattr(self, '_closed', None) is False:
             self._closed = True
-            self._sock_close()
+            sock_close = getattr(self, '_sock_close', None)
+            if sock_close is not None:
+                sock_close()
 
     def _recv_into(self, buf):
         added = self._sock_recv_into(buf)
@@ -1472,7 +1474,7 @@ def _check_body_state(name, state, max_state):
 
 
 def _rfile_repr(rfile):
-    if type(rfile) is Reader:
+    if type(rfile) in (Reader, SocketWrapper):
         return '<reader>'
     return '<rfile>'
 
@@ -1945,10 +1947,9 @@ class Session:
 def _handle_requests(app, session, sock):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
-    reader = Reader(sock)
-    writer = Writer(sock)
+    wrapper = SocketWrapper(sock)
     while not session._closed:
-        request = reader.read_request()
+        request = wrapper.read_request()
         response = app(session, request, api)
         (status, reason, headers, body) = _unpack_response(response)
         _check_status(status)
@@ -1974,7 +1975,7 @@ def _handle_requests(app, session, sock):
             # to a HEAD request
 
         # Write response:
-        writer.write_response(status, reason, headers, body)
+        wrapper.write_response(status, reason, headers, body)
 
         # Update request counter, possibly close based on status:
         session._response_complete(status, reason)

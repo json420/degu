@@ -6545,7 +6545,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() returns a 3-tuple:
@@ -6569,7 +6569,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() returns a 5-tuple:
@@ -6593,7 +6593,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() returns status that isn't an int:
@@ -6617,7 +6617,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() returns status < 100:
@@ -6641,7 +6641,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() returns status > 599:
@@ -6665,7 +6665,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() doesn't consume request body:
@@ -6690,7 +6690,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() doesn't return response body None for HEAD request:
@@ -6714,7 +6714,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', 32 * 1024)])
+        self.assertEqual(sock._calls, [('recv_into', 32 * 1024), 'close'])
         self.assertEqual(sys.getrefcount(rsp), 2)
 
         # app() raises an exception:
@@ -6739,7 +6739,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN), 'close'])
 
         # EmptyPreambleError:
         def app(session, request, bodies):
@@ -6755,7 +6755,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN)])
+        self.assertEqual(sock._calls, [('recv_into', self.BUF_LEN), 'close'])
 
         # Should close connection after max_requests:
         rsp = (200, 'OK', {}, b'bar')
@@ -6782,6 +6782,7 @@ class TestServerFunctions_Py(BackendTestCase):
             ('recv_into', 32 * 1024),
             ('send', len(outdata)),
             ('send', len(outdata)),
+            'close',
         ])
         self.assertEqual(sys.getrefcount(rsp), 2)
         self.assertEqual(sock._rfile.read(), b'')
@@ -6823,6 +6824,7 @@ class TestServerFunctions_Py(BackendTestCase):
             ('send', len(out2)),
             ('send', len(out3)),
             ('send', len(out4)),
+            'close',
         ])
         self.assertEqual(sock._rfile.read(), b'')
         self.assertEqual(sock._wfile.getvalue(), out1 + out2 + out3 + out4)

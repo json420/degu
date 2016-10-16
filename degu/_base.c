@@ -3981,10 +3981,11 @@ _SocketWrapper_close(SocketWrapper *self)
 static void
 _SocketWrapper_close_unraisable(SocketWrapper *self)
 {
-    if (! _SocketWrapper_close(self)) {
-        PyErr_WriteUnraisable((PyObject *)self);
-        PyErr_Clear();
-    }
+    PyObject *err_type, *err_value, *err_traceback;
+
+    PyErr_Fetch(&err_type, &err_value, &err_traceback);
+    _SocketWrapper_close(self);
+    PyErr_Restore(err_type, err_value, err_traceback);
 }
 
 static void
@@ -4421,7 +4422,7 @@ _rfile_repr(PyObject *rfile)
     if (rfile == NULL) {
         return repr_null;
     }
-    if (IS_READER(rfile)) {
+    if (IS_READER(rfile) || IS_WRAPPER(rfile)) {
         return repr_reader;
     }
     return repr_rfile;
@@ -5320,9 +5321,8 @@ _handle_requests(PyObject *self, PyObject *args)
     PyObject *session = NULL;
     bool success = true;
 
-    /* These 5 all need to be freed */
-    PyObject *reader = NULL;
-    PyObject *writer = NULL;
+    /* These 4 all need to be freed */
+    PyObject *wrapper = NULL;
     PyObject *request = NULL;
     PyObject *response = NULL;
     DeguRequest req = NEW_DEGU_REQUEST;
@@ -5339,12 +5339,11 @@ _handle_requests(PyObject *self, PyObject *args)
     if (! _check_type2("session", session, &SessionType)) {
         goto error;
     }
-    _SET(reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
-    _SET(writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
+    _SET(wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
 
     while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
-        if (! _Reader_read_request(READER(reader), &req)) {
+        if (! _SocketWrapper_read_request(WRAPPER(wrapper), &req)) {
             goto error;
         }
         _SET(request, _Request_New(&req))
@@ -5375,7 +5374,7 @@ _handle_requests(PyObject *self, PyObject *args)
         }
 
         /* Write the response */
-        if (_Writer_write_response((Writer *)writer, &rsp) < 0) {
+        if (_SocketWrapper_write_response(WRAPPER(wrapper), &rsp) < 0) {
             goto error;
         }
 
@@ -5396,8 +5395,7 @@ error:
     success = false;
 
 cleanup:
-    Py_CLEAR(reader);           /* 1 */
-    Py_CLEAR(writer);           /* 2 */
+    Py_CLEAR(wrapper);          /* 2 */
     Py_CLEAR(request);          /* 3 */
     Py_CLEAR(response);         /* 4 */
     _clear_degu_request(&req);  /* 5 */

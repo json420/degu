@@ -848,6 +848,7 @@ static PyTypeObject SocketWrapperType = {
     .tp_finalize       = NULL,
 };
 
+#define WRAPPER_CLASS ((PyObject *)&SocketWrapperType)
 #define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
 #define WRAPPER(obj) ((SocketWrapper *)(obj))
 
