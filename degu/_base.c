@@ -3094,48 +3094,6 @@ _write(PyObject *method, DeguSrc src)
  * Abstract internal Reader/Writer fast-paths vs. Python file-like API.
  ******************************************************************************/
 
-/* DeguRObj: absracted reader object */
-static void
-_clear_robj(DeguRObj *r)
-{
-    Py_CLEAR(r->readinto);
-    Py_CLEAR(r->readline);
-}
-
-static bool
-_init_robj(PyObject *rfile, DeguRObj *r, const bool readline)
-{
-    if (rfile == NULL) {
-        Py_FatalError("_init_robj(): rfile == NULL");
-    }
-    if (IS_WRAPPER(rfile)) {
-        _SET(r->wrapper, WRAPPER(rfile))
-    }
-    else {
-        _SET(r->readinto, _getcallable("rfile", rfile, attr_readinto))
-        if (readline) {
-            _SET(r->readline, _getcallable("rfile", rfile, attr_readline))
-        }
-    }
-    return true;
-
-error:
-    return false;
-}
-
-static bool
-_readinto_from(DeguRObj *r, DeguDst dst)
-{
-    if (r->wrapper != NULL) {
-        return _SocketWrapper_readinto(r->wrapper, dst);
-    }
-    if (r->readinto != NULL) {
-        return _readinto(r->readinto, dst);
-    }
-    Py_FatalError("_readinto_from(): bad internal call");
-    return false;
-}
-
 
 /* DeguWObj: absracted writer object */
 static void
@@ -3306,42 +3264,6 @@ cleanup:
 }
 
 static bool
-_read_chunkline_from(DeguRObj *r, DeguChunk *dc)
-{
-    if (r->wrapper != NULL) {
-        return _SocketWrapper_read_chunkline(r->wrapper, dc);
-    }
-    if (r->readline != NULL) {
-        return _read_chunkline(r->readline, dc);
-    }
-    Py_FatalError("_read_chunkline_from(): bad internal call");
-    return false;
-}
-
-static bool
-_read_chunk_from(DeguRObj *r, DeguChunk *dc)
-{
-    if (! _read_chunkline_from(r, dc)) {
-        goto error;
-    }
-    const ssize_t size = (ssize_t)dc->size + 2;
-    _SET(dc->data, PyBytes_FromStringAndSize(NULL, size))
-    DeguDst dst = _dst_frombytes(dc->data);
-    if (! _readinto_from(r, dst)) {
-        goto error;
-    }
-    DeguSrc end = _slice_src_from_dst(dst, dst.len - 2, dst.len);
-    if (! _equal(end, CRLF)) {
-        _value_error("bad chunk data termination: %R", end);
-        goto error;
-    }
-    return true;
-
-error:
-    return false;
-}
-
-static bool
 _filelike_read_chunkline(DeguFileLike *fl, DeguChunk *dc)
 {
     if (fl->wrapper != NULL) {
@@ -3431,16 +3353,16 @@ readchunk(PyObject *self, PyObject *args)
 {
     PyObject *rfile = NULL;
     PyObject *ret = NULL;
-    DeguRObj r = NEW_DEGU_ROBJ;
+    DeguFileLike fl = NEW_DEGU_FILE_LIKE;
     DeguChunk dc = NEW_DEGU_CHUNK;
 
     if (! PyArg_ParseTuple(args, "O:readchunk", &rfile)) {
         return NULL;
     }
-    if (_init_robj(rfile, &r, true) && _read_chunk_from(&r, &dc)) {
+    if (_filelike_init(rfile, &fl, FL_CHUNKED) && _filelike_read_chunk(&fl, &dc)) {
         ret = _pack_chunk(&dc);
     }
-    _clear_robj(&r);
+    _filelike_clear(&fl);
     _clear_degu_chunk(&dc);
     return ret;
 }
@@ -4021,7 +3943,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
         Py_FatalError("_Body_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _filelike_init(rfile, &(self->fl), FL_READINTO_BIT)) {
+    if (! _filelike_init(rfile, &(self->fl), FL_READ)) {
         goto error;
     }
     self->remaining = self->content_length = content_length;
@@ -4263,7 +4185,7 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
         Py_FatalError("_ChunkedBody_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _filelike_init(rfile, &(self->fl), FL_READINTO_BIT | FL_READLINE_BIT)) {
+    if (! _filelike_init(rfile, &(self->fl), FL_CHUNKED)) {
         goto error;
     }
     self->chunked = true;

@@ -688,20 +688,15 @@ typedef struct {
 
 #define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
 
-typedef struct {
-    SocketWrapper *wrapper;
-    PyObject *readinto;
-    PyObject *readline;
-} DeguRObj;
-
-#define NEW_DEGU_ROBJ ((DeguRObj){NULL, NULL, NULL})
-
 
 
 #define FL_WRITE_BIT     (1 << 0)
 #define FL_READINTO_BIT  (1 << 1)
 #define FL_READLINE_BIT  (1 << 2)
 #define FL_ALLOWED_MASK  (FL_WRITE_BIT | FL_READINTO_BIT | FL_READLINE_BIT)
+#define FL_WRITE         (FL_WRITE_BIT)
+#define FL_READ          (FL_READINTO_BIT)
+#define FL_CHUNKED       (FL_READINTO_BIT | FL_READLINE_BIT)
 
 typedef struct {
     SocketWrapper *wrapper;
