@@ -5844,6 +5844,77 @@ class TestSocketWrapper_Py(BackendTestCase):
             )
             self.assertEqual(sock._calls, [('recv_into', default)])
 
+    def check_read_request(self, rcvbuf):
+        # Empty preamble:
+        (sock, wrapper) = self.new(b'', rcvbuf=rcvbuf)
+        with self.assertRaises(self.backend.EmptyPreambleError) as cm:
+            wrapper.read_request()
+        self.assertEqual(str(cm.exception), 'request preamble is empty')
+
+        # Good preamble termination:
+        prefix = b'GET / HTTP/1.1'
+        term = b'\r\n\r\n'
+        suffix = b'hello, world'
+        data = prefix + term + suffix
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        request = wrapper.read_request()
+        self.assertIsInstance(request, self.getattr('Request'))
+        self.assertEqual(request.method, 'GET')
+        self.assertEqual(request.uri, '/')
+        self.assertEqual(request.headers, {})
+        self.assertIsNone(request.body)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, [])
+        self.assertIsNone(request.query)
+
+        # Bad preamble termination:
+        for bad in BAD_TERM:
+            data = prefix + bad + suffix
+            (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                wrapper.read_request()
+            self.assertEqual(str(cm.exception),
+                 '{!r} not found in {!r}...'.format(term, data)
+            )
+
+        # Request line too short
+        for i in range(len(prefix)):
+            bad = bytearray(prefix)
+            del bad[i]
+            bad = bytes(bad)
+            data = bad + term + suffix
+            (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+            with self.assertRaises(ValueError) as cm:
+                wrapper.read_request()
+            self.assertEqual(str(cm.exception),
+                'request line too short: {!r}'.format(bad)
+            )
+
+        # With Range header:
+        data = b'GET / HTTP/1.1\r\nRange: bytes=0-0\r\n\r\n'
+        (sock, wrapper) = self.new(data, rcvbuf=rcvbuf)
+        request = wrapper.read_request()
+        self.assertIsInstance(request, self.getattr('Request'))
+        self.assertEqual(request.method, 'GET')
+        self.assertEqual(request.uri, '/')
+        self.assertEqual(request.headers, {'range': self.api.Range(0, 1)})
+        self.assertIsNone(request.body)
+        self.assertEqual(request.mount, [])
+        self.assertEqual(request.path, [])
+        self.assertIsNone(request.query)
+        _range = request.headers['range']
+        self.assertIs(type(_range), self.api.Range)
+        self.assertIs(type(_range.start), int)
+        self.assertIs(type(_range.stop), int)
+        self.assertEqual(_range.start, 0)
+        self.assertEqual(_range.stop, 1)
+        self.assertEqual(repr(_range), 'Range(0, 1)')
+        self.assertEqual(str(_range), 'bytes=0-0')
+
+    def test_read_request(self):
+        for rcvbuf in (None, 1, 2, 3):
+            self.check_read_request(rcvbuf)
+
     def test_write_request(self):
         (sock, wrapper) = self.new()
         for method in BAD_METHODS:
