@@ -5522,18 +5522,6 @@ class TestSocketWrapper_C(TestSocketWrapper_Py):
     backend = _base
 
 
-class BaseMockSocket:
-    __slots__ = ('_calls',)
-
-    def __init__(self):
-        self._calls = []
-
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-
-    def close(self):
-        self._calls.append('close')
-
 
 class TestSession_Py(BackendTestCase):
     @property
@@ -6068,6 +6056,18 @@ class TestConnection_Py(BackendTestCase):
         yield from self.iter_bodies()
 
     def test_init(self):
+        class BaseMockSocket:
+            __slots__ = ('_calls',)
+
+            def __init__(self):
+                self._calls = []
+
+            def shutdown(self, how):
+                self._calls.append(('shutdown', how))
+
+            def close(self):
+                self._calls.append('close')
+    
         # no sock.recv_into() attribute:
         class BadSocket1(BaseMockSocket):
             __slots__ = tuple()
