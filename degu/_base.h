@@ -1233,8 +1233,7 @@ typedef struct {
     PyObject *sock;
     PyObject *base_headers;
     PyObject *api;
-    PyObject *reader;
-    PyObject *writer;
+    PyObject *wrapper;
     PyObject *response_body;
     bool closed;
 } Connection;

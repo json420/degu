@@ -1985,8 +1985,7 @@ class Connection:
     __slots__ = (
         'sock',
         'base_headers',
-        '_reader',
-        '_writer',
+        '_wrapper',
         '_response_body',
         '_closed',
         '_api',
@@ -1998,8 +1997,7 @@ class Connection:
         if base_headers is not None:
             _check_type2('base_headers', base_headers, tuple)
         self.base_headers = base_headers
-        self._reader = Reader(sock)
-        self._writer = Writer(sock)
+        self._wrapper = SocketWrapper(sock)
         self._response_body = None
         self._closed = False
         self._api = api
@@ -2059,8 +2057,8 @@ class Connection:
                 )
             if self.base_headers is not None:
                 headers.update(self.base_headers)
-            self._writer.write_request(method, uri, headers, body)
-            response = self._reader.read_response(method)
+            self._wrapper.write_request(method, uri, headers, body)
+            response = self._wrapper.read_response(method)
             self._response_body = response.body
             return response
         except Exception:

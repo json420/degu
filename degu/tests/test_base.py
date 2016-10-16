@@ -6884,6 +6884,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
             'close',
+            'close',
         ])
 
         # no sock.send() attribute:
@@ -6900,6 +6901,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
+            'close',
             'close',
         ])
 
@@ -6919,6 +6921,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
             'close',
+            'close',
         ])
 
         # sock.send() isn't callable:
@@ -6936,6 +6939,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
+            'close',
             'close',
         ])
 
@@ -6960,7 +6964,7 @@ class TestConnection_Py(BackendTestCase):
         count = sys.getrefcount(api)
         sock = NewMockSocket()
         conn = self.Connection(sock, None)
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 7)
         self.assertIs(conn.sock, sock)
         self.assertIsNone(conn.base_headers)
         self.assertIs(conn.api, api)
@@ -6972,6 +6976,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
             'close',
+            'close',
         ])
         self.assertEqual(sys.getrefcount(api), count)
 
@@ -6981,7 +6986,7 @@ class TestConnection_Py(BackendTestCase):
         v = random_id()
         base_headers = ((k, v),)
         conn = self.Connection(sock, base_headers)
-        self.assertEqual(sys.getrefcount(sock), 5)
+        self.assertEqual(sys.getrefcount(sock), 7)
         self.assertIs(conn.sock, sock)
         self.assertIs(conn.base_headers, base_headers)
         self.assertIs(conn.api, api)
@@ -6993,6 +6998,7 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(base_headers), 2)
         self.assertEqual(sock._calls, [
             ('shutdown', socket.SHUT_RDWR),
+            'close',
             'close',
         ])
         self.assertEqual(sys.getrefcount(api), count)
@@ -7052,7 +7058,7 @@ class TestConnection_Py(BackendTestCase):
             'Connection is closed'
         )
         del conn
-        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._calls, ['close'])
         self.assertEqual(sys.getrefcount(sock), 2)
 
         send = b'GET / HTTP/1.1\r\n\r\n'
@@ -7089,10 +7095,10 @@ class TestConnection_Py(BackendTestCase):
         self.assertEqual(sock._rfile.tell(), len(recv) * 2)
         sock._calls.clear()
         del conn
-        self.assertEqual(sys.getrefcount(sock), 3)
+        self.assertEqual(sys.getrefcount(sock), 6)
         del response
         self.assertEqual(sys.getrefcount(sock), 2)
-        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._calls, ['close'])
 
         v = (None, 1, 2, 3)
         comb = tuple((s, r) for s in v for r in v)
@@ -7108,7 +7114,7 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(response.headers, {'content-length': 12})
             self.assertIs(type(response.body), self.Body)
             self.assertEqual(response.body.read(), b'hello, world')
-            self.assertEqual(sys.getrefcount(sock), 5)
+            self.assertEqual(sys.getrefcount(sock), 7)
             del response
             del conn
             self.assertEqual(sys.getrefcount(sock), 2)
@@ -7128,7 +7134,7 @@ class TestConnection_Py(BackendTestCase):
             self.assertEqual(response.headers, {'content-length': 12})
             self.assertIs(type(response.body), self.Body)
             self.assertEqual(response.body.read(), b'hello, world')
-            self.assertEqual(sys.getrefcount(sock), 5)
+            self.assertEqual(sys.getrefcount(sock), 7)
             del response
             del conn
             self.assertEqual(sys.getrefcount(sock), 2)

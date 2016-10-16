@@ -4007,9 +4007,9 @@ SocketWrapper_init(SocketWrapper *self, PyObject *args, PyObject *kw)
     if (! PyArg_ParseTupleAndKeywords(args, kw, "O:SocketWrapper", keys, &sock)) {
         goto error;
     }
+    _SET(self->close,     _getcallable("sock", sock, attr_close))
     _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
     _SET(self->send,      _getcallable("sock", sock, attr_send))
-    _SET(self->close,     _getcallable("sock", sock, attr_close))
     _SET_AND_INC(self->sock, sock)
     return 0;
 
@@ -5416,8 +5416,7 @@ Connection_dealloc(Connection *self)
     Py_CLEAR(self->sock);
     Py_CLEAR(self->base_headers);
     Py_CLEAR(self->api);
-    Py_CLEAR(self->reader);
-    Py_CLEAR(self->writer);
+    Py_CLEAR(self->wrapper);
     Py_CLEAR(self->response_body);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -5441,8 +5440,7 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
     }
     _SET_AND_INC(self->base_headers, base_headers)
     _SET_AND_INC(self->api, api)
-    _SET(self->reader, PyObject_CallFunctionObjArgs(READER_CLASS, sock, NULL))
-    _SET(self->writer, PyObject_CallFunctionObjArgs(WRITER_CLASS, sock, NULL))
+    _SET(self->wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
     self->response_body = NULL;
     return 0;
 
@@ -5519,10 +5517,10 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Write request, read response */
-    if (_Writer_write_request(WRITER(self->writer), dr) < 0) {
+    if (_SocketWrapper_write_request(WRAPPER(self->wrapper), dr) < 0) {
         goto error;
     }
-    if (! _Reader_read_response(READER(self->reader), dr->method, &r)) {
+    if (! _SocketWrapper_read_response(WRAPPER(self->wrapper), dr->method, &r)) {
         goto error;
     }
 
