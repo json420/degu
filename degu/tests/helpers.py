@@ -163,6 +163,9 @@ class DummySocket:
     def __init__(self):
         self._calls = []
 
+    def close(self):
+        self._calls.append('close')
+
     def shutdown(self, how):
         self._calls.append(('shutdown', how))
 

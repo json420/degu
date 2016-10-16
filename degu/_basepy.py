@@ -31,7 +31,6 @@ correctness of the C implementation.
 """
 
 from collections import namedtuple
-import socket
 
 
 TYPE_ERROR = '{}: need a {!r}; got a {!r}: {!r}'
@@ -1294,8 +1293,8 @@ class SocketWrapper:
     )
 
     def __init__(self, sock):
-        self._closed = False
         self._sock = sock
+        self._closed = False
         self._sock_close = _getcallable('sock', sock, 'close')
         self._sock_recv_into = _getcallable('sock', sock, 'recv_into')
         self._sock_send = _getcallable('sock', sock, 'send')
@@ -1314,7 +1313,7 @@ class SocketWrapper:
         return self._closed
 
     def close(self):
-        if getattr(self, '_closed', None) is False:
+        if self._closed is not True:
             self._closed = True
             sock_close = getattr(self, '_sock_close', None)
             if sock_close is not None:
@@ -1987,24 +1986,21 @@ class Connection:
         'base_headers',
         '_wrapper',
         '_response_body',
-        '_closed',
         '_api',
     )
 
     def __init__(self, sock, base_headers):
-        self._closed = False
         self.sock = sock
+        self._wrapper = SocketWrapper(sock)
         if base_headers is not None:
             _check_type2('base_headers', base_headers, tuple)
         self.base_headers = base_headers
-        self._wrapper = SocketWrapper(sock)
         self._response_body = None
-        self._closed = False
         self._api = api
 
     @property
     def closed(self):
-        return self._closed
+        return self._wrapper.closed
 
     @property
     def api(self):
@@ -2022,26 +2018,11 @@ class Connection:
         """
         return self._api
 
-    def __del__(self):
-        self._shutdown()
-
-    def _shutdown(self, how=socket.SHUT_RDWR):
-        if self._closed is not True:
-            self._closed = True
-            try:
-                self.sock.shutdown(how)
-            except:
-                pass
-            try:
-                self.sock.close()
-            except:
-                pass
-
     def close(self):
-        self._shutdown()
+        return self._wrapper.close()
 
     def request(self, method, uri, headers, body):
-        if self._closed is not False:
+        if self._wrapper.closed is not False:
             raise ValueError('Connection is closed')
         try:
             _check_method(method)
@@ -2062,7 +2043,7 @@ class Connection:
             self._response_body = response.body
             return response
         except Exception:
-            self._shutdown()
+            self.close()
             raise
 
     def put(self, uri, headers, body):
