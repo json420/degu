@@ -4334,11 +4334,12 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(sys.getrefcount(rfile), 2)
 
     def get_rfile_plus_body(self, data, mock=False, rcvbuf=None):
-        rfile = io.BytesIO(data)
         if mock is True:
-            obj = self.Reader(MockSocket2(rfile, rcvbuf))
+            sock = NewMockSocket(data, rcvbuf)
+            rfile = sock._rfile
+            obj = self.SocketWrapper(sock)
         else:
-            assert mock is False
+            rfile = io.BytesIO(data)
             obj = rfile
         return (data, rfile, self.ChunkedBody(obj))
 
