@@ -694,9 +694,9 @@ typedef struct {
     PyObject *write;
     PyObject *readinto;
     PyObject *readline;
-} DeguFileLike;
+} DeguFileObj;
 
-#define NEW_DEGU_FILE_LIKE ((DeguFileLike){NULL, NULL, NULL, NULL})
+#define NEW_DeguFileObj ((DeguFileObj){NULL, NULL, NULL, NULL})
 
 
 /******************************************************************************
@@ -705,7 +705,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguFileLike fl;
+    DeguFileObj fl;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -713,7 +713,7 @@ typedef struct {
 } Body;
 
 static PyObject * _Body_New(PyObject *, uint64_t);
-static int64_t _Body_write_to(Body *, DeguFileLike *);
+static int64_t _Body_write_to(Body *, DeguFileObj *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT,    offsetof(Body, rfile),          READONLY, NULL},
@@ -799,13 +799,13 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguFileLike fl;
+    DeguFileObj fl;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
 
 static PyObject * _ChunkedBody_New(PyObject *);
-static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguFileLike *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguFileObj *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -896,7 +896,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-static int64_t _BodyIter_write_to(BodyIter *, DeguFileLike *);
+static int64_t _BodyIter_write_to(BodyIter *, DeguFileObj *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT, offsetof(BodyIter, source), READONLY, NULL},
@@ -980,7 +980,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguFileLike *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguFileObj *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT, offsetof(ChunkedBodyIter, source), READONLY, NULL},
