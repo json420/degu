@@ -263,7 +263,7 @@ def _write(method, src):
 def _write_to(wobj, src):
     if len(src) == 0:
         return 0
-    if type(wobj) in (Writer, SocketWrapper):
+    if type(wobj) is SocketWrapper:
         return wobj._write(src)
     return _write(wobj, src)
 
@@ -281,7 +281,7 @@ def _get_readline(rfile):
 
 
 def _get_wobj(wfile):
-    if type(wfile) in (Writer, SocketWrapper):
+    if type(wfile) is SocketWrapper:
         return wfile
     return _getcallable('wfile', wfile, 'write')
 
@@ -944,9 +944,6 @@ def render_response(dst, status, reason, headers):
     return o.stop
 
 
-################################################################################
-# Writer:
-
 def set_default_header(headers, key, val):
     assert isinstance(headers, dict)
     assert isinstance(key, str)
@@ -969,86 +966,6 @@ def set_output_headers(headers, body):
     else:
         raise TypeError(
             'bad body type: {!r}: {!r}'.format(type(body), body)
-        )
-    
-
-
-class Writer:
-    __slots__ = (
-        '_sock_send',
-        '_tell',
-        '_buf',
-        '_stop',
-    )
-
-    def __init__(self, sock):
-        self._sock_send = _getcallable('sock', sock, 'send')
-        self._tell = 0
-        self._buf = memoryview(bytearray(BUF_LEN))
-        self._stop = 0
-
-    def tell(self):
-        return self._tell
-
-    def _raw_write(self, src):
-        size = _write(self._sock_send, src)
-        assert size == len(src)
-        self._tell += size
-        return size
-
-    def _flush(self):
-        assert 0 <= self._stop <= len(self._buf)
-        src = self._buf[0:self._stop]
-        self._raw_write(src)
-        self._stop = 0
-
-    def _write(self, src):
-        if self._stop > 0 and self._stop + len(src) <= len(self._buf):
-            start = self._stop
-            self._stop += len(src)
-            self._buf[start:self._stop] = src
-            self._flush()
-            return len(src)
-        self._flush()
-        return self._raw_write(src)
-
-    def _write_output(self, func, arg1, arg2, headers, body):
-        orig_tell = self._tell
-        assert self._stop == 0
-
-        total = func(self._buf, arg1, arg2, headers)
-        assert total > 0
-        self._stop = total
-        if type(body) is bytes:
-            if len(body) > MAX_IO_SIZE:
-                raise ValueError(
-                    'need len(body) <= {}; got {}'.format(
-                        MAX_IO_SIZE, len(body)
-                    )
-                )
-            total += self._write(body)
-        elif type(body) in (Body, BodyIter, ChunkedBody, ChunkedBodyIter):
-            total += body.write_to(self)
-        elif body is not None:
-            raise TypeError(
-                'bad body type: {!r}: {!r}'.format(type(body), body)
-            )
-        self._flush()
-        assert self._stop == 0
-        assert self._tell == orig_tell + total
-        return total
-
-    def write_request(self, method, uri, headers, body):
-        _check_method(method)
-        set_output_headers(headers, body)
-        return self._write_output(render_request,
-            method, uri, headers, body
-        )
-
-    def write_response(self, status, reason, headers, body):
-        set_output_headers(headers, body)
-        return self._write_output(render_response,
-            status, reason, headers, body
         )
 
 
