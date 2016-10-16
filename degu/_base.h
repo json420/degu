@@ -559,7 +559,7 @@ static PyTypeObject RequestType = {
 
 
 /******************************************************************************
- * Reader object.
+ * DeguIOBuf API
  ******************************************************************************/
 typedef struct {
     size_t start;
@@ -578,96 +578,6 @@ _iobuf_raw_dst(DeguIOBuf *io)
 {
     return DEGU_DST(io->buf, BUF_LEN);
 }
-
-typedef struct {
-    PyObject_HEAD
-    PyObject *recv_into;
-    uint64_t rawtell;
-    uint8_t s_buf[SCRATCH_LEN];
-    DeguIOBuf r_io;
-} Reader;
-
-static bool _Reader_readinto(Reader *, DeguDst);
-static bool _Reader_read_chunkline(Reader *, DeguChunk *);
-
-static PyObject * Reader_rawtell(Reader *);
-static PyObject * Reader_tell(Reader *);
-static PyObject * Reader_read_request(Reader *);
-static PyObject * Reader_read_response(Reader *, PyObject *);
-static PyObject * Reader_expose(Reader *);
-static PyObject * Reader_peek(Reader *, PyObject *);
-static PyObject * Reader_read_until(Reader *, PyObject *);
-static PyObject * Reader_readinto(Reader *, PyObject *);
-
-static PyMethodDef Reader_methods[] = {
-    {"rawtell", (PyCFunction)Reader_rawtell, METH_NOARGS, NULL},
-    {"tell", (PyCFunction)Reader_tell, METH_NOARGS, NULL},
-    {"read_request", (PyCFunction)Reader_read_request, METH_NOARGS, NULL},
-    {"read_response", (PyCFunction)Reader_read_response, METH_VARARGS, NULL},
-    {"expose", (PyCFunction)Reader_expose, METH_NOARGS, NULL},
-    {"peek", (PyCFunction)Reader_peek, METH_VARARGS, NULL},
-    {"read_until", (PyCFunction)Reader_read_until, METH_VARARGS, NULL},
-    {"readinto", (PyCFunction)Reader_readinto, METH_VARARGS, NULL},
-    {NULL}
-};
-
-static void Reader_dealloc(Reader *);
-static int Reader_init(Reader *, PyObject *, PyObject *);
-
-static PyTypeObject ReaderType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name           = "degu._base.Reader",
-    .tp_basicsize      = sizeof(Reader),
-    .tp_itemsize       = 0,
-    .tp_dealloc        = (destructor)Reader_dealloc,
-    .tp_print          = NULL,
-    .tp_getattr        = NULL,
-    .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
-    .tp_repr           = NULL,
-    .tp_as_number      = NULL,
-    .tp_as_sequence    = NULL,
-    .tp_as_mapping     = NULL,
-    .tp_hash           = NULL,
-    .tp_call           = NULL,
-    .tp_str            = NULL,
-    .tp_getattro       = NULL,
-    .tp_setattro       = NULL,
-    .tp_as_buffer      = NULL,
-    .tp_flags          = Py_TPFLAGS_DEFAULT,
-    .tp_doc            = "Reader(sock)",
-    .tp_traverse       = NULL,
-    .tp_clear          = NULL,
-    .tp_richcompare    = NULL,
-    .tp_weaklistoffset = 0,
-    .tp_iter           = NULL,
-    .tp_iternext       = NULL,
-    .tp_methods        = Reader_methods,
-    .tp_members        = NULL,
-    .tp_getset         = NULL,
-    .tp_base           = NULL,
-    .tp_dict           = NULL,
-    .tp_descr_get      = NULL,
-    .tp_descr_set      = NULL,
-    .tp_dictoffset     = 0,
-    .tp_init           = (initproc)Reader_init,
-    .tp_alloc          = NULL,
-    .tp_new            = NULL,
-    .tp_free           = NULL,
-    .tp_is_gc          = NULL,
-    .tp_bases          = NULL,
-    .tp_mro            = NULL,
-    .tp_cache          = NULL,
-    .tp_subclasses     = NULL,
-    .tp_weaklist       = NULL,
-    .tp_del            = NULL,
-    .tp_version_tag    = 0,
-    .tp_finalize       = NULL,
-};
-
-#define READER_CLASS ((PyObject *)&ReaderType)
-#define IS_READER(obj) (Py_TYPE((obj)) == &ReaderType)
-#define READER(obj) ((Reader *)(obj))
 
 
 /******************************************************************************
@@ -861,7 +771,6 @@ typedef struct {
 #define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL, NULL})
 
 typedef struct {
-    Reader *reader;
     SocketWrapper *wrapper;
     PyObject *readinto;
     PyObject *readline;

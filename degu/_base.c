@@ -3107,13 +3107,8 @@ _init_robj(PyObject *rfile, DeguRObj *r, const bool readline)
 {
     if (rfile == NULL) {
         Py_FatalError("_init_robj(): rfile == NULL");
-        goto error;
     }
-
-    if (IS_READER(rfile)) {
-        _SET(r->reader, READER(rfile))
-    }
-    else if (IS_WRAPPER(rfile)) {
+    if (IS_WRAPPER(rfile)) {
         _SET(r->wrapper, WRAPPER(rfile))
     }
     else {
@@ -3131,16 +3126,13 @@ error:
 static bool
 _readinto_from(DeguRObj *r, DeguDst dst)
 {
-    if (r->reader != NULL) {
-        return _Reader_readinto(r->reader, dst);
-    }
     if (r->wrapper != NULL) {
         return _SocketWrapper_readinto(r->wrapper, dst);
     }
     if (r->readinto != NULL) {
         return _readinto(r->readinto, dst);
     }
-    Py_FatalError("_readinto_from(): r->reader == NULL && r->readinto == NULL");
+    Py_FatalError("_readinto_from(): bad internal call");
     return false;
 }
 
@@ -3250,9 +3242,6 @@ cleanup:
 static bool
 _read_chunkline_from(DeguRObj *r, DeguChunk *dc)
 {
-    if (r->reader != NULL) {
-        return _Reader_read_chunkline(r->reader, dc);
-    }
     if (r->wrapper != NULL) {
         return _SocketWrapper_read_chunkline(r->wrapper, dc);
     }
@@ -3379,9 +3368,8 @@ write_chunk(PyObject *self, PyObject *args)
 
 
 /******************************************************************************
- * Reader object
+ * DeguIOBuf API
  ******************************************************************************/
-
 static DeguSrc
 _iobuf_src(DeguIOBuf *io)
 {
@@ -3440,306 +3428,6 @@ _iobuf_append(DeguIOBuf *io, DeguSrc src)
         }
     }
     return false;
-}
-
-static void
-Reader_dealloc(Reader *self)
-{
-    Py_CLEAR(self->recv_into);
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Oops, make sure to do this!
-}
-
-static int
-Reader_init(Reader *self, PyObject *args, PyObject *kw)
-{
-    PyObject *sock = NULL;
-    static char *keys[] = {"sock", NULL};
-
-    if (! PyArg_ParseTupleAndKeywords(args, kw, "O:Reader", keys, &sock)) {
-        return -1;
-    }
-    _SET(self->recv_into, _getcallable("sock", sock, attr_recv_into))
-    self->rawtell = 0;
-    self->r_io.start = 0;
-    self->r_io.stop = 0;
-    return 0;
-
-error:
-    return -1;
-}
-
-static inline DeguIOBuf *
-_Reader_r_io(Reader *self) {
-    return &(self->r_io);
-}
-
-static DeguSrc
-_Reader_preamble_src(Reader *self)
-{
-    return _iobuf_raw_src(_Reader_r_io(self));
-}
-
-static DeguDst
-_Reader_preamble_dst(Reader *self)
-{
-    return _iobuf_raw_dst(_Reader_r_io(self));
-}
-
-static DeguDst
-_Reader_scratch_dst(Reader *self)
-{
-    return DEGU_DST(self->s_buf, SCRATCH_LEN);
-}
-
-static DeguSrc
-_Reader_peek(Reader *self, const size_t size)
-{
-    return _iobuf_peek(_Reader_r_io(self), size);
-}
-
-static DeguSrc
-_Reader_drain(Reader *self, const size_t size)
-{
-    return _iobuf_drain(_Reader_r_io(self), size);
-}
-
-static DeguSrc
-_Reader_read_until(Reader *self, const size_t size, DeguSrc end)
-{
-    ssize_t index = -1;
-    ssize_t added;
-
-    if (_isempty(end)) {
-        Py_FatalError("_Reader_read_until(): bad internal call");
-    }
-    DeguDst dst = _Reader_preamble_dst(self);
-    if (size < end.len || size > dst.len) {
-        PyErr_Format(PyExc_ValueError,
-            "need %zu <= size <= %zu; got %zd", end.len, dst.len, size
-        );
-        return NULL_DeguSrc;
-    }
-
-    /* First, see if end is in the current buffer content */
-    DeguSrc cur = _Reader_peek(self, size);
-    if (cur.len >= end.len) {
-        index = _find(cur, end);
-        if (index >= 0) {
-            goto found;
-        }
-        if (cur.len >= size) {
-            goto not_found;
-        }
-    }
-
-    /* If needed, shift current buffer content */
-    if (self->r_io.start > 0) {
-        _move(dst, cur);
-        self->r_io.start = 0;
-        self->r_io.stop = cur.len;
-    }
-
-    /* Now read till found */
-    while (self->r_io.stop < size) {
-        added = _recv_into(self->recv_into, _slice_dst(dst, self->r_io.stop, dst.len));
-        if (added < 0) {
-            return NULL_DeguSrc;
-        }
-        if (added == 0) {
-            break;
-        }
-        self->r_io.stop += (size_t)added;
-        self->rawtell += (uint64_t)added;
-        index = _find(_Reader_peek(self, size), end);
-        if (index >= 0) {
-            goto found;
-        }
-    }
-
-not_found:
-    if (index >= 0) {
-        Py_FatalError("_Reader_read_until(): not_found, but index >= 0");
-    }
-    DeguSrc tmp = _Reader_peek(self, size);
-    if (tmp.len == 0) {
-        return tmp;
-    }
-    _value_error2(
-        "%R not found in %R...", end, _slice(tmp, 0, _min(tmp.len, 32))
-    );
-    return NULL_DeguSrc;
-
-found:
-    if (index < 0) {
-        Py_FatalError("_Reader_read_until(): found, but index < 0");
-    }
-    DeguSrc src = _Reader_drain(self, (size_t)index + end.len);
-    return _slice(src, 0, src.len - end.len);
-}
-
-static bool
-_Reader_readinto(Reader *self, DeguDst dst)
-{
-    DeguSrc cur = _Reader_drain(self, dst.len);
-    if (cur.len > 0) {
-        _copy(dst, cur);
-    }
-    if (_readinto(self->recv_into, _slice_dst(dst, cur.len, dst.len))) {
-        self->rawtell += dst.len;
-        return true;
-    }
-    return false;
-}
-
-static PyObject *
-Reader_rawtell(Reader *self) {
-    return PyLong_FromUnsignedLongLong(self->rawtell);
-}
-
-static PyObject *
-Reader_tell(Reader *self) {
-    DeguSrc cur = _Reader_peek(self, BUF_LEN);
-    if (cur.len > self->rawtell) {
-        Py_FatalError("Reader_tell(): cur.len > self->rawtell");
-    }
-    return PyLong_FromUnsignedLongLong(self->rawtell - cur.len);
-}
-
-static PyObject *
-Reader_expose(Reader *self) {
-    return _tobytes(_Reader_preamble_src(self));
-}
-
-static PyObject *
-Reader_peek(Reader *self, PyObject *args) {
-    size_t size = 0;
-    if (! PyArg_ParseTuple(args, "n", &size)) {
-        return NULL;
-    }
-    return _tobytes(_Reader_peek(self, size));
-}
-
-static PyObject *
-Reader_read_until(Reader *self, PyObject *args)
-{
-    size_t size = 0;
-    uint8_t *buf = NULL;
-    size_t len = 0;
-
-    if (! PyArg_ParseTuple(args, "ny#:read_until", &size, &buf, &len)) {
-        return NULL;
-    }
-    DeguSrc end = {buf, len};
-    if (end.len == 0) {
-        PyErr_SetString(PyExc_ValueError, "end cannot be empty");
-        return NULL;
-    }
-    return _tobytes(_Reader_read_until(self, size, end));
-}
-
-
-static bool
-_Reader_read_request(Reader *self, DeguRequest *dr) {
-    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
-    if (src.buf == NULL) {
-        return false;
-    }
-    PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = _Reader_scratch_dst(self);
-    return _parse_request(src, rfile, scratch, dr);
-}
-
-
-static PyObject *
-Reader_read_request(Reader *self) {
-    DeguRequest dr = NEW_DEGU_REQUEST;
-    PyObject *ret = NULL;
-
-    if (_Reader_read_request(self, &dr)) {
-        ret = _Request_New(&dr);
-    }
-    _clear_degu_request(&dr);
-    return ret;
-}
-
-static bool
-_Reader_read_response(Reader *self, PyObject *method, DeguResponse *dr)
-{
-    DeguSrc src = _Reader_read_until(self, BUF_LEN, CRLFCRLF);
-    if (src.buf == NULL) {
-        return false;
-    }
-    PyObject *rfile = (PyObject *)self;
-    DeguDst scratch = _Reader_scratch_dst(self);
-    return _parse_response(method, src, rfile, scratch, dr);
-}
-
-static PyObject *
-Reader_read_response(Reader *self, PyObject *args)
-{
-    PyObject *method = NULL;
-    PyObject *ret = NULL;
-    DeguRequest tmp = NEW_DEGU_REQUEST;
-    DeguResponse dr = NEW_DEGU_RESPONSE;
-
-    if (! PyArg_ParseTuple(args, "O:read_response", &method)) {
-        return NULL;
-    }
-    if (! _check_method(method, &tmp)) {
-        return NULL;
-    }
-    if (_Reader_read_response(self, tmp.method, &dr)) {
-        _SET(ret, _Response(&dr))
-    }
-
-error:
-    _clear_degu_response(&dr);
-    return ret;
-}
-
-static bool
-_Reader_read_chunkline(Reader *self, DeguChunk *dc) {
-    DeguSrc line = _Reader_read_until(self, 4096, CRLF);
-    if (line.buf == NULL) {
-        goto error;
-    }
-    if (! _parse_chunk(line, dc)) {
-        goto error;
-    }
-    return true;
-
-error:
-    return false;
-}
-
-static PyObject *
-Reader_readinto(Reader *self, PyObject *args)
-{
-    Py_buffer pybuf;
-    PyObject *ret = NULL;
-
-    if (! PyArg_ParseTuple(args, "w*", &pybuf)) {
-        goto error;
-    }
-    if (pybuf.len < 1 || (size_t)pybuf.len > MAX_IO_SIZE) {
-        PyErr_Format(PyExc_ValueError,
-            "need 1 <= len(buf) <= %zu; got %zd", MAX_IO_SIZE, pybuf.len
-        );
-        goto error;
-    }
-    DeguDst dst = _dst_frompybuf(&pybuf);
-    if (! _Reader_readinto(self, dst)) {
-        goto error;
-    }
-    _SET(ret, PyLong_FromSize_t(dst.len))
-    goto cleanup;
-
-error:
-    Py_CLEAR(ret);
-
-cleanup:
-    PyBuffer_Release(&pybuf);
-    return ret;
 }
 
 
@@ -4414,7 +4102,7 @@ _rfile_repr(PyObject *rfile)
     if (rfile == NULL) {
         return repr_null;
     }
-    if (IS_READER(rfile) || IS_WRAPPER(rfile)) {
+    if (IS_WRAPPER(rfile)) {
         return repr_reader;
     }
     return repr_rfile;
@@ -5886,12 +5574,6 @@ _init_all_types(PyObject *module)
         goto error;
     }
     _ADD_MODULE_ATTR(module, "Request", (PyObject *)&RequestType)
-
-    ReaderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&ReaderType) != 0) {
-        goto error;
-    }
-    _ADD_MODULE_ATTR(module, "Reader", (PyObject *)&ReaderType)
 
     WriterType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriterType) != 0) {
