@@ -681,15 +681,6 @@ static PyTypeObject SocketWrapperType = {
 #define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
 #define WRAPPER(obj) ((SocketWrapper *)(obj))
 
-typedef struct {
-    SocketWrapper *wrapper;
-    PyObject *write;
-} DeguWObj;
-
-#define NEW_DEGU_WOBJ ((DeguWObj){NULL, NULL})
-
-
-
 #define FL_WRITE_BIT     (1 << 0)
 #define FL_READINTO_BIT  (1 << 1)
 #define FL_READLINE_BIT  (1 << 2)
@@ -722,7 +713,7 @@ typedef struct {
 } Body;
 
 static PyObject * _Body_New(PyObject *, uint64_t);
-static int64_t _Body_write_to(Body *, DeguWObj *);
+static int64_t _Body_write_to(Body *, DeguFileLike *);
 
 static PyMemberDef Body_members[] = {
     {"rfile",          T_OBJECT,    offsetof(Body, rfile),          READONLY, NULL},
@@ -814,7 +805,7 @@ typedef struct {
 } ChunkedBody;
 
 static PyObject * _ChunkedBody_New(PyObject *);
-static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguWObj *);
+static int64_t _ChunkedBody_write_to(ChunkedBody *, DeguFileLike *);
 
 static PyMemberDef ChunkedBody_members[] = {
     {"rfile",    T_OBJECT, offsetof(ChunkedBody, rfile),    READONLY, NULL},
@@ -905,7 +896,7 @@ typedef struct {
     uint8_t state;
 } BodyIter;
 
-static int64_t _BodyIter_write_to(BodyIter *, DeguWObj *);
+static int64_t _BodyIter_write_to(BodyIter *, DeguFileLike *);
 
 static PyMemberDef BodyIter_members[] = {
     {"source", T_OBJECT, offsetof(BodyIter, source), READONLY, NULL},
@@ -989,7 +980,7 @@ typedef struct {
     uint8_t state;
 } ChunkedBodyIter;
 
-static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguWObj *);
+static int64_t _ChunkedBodyIter_write_to(ChunkedBodyIter *, DeguFileLike *);
 
 static PyMemberDef ChunkedBodyIter_members[] = {
     {"source", T_OBJECT, offsetof(ChunkedBodyIter, source), READONLY, NULL},

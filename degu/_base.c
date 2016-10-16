@@ -3091,50 +3091,9 @@ _write(PyObject *method, DeguSrc src)
 
 
 /******************************************************************************
- * Abstract internal Reader/Writer fast-paths vs. Python file-like API.
+ * DeguFileObj
  ******************************************************************************/
 
-
-/* DeguWObj: absracted writer object */
-static void
-_clear_wobj(DeguWObj *w)
-{
-    Py_CLEAR(w->write);
-}
-
-static bool
-_init_wobj(PyObject *wfile, DeguWObj *w)
-{
-    if (wfile == NULL) {
-        Py_FatalError("_init_wobj(): wfile == NULL");
-    }
-    if (IS_WRAPPER(wfile)) {
-        _SET(w->wrapper, WRAPPER(wfile))
-    }
-    else {
-        _SET(w->write, _getcallable("wfile", wfile, attr_write))
-    }
-    return true;
-
-error:
-    return false;
-}
-
-static ssize_t
-_write_to(DeguWObj *w, DeguSrc src)
-{
-    if (w->wrapper != NULL) {
-        return _SocketWrapper_write(w->wrapper, src);
-    }
-    if (w->write != NULL) {
-        return _write(w->write, src);
-    }
-    Py_FatalError("_write_to: bad internal call");
-    return -1;
-}
-
-
-/* DeguRObj: absracted reader object */
 static void
 _filelike_clear(DeguFileLike *fl)
 {
@@ -3178,7 +3137,6 @@ _filelike_close(DeguFileLike *fl)
     }
 }
 
-/*
 static ssize_t
 _filelike_write(DeguFileLike *fl, DeguSrc src)
 {
@@ -3191,7 +3149,6 @@ _filelike_write(DeguFileLike *fl, DeguSrc src)
     Py_FatalError("_filelike_write(): bad internal call");
     return -1;
 }
-*/
 
 static bool
 _filelike_readinto(DeguFileLike *fl, DeguDst dst)
@@ -3299,9 +3256,8 @@ error:
     return false;
 }
 
-
 static ssize_t
-_write_chunk_to(DeguWObj *w, DeguChunk *dc)
+_filelike_write_chunk(DeguFileLike *fl, DeguChunk *dc)
 {
     PyObject *line = NULL;
     ssize_t total = 0;
@@ -3309,7 +3265,7 @@ _write_chunk_to(DeguWObj *w, DeguChunk *dc)
 
     _SET(line, _format_chunk(dc))
     DeguSrc src = _frombytes(line);
-    wrote = _write_to(w, src);
+    wrote = _filelike_write(fl, src);
     if (wrote < 0) {
         goto error;
     }
@@ -3317,7 +3273,7 @@ _write_chunk_to(DeguWObj *w, DeguChunk *dc)
 
     DeguSrc data = _frombytes(dc->data);
     if (data.len > 0) {
-        wrote = _write_to(w, data);
+        wrote = _filelike_write(fl, data);
         if (wrote < 0) {
             goto error;
         }
@@ -3325,7 +3281,7 @@ _write_chunk_to(DeguWObj *w, DeguChunk *dc)
     }
 
     if (data.len == dc->size) {
-        wrote = _write_to(w, CRLF);
+        wrote = _filelike_write(fl, CRLF);
         if (wrote < 0) {
             goto error;
         }
@@ -3374,19 +3330,19 @@ write_chunk(PyObject *self, PyObject *args)
     PyObject *chunk = NULL;
     PyObject *ret = NULL;
     ssize_t total;
-    DeguWObj w = NEW_DEGU_WOBJ;
+    DeguFileLike fl = NEW_DEGU_FILE_LIKE;
     DeguChunk dc = NEW_DEGU_CHUNK;
 
     if (! PyArg_ParseTuple(args, "OO:write_chunk", &wfile, &chunk)) {
         return NULL;
     }
-    if (_init_wobj(wfile, &w) && _unpack_chunk(chunk, &dc)) {
-        total = _write_chunk_to(&w, &dc);
+    if (_filelike_init(wfile, &fl, FL_WRITE) && _unpack_chunk(chunk, &dc)) {
+        total = _filelike_write_chunk(&fl, &dc);
         if (total > 0) {
             ret = PyLong_FromSsize_t(total);
         }
     }
-    _clear_wobj(&w);
+    _filelike_clear(&fl);
     _clear_degu_chunk(&dc);
     return ret;
 }
@@ -3745,7 +3701,7 @@ _SocketWrapper_write_bytes_body(SocketWrapper *self, PyObject *body)
 static int64_t
 _SocketWrapper_write_body(SocketWrapper *self, PyObject *body)
 {
-    DeguWObj w = {self, NULL};
+    DeguFileLike fl = {self, NULL, NULL, NULL};
 
     if (body == Py_None) {
         return 0;
@@ -3754,16 +3710,16 @@ _SocketWrapper_write_body(SocketWrapper *self, PyObject *body)
         return _SocketWrapper_write_bytes_body(self, body);
     }
     if (IS_BODY(body)) {
-        return _Body_write_to(BODY(body), &w);
+        return _Body_write_to(BODY(body), &fl);
     }
     if (IS_CHUNKED_BODY(body)) {
-        return _ChunkedBody_write_to(CHUNKED_BODY(body), &w);
+        return _ChunkedBody_write_to(CHUNKED_BODY(body), &fl);
     }
     if (IS_BODY_ITER(body)) {
-        return _BodyIter_write_to(BODY_ITER(body), &w);
+        return _BodyIter_write_to(BODY_ITER(body), &fl);
     }
     if (IS_CHUNKED_BODY_ITER(body)) {
-        return _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &w);
+        return _ChunkedBodyIter_write_to(CHUNKED_BODY_ITER(body), &fl);
     }
 
     PyErr_Format(PyExc_TypeError, "bad body type: %R: %R", Py_TYPE(body), body);
@@ -4023,7 +3979,7 @@ _Body_readinto(Body *self, DeguDst dst)
 }
 
 static int64_t
-_Body_write_to(Body *self, DeguWObj *w)
+_Body_write_to(Body *self, DeguFileLike *fl)
 {
     size_t iosize, size;
     ssize_t wrote;
@@ -4050,7 +4006,7 @@ _Body_write_to(Body *self, DeguWObj *w)
         if (! _Body_readinto(self, _slice_dst(dst, 0, size))) {
             goto error;
         }
-        wrote = _write_to(w, _slice_src_from_dst(dst, 0, size));
+        wrote = _filelike_write(fl, _slice_src_from_dst(dst, 0, size));
         if (wrote < 0) {
             goto error;
         }
@@ -4076,19 +4032,19 @@ Body_write_to(Body *self, PyObject *args)
 {
     PyObject *wfile = NULL;
     PyObject *ret = NULL;
-    DeguWObj w = NEW_DEGU_WOBJ;
+    DeguFileLike fl = NEW_DEGU_FILE_LIKE;
     int64_t total;
 
     if (! PyArg_ParseTuple(args, "O", &wfile)) {
         return NULL;
     }
-    if (_init_wobj(wfile, &w)) {
-        total = _Body_write_to(self, &w);
+    if (_filelike_init(wfile, &fl, FL_WRITE)) {
+        total = _Body_write_to(self, &fl);
         if (total >= 0) {
             ret = PyLong_FromLongLong(total);
         }
     }
-    _clear_wobj(&w);
+    _filelike_clear(&fl);
     return ret;
 }
 
@@ -4358,7 +4314,7 @@ cleanup:
 }
 
 static int64_t
-_ChunkedBody_write_to(ChunkedBody *self, DeguWObj *w)
+_ChunkedBody_write_to(ChunkedBody *self, DeguFileLike *fo)
 {
     DeguChunk dc = NEW_DEGU_CHUNK;
     ssize_t wrote;
@@ -4373,7 +4329,7 @@ _ChunkedBody_write_to(ChunkedBody *self, DeguWObj *w)
         if (! _ChunkedBody_readchunk(self, &dc)) {
             goto error; 
         }
-        wrote = _write_chunk_to(w, &dc);
+        wrote = _filelike_write_chunk(fo, &dc);
         if (wrote < 0) {
             goto error;
         }
@@ -4398,19 +4354,19 @@ ChunkedBody_write_to(ChunkedBody *self, PyObject *args)
 {
     PyObject *wfile = NULL;
     PyObject *ret = NULL;
-    DeguWObj w = NEW_DEGU_WOBJ;
+    DeguFileLike fo = NEW_DEGU_FILE_LIKE;
     int64_t total;
 
     if (! PyArg_ParseTuple(args, "O:write_to", &wfile)) {
         return NULL;
     }
-    if (_init_wobj(wfile, &w)) {
-        total = _ChunkedBody_write_to(self, &w);
+    if (_filelike_init(wfile, &fo, FL_WRITE)) {
+        total = _ChunkedBody_write_to(self, &fo);
         if (total >= 0) {
             ret = PyLong_FromLongLong(total);
         }
     }
-    _clear_wobj(&w);
+    _filelike_clear(&fo);
     return ret;
 }
 
@@ -4480,7 +4436,7 @@ BodyIter_repr(BodyIter *self)
 }
 
 static int64_t
-_BodyIter_write_to(BodyIter *self, DeguWObj *w)
+_BodyIter_write_to(BodyIter *self, DeguFileLike *w)
 {
     PyObject *iterator = NULL;
     PyObject *part = NULL;
@@ -4497,7 +4453,7 @@ _BodyIter_write_to(BodyIter *self, DeguWObj *w)
         if (! _check_bytes("BodyIter source item", part)) {
             goto error;
         }
-        wrote = _write_to(w, _frombytes(part));
+        wrote = _filelike_write(w, _frombytes(part));
         if (wrote < 0) {
             goto error;
         }
@@ -4536,19 +4492,19 @@ BodyIter_write_to(BodyIter *self, PyObject *args)
 {
     PyObject *wfile = NULL;
     PyObject *ret = NULL;
-    DeguWObj w = NEW_DEGU_WOBJ;
+    DeguFileLike fo = NEW_DEGU_FILE_LIKE;
     int64_t total;
 
     if (! PyArg_ParseTuple(args, "O:write_to", &wfile)) {
         return NULL;
     }
-    if (_init_wobj(wfile, &w)) {
-        total = _BodyIter_write_to(self, &w);
+    if (_filelike_init(wfile, &fo, FL_WRITE)) {
+        total = _BodyIter_write_to(self, &fo);
         if (total >= 0) {
             ret = PyLong_FromLongLong(total);
         }
     }
-    _clear_wobj(&w);
+    _filelike_clear(&fo);
     return ret;
 }
 
@@ -4588,7 +4544,7 @@ ChunkedBodyIter_repr(ChunkedBodyIter *self)
 }
 
 static int64_t
-_ChunkedBodyIter_write_to(ChunkedBodyIter *self, DeguWObj *w)
+_ChunkedBodyIter_write_to(ChunkedBodyIter *self, DeguFileLike *fo)
 {
     PyObject *iterator = NULL;
     PyObject *chunk = NULL;
@@ -4616,7 +4572,7 @@ _ChunkedBodyIter_write_to(ChunkedBodyIter *self, DeguWObj *w)
         if (dc.size == 0) {
             empty = true;
         }
-        wrote = _write_chunk_to(w, &dc);
+        wrote = _filelike_write_chunk(fo, &dc);
         if (wrote < 0) {
             goto error;
         }
@@ -4648,19 +4604,19 @@ ChunkedBodyIter_write_to(ChunkedBodyIter *self, PyObject *args)
 {
     PyObject *wfile = NULL;
     PyObject *ret = NULL;
-    DeguWObj w = NEW_DEGU_WOBJ;
+    DeguFileLike fo = NEW_DEGU_FILE_LIKE;
     int64_t total;
 
     if (! PyArg_ParseTuple(args, "O:write_to", &wfile)) {
         return NULL;
     }
-    if (_init_wobj(wfile, &w)) {
-        total = _ChunkedBodyIter_write_to(self, &w);
+    if (_filelike_init(wfile, &fo, FL_WRITE)) {
+        total = _ChunkedBodyIter_write_to(self, &fo);
         if (total >= 0) {
             ret = PyLong_FromLongLong(total);
         }
     }
-    _clear_wobj(&w);
+    _filelike_clear(&fo);
     return ret;
 }
 
