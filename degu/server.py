@@ -144,14 +144,6 @@ def _get_credentials(sock):
     return struct.unpack('3i', data)
 
 
-def _shutdown_and_close(sock):
-    try:
-        sock.shutdown(socket.SHUT_RDWR)
-    except OSError:
-        pass
-    sock.close()
-
-
 class Server:
     _options = ('max_connections', 'max_requests', 'timeout')
     __slots__ = ('address', 'app', 'options', 'sock') + _options
@@ -219,7 +211,7 @@ class Server:
         try:
             self._serve_forever()
         finally:
-            _shutdown_and_close(self.sock)
+            self.sock.close()
 
     def _serve_forever(self):
         log.info('Starting Degu %s @ %r', self.__class__.__name__, self.address)
@@ -249,7 +241,7 @@ class Server:
                 thread.start()
             else:
                 log.warning('Too many connections, rejecting %r', address)
-                _shutdown_and_close(sock)
+                sock.close()
 
     def _serve_one(self):
         unix = (True if self.sock.family == socket.AF_UNIX else False)
@@ -272,7 +264,7 @@ class Server:
                 session, session.requests
             )
         finally:
-            _shutdown_and_close(sock)
+            sock.close()
             if semaphore is not None:
                 semaphore.release()
 
