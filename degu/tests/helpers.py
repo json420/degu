@@ -157,25 +157,6 @@ class TempDir:
         return open(filename, 'rb')
 
 
-class DummySocket:
-    __slots__ = ('_calls',)
-
-    def __init__(self):
-        self._calls = []
-
-    def close(self):
-        self._calls.append('close')
-
-    def shutdown(self, how):
-        self._calls.append(('shutdown', how))
-
-    def recv_into(self, buf):
-        self._calls.append(('recv_into', buf))
-
-    def send(self, buf):
-        self._calls.append(('send', buf))
-
-
 class MockSocket:
     __slots__ = (
         '_rfile',

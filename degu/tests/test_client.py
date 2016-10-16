@@ -26,7 +26,7 @@ Unit tests for the `degu.server` module`
 from unittest import TestCase
 import ssl
 
-from .helpers import DummySocket
+from .helpers import MockSocket
 from degu.base import _TYPE_ERROR
 from degu.sslhelpers import random_id
 from degu.misc import TempPKI
@@ -418,7 +418,7 @@ class TestClient(TestCase):
             def create_socket(self):
                 return self.__sock
 
-        sock = DummySocket()
+        sock = MockSocket()
         host = random_id().lower()
         inst = ClientSubclass(sock, host)
         self.assertIsNone(inst.on_connect)
@@ -439,7 +439,7 @@ class TestClient(TestCase):
         # on_connect() returns True:
         def on_connect_true(conn):
             return True
-        sock = DummySocket()
+        sock = MockSocket()
         host = random_id().lower()
         inst = ClientSubclass(sock, host, on_connect_true)
         self.assertIs(inst.on_connect, on_connect_true)
@@ -452,7 +452,7 @@ class TestClient(TestCase):
         # on_connect() does not return True:
         def on_connect_false(conn):
             return 1
-        sock = DummySocket()
+        sock = MockSocket()
         host = random_id().lower()
         inst = ClientSubclass(sock, host, on_connect_false)
         self.assertIs(inst.on_connect, on_connect_false)
