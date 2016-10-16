@@ -31,7 +31,6 @@ from random import SystemRandom
 import types
 from collections import OrderedDict
 
-from . import helpers
 from .helpers import (
     random_chunks,
     iter_bad,
@@ -39,6 +38,7 @@ from .helpers import (
     random_chunk,
     random_data,
     iter_random_uri,
+    iter_good,
     MockSocket,
 )
 from degu.sslhelpers import random_id
@@ -1319,7 +1319,7 @@ class TestParsingFunctions_Py(BackendTestCase):
                     'bad content-length: {!r}'.format(bad)
                 )
         for good in (b'1', b'9', b'11', b'99', b'10', b'90'):
-            for also_good in helpers.iter_good(good, b'123456789'):
+            for also_good in iter_good(good, b'123456789'):
                 self.assertEqual(
                     parse_content_length(also_good),
                     int(also_good)
