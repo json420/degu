@@ -1250,6 +1250,11 @@ class Body:
             _rfile_repr(self._rfile), self._content_length
         )
 
+    def _do_error(self):
+        self._state = BODY_ERROR
+        if type(self._rfile) is SocketWrapper:
+            self._rfile.close()
+
     def __iter__(self):
         _check_body_state('Body', self._state, BODY_READY)
         self._state = BODY_STARTED
@@ -1266,7 +1271,7 @@ class Body:
                 _readinto_from(robj, sub)
                 yield sub.tobytes()
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
         assert remaining == 0
         self._remaining = remaining
@@ -1289,7 +1294,7 @@ class Body:
                 self._state = BODY_CONSUMED
             return dst.tobytes()
         except:
-            self._state = BODY_ERROR
+            self._do_error()
             raise
 
     def write_to(self, wfile):

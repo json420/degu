@@ -3589,6 +3589,25 @@ class TestBody_Py(BodyBackendTestCase):
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
 
+        # Again, but with SocketWrapper:
+        sock = MockSocket(data)
+        rfile = self.SocketWrapper(sock)
+        body = Body(rfile, 1800)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'expected to read 1800 bytes, but received 1776'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
+        self.assertIs(rfile.closed, True)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
+        self.assertIs(rfile.closed, True)
+
         # ValueError (underflow) error when read in parts:
         data = os.urandom(35)
         rfile = io.BytesIO(data)
@@ -3612,6 +3631,30 @@ class TestBody_Py(BodyBackendTestCase):
         )
         self.assertEqual(body.state, self.BODY_ERROR)
         self.assertIs(rfile.closed, False)
+
+        # Again, but with SocketWrapper:
+        data = os.urandom(35)
+        sock = MockSocket(data)
+        rfile = self.SocketWrapper(sock)
+        body = Body(rfile, 37)
+        self.assertEqual(body.read(18), data[:18])
+        self.assertIs(body.chunked, False)
+        self.assertEqual(body.state, self.BODY_STARTED)
+        self.assertEqual(body.content_length, 37)
+        with self.assertRaises(ValueError) as cm:
+            body.read(19)
+        self.assertEqual(str(cm.exception),
+            'expected to read 19 bytes, but received 17'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
+        self.assertIs(rfile.closed, True)
+        with self.assertRaises(ValueError) as cm:
+            body.read()
+        self.assertEqual(str(cm.exception),
+            'Body.state == BODY_ERROR, cannot be used'
+        )
+        self.assertEqual(body.state, self.BODY_ERROR)
+        self.assertIs(rfile.closed, True)
 
         # Test with empty body:
         rfile = io.BytesIO(os.urandom(21))
