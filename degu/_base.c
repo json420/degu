@@ -4105,12 +4105,33 @@ SocketWrapper_read_until(SocketWrapper *self, PyObject *args)
     return _tobytes(_SocketWrapper_read_until(self, size, end));
 }
 
+static DeguDst
+_SocketWrapper_scratch_dst(SocketWrapper *self)
+{
+    return DEGU_DST(self->scratch, SCRATCH_LEN);
+}
 
+static bool
+_SocketWrapper_read_request(SocketWrapper *self, DeguRequest *dr) {
+    DeguSrc src = _SocketWrapper_read_until(self, BUF_LEN, CRLFCRLF);
+    if (src.buf == NULL) {
+        return false;
+    }
+    PyObject *rfile = (PyObject *)self;
+    DeguDst scratch = _SocketWrapper_scratch_dst(self);
+    return _parse_request(src, rfile, scratch, dr);
+}
 
 static PyObject *
-SocketWrapper_read_request(SocketWrapper *self, PyObject *args)
-{
-    Py_RETURN_NONE;
+SocketWrapper_read_request(SocketWrapper *self) {
+    DeguRequest dr = NEW_DEGU_REQUEST;
+    PyObject *ret = NULL;
+
+    if (_SocketWrapper_read_request(self, &dr)) {
+        ret = _Request_New(&dr);
+    }
+    _clear_degu_request(&dr);
+    return ret;
 }
 
 static PyObject *

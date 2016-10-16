@@ -770,6 +770,7 @@ typedef struct {
     PyObject *send;
     PyObject *close;
     bool closed;
+    uint8_t scratch[SCRATCH_LEN];
     DeguIOBuf r_io;
     DeguIOBuf w_io;
 } SocketWrapper;
@@ -778,7 +779,7 @@ static ssize_t _SocketWrapper_write(SocketWrapper *, DeguSrc);
 
 static PyObject * SocketWrapper_close(SocketWrapper *);
 static PyObject * SocketWrapper_read_until(SocketWrapper *, PyObject *);
-static PyObject * SocketWrapper_read_request(SocketWrapper *, PyObject *);
+static PyObject * SocketWrapper_read_request(SocketWrapper *);
 static PyObject * SocketWrapper_read_response(SocketWrapper *, PyObject *);
 static PyObject * SocketWrapper_write_request(SocketWrapper *, PyObject *);
 static PyObject * SocketWrapper_write_response(SocketWrapper *, PyObject *);
@@ -786,7 +787,7 @@ static PyObject * SocketWrapper_write_response(SocketWrapper *, PyObject *);
 static PyMethodDef SocketWrapper_methods[] = {
     {"close",      (PyCFunction)SocketWrapper_close,      METH_NOARGS,  NULL},
     {"read_until", (PyCFunction)SocketWrapper_read_until, METH_VARARGS, NULL},
-    {"read_request", (PyCFunction)SocketWrapper_read_request, METH_VARARGS, NULL},
+    {"read_request", (PyCFunction)SocketWrapper_read_request, METH_NOARGS, NULL},
     {"read_response", (PyCFunction)SocketWrapper_read_response, METH_VARARGS, NULL},
     {"write_request", (PyCFunction)SocketWrapper_write_request, METH_VARARGS, NULL},
     {"write_response", (PyCFunction)SocketWrapper_write_response, METH_VARARGS, NULL},
