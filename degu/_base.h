@@ -1235,7 +1235,6 @@ typedef struct {
     PyObject *api;
     PyObject *wrapper;
     PyObject *response_body;
-    bool closed;
 } Connection;
 
 static PyObject * _Connection_request(Connection *, DeguRequest *);
@@ -1245,7 +1244,6 @@ static PyMemberDef Connection_members[] = {
     {"base_headers", T_OBJECT, offsetof(Connection, base_headers), READONLY, NULL},
     {"api",          T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
     {"bodies",       T_OBJECT, offsetof(Connection, api),          READONLY, NULL},
-    {"closed",       T_BOOL,   offsetof(Connection, closed),       READONLY, NULL},
     {NULL}
 };
 
@@ -1267,6 +1265,13 @@ static PyMethodDef Connection_methods[] = {
     {"head",      (PyCFunction)Connection_head,      METH_VARARGS, NULL},
     {"delete",    (PyCFunction)Connection_delete,    METH_VARARGS, NULL},
     {"get_range", (PyCFunction)Connection_get_range, METH_VARARGS, NULL},
+    {NULL}
+};
+
+static PyObject * Connection_get_closed(Connection *, void *);
+
+static PyGetSetDef Connection_getset[] = {
+    {"closed", (getter)Connection_get_closed, NULL, NULL, NULL},
     {NULL}
 };
 
@@ -1303,7 +1308,7 @@ static PyTypeObject ConnectionType = {
     .tp_iternext       = NULL,
     .tp_methods        = Connection_methods,
     .tp_members        = Connection_members,
-    .tp_getset         = NULL,
+    .tp_getset         = Connection_getset,
     .tp_base           = NULL,
     .tp_dict           = NULL,
     .tp_descr_get      = NULL,

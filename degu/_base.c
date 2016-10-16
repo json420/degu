@@ -5427,7 +5427,6 @@ Connection_init(Connection *self, PyObject *args, PyObject *kw)
     PyObject *sock = NULL;
     PyObject *base_headers = NULL;
 
-    self->closed = false;
     self->sock = NULL;
     if (! PyArg_ParseTupleAndKeywords(args, kw, "OO:Connection", keys,
             &sock, &base_headers)) {
@@ -5450,11 +5449,18 @@ error:
 static PyObject *
 Connection_close(Connection *self)
 {
-    self->closed = true;
     if (_SocketWrapper_close(WRAPPER(self->wrapper))) {
         Py_RETURN_NONE;
     }
     return NULL;
+}
+
+static PyObject *
+Connection_get_closed(Connection *self, void *closure) {
+    if (WRAPPER(self->wrapper)->closed) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
 }
 
 static PyObject *
@@ -5468,7 +5474,7 @@ _Connection_request(Connection *self, DeguRequest *dr)
     }
 
     /* Check if Connection is closed */
-    if (self->closed) {
+    if (WRAPPER(self->wrapper)->closed) {
         PyErr_SetString(PyExc_ValueError, "Connection is closed");
         return NULL;
     }
@@ -5515,7 +5521,6 @@ _Connection_request(Connection *self, DeguRequest *dr)
     goto cleanup;
 
 error:
-    self->closed = true;
     _SocketWrapper_close_unraisable(WRAPPER(self->wrapper));
 
 cleanup:
