@@ -5754,7 +5754,7 @@ class TestServerFunctions_Py(BackendTestCase):
         self.assertEqual(sys.getrefcount(app), 2)
         self.assertEqual(sys.getrefcount(sock), 2)
         self.assertEqual(sys.getrefcount(ses), 2)
-        self.assertEqual(sock._calls, [])
+        self.assertEqual(sock._calls, ['close'])
 
         ses = Session(('127.0.0.1', 12345), None, 25)
 

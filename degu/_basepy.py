@@ -1683,10 +1683,9 @@ class Session:
             self.close('max_requests')
 
 
-def _handle_requests(app, session, sock):
+def _handle_requests_inner(wrapper, app, session, sock):
     _check_type2('session', session, Session)
     assert session.requests == session._requests == 0
-    wrapper = SocketWrapper(sock)
     while not session._closed:
         request = wrapper.read_request()
         response = app(session, request, api)
@@ -1718,6 +1717,15 @@ def _handle_requests(app, session, sock):
 
         # Update request counter, possibly close based on status:
         session._response_complete(status, reason)
+
+
+def _handle_requests(app, session, sock):
+    wrapper = SocketWrapper(sock)
+    try:
+        return _handle_requests_inner(wrapper, app, session, sock)
+    finally:
+        wrapper.close()
+        
 
 
 class Connection:

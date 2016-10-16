@@ -3394,6 +3394,9 @@ _iobuf_append(DeguIOBuf *io, DeguSrc src)
 static PyObject *
 _SocketWrapper_close(SocketWrapper *self)
 {
+    if (self == NULL || !IS_WRAPPER(self)) {
+        Py_FatalError("_SocketWrapper_close(): bad internal call");  
+    }
     if (self->closed || self->close == NULL) {
         Py_RETURN_NONE;
     }
@@ -3406,10 +3409,12 @@ _SocketWrapper_close_unraisable(SocketWrapper *self)
 {
     PyObject *err_type, *err_value, *err_traceback, *result;
 
-    PyErr_Fetch(&err_type, &err_value, &err_traceback);
-    result = _SocketWrapper_close(self);
-    Py_CLEAR(result);
-    PyErr_Restore(err_type, err_value, err_traceback);
+    if (self != NULL) {
+        PyErr_Fetch(&err_type, &err_value, &err_traceback);
+        result = _SocketWrapper_close(self);
+        Py_CLEAR(result);
+        PyErr_Restore(err_type, err_value, err_traceback);
+    }
 }
 
 static void
@@ -4758,7 +4763,7 @@ _handle_requests(PyObject *self, PyObject *args)
     PyObject *app = NULL;
     PyObject *sock = NULL;
     PyObject *session = NULL;
-    bool success = true;
+    PyObject *ret = NULL;
 
     /* These 4 all need to be freed */
     PyObject *wrapper = NULL;
@@ -4775,10 +4780,10 @@ _handle_requests(PyObject *self, PyObject *args)
     if (! PyArg_ParseTuple(args, "OOO:_handle_requests", &app, &session, &sock)) {
         goto error;
     }
+    _SET(wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
     if (! _check_type2("session", session, &SessionType)) {
         goto error;
     }
-    _SET(wrapper, PyObject_CallFunctionObjArgs(WRAPPER_CLASS, sock, NULL))
 
     while (! SESSION(session)->closed) {
         /* Read and parse request, build Request namedtuple */
@@ -4828,20 +4833,17 @@ _handle_requests(PyObject *self, PyObject *args)
         _clear_degu_request(&req);
         rsp = NEW_DEGU_RESPONSE;
     }
-    goto cleanup;
+    _SET(ret, _SocketWrapper_close(WRAPPER(wrapper)))
 
 error:
-    success = false;
-
-cleanup:
-    Py_CLEAR(wrapper);          /* 2 */
-    Py_CLEAR(request);          /* 3 */
-    Py_CLEAR(response);         /* 4 */
-    _clear_degu_request(&req);  /* 5 */
-    if (success) {
-        Py_RETURN_NONE;
+    if (ret == NULL) {
+        _SocketWrapper_close_unraisable(WRAPPER(wrapper));
     }
-    return NULL;
+    Py_CLEAR(wrapper);          /* 1 */
+    Py_CLEAR(request);          /* 2 */
+    Py_CLEAR(response);         /* 3 */
+    _clear_degu_request(&req);  /* 4 */
+    return ret;
 }
 
 
