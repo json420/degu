@@ -681,14 +681,10 @@ static PyTypeObject SocketWrapperType = {
 #define IS_WRAPPER(obj) (Py_TYPE((obj)) == &SocketWrapperType)
 #define WRAPPER(obj) ((SocketWrapper *)(obj))
 
-#define FL_WRITE_BIT     (1 << 0)
-#define FL_READINTO_BIT  (1 << 1)
-#define FL_READLINE_BIT  (1 << 2)
-#define FL_ALLOWED_MASK  (FL_WRITE_BIT | FL_READINTO_BIT | FL_READLINE_BIT)
-#define FL_WRITE         (FL_WRITE_BIT)
-#define FL_READ          (FL_READINTO_BIT)
-#define FL_CHUNKED       (FL_READINTO_BIT | FL_READLINE_BIT)
 
+/******************************************************************************
+ * DeguFileObj API.
+ ******************************************************************************/
 typedef struct {
     SocketWrapper *wrapper;
     PyObject *write;
@@ -697,6 +693,14 @@ typedef struct {
 } DeguFileObj;
 
 #define NEW_DEGU_FILE_OBJ ((DeguFileObj){NULL, NULL, NULL, NULL})
+
+#define FO_WRITE_BIT      (1 << 0)
+#define FO_READINTO_BIT   (1 << 1)
+#define FO_READLINE_BIT   (1 << 2)
+#define FO_ALLOWED_MASK   (FO_WRITE_BIT | FO_READINTO_BIT | FO_READLINE_BIT)
+#define FILEOBJ_WRITE     (FO_WRITE_BIT)
+#define FILEOBJ_READ      (FO_READINTO_BIT)
+#define FILEOBJ_READLINE  (FO_READINTO_BIT | FO_READLINE_BIT)
 
 
 /******************************************************************************
