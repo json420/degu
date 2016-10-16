@@ -3399,11 +3399,15 @@ class BodyBackendTestCase(BackendTestCase):
     def Writer(self):
         return self.getattr('Writer')
 
+    @property
+    def SocketWrapper(self):
+        return self.getattr('SocketWrapper')
+
     def iter_rfiles(self, data):
         yield io.BytesIO(data)
-        yield self.Reader(MockSocket(data, None))
-        yield self.Reader(MockSocket(data, 1))
-        yield self.Reader(MockSocket(data, 2))
+        yield self.SocketWrapper(NewMockSocket(data, None))
+        yield self.SocketWrapper(NewMockSocket(data, 1))
+        yield self.SocketWrapper(NewMockSocket(data, 2))
 
     def check_readonly_attrs(self, body, *members):
         """
@@ -3462,7 +3466,7 @@ class TestBody_Py(BodyBackendTestCase):
                 )
 
         for rfile in self.iter_rfiles(os.urandom(16)):
-            name = ('reader' if type(rfile) is self.Reader else 'rfile')
+            name = ('reader' if type(rfile) is self.SocketWrapper else 'rfile')
             # All good:
             for good in (0, 1, 17, 34969, max_length):
                 body = Body(rfile, good)
@@ -3818,24 +3822,18 @@ class TestChunkedBody_Py(BodyBackendTestCase):
     def ChunkedBody(self):
         return self.getattr('ChunkedBody')
 
-    @property
-    def Reader(self):
-        return self.getattr('Reader')
-
     def check_common(self, body, rfile):
-        name = ('reader' if type(rfile) is self.Reader else 'rfile')
+        name = ('reader' if type(rfile) is self.SocketWrapper else 'rfile')
         self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
-
         self.check_readonly_attrs(body, 'rfile', 'state', 'chunked')
-
         self.assertIs(body.rfile, rfile)
         self.assertIs(body.chunked, True)
         self.assertEqual(body.state, self.BODY_READY)
 
     def test_init(self):
-        # Test with backend.Reader:
-        sock = MockSocket(b'', None)
-        rfile = self.Reader(sock)
+        # Test with backend.SocketWrapper:
+        sock = NewMockSocket()
+        rfile = self.SocketWrapper(sock)
         self.assertEqual(sys.getrefcount(rfile), 2)
         body = self.ChunkedBody(rfile)
         self.check_common(body, rfile)
@@ -3852,7 +3850,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.readline missing:
+        # Not a backend.SocketWrapper, rfile.readline missing:
         class MissingReadline:
             def readinto(self, dst):
                 assert False
@@ -3865,7 +3863,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.readline() not callable:
+        # Not a backend.SocketWrapper, rfile.readline() not callable:
         class BadReadline:
             readline = 'hello'
             def readinto(self, dst):
@@ -3877,7 +3875,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         self.assertEqual(str(cm.exception), 'rfile.readline() is not callable')
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.readline missing:
+        # Not a backend.SocketWrapper, rfile.readline missing:
         class MissingRead:
             def readline(self, size):
                 assert False
@@ -3890,7 +3888,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         )
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Not a backend.Reader, rfile.readinto() not callable:
+        # Not a backend.SocketWrapper, rfile.readinto() not callable:
         class BadRead:
             readinto = 'hello'
             def readline(self, size):
@@ -3905,7 +3903,7 @@ class TestChunkedBody_Py(BodyBackendTestCase):
     def test_repr(self):
         data = b'c\r\nhello, world\r\n0;k=v\r\n\r\n'
         for rfile in self.iter_rfiles(data):
-            name = ('reader' if type(rfile) is self.Reader else 'rfile')
+            name = ('reader' if type(rfile) is self.SocketWrapper else 'rfile')
             self.assertEqual(sys.getrefcount(rfile), 2)
             body = self.ChunkedBody(rfile)
             self.assertEqual(repr(body), 'ChunkedBody(<{}>)'.format(name))
@@ -4124,10 +4122,10 @@ class TestChunkedBody_Py(BodyBackendTestCase):
         del body
         self.assertEqual(sys.getrefcount(rfile), 2)
 
-        # Now test internal Reader fast-path:
+        # Now test internal Socket fast-path:
         for bad in (b'', b'\rc\n', b'c\rhello, world', b'c\nhello, world'):
-            sock = MockSocket(bad, None)
-            rfile = self.Reader(sock)
+            sock = NewMockSocket(bad, None)
+            rfile = self.SocketWrapper(sock)
             body = self.ChunkedBody(rfile)
             with self.assertRaises(ValueError) as cm:
                 body.readchunk()
@@ -4144,8 +4142,8 @@ class TestChunkedBody_Py(BodyBackendTestCase):
             del body
             self.assertEqual(sys.getrefcount(rfile), 2)
 
-        sock = MockSocket(b'c\r\nhello, worl\r\n', None)
-        rfile = self.Reader(sock)
+        sock = NewMockSocket(b'c\r\nhello, worl\r\n', None)
+        rfile = self.SocketWrapper(sock)
         body = self.ChunkedBody(rfile)
         with self.assertRaises(ValueError) as cm:
             body.readchunk()
