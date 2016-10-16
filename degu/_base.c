@@ -3876,7 +3876,7 @@ _rfile_repr(PyObject *rfile)
 static void
 Body_dealloc(Body *self)
 {
-    _fileobj_clear(&(self->fl));
+    _fileobj_clear(&(self->fobj));
     Py_CLEAR(self->rfile);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -3885,7 +3885,7 @@ static void
 _Body_do_error(Body *self)
 {
     self->state = BODY_ERROR;
-    _fileobj_close(&(self->fl));
+    _fileobj_close(&(self->fobj));
 }
 
 static bool
@@ -3895,7 +3895,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
         Py_FatalError("_Body_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _fileobj_init(&(self->fl), rfile, FL_READ)) {
+    if (! _fileobj_init(&(self->fobj), rfile, FL_READ)) {
         goto error;
     }
     self->remaining = self->content_length = content_length;
@@ -3905,7 +3905,7 @@ _Body_fill_args(Body *self, PyObject *rfile, const uint64_t content_length)
 
 error:
     self->state = BODY_ERROR;
-    _fileobj_clear(&(self->fl));
+    _fileobj_clear(&(self->fobj));
     Py_CLEAR(self->rfile);
     return false;
 }
@@ -3918,7 +3918,7 @@ _Body_New(PyObject *rfile, const uint64_t content_length)
         return NULL;
     }
     self->rfile = NULL;
-    self->fl = NEW_DEGU_FILE_OBJ;
+    self->fobj = NEW_DEGU_FILE_OBJ;
     self->state = BODY_ERROR;
     if (! _Body_fill_args(self, rfile, content_length)) {
         PyObject_Del((PyObject *)self);
@@ -3966,7 +3966,7 @@ _Body_readinto(Body *self, DeguDst dst)
     if (dst.len > self->remaining) {
         Py_FatalError("_Body_readinto(): bad internal call");
     }
-    if (_fileobj_readinto(&(self->fl), dst)) {
+    if (_fileobj_readinto(&(self->fobj), dst)) {
         self->remaining -= dst.len;
         return true;
     }
@@ -4124,7 +4124,7 @@ Body_next(Body *self)
 static void
 ChunkedBody_dealloc(ChunkedBody *self)
 {
-    _fileobj_clear(&(self->fl));
+    _fileobj_clear(&(self->fobj));
     Py_CLEAR(self->rfile);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -4137,7 +4137,7 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
         Py_FatalError("_ChunkedBody_fill_args(): bad internal call");
     }
     _SET_AND_INC(self->rfile, rfile)
-    if (! _fileobj_init(&(self->fl), rfile, FL_CHUNKED)) {
+    if (! _fileobj_init(&(self->fobj), rfile, FL_CHUNKED)) {
         goto error;
     }
     self->chunked = true;
@@ -4145,7 +4145,7 @@ _ChunkedBody_fill_args(ChunkedBody *self, PyObject *rfile)
     return true;
 
 error:
-    _fileobj_clear(&(self->fl));
+    _fileobj_clear(&(self->fobj));
     Py_CLEAR(self->rfile);
     self->state = BODY_ERROR;
     return false;
@@ -4159,7 +4159,7 @@ _ChunkedBody_New(PyObject *rfile)
         return NULL;
     }
     self->rfile = NULL;
-    self->fl = NEW_DEGU_FILE_OBJ;
+    self->fobj = NEW_DEGU_FILE_OBJ;
     self->state = BODY_ERROR;
     if (! _ChunkedBody_fill_args(self, rfile)) {
         PyObject_Del((PyObject *)self);
@@ -4198,7 +4198,7 @@ static void
 _ChunkedBody_do_error(ChunkedBody *self)
 {
     self->state = BODY_ERROR;
-    _fileobj_close(&(self->fl));
+    _fileobj_close(&(self->fobj));
 }
 
 static bool
@@ -4208,7 +4208,7 @@ _ChunkedBody_readchunk(ChunkedBody *self, DeguChunk *dc)
         return false;
     }
     self->state = BODY_STARTED;
-    if (! _fileobj_read_chunk(&(self->fl), dc)) {
+    if (! _fileobj_read_chunk(&(self->fobj), dc)) {
         goto error;
     }
     if (dc->size == 0) {

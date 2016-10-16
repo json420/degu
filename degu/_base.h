@@ -705,7 +705,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguFileObj fl;
+    DeguFileObj fobj;
     uint64_t content_length;
     uint64_t remaining;
     uint8_t state;
@@ -799,7 +799,7 @@ static PyTypeObject BodyType = {
 typedef struct {
     PyObject_HEAD
     PyObject *rfile;
-    DeguFileObj fl;
+    DeguFileObj fobj;
     uint8_t state;
     bool chunked;
 } ChunkedBody;
