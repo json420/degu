@@ -25,6 +25,8 @@ override_dh_auto_test:
 			$$python setup.py build_ext -i; \
 		$$python -c "from degu import _base"; \
 		$$python -Werror setup.py test --skip-slow; \
+		"$$python"-dbg setup.py build_ext -i; \
+		"$$python"-dbg -Werror setup.py test --skip-slow; \
 	done
 
 override_dh_compress:

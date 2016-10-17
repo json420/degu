@@ -5,6 +5,7 @@ Maintainer: Jason Gerard DeRose <jderose@novacut.com>
 Build-Depends: debhelper (>= 9),
     dh-python,
     python3-all-dev (>= 3.4),
+    python3-all-dbg (>= 3.4),
     python3-sphinx,
     pyflakes3 | pyflakes,
     openssl,
@@ -19,6 +20,26 @@ Depends: ${python3:Depends}, ${shlibs:Depends}, ${misc:Depends},
     openssl,
 Suggests: python3-degu-doc
 Description: embedded HTTP server and client library
+ Degu is an embedded HTTP server and client library for Python3. It's well
+ suited for implementing REST APIs for device-to-device communication on the
+ local network.  Degu is being developed as part of the Novacut project.
+ .
+ Degu includes:
+ .
+  * A lightweight HTTP server that's easy to embed in desktop and mobile
+    applications
+  * A low-level HTTP client comparable to the http.client module in the Python3
+    standard library
+  * IO abstractions and a common parser used by both the server and client
+  * Test fixtures that make it easy to create throw-away Degu server
+    instances for unit testing
+
+Package: python3-degu-dbg
+Architecture: any
+Section: debug
+Depends: ${python3:Depends}, ${shlibs:Depends}, ${misc:Depends},
+    python3-degu (>= ${binary:Version}),
+Description: embedded HTTP server and client library (debug build)
  Degu is an embedded HTTP server and client library for Python3. It's well
  suited for implementing REST APIs for device-to-device communication on the
  local network.  Degu is being developed as part of the Novacut project.
