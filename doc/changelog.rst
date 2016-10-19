@@ -1,6 +1,15 @@
 Changelog
 =========
 
+.. _version-0.18:
+
+0.18 (unreleased)
+-----------------
+
+`Download Degu 0.18`_
+
+
+
 .. _version-0.17:
 
 0.17 (October 2016)
@@ -1908,6 +1917,7 @@ Two things motivated these breaking API changes:
       themselves creating clients)
 
 
+.. _`Download Degu 0.18`: https://launchpad.net/degu/+milestone/0.18
 .. _`Download Degu 0.17`: https://launchpad.net/degu/+milestone/0.17
 .. _`Download Degu 0.16`: https://launchpad.net/degu/+milestone/0.16
 .. _`Download Degu 0.15`: https://launchpad.net/degu/+milestone/0.15

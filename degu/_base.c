@@ -684,41 +684,38 @@ _value_error2(const char *format, DeguSrc src1, DeguSrc src2)
     Py_CLEAR(tmp2);
 }
 
+static bool
+_validated_copy(DeguDst dst, DeguSrc src, const uint8_t mask)
+{
+    uint8_t flags, c;
+    size_t i;
+
+    if (dst.buf == NULL || src.buf == NULL || dst.len < src.len || (mask & 128) == 0) {
+        Py_FatalError("_validated_copy(): bad internal call");
+    }
+    for (flags = i = 0; i < src.len; i++) {
+        c = dst.buf[i] = src.buf[i];
+        flags |= _FLAG[c];
+    }
+    return (flags & mask) == 0;
+}
+
 static PyObject *
 _decode(DeguSrc src, const uint8_t mask, const char *format)
 {
-    PyObject *dst = NULL;
-    uint8_t *dst_buf = NULL;
-    uint8_t c, bits;
-    size_t i;
-
-    if (mask == 0 || (mask & 1) != 0) {
-        Py_FatalError("_decode: bad mask");
+    if (src.len == 0) {
+        Py_INCREF(str_empty);
+        return str_empty;
     }
-    if (src.len < 1) {
-        _SET_AND_INC(dst, str_empty);
-        goto done;
+    PyObject *ret = PyUnicode_New((ssize_t)src.len, 127);
+    if (ret != NULL) {
+        DeguDst dst = {PyUnicode_1BYTE_DATA(ret), src.len};
+        if (! _validated_copy(dst, src, mask)) {
+            Py_CLEAR(ret);
+            _value_error(format, src);
+        }
     }
-    _SET(dst, PyUnicode_New((ssize_t)src.len, 127))
-    dst_buf = PyUnicode_1BYTE_DATA(dst);
-    for (bits = i = 0; i < src.len; i++) {
-        c = dst_buf[i] = src.buf[i];
-        bits |= _FLAG[c];
-    }
-    if (bits == 0) {
-        Py_FatalError("internal error in `_decode()`");
-    }
-    if ((bits & mask) != 0) {
-        _value_error(format, src);
-        goto error;
-    }
-    goto done;
-
-error:
-    Py_CLEAR(dst);
-
-done:
-    return dst;
+    return ret;
 }
 
 static uint8_t *
@@ -2550,14 +2547,6 @@ static bool
 _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
                const uint8_t mask, const size_t max_len)
 {
-    uint8_t c, bits;
-    size_t i;
-
-    if (mask == 0 || (mask & 1) != 0) {
-        Py_FatalError("_copy_str_into(): bad mask");
-        return false;
-    }
-
     DeguSrc src = _src_from_str(name, obj);
     if (src.buf == NULL) {
         return false;
@@ -2566,18 +2555,12 @@ _copy_str_into(DeguOutput *o, const char *name, PyObject *obj,
         PyErr_Format(PyExc_ValueError, "%s is too long: %R", name, obj);
         return false;
     }
-
     DeguDst dst = _slice_dst(o->dst, o->stop, o->dst.len);
     if (src.len > dst.len) {
         PyErr_Format(PyExc_ValueError, "output size exceeds %zu", o->dst.len);
         return false;
     }
-
-    for (bits = i = 0; i < src.len; i++) {
-        c = dst.buf[i] = src.buf[i];
-        bits |= _FLAG[c];
-    }
-    if ((bits & mask) != 0) {
+    if (! _validated_copy(dst, src, mask)) {
         PyErr_Format(PyExc_ValueError, "bad %s: %R", name, obj);
         return false;
     }
