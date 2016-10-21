@@ -718,24 +718,15 @@ _decode(DeguSrc src, const uint8_t mask, const char *format)
     return ret;
 }
 
-static uint8_t *
-_calloc_buf(const size_t len)
+static inline DeguDst
+_calloc_dst(const size_t len)
 {
     if (len == 0) {
-        Py_FatalError("_calloc_buf(): bad internal call");
+        Py_FatalError("_calloc_dst(): bad internal call");
     }
     uint8_t *buf = (uint8_t *)calloc(len, sizeof(uint8_t));
     if (buf == NULL) {
         PyErr_NoMemory();
-    }
-    return buf;
-}
-
-static inline DeguDst
-_calloc_dst(const size_t len)
-{
-    uint8_t *buf = _calloc_buf(len);
-    if (buf == NULL) {
         return NULL_DeguDst;
     }
     return DEGU_DST(buf, len);
@@ -3945,26 +3936,23 @@ _Body_readinto(Body *self, DeguDst dst)
 static int64_t
 _Body_write_to(Body *self, DeguFileObj *fo)
 {
-    size_t iosize, size;
+    size_t size;
     ssize_t wrote;
     uint64_t total = 0;
-    int64_t ret = -2;
-    uint8_t *dst_buf = NULL;
+    int64_t ret = -1;
 
     if (! _check_body_state("Body", self->state, BODY_READY)) {
-        goto error;
+        return -2;
     }
     self->state = BODY_STARTED;
     if (self->remaining == 0) {
         self->state = BODY_CONSUMED;
         return 0;
     }
-    iosize = _min(IO_SIZE, self->remaining);
-    dst_buf = _calloc_buf(iosize);
-    if (dst_buf == NULL) {
-        goto error;
+    DeguDst dst = _calloc_dst(_min(IO_SIZE, self->remaining));
+    if (dst.buf == NULL) {
+        return -3;
     }
-    DeguDst dst = {dst_buf, iosize};
     while (self->remaining > 0) {
         size = _min(dst.len, self->remaining);
         if (! _Body_readinto(self, _slice_dst(dst, 0, size))) {
@@ -3978,15 +3966,11 @@ _Body_write_to(Body *self, DeguFileObj *fo)
     }
     self->state = BODY_CONSUMED;
     ret = (int64_t)total;
-    goto cleanup;
 
 error:
-    ret = -1;
-    _Body_do_error(self);
-
-cleanup:
-    if (dst_buf != NULL) {
-        free(dst_buf);
+    free(dst.buf);
+    if (ret < 0) {
+        _Body_do_error(self);
     }
     return ret;
 }

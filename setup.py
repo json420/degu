@@ -125,7 +125,11 @@ ext_kw = {
     ],
 }
 if os.environ.get('DEGU_INSTRUMENT_BUILD') == 'true':
-    ext_kw['extra_compile_args'].append('-fsanitize=address')
+    ext_kw['extra_compile_args'].extend([
+        '-g3',
+        '-fno-omit-frame-pointer',
+        '-fsanitize=address',
+    ])
     ext_kw['libraries'] = ['asan']
     if platform.dist()[1] >= '15.04':
         ext_kw['extra_compile_args'].extend([
