@@ -9,6 +9,40 @@ Changelog
 `Download Degu 0.18`_
 
 
+Bug fixes:
+
+    *   Fix goof caught running tests under python3.5-dbg: ``_Foo_New()``
+        functions should not have been calling ``PyObject_INIT()`` (C
+        implementation only)
+
+    *   Likewise fix a ``ResourceWarning`` goof caught running unit tests
+        under python3.5-dbg (C implementation only)
+
+    *   :attr:`degu.client.Connection.closed` will now be ``True`` after an
+        error occurs when reading/writing a request body, or when an error
+        occurs when reading a response body.
+
+        This fixes a request-retry pattern used by `Microfiber`_, similar to
+        this:
+
+        >>> def request_with_retry(method, uri, headers, body, client, conn=None):
+        ...     for retry in range(3):
+        ...         try:
+        ...             if conn is None or conn.closed:
+        ...                 conn = client.connect()
+        ...             return (conn.request(method, uri, headers, body), conn)
+        ...         except ConnectionError as e:
+        ...             pass
+        ...     raise e
+        ... 
+
+
+Other changes:
+
+    *   The internal ``Reader`` and ``Writer`` classes were consolidated
+        into the new ``SocketWrapper`` class
+
+
 
 .. _version-0.17:
 
@@ -1941,4 +1975,5 @@ Two things motivated these breaking API changes:
 .. _`your feedback`: https://bugs.launchpad.net/degu
 .. _`file a bug`: https://bugs.launchpad.net/degu
 .. _`Dmedia`: https://launchpad.net/dmedia
+.. _`Microfiber`: https://launchpad.net/microfiber
 
