@@ -626,13 +626,11 @@ Also see the server :ref:`server-options`.
     The *sock* argument can be a `socket.socket`_, an `ssl.SSLSocket`_, or
     anything else implementing the needed API.
 
-    Degu currently requires *sock* to have four methods::
+    Degu currently requires *sock* to have three methods::
 
         sock.send(src_buf)
 
         sock.read_into(dst_buf)
-
-        sock.shutdown(how)
 
         sock.close()
 
@@ -662,6 +660,12 @@ Also see the server :ref:`server-options`.
     Automatically modifying the request headers is generally something best done
     in application-specific wrappers.  See :ref:`high-level-client-api` for
     details.
+
+    .. versionchanged:: 0.18
+
+        When a :class:`Connection` closes the underlying socket connection,
+        ``socket.shutdown()`` is no longer called, only ``socket.close()`` is
+        called.
 
     .. attribute:: sock
 
@@ -700,10 +704,9 @@ Also see the server :ref:`server-options`.
 
     .. method:: close()
 
-        Shutdown the underlying ``socket.socket`` instance.
+        Close the underlying ``socket.socket`` instance.
 
-        The socket is shutdown using ``socket.shutdown(socket.SHUT_RDWR)``,
-        immediately preventing further reading from or writing to the socket.
+        The socket is closed using ``socket.close()``.
 
         Once a connection is closed, no further requests can be made via that
         same connection instance.  To make subsequent requests, a new connection
