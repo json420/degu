@@ -3,8 +3,8 @@ Changelog
 
 .. _version-0.18:
 
-0.18 (unreleased)
------------------
+0.18 (December 2016)
+--------------------
 
 `Download Degu 0.18`_
 
