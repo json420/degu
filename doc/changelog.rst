@@ -8,22 +8,27 @@ Changelog
 
 `Download Degu 0.18`_
 
+Degu 0.18 focused on significant cleanup and refactoring in the `C extension`_.
+There are no known breaking API changes, although there is a subtle change in
+the semantics of the :attr:`degu.client.Connection.closed` attribute (more
+details below).
+
 
 Bug fixes:
 
-    *   Fix goof caught running tests under python3.5-dbg: ``_Foo_New()``
-        functions should not have been calling ``PyObject_INIT()`` (C
-        implementation only)
+    *   Fix goof caught running the unit tests under python3.5-dbg: the
+        ``_Foo_New()`` functions should not have been calling
+        ``PyObject_INIT()`` (C implementation only)
 
     *   Likewise fix a ``ResourceWarning`` goof caught running unit tests
         under python3.5-dbg (C implementation only)
 
     *   :attr:`degu.client.Connection.closed` will now be ``True`` after an
         error occurs when reading/writing a request body, or when an error
-        occurs when reading a response body.
+        occurs when reading/writing a response body.
 
-        This fixes a request-retry pattern used by `Microfiber`_, similar to
-        this:
+        This fixes an important request-retry pattern used by `Microfiber`_,
+        similar to this:
 
         >>> def request_with_retry(method, uri, headers, body, client, conn=None):
         ...     for retry in range(3):
@@ -39,8 +44,32 @@ Bug fixes:
 
 Other changes:
 
+    *   To prevent errors from again cropping up that can only be caught by
+        running the unit tests under ``python3.*-dbg``, the Debian packaging now
+        builds Degu and runs its unit test under the Python3 debug variant.
+
+    *   As such, the Debian package now includes the new ``python3-degu-dbg``
+        binary package.  This can be useful for debugging software built atop
+        Degu, especially if such software itself has a C extension.
+
     *   The internal ``Reader`` and ``Writer`` classes were consolidated
-        into the new ``SocketWrapper`` class
+        into the new ``SocketWrapper`` class.
+
+    *   The new ``SocketWrapper`` class now includes its two 32 KiB buffers
+        (one for reading and another for writing) in the Python object
+        ``struct`` itself.  Previously the ``Reader`` and ``Writer`` classes
+        separately allocated these buffers with ``calloc()``, and separately
+        freed them with ``free()`` when the Python object was deallocated.  In
+        addition to simplifying the implementation, this change means Degu can
+        better take advantage of the Python memory allocator, which should
+        generally result in reduced memory fragmentation, lower memory usage.
+
+    *   The new ``SocketWrapper`` class only calls ``socket.close()`` when
+        closing the underlying connection, no longer first calls
+        ``socket.shutdown()``.  Use of ``socket.shutdown()`` may be revisited in
+        the future, but for now it seems more problematic than beneficial.  If
+        this change is problematic for you, or if you otherwise have better
+        ideas, please `file a bug`_!
 
 
 
