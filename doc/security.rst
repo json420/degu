@@ -85,7 +85,7 @@ Error handling
 --------------
 
 When an unhandled exception occurs at any point while handling a connection or
-handling any requests for that connection, Degu will immediately shutdown the
+handling any requests for that connection, Degu will immediately close the
 connection and terminate its thread.
 
 For security reasons, Degu does not convey anything about such errors through

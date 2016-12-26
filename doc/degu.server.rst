@@ -141,7 +141,7 @@ example, to kill the server process we just created:
         option.
 
         When this limit is reached for a specific TCP connection, the connection
-        will be unconditionally shutdown.
+        will be unconditionally closed.
 
     .. attribute:: timeout
 
