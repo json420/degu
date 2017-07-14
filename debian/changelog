@@ -1,3 +1,9 @@
+degu (0.19.0~alpha) xenial; urgency=low
+
+  * Upstream pre-release
+
+ -- Jason Gerard DeRose <jderose@novacut.com>  Fri, 14 Jul 2017 13:46:47 -0600
+
 degu (0.18.0) xenial; urgency=low
 
   * Upstream release
