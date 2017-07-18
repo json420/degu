@@ -566,7 +566,7 @@ Also see the server :ref:`server-options`.
 
                 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384'
 
-            Among other things, means the Degu client will only connect to
+            Among other things, this means the Degu client will only connect to
             servers providing `perfect forward secrecy`_
 
     This function is also advantageous because the *sslconfig* is simple and
@@ -677,7 +677,7 @@ Also see the server :ref:`server-options`.
 
     .. attribute:: api
 
-        This attribute exposes the stanard RGI application API.
+        This attribute exposes the standard RGI application API.
 
         Under Degu this attribute will always be the :data:`degu.base.api`
         constant, which is an instance of the :class:`degu.base.API` namedtuple.
