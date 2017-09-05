@@ -24,6 +24,7 @@ Unit tests for the `degu.server` module`
 """
 
 from unittest import TestCase
+import sys
 import os
 from os import path
 import io
@@ -199,27 +200,30 @@ class TestFunctions(TestCase):
         # options missing OP_NO_COMPRESSION:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.assertIs(sslctx.verify_mode, ssl.CERT_NONE)
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_NO_COMPRESSION'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_NO_COMPRESSION'
+            )
 
         # options missing OP_SINGLE_ECDH_USE:
         sslctx.options |= ssl.OP_NO_COMPRESSION
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+            )
 
         # options missing OP_CIPHER_SERVER_PREFERENCE:
         sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+            )
 
         # All good:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
@@ -230,27 +234,30 @@ class TestFunctions(TestCase):
         sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         sslctx.verify_mode = ssl.CERT_REQUIRED
         self.assertIs(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_NO_COMPRESSION'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_NO_COMPRESSION'
+            )
 
         # options missing OP_SINGLE_ECDH_USE:
         sslctx.options |= ssl.OP_NO_COMPRESSION
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+            )
 
         # options missing OP_CIPHER_SERVER_PREFERENCE:
         sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        with self.assertRaises(ValueError) as cm:
-            server._validate_server_sslctx(sslctx)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server._validate_server_sslctx(sslctx)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+            )
 
         # All good:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
@@ -482,27 +489,30 @@ class TestSSLServer(TestCase):
 
         # not (options & ssl.OP_NO_COMPRESSION)
         sslctx.options |= ssl.OP_NO_SSLv2
-        with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, '::1', good_app)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_NO_COMPRESSION'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server.SSLServer(sslctx, '::1', good_app)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_NO_COMPRESSION'
+            )
 
         # not (options & ssl.OP_SINGLE_ECDH_USE)
         sslctx.options |= ssl.OP_NO_COMPRESSION
-        with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, '::1', good_app)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server.SSLServer(sslctx, '::1', good_app)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
+            )
 
         # not (options & ssl.OP_CIPHER_SERVER_PREFERENCE)
         sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        with self.assertRaises(ValueError) as cm:
-            server.SSLServer(sslctx, '::1', good_app)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                server.SSLServer(sslctx, '::1', good_app)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
+            )
 
         # Good sslctx from here on:
         sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE

@@ -868,7 +868,10 @@ class TestRange_Py(BackendTestCase):
         if self.backend is _base:
             msg = 'unorderable type: Range()'
         else:
-            msg = 'unorderable types: {t}() < {o}()'
+            if sys.version_info < (3, 6):
+                msg = 'unorderable types: {t}() < {o}()'
+            else:
+                msg = "'<' not supported between instances of '{t}' and '{o}'"
         for (t, o) in iter_swaps(r, combined):
             with self.assertRaises(TypeError) as cm:
                 t < o
@@ -877,12 +880,15 @@ class TestRange_Py(BackendTestCase):
                     t=t.__class__.__name__, o=o.__class__.__name__
                 )
             )
-        
+
         # __le__():
         if self.backend is _base:
             msg = 'unorderable type: Range()'
         else:
-            msg = 'unorderable types: {t}() <= {o}()'
+            if sys.version_info < (3, 6):
+                msg = 'unorderable types: {t}() <= {o}()'
+            else:
+                msg = "'<=' not supported between instances of '{t}' and '{o}'"
         for (t, o) in iter_swaps(r, combined):
             with self.assertRaises(TypeError) as cm:
                 t <= o
@@ -908,7 +914,10 @@ class TestRange_Py(BackendTestCase):
         if self.backend is _base:
             msg = 'unorderable type: Range()'
         else:
-            msg = 'unorderable types: {t}() > {o}()'
+            if sys.version_info < (3, 6):
+                msg = 'unorderable types: {t}() > {o}()'
+            else:
+                msg = "'>' not supported between instances of '{t}' and '{o}'"
         for (t, o) in iter_swaps(r, combined):
             with self.assertRaises(TypeError) as cm:
                 t > o
@@ -922,7 +931,10 @@ class TestRange_Py(BackendTestCase):
         if self.backend is _base:
             msg = 'unorderable type: Range()'
         else:
-            msg = 'unorderable types: {t}() >= {o}()'
+            if sys.version_info < (3, 6):
+                msg = 'unorderable types: {t}() >= {o}()'
+            else:
+                msg = "'>=' not supported between instances of '{t}' and '{o}'"
         for (t, o) in iter_swaps(r, combined):
             with self.assertRaises(TypeError) as cm:
                 t >= o

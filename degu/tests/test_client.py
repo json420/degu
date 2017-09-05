@@ -24,6 +24,7 @@ Unit tests for the `degu.server` module`
 """
 
 from unittest import TestCase
+import sys
 import ssl
 
 from .helpers import MockSocket
@@ -485,12 +486,12 @@ class TestSSLClient(TestCase):
         sslctx.options |= ssl.OP_NO_SSLv2
 
         # not (options & ssl.OP_NO_COMPRESSION)
-        sslctx.options |= ssl.OP_NO_SSLv2
-        with self.assertRaises(ValueError) as cm:
-            client.SSLClient(sslctx, None)
-        self.assertEqual(str(cm.exception),
-            'sslctx.options must include ssl.OP_NO_COMPRESSION'
-        )
+        if sys.version_info < (3, 6):
+            with self.assertRaises(ValueError) as cm:
+                client.SSLClient(sslctx, None)
+            self.assertEqual(str(cm.exception),
+                'sslctx.options must include ssl.OP_NO_COMPRESSION'
+            )
 
         # verify_mode is not ssl.CERT_REQUIRED:
         sslctx.options |= ssl.OP_NO_COMPRESSION
