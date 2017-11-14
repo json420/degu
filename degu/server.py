@@ -144,33 +144,44 @@ def _get_credentials(sock):
     return struct.unpack('3i', data)
 
 
+def _bind_sock(address):
+    if isinstance(address, socket.socket):
+        return address
+    if isinstance(address, tuple):
+        if len(address) == 4:
+            family = socket.AF_INET6
+        elif len(address) == 2:
+            family = socket.AF_INET
+        else:
+            raise ValueError(
+                'address: must have 2 or 4 items; got {!r}'.format(address)
+            )
+    elif isinstance(address, str):
+        if os.path.abspath(address) != address:
+            raise ValueError(
+                'address: bad socket filename: {!r}'.format(address)
+            )
+        family = socket.AF_UNIX
+    elif isinstance(address, bytes):
+        family = socket.AF_UNIX
+    else:
+        raise TypeError(
+            _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
+        )
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    sock.bind(address)
+    sock.listen(5)
+    return sock
+
+
 class Server:
     _options = ('max_connections', 'max_requests', 'timeout')
     __slots__ = ('address', 'app', 'options', 'sock') + _options
 
     def __init__(self, address, app, **options):
         # address:
-        if isinstance(address, tuple):  
-            if len(address) == 4:
-                family = socket.AF_INET6
-            elif len(address) == 2:
-                family = socket.AF_INET
-            else:
-                raise ValueError(
-                    'address: must have 2 or 4 items; got {!r}'.format(address)
-                )
-        elif isinstance(address, str):
-            if os.path.abspath(address) != address:
-                raise ValueError(
-                    'address: bad socket filename: {!r}'.format(address)
-                )
-            family = socket.AF_UNIX
-        elif isinstance(address, bytes):
-            family = socket.AF_UNIX
-        else:
-            raise TypeError(
-                _TYPE_ERROR.format('address', (tuple, str, bytes), type(address), address)
-            )
+        self.sock = _bind_sock(address)
+        self.address = self.sock.getsockname()
 
         # app:
         if not callable(app):
@@ -195,12 +206,6 @@ class Server:
         assert isinstance(self.max_connections, int) and self.max_connections > 0
         assert isinstance(self.max_requests, int) and self.max_requests > 0 
         assert isinstance(self.timeout, (int, float)) and self.timeout > 0
-
-        # Listen...
-        self.sock = socket.socket(family, socket.SOCK_STREAM)
-        self.sock.bind(address)
-        self.address = self.sock.getsockname()
-        self.sock.listen(5)
 
     def __repr__(self):
         return '{}({!r}, {})'.format(
