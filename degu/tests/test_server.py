@@ -414,6 +414,21 @@ class TestServer(TestCase):
         self.assertIsInstance(inst.address, bytes)
         self.assertIs(inst.app, good_app)
 
+        # *address* is a `socket.socket` instance:
+        pairs = (
+            (socket.AF_INET, ('127.0.0.1', 0)),
+            (socket.AF_INET6, ('::1', 0)),
+            (socket.AF_UNIX, b''),
+        )
+        for (family, address) in pairs:
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            sock.bind(address)
+            sock.listen(5)
+            inst = server.Server(sock, good_app)
+            self.assertIsInstance(inst, server.Server)
+            self.assertIs(inst.sock, sock)
+            self.assertEqual(inst.address, sock.getsockname())
+
         # Test options:
         inst = server.Server(degu.IPv6_LOOPBACK, good_app)
         self.assertEqual(inst.timeout, 30)
@@ -596,6 +611,22 @@ class TestSSLServer(TestCase):
         port = inst.sock.getsockname()[1]
         self.assertEqual(inst.address, ('0.0.0.0', port))
         self.assertIs(inst.app, good_app)
+
+        # *address* is a `socket.socket` instance:
+        pairs = (
+            (socket.AF_INET, ('127.0.0.1', 0)),
+            (socket.AF_INET6, ('::1', 0)),
+            (socket.AF_UNIX, b''),
+        )
+        for (family, address) in pairs:
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            sock.bind(address)
+            sock.listen(5)
+            inst = server.SSLServer(sslctx, sock, good_app)
+            self.assertIsInstance(inst, server.SSLServer)
+            self.assertIs(inst.sslctx, sslctx)
+            self.assertIs(inst.sock, sock)
+            self.assertEqual(inst.address, sock.getsockname())
 
         # Test options:
         inst = server.SSLServer(sslctx, degu.IPv6_LOOPBACK, good_app)
