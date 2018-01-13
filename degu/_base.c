@@ -1276,8 +1276,7 @@ _parse_decimal(DeguSrc src)
     for (i = 1; i < src.len; i++) {
         n = _NUMBER[src.buf[i]];
         err |= n;
-        accum *= 10;
-        accum += n;
+        accum = (accum * 10) + n;
     }
     if ((err & 240) != 0) {
         return -2;
