@@ -7,9 +7,9 @@ Build-Depends: debhelper (>= 9),
     python3-all-dev (>= 3.4),
     python3-all-dbg (>= 3.4),
     python3-sphinx,
-    pyflakes3 | pyflakes,
+    pyflakes3,
+    clang-tools,
     openssl,
-    clang,
 Standards-Version: 3.9.8
 X-Python3-Version: >= 3.4
 Homepage: https://launchpad.net/degu
