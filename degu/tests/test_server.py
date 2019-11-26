@@ -24,7 +24,6 @@ Unit tests for the `degu.server` module`
 """
 
 from unittest import TestCase
-import sys
 import os
 from os import path
 import io
@@ -123,9 +122,6 @@ class TestFunctions(TestCase):
             sslctx = func(pki.server_sslconfig)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_REQUIRED)
-            self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-            self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-            self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # New in Degu 0.3: should not be able to accept connections from
         # unauthenticated clients by merely omitting ca_file/ca_path:
@@ -144,9 +140,6 @@ class TestFunctions(TestCase):
             sslctx = func(sslconfig)
             self.assertEqual(sslctx.protocol, ssl.PROTOCOL_TLSv1_2)
             self.assertEqual(sslctx.verify_mode, ssl.CERT_NONE)
-            self.assertTrue(sslctx.options & ssl.OP_NO_COMPRESSION)
-            self.assertTrue(sslctx.options & ssl.OP_SINGLE_ECDH_USE)
-            self.assertTrue(sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE)
 
         # Cannot mix ca_file/ca_path with allow_unauthenticated_clients:
         sslconfig['ca_file'] = '/my/client.ca'
@@ -197,36 +190,9 @@ class TestFunctions(TestCase):
             'sslctx.verify_mode cannot be ssl.CERT_OPTIONAL'
         )
 
-        # options missing OP_NO_COMPRESSION:
+        # All good:
         sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.assertIs(sslctx.verify_mode, ssl.CERT_NONE)
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_NO_COMPRESSION'
-            )
-
-        # options missing OP_SINGLE_ECDH_USE:
-        sslctx.options |= ssl.OP_NO_COMPRESSION
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-            )
-
-        # options missing OP_CIPHER_SERVER_PREFERENCE:
-        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-            )
-
-        # All good:
-        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server._validate_server_sslctx(sslctx), sslctx)
 
         # Now again, this time with CERT_REQUIRED:
@@ -234,33 +200,6 @@ class TestFunctions(TestCase):
         sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         sslctx.verify_mode = ssl.CERT_REQUIRED
         self.assertIs(sslctx.verify_mode, ssl.CERT_REQUIRED)
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_NO_COMPRESSION'
-            )
-
-        # options missing OP_SINGLE_ECDH_USE:
-        sslctx.options |= ssl.OP_NO_COMPRESSION
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-            )
-
-        # options missing OP_CIPHER_SERVER_PREFERENCE:
-        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server._validate_server_sslctx(sslctx)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-            )
-
-        # All good:
-        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
         self.assertIs(server._validate_server_sslctx(sslctx), sslctx)
 
     def test_get_credentials(self):
@@ -494,43 +433,8 @@ class TestSSLServer(TestCase):
             'sslctx.protocol must be ssl.PROTOCOL_TLSv1_2'
         )
 
-        # Note: Python 3.3.4 (and presumably 3.4.0) now disables SSLv2 by
-        # default (which is good); Degu enforces this (also good), but because
-        # we cannot unset the ssl.OP_NO_SSLv2 bit, we can't unit test to check
-        # that Degu enforces this, so for now, we set the bit here so it works
-        # with Python 3.3.3 still; see: http://bugs.python.org/issue20207
-        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        sslctx.options |= ssl.OP_NO_SSLv2
-
-        # not (options & ssl.OP_NO_COMPRESSION)
-        sslctx.options |= ssl.OP_NO_SSLv2
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server.SSLServer(sslctx, '::1', good_app)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_NO_COMPRESSION'
-            )
-
-        # not (options & ssl.OP_SINGLE_ECDH_USE)
-        sslctx.options |= ssl.OP_NO_COMPRESSION
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server.SSLServer(sslctx, '::1', good_app)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_SINGLE_ECDH_USE'
-            )
-
-        # not (options & ssl.OP_CIPHER_SERVER_PREFERENCE)
-        sslctx.options |= ssl.OP_SINGLE_ECDH_USE
-        if sys.version_info < (3, 6):
-            with self.assertRaises(ValueError) as cm:
-                server.SSLServer(sslctx, '::1', good_app)
-            self.assertEqual(str(cm.exception),
-                'sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE'
-            )
-
         # Good sslctx from here on:
-        sslctx.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 
         # Bad address type:
         with self.assertRaises(TypeError) as cm:

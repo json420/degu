@@ -120,12 +120,15 @@ def _validate_server_sslctx(sslctx):
         log.warning('Security concern: sslctx allows unauthenticated clients!')
 
     # Check the options:
-    if not (sslctx.options & ssl.OP_NO_COMPRESSION):
-        raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
-    if not (sslctx.options & ssl.OP_SINGLE_ECDH_USE):
-        raise ValueError('sslctx.options must include ssl.OP_SINGLE_ECDH_USE')
-    if not (sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE):
-        raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
+    # FIXME: these are fragile across different Python and openssl versions, so
+    # don't do these checks, but we still set them in build_server_sslctx():
+    # 
+    #if not (sslctx.options & ssl.OP_NO_COMPRESSION):
+    #    raise ValueError('sslctx.options must include ssl.OP_NO_COMPRESSION')
+    #if not (sslctx.options & ssl.OP_SINGLE_ECDH_USE):
+    #    raise ValueError('sslctx.options must include ssl.OP_SINGLE_ECDH_USE')
+    #if not (sslctx.options & ssl.OP_CIPHER_SERVER_PREFERENCE):
+    #    raise ValueError('sslctx.options must include ssl.OP_CIPHER_SERVER_PREFERENCE')
 
     return sslctx
 
