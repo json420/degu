@@ -27,9 +27,12 @@ from unittest import TestCase
 import os
 from random import SystemRandom
 
+from .helpers import TempDir
+
 from ..misc import mkreq
 from ..misc import TempServer
 from ..client import Client
+from ..base import api
 from .. import applib
 
 
@@ -257,4 +260,55 @@ class TestProxyApp(TestCase):
         self.assertIs(r.body.chunked, False)
         self.assertEqual(r.body.read(), marker)
         conn.close()
+
+
+class TestFilesApp(TestCase):
+    def test_init(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        self.assertEqual(app.dir_name, tmp.dir)
+        self.assertIsInstance(app.dir_fd, int)
+
+    def test_repr(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        self.assertEqual(str(app), 'FilesApp({!r})'.format(tmp.dir))
+
+    def test_call(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+
+        # Bad methods:
+        for method in ('PUT', 'POST', 'DELETE'):
+            r = mkreq(method, '/foo.txt')
+            self.assertEqual(app(None, r, api),
+                (405, 'Method Not Allowed', {}, None)
+            )
+
+        # File doesn't exist:
+        for method in ('GET', 'HEAD'):
+            r = mkreq(method, '/foo.txt')
+            self.assertEqual(app(None, r, api), (404, 'Not Found', {}, None))
+        data = os.urandom(1234)
+        tmp.write(data, 'foo.txt')
+
+        r = mkreq('HEAD', '/foo.txt')
+        (status, reason, headers, body) = app(None, r, api)
+        self.assertEqual(status, 200)
+        self.assertEqual(reason, 'OK')
+        self.assertEqual(headers,
+            {'content-length': 1234, 'content-type': 'text/plain'}
+        )
+        self.assertIsNone(body)
+
+        r = mkreq('GET', '/foo.txt')
+        (status, reason, headers, body) = app(None, r, api)
+        self.assertEqual(status, 200)
+        self.assertEqual(reason, 'OK')
+        self.assertEqual(headers,  # Server will add content-length
+            {'content-type': 'text/plain'}
+        )
+        self.assertIsInstance(body, api.Body)
+        self.assertEqual(body._rfile.name, 'foo.txt')
+        self.assertEqual(body.read(), data)
 

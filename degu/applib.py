@@ -23,6 +23,9 @@
 A collection of RGI server applications for common scenarios.
 """
 
+import os
+from mimetypes import guess_type
+
 try:
     from ._base import (
         Router,
@@ -88,4 +91,49 @@ class MethodFilter:
         if self.allowed_methods.isallowed(request.method):
             return self.app(session, request, api)
         return (405, 'Method Not Allowed', {}, None)
+
+
+class FilesApp:
+    __slots__ = ('dir_name', 'dir_fd')
+
+    def __init__(self, dir_name):
+        self.dir_name = dir_name
+        self.dir_fd = os.open(dir_name, os.O_DIRECTORY)
+
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self.dir_name)
+
+    def __del__(self):
+        if hasattr(self, 'dir_fd'):
+            os.close(self.dir_fd)
+            del self.dir_fd
+
+    def __call__(self, session, request, api):
+        name = ('/'.join(request.path) if request.path else 'index.html')
+        if request.method == 'GET':
+            m = self._get
+        elif request.method == 'HEAD':
+            m = self._head
+        else:
+            return (405, 'Method Not Allowed', {}, None)
+        try:
+            (status, reason, headers, body) = m(name, api)
+        except FileNotFoundError:
+            return (404, 'Not Found', {}, None)
+        (ct, enc) = guess_type(name)
+        if ct is not None:
+            headers['content-type'] = ct
+        return (status, reason, headers, body)
+
+    def _head(self, name, api):
+        size = os.stat(name, dir_fd=self.dir_fd).st_size
+        return (200, 'OK', {'content-length': size}, None) 
+
+    def _get(self, name, api):
+        fp = open(name, 'rb', buffering=0, opener=self._opener)
+        size = os.stat(fp.fileno()).st_size
+        return (200, 'OK', {}, api.Body(fp, size))
+
+    def _opener(self, name, flags):
+        return os.open(name, flags, dir_fd=self.dir_fd)
 
