@@ -109,30 +109,24 @@ class FilesApp:
             del self.dir_fd
 
     def __call__(self, session, request, api):
-        name = (os.sep.join(request.path) if request.path else 'index.html')
-        if request.method == 'GET':
-            m = self._get
-        elif request.method == 'HEAD':
-            m = self._head
-        else:
+        if request.method not in {'GET', 'HEAD'}:
             return (405, 'Method Not Allowed', {}, None)
+        name = (os.sep.join(request.path) if request.path else 'index.html')
         try:
-            (status, reason, headers, body) = m(name, api)
+            if request.method == 'GET':
+                fp = open(name, 'rb', buffering=0, opener=self._opener)
+                size = os.stat(fp.fileno()).st_size
+                body = api.Body(fp, size)
+            else:
+                size = os.stat(name, dir_fd=self.dir_fd).st_size
+                body = None
         except FileNotFoundError:
             return (404, 'Not Found', {}, None)
+        headers = {'content-length': size}
         (ct, enc) = guess_type(name)
         if ct is not None:
             headers['content-type'] = ct
-        return (status, reason, headers, body)
-
-    def _head(self, name, api):
-        size = os.stat(name, dir_fd=self.dir_fd).st_size
-        return (200, 'OK', {'content-length': size}, None) 
-
-    def _get(self, name, api):
-        fp = open(name, 'rb', buffering=0, opener=self._opener)
-        size = os.stat(fp.fileno()).st_size
-        return (200, 'OK', {}, api.Body(fp, size))
+        return (200, 'OK', headers, body)
 
     def _opener(self, name, flags):
         return os.open(name, flags, dir_fd=self.dir_fd)

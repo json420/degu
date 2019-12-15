@@ -312,7 +312,7 @@ class TestFilesApp(TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(reason, 'OK')
         self.assertEqual(headers,  # Server will add content-length
-            {'content-type': 'text/plain'}
+            {'content-length': 1234, 'content-type': 'text/plain'}
         )
         self.assertIsInstance(body, api.Body)
         self.assertIsInstance(body.rfile, io.FileIO)
@@ -338,7 +338,7 @@ class TestFilesApp(TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(reason, 'OK')
             self.assertEqual(headers,  # Server will add content-length
-                {'content-type': 'text/html'}
+                {'content-length': 2345, 'content-type': 'text/html'}
             )
             self.assertIsInstance(body, api.Body)
             self.assertIsInstance(body.rfile, io.FileIO)
