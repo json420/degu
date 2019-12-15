@@ -25,6 +25,7 @@ Unit tests for the `degu.applib` module.
 
 from unittest import TestCase
 import os
+import io
 from random import SystemRandom
 
 from .helpers import TempDir
@@ -286,12 +287,16 @@ class TestFilesApp(TestCase):
             )
 
         # File doesn't exist:
-        for method in ('GET', 'HEAD'):
-            r = mkreq(method, '/foo.txt')
-            self.assertEqual(app(None, r, api), (404, 'Not Found', {}, None))
-        data = os.urandom(1234)
-        tmp.write(data, 'foo.txt')
+        for uri in ('/foo.txt', '/', '/index.html'):
+            for method in ('GET', 'HEAD'):
+                r = mkreq(method, uri)
+                self.assertEqual(app(None, r, api),
+                    (404, 'Not Found', {}, None)
+                )
 
+        # HEAD request:
+        data1 = os.urandom(1234)
+        tmp.write(data1, 'foo.txt')
         r = mkreq('HEAD', '/foo.txt')
         (status, reason, headers, body) = app(None, r, api)
         self.assertEqual(status, 200)
@@ -301,6 +306,7 @@ class TestFilesApp(TestCase):
         )
         self.assertIsNone(body)
 
+        # GET request:
         r = mkreq('GET', '/foo.txt')
         (status, reason, headers, body) = app(None, r, api)
         self.assertEqual(status, 200)
@@ -309,6 +315,34 @@ class TestFilesApp(TestCase):
             {'content-type': 'text/plain'}
         )
         self.assertIsInstance(body, api.Body)
-        self.assertEqual(body._rfile.name, 'foo.txt')
-        self.assertEqual(body.read(), data)
+        self.assertIsInstance(body.rfile, io.FileIO)
+        self.assertEqual(body.rfile.tell(), 0)
+        self.assertEqual(body.rfile.name, 'foo.txt')
+        self.assertEqual(body.read(), data1)
+
+        # '/' should map to '/index.html':
+        data2 = os.urandom(2345)
+        tmp.write(data2, 'index.html')
+        for uri in ('/', '/index.html'):
+            r = mkreq('HEAD', uri)
+            (status, reason, headers, body) = app(None, r, api)
+            self.assertEqual(status, 200)
+            self.assertEqual(reason, 'OK')
+            self.assertEqual(headers,
+                {'content-length': 2345, 'content-type': 'text/html'}
+            )
+            self.assertIsNone(body)
+
+            r = mkreq('GET', uri)
+            (status, reason, headers, body) = app(None, r, api)
+            self.assertEqual(status, 200)
+            self.assertEqual(reason, 'OK')
+            self.assertEqual(headers,  # Server will add content-length
+                {'content-type': 'text/html'}
+            )
+            self.assertIsInstance(body, api.Body)
+            self.assertIsInstance(body.rfile, io.FileIO)
+            self.assertEqual(body.rfile.tell(), 0)
+            self.assertEqual(body.rfile.name, 'index.html')
+            self.assertEqual(body.read(), data2)
 

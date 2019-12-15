@@ -109,7 +109,7 @@ class FilesApp:
             del self.dir_fd
 
     def __call__(self, session, request, api):
-        name = ('/'.join(request.path) if request.path else 'index.html')
+        name = (os.sep.join(request.path) if request.path else 'index.html')
         if request.method == 'GET':
             m = self._get
         elif request.method == 'HEAD':
