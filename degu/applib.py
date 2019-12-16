@@ -121,7 +121,6 @@ class FilesApp:
                 size = os.stat(name, dir_fd=self.dir_fd).st_size
         except FileNotFoundError:
             return (404, 'Not Found', {}, None)
-
         r = request.headers.get('range')
         if r is None:
             status = 200
@@ -146,7 +145,6 @@ class FilesApp:
             else:
                 fp.seek(r.start)
                 body = api.Body(fp, length)
-
         (ct, enc) = guess_type(name)
         if ct is not None:
             headers['content-type'] = ct
