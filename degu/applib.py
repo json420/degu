@@ -116,17 +116,41 @@ class FilesApp:
             if request.method == 'GET':
                 fp = open(name, 'rb', buffering=0, opener=self._opener)
                 size = os.stat(fp.fileno()).st_size
-                body = api.Body(fp, size)
             else:
+                fp = None
                 size = os.stat(name, dir_fd=self.dir_fd).st_size
-                body = None
         except FileNotFoundError:
             return (404, 'Not Found', {}, None)
-        headers = {'content-length': size}
+
+        r = request.headers.get('range')
+        if r is None:
+            status = 200
+            reason = 'OK'
+            headers = {'content-length': size}
+            if fp is None:
+                body = None
+            else:
+                body = api.Body(fp, size)
+        else:
+            if r.stop > size:
+                return (416, 'Range Not Satisfiable', {}, None)
+            length = r.stop - r.start
+            status = 206
+            reason = 'Partial Content'
+            headers = {
+                'content-length': length,
+                'content-range': api.ContentRange(r.start, r.stop, size),
+            }
+            if fp is None:
+                body = None
+            else:
+                fp.seek(r.start)
+                body = api.Body(fp, length)
+
         (ct, enc) = guess_type(name)
         if ct is not None:
             headers['content-type'] = ct
-        return (200, 'OK', headers, body)
+        return (status, reason, headers, body)
 
     def _opener(self, name, flags):
         return os.open(name, flags, dir_fd=self.dir_fd)
