@@ -346,3 +346,56 @@ class TestFilesApp(TestCase):
             self.assertEqual(body.rfile.name, 'index.html')
             self.assertEqual(body.read(), data2)
 
+            # Range requests:
+            total = len(data2)
+            for (start, stop) in [
+                (0, total + 1),
+                (total - 1, total + 1),
+                (total, total + 1),
+            ]:
+                _range = api.Range(start, stop)
+                headers = {'range': _range}
+                for method in ('GET', 'HEAD'):
+                    r = mkreq(method, uri, headers)
+                    self.assertEqual(app(None, r, api),
+                        (416, 'Range Not Satisfiable', {}, None)
+                    )
+            for (start, stop) in [
+                (0, 1),
+                (0, total - 1),
+                (1, total),
+                (total - 1, total),
+                (0, total),
+            ]:
+                length = stop - start
+                _range = api.Range(start, stop)
+                r = mkreq('HEAD', uri, {'range': _range})
+                (status, reason, headers, body) = app(None, r, api)
+                self.assertEqual(status, 206)
+                self.assertEqual(reason, 'Partial Content')
+                self.assertEqual(headers,
+                    {
+                        'content-range': api.ContentRange(start, stop, total),
+                        'content-length': length,
+                        'content-type': 'text/html',
+                    }
+                )
+                self.assertIsNone(body)
+
+                r = mkreq('GET', uri, {'range': _range})
+                (status, reason, headers, body) = app(None, r, api)
+                self.assertEqual(status, 206)
+                self.assertEqual(reason, 'Partial Content')
+                self.assertEqual(headers,
+                    {
+                        'content-range': api.ContentRange(start, stop, total),
+                        'content-length': length,
+                        'content-type': 'text/html',
+                    }
+                )
+                self.assertIsInstance(body, api.Body)
+                self.assertIsInstance(body.rfile, io.FileIO)
+                self.assertEqual(body.rfile.tell(), start)
+                self.assertEqual(body.rfile.name, 'index.html')
+                self.assertEqual(body.read(), data2[start:stop])
+
