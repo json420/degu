@@ -28,12 +28,12 @@ import os
 import io
 from random import SystemRandom
 
-from .helpers import TempDir
+from .helpers import TempDir, random_start_stop
 
 from ..misc import mkreq
 from ..misc import TempServer
 from ..client import Client
-from ..base import api
+from ..base import api, EmptyPreambleError
 from .. import applib
 
 
@@ -398,4 +398,81 @@ class TestFilesApp(TestCase):
                 self.assertEqual(body.rfile.tell(), start)
                 self.assertEqual(body.rfile.name, 'index.html')
                 self.assertEqual(body.read(), data2[start:stop])
+
+    def test_live(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        server = TempServer(('127.0.0.1', 0), app)
+        client = Client(server.address)
+
+        uri = '/foo/bar.js'
+        for method in ('PUT', 'POST', 'DELETE'):
+            conn = client.connect()
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 405)
+            self.assertEqual(rsp.reason, 'Method Not Allowed')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+            # Connection should be closed after a 405 error:
+            with self.assertRaises(EmptyPreambleError):
+                conn.request(method, uri, {}, None)
+
+        conn = client.connect()
+        for method in ('GET', 'HEAD'):
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 404)
+            self.assertEqual(rsp.reason, 'Not Found')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+
+        total = 9876
+        (start, stop) = random_start_stop(total)
+        r = api.Range(start, stop)
+        data = os.urandom(total)
+        tmp.mkdir('foo')
+        tmp.write(data, 'foo', 'bar.js')
+        for method in ('GET', 'HEAD'):
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 200)
+            self.assertEqual(rsp.reason, 'OK')
+            self.assertEqual(rsp.headers,
+                {
+                    'content-length': total,
+                    'content-type': 'application/javascript',
+                }
+            )
+            if method == 'GET':
+                self.assertIsInstance(rsp.body, api.Body)
+                self.assertEqual(rsp.body.read(), data)
+            else:
+                self.assertIsNone(rsp.body)
+
+            rsp = conn.request(method, uri, {'range': r}, None)
+            self.assertEqual(rsp.status, 206)
+            self.assertEqual(rsp.reason, 'Partial Content')
+            self.assertEqual(rsp.headers,
+                {
+                    'content-length': stop - start,
+                    'content-type': 'application/javascript',
+                    'content-range': api.ContentRange(start, stop, total),
+                }
+            )
+            if method == 'GET':
+                self.assertIsInstance(rsp.body, api.Body)
+                self.assertEqual(rsp.body.read(), data[start:stop])
+            else:
+                self.assertIsNone(rsp.body)
+
+        start = random.randrange(0, total)
+        r = api.Range(start, total + 1)
+        for method in ('GET', 'HEAD'):
+            conn = client.connect()
+            rsp = conn.request(method, uri, {'range': r}, None)
+            self.assertEqual(rsp.status, 416)
+            self.assertEqual(rsp.reason, 'Range Not Satisfiable')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+            # Connection should be closed after a 416 error:
+            with self.assertRaises(EmptyPreambleError):
+                conn.request(method, uri, {}, None)
 
