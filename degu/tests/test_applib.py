@@ -25,11 +25,15 @@ Unit tests for the `degu.applib` module.
 
 from unittest import TestCase
 import os
+import io
 from random import SystemRandom
+
+from .helpers import TempDir, random_start_stop
 
 from ..misc import mkreq
 from ..misc import TempServer
 from ..client import Client
+from ..base import api, EmptyPreambleError
 from .. import applib
 
 
@@ -257,4 +261,218 @@ class TestProxyApp(TestCase):
         self.assertIs(r.body.chunked, False)
         self.assertEqual(r.body.read(), marker)
         conn.close()
+
+
+class TestFilesApp(TestCase):
+    def test_init(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        self.assertEqual(app.dir_name, tmp.dir)
+        self.assertIsInstance(app.dir_fd, int)
+
+    def test_repr(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        self.assertEqual(str(app), 'FilesApp({!r})'.format(tmp.dir))
+
+    def test_call(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+
+        # Bad methods:
+        for method in ('PUT', 'POST', 'DELETE'):
+            r = mkreq(method, '/foo.txt')
+            self.assertEqual(app(None, r, api),
+                (405, 'Method Not Allowed', {}, None)
+            )
+
+        # File doesn't exist:
+        for uri in ('/foo.txt', '/', '/index.html'):
+            for method in ('GET', 'HEAD'):
+                r = mkreq(method, uri)
+                self.assertEqual(app(None, r, api),
+                    (404, 'Not Found', {}, None)
+                )
+
+        # HEAD request:
+        data1 = os.urandom(1234)
+        tmp.write(data1, 'foo.txt')
+        r = mkreq('HEAD', '/foo.txt')
+        (status, reason, headers, body) = app(None, r, api)
+        self.assertEqual(status, 200)
+        self.assertEqual(reason, 'OK')
+        self.assertEqual(headers,
+            {'content-length': 1234, 'content-type': 'text/plain'}
+        )
+        self.assertIsNone(body)
+
+        # GET request:
+        r = mkreq('GET', '/foo.txt')
+        (status, reason, headers, body) = app(None, r, api)
+        self.assertEqual(status, 200)
+        self.assertEqual(reason, 'OK')
+        self.assertEqual(headers,  # Server will add content-length
+            {'content-length': 1234, 'content-type': 'text/plain'}
+        )
+        self.assertIsInstance(body, api.Body)
+        self.assertIsInstance(body.rfile, io.FileIO)
+        self.assertEqual(body.rfile.tell(), 0)
+        self.assertEqual(body.rfile.name, 'foo.txt')
+        self.assertEqual(body.read(), data1)
+
+        # '/' should map to '/index.html':
+        data2 = os.urandom(2345)
+        tmp.write(data2, 'index.html')
+        for uri in ('/', '/index.html'):
+            r = mkreq('HEAD', uri)
+            (status, reason, headers, body) = app(None, r, api)
+            self.assertEqual(status, 200)
+            self.assertEqual(reason, 'OK')
+            self.assertEqual(headers,
+                {'content-length': 2345, 'content-type': 'text/html'}
+            )
+            self.assertIsNone(body)
+
+            r = mkreq('GET', uri)
+            (status, reason, headers, body) = app(None, r, api)
+            self.assertEqual(status, 200)
+            self.assertEqual(reason, 'OK')
+            self.assertEqual(headers,  # Server will add content-length
+                {'content-length': 2345, 'content-type': 'text/html'}
+            )
+            self.assertIsInstance(body, api.Body)
+            self.assertIsInstance(body.rfile, io.FileIO)
+            self.assertEqual(body.rfile.tell(), 0)
+            self.assertEqual(body.rfile.name, 'index.html')
+            self.assertEqual(body.read(), data2)
+
+            # Range requests:
+            total = len(data2)
+            for (start, stop) in [
+                (0, total + 1),
+                (total - 1, total + 1),
+                (total, total + 1),
+            ]:
+                _range = api.Range(start, stop)
+                headers = {'range': _range}
+                for method in ('GET', 'HEAD'):
+                    r = mkreq(method, uri, headers)
+                    self.assertEqual(app(None, r, api),
+                        (416, 'Range Not Satisfiable', {}, None)
+                    )
+            for (start, stop) in [
+                (0, 1),
+                (0, total - 1),
+                (1, total),
+                (total - 1, total),
+                (0, total),
+            ]:
+                length = stop - start
+                _range = api.Range(start, stop)
+                r = mkreq('HEAD', uri, {'range': _range})
+                (status, reason, headers, body) = app(None, r, api)
+                self.assertEqual(status, 206)
+                self.assertEqual(reason, 'Partial Content')
+                self.assertEqual(headers,
+                    {
+                        'content-range': api.ContentRange(start, stop, total),
+                        'content-length': length,
+                        'content-type': 'text/html',
+                    }
+                )
+                self.assertIsNone(body)
+
+                r = mkreq('GET', uri, {'range': _range})
+                (status, reason, headers, body) = app(None, r, api)
+                self.assertEqual(status, 206)
+                self.assertEqual(reason, 'Partial Content')
+                self.assertEqual(headers,
+                    {
+                        'content-range': api.ContentRange(start, stop, total),
+                        'content-length': length,
+                        'content-type': 'text/html',
+                    }
+                )
+                self.assertIsInstance(body, api.Body)
+                self.assertIsInstance(body.rfile, io.FileIO)
+                self.assertEqual(body.rfile.tell(), start)
+                self.assertEqual(body.rfile.name, 'index.html')
+                self.assertEqual(body.read(), data2[start:stop])
+
+    def test_live(self):
+        tmp = TempDir()
+        app = applib.FilesApp(tmp.dir)
+        server = TempServer(('127.0.0.1', 0), app)
+        client = Client(server.address)
+
+        uri = '/foo/bar.js'
+        for method in ('PUT', 'POST', 'DELETE'):
+            conn = client.connect()
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 405)
+            self.assertEqual(rsp.reason, 'Method Not Allowed')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+            # Connection should be closed after a 405 error:
+            with self.assertRaises(EmptyPreambleError):
+                conn.request(method, uri, {}, None)
+
+        conn = client.connect()
+        for method in ('GET', 'HEAD'):
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 404)
+            self.assertEqual(rsp.reason, 'Not Found')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+
+        total = 9876
+        (start, stop) = random_start_stop(total)
+        r = api.Range(start, stop)
+        data = os.urandom(total)
+        tmp.mkdir('foo')
+        tmp.write(data, 'foo', 'bar.js')
+        for method in ('GET', 'HEAD'):
+            rsp = conn.request(method, uri, {}, None)
+            self.assertEqual(rsp.status, 200)
+            self.assertEqual(rsp.reason, 'OK')
+            self.assertEqual(rsp.headers,
+                {
+                    'content-length': total,
+                    'content-type': 'application/javascript',
+                }
+            )
+            if method == 'GET':
+                self.assertIsInstance(rsp.body, api.Body)
+                self.assertEqual(rsp.body.read(), data)
+            else:
+                self.assertIsNone(rsp.body)
+
+            rsp = conn.request(method, uri, {'range': r}, None)
+            self.assertEqual(rsp.status, 206)
+            self.assertEqual(rsp.reason, 'Partial Content')
+            self.assertEqual(rsp.headers,
+                {
+                    'content-length': stop - start,
+                    'content-type': 'application/javascript',
+                    'content-range': api.ContentRange(start, stop, total),
+                }
+            )
+            if method == 'GET':
+                self.assertIsInstance(rsp.body, api.Body)
+                self.assertEqual(rsp.body.read(), data[start:stop])
+            else:
+                self.assertIsNone(rsp.body)
+
+        start = random.randrange(0, total)
+        r = api.Range(start, total + 1)
+        for method in ('GET', 'HEAD'):
+            conn = client.connect()
+            rsp = conn.request(method, uri, {'range': r}, None)
+            self.assertEqual(rsp.status, 416)
+            self.assertEqual(rsp.reason, 'Range Not Satisfiable')
+            self.assertEqual(rsp.headers, {})
+            self.assertIsNone(rsp.body)
+            # Connection should be closed after a 416 error:
+            with self.assertRaises(EmptyPreambleError):
+                conn.request(method, uri, {}, None)
 

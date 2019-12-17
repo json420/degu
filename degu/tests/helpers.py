@@ -39,6 +39,13 @@ MAX_IO_SIZE = 16777216  # 16 MiB
 random = SystemRandom()
 
 
+def random_start_stop(total):
+    assert total > 0
+    start = random.randrange(0, total)
+    stop = random.randrange(start + 1, total + 1)
+    return (start, stop)
+
+
 def random_data():
     """
     Return random bytes between 1 and 34969 (inclusive) bytes long.

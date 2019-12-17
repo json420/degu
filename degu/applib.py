@@ -23,6 +23,9 @@
 A collection of RGI server applications for common scenarios.
 """
 
+import os
+from mimetypes import guess_type
+
 try:
     from ._base import (
         Router,
@@ -88,4 +91,65 @@ class MethodFilter:
         if self.allowed_methods.isallowed(request.method):
             return self.app(session, request, api)
         return (405, 'Method Not Allowed', {}, None)
+
+
+class FilesApp:
+    __slots__ = ('dir_name', 'dir_fd')
+
+    def __init__(self, dir_name):
+        self.dir_name = dir_name
+        self.dir_fd = os.open(dir_name, os.O_DIRECTORY)
+
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self.dir_name)
+
+    def __del__(self):
+        if hasattr(self, 'dir_fd'):
+            os.close(self.dir_fd)
+            del self.dir_fd
+
+    def __call__(self, session, request, api):
+        if request.method not in {'GET', 'HEAD'}:
+            return (405, 'Method Not Allowed', {}, None)
+        name = (os.sep.join(request.path) if request.path else 'index.html')
+        try:
+            if request.method == 'GET':
+                fp = open(name, 'rb', buffering=0, opener=self._opener)
+                size = os.stat(fp.fileno()).st_size
+            else:
+                fp = None
+                size = os.stat(name, dir_fd=self.dir_fd).st_size
+        except FileNotFoundError:
+            return (404, 'Not Found', {}, None)
+        r = request.headers.get('range')
+        if r is None:
+            status = 200
+            reason = 'OK'
+            headers = {'content-length': size}
+            if fp is None:
+                body = None
+            else:
+                body = api.Body(fp, size)
+        else:
+            if r.stop > size:
+                return (416, 'Range Not Satisfiable', {}, None)
+            length = r.stop - r.start
+            status = 206
+            reason = 'Partial Content'
+            headers = {
+                'content-length': length,
+                'content-range': api.ContentRange(r.start, r.stop, size),
+            }
+            if fp is None:
+                body = None
+            else:
+                fp.seek(r.start)
+                body = api.Body(fp, length)
+        (ct, enc) = guess_type(name)
+        if ct is not None:
+            headers['content-type'] = ct
+        return (status, reason, headers, body)
+
+    def _opener(self, name, flags):
+        return os.open(name, flags, dir_fd=self.dir_fd)
 

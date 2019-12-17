@@ -9,6 +9,12 @@ Changelog
 `Download Degu 0.19`_
 
 
+New API additions:
+
+    *   The :class:`degu.applib.FilesApp` application was added, a minimal
+        file serving application
+
+
 
 .. _version-0.18:
 
