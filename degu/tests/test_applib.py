@@ -286,6 +286,13 @@ class TestFilesApp(TestCase):
                 (405, 'Method Not Allowed', {}, None)
             )
 
+        # Directory traversal attack:
+        for method in ('GET', 'HEAD'):
+            r = mkreq(method, '/foo/../../bar')
+            self.assertEqual(app(None, r, api),
+                (400, 'Bad Request', {}, None)
+            )
+
         # File doesn't exist:
         for uri in ('/foo.txt', '/', '/index.html'):
             for method in ('GET', 'HEAD'):

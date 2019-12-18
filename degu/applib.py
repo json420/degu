@@ -111,6 +111,10 @@ class FilesApp:
     def __call__(self, session, request, api):
         if request.method not in {'GET', 'HEAD'}:
             return (405, 'Method Not Allowed', {}, None)
+        # FIXME: The Degu server should really disallow '..' and '.' in request
+        # path components, although FilesApp should likewise check:
+        if '..' in request.path:
+            return (400, 'Bad Request', {}, None)
         name = (os.sep.join(request.path) if request.path else 'index.html')
         try:
             if request.method == 'GET':
