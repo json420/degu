@@ -118,8 +118,8 @@ def iter_bad(good, allowed):
     assert isinstance(allowed, bytes)
     not_allowed = tables.invert(allowed)
     for i in range(len(good)):
+        bad = bytearray(good)
         for b in not_allowed:
-            bad = bytearray(good)
             bad[i] = b
             yield bytes(bad)
 

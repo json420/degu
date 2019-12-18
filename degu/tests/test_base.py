@@ -1750,6 +1750,18 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
 
+        # Directory traversal:
+        # FIXME: should raise value error!
+        r = parse_request(b'GET /foo/../bar HTTP/1.1', rfile)
+        self.assertIs(type(r), Request)
+        self.assertEqual(r.method, 'GET')
+        self.assertEqual(r.uri, '/foo/../bar')
+        self.assertEqual(r.headers, {})
+        self.assertIsNone(r.body)
+        self.assertEqual(r.mount, [])
+        self.assertEqual(r.path, ['foo', '..', 'bar'])
+        self.assertIsNone(r.query)
+
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
@@ -3143,6 +3155,31 @@ class TestFunctions_Py(BackendTestCase):
         with self.assertRaises(ValueError) as cm:
             parse_uri(b'foo')
         self.assertEqual(str(cm.exception), "path[0:1] != b'/': b'foo'")
+
+        # Bad bytes in URI:
+        good = b'/foo/bar?k=v&a=b'
+        for bad in iter_bad(good, bytes(_basepy.URI)):
+            with self.assertRaises(ValueError) as cm:
+                parse_uri(bad)
+            self.assertEqual(str(cm.exception),
+                'bad bytes in uri: {!r}'.format(bad)
+            )
+        with self.assertRaises(ValueError) as cm:
+            parse_uri(b'/hello /world')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in uri: b'/hello /world'"
+        )
+
+        # dot-dot (directory traversal attack):
+        dotdots = (
+            b'/..',
+            b'/../foo',
+            b'/foo/..',
+            b'/foo/bar/..',
+        )
+        # FIXME: should raise value error!
+        for bad in dotdots:
+            parse_uri(bad)
 
         # Empty path component:
         double_slashers = (
