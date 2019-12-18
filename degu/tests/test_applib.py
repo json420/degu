@@ -265,6 +265,18 @@ class TestProxyApp(TestCase):
 
 class TestFilesApp(TestCase):
     def test_init(self):
+        for bad in (b'/foo/bar', 42):
+            with self.assertRaises(TypeError) as cm:
+                applib.FilesApp(bad)
+            self.assertEqual(str(cm.exception),
+                'dir_name: need a {!r}; got a {!r}'.format(str, type(bad))
+            )
+        for bad in ('foo/bar', '/foo/../bar', '/foo/bar/'):
+            with self.assertRaises(ValueError) as cm:
+                applib.FilesApp(bad)
+            self.assertEqual(str(cm.exception),
+                'dir_name: not absolute, normalized path: {!r}'.format(bad)
+            )
         tmp = TempDir()
         app = applib.FilesApp(tmp.dir)
         self.assertEqual(app.dir_name, tmp.dir)

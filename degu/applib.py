@@ -24,6 +24,7 @@ A collection of RGI server applications for common scenarios.
 """
 
 import os
+from os import path
 from mimetypes import guess_type
 
 try:
@@ -97,6 +98,14 @@ class FilesApp:
     __slots__ = ('dir_name', 'dir_fd')
 
     def __init__(self, dir_name):
+        if type(dir_name) is not str:
+            raise TypeError(
+                'dir_name: need a {!r}; got a {!r}'.format(str, type(dir_name))
+            )
+        if path.abspath(dir_name) != dir_name:
+            raise ValueError(
+                'dir_name: not absolute, normalized path: {!r}'.format(dir_name)
+            )
         self.dir_name = dir_name
         self.dir_fd = os.open(dir_name, os.O_DIRECTORY)
 
