@@ -789,6 +789,7 @@ class TestRange_Py(BackendTestCase):
         self.assertIs(type(r.stop), int)
         self.assertEqual(r.start, 16)
         self.assertEqual(r.stop, 21)
+        self.assertEqual(r.length, 5)
         self.assertEqual(repr(r), 'Range(16, 21)')
         self.assertEqual(str(r), 'bytes=16-20')
 
@@ -797,6 +798,7 @@ class TestRange_Py(BackendTestCase):
         self.assertIs(type(r.stop), int)
         self.assertEqual(r.start, 0)
         self.assertEqual(r.stop, max_length)
+        self.assertEqual(r.length, max_length)
         self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
         self.assertEqual(str(r),  'bytes=0-9999999999999998')
 
@@ -824,7 +826,7 @@ class TestRange_Py(BackendTestCase):
 
             # start, stop should be read-only:
             r = self.Range(start, stop)
-            for name in ('start', 'stop'):
+            for name in ('start', 'stop', 'length'):
                 with self.assertRaises(AttributeError) as cm:
                     delattr(r, name)
                 self.assertEqual(str(cm.exception), delmsg)

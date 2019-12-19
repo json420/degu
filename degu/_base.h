@@ -319,6 +319,7 @@ typedef struct {
     PyObject_HEAD
     uint64_t start;
     uint64_t stop;
+    uint64_t length;
 } Range;
 
 static PyObject * _Range_New(uint64_t, uint64_t);
@@ -326,6 +327,7 @@ static PyObject * _Range_New(uint64_t, uint64_t);
 static PyMemberDef Range_members[] = {
     {"start", T_ULONGLONG, offsetof(Range, start), READONLY, NULL},
     {"stop",  T_ULONGLONG, offsetof(Range, stop),  READONLY, NULL},
+    {"length",  T_ULONGLONG, offsetof(Range, length),  READONLY, NULL},
     {NULL}
 };
 

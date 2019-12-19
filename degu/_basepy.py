@@ -307,6 +307,10 @@ class Range:
     def stop(self):
         return self._stop
 
+    @property
+    def length(self):
+        return self._stop - self._start
+
     def __repr__(self):
         return 'Range({}, {})'.format(self._start, self._stop)
 
