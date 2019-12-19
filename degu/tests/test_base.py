@@ -3166,14 +3166,31 @@ class TestFunctions_Py(BackendTestCase):
         # dot-dot (directory traversal attack):
         dotdots = (
             b'/..',
+            b'/../',
             b'/../foo',
+            b'/../foo/',
             b'/foo/..',
-            b'/foo/bar/..',
+            b'/foo/../',
+            b'/foo/../bar',
+            b'/foo/../bar/',
         )
         for bad in dotdots:
             with self.assertRaises(ValueError) as cm:
                 parse_uri(bad)
             self.assertEqual(str(cm.exception), "bad path component: b'..'")
+        # '..' is allowed, just not as a path component:
+        self.assertEqual(parse_uri(b'/hello..'),
+            ('/hello..', [], ['hello..'], None)
+        )
+        self.assertEqual(parse_uri(b'/..hello'),
+            ('/..hello', [], ['..hello'], None)
+        )
+        self.assertEqual(parse_uri(b'/hello..world'),
+            ('/hello..world', [], ['hello..world'], None)
+        )
+        self.assertEqual(parse_uri(b'/...'),
+            ('/...', [], ['...'], None)
+        )
 
         # Empty path component:
         double_slashers = (
