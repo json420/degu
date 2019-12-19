@@ -183,6 +183,7 @@ leaf-application components for common scenarios.
 -----------------
 
 .. class:: FilesApp(dir_name)
+
     Minimal file serving application.
 
     For example, to serve files within the ``'/var/www/html'`` directory:
@@ -193,9 +194,11 @@ leaf-application components for common scenarios.
     .. versionadded:: 0.19
 
     .. attribute:: dir_name
-        The *dir_name* argument passed to the constructor 
+
+        The *dir_name* argument passed to the constructor.
 
     .. method:: __call__(session, request, api)
+
         RGI callable.
 
         This method returns a ``(status,reason,headers,body)`` 4-tuple.
