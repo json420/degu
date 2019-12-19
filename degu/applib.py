@@ -146,18 +146,17 @@ class FilesApp:
         else:
             if r.stop > size:
                 return (416, 'Range Not Satisfiable', {}, None)
-            length = r.stop - r.start
             status = 206
             reason = 'Partial Content'
             headers = {
-                'content-length': length,
+                'content-length': r.length,
                 'content-range': api.ContentRange(r.start, r.stop, size),
             }
             if fp is None:
                 body = None
             else:
                 fp.seek(r.start)
-                body = api.Body(fp, length)
+                body = api.Body(fp, r.length)
         (ct, enc) = guess_type(name)
         if ct is not None:
             headers['content-type'] = ct
