@@ -1750,6 +1750,11 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertEqual(r.path, [])
         self.assertIsNone(r.query)
 
+        # Directory traversal:
+        with self.assertRaises(ValueError) as cm:
+            parse_request(b'GET /foo/../bar HTTP/1.1', rfile)
+        self.assertEqual(str(cm.exception), "bad path component: b'..'")
+
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), Request)
         self.assertEqual(r.method, 'GET')
@@ -3143,6 +3148,49 @@ class TestFunctions_Py(BackendTestCase):
         with self.assertRaises(ValueError) as cm:
             parse_uri(b'foo')
         self.assertEqual(str(cm.exception), "path[0:1] != b'/': b'foo'")
+
+        # Bad bytes in URI:
+        good = b'/foo/bar?k=v&a=b'
+        for bad in iter_bad(good, bytes(_basepy.URI)):
+            with self.assertRaises(ValueError) as cm:
+                parse_uri(bad)
+            self.assertEqual(str(cm.exception),
+                'bad bytes in uri: {!r}'.format(bad)
+            )
+        with self.assertRaises(ValueError) as cm:
+            parse_uri(b'/hello /world')
+        self.assertEqual(str(cm.exception),
+            "bad bytes in uri: b'/hello /world'"
+        )
+
+        # dot-dot (directory traversal attack):
+        dotdots = (
+            b'/..',
+            b'/../',
+            b'/../foo',
+            b'/../foo/',
+            b'/foo/..',
+            b'/foo/../',
+            b'/foo/../bar',
+            b'/foo/../bar/',
+        )
+        for bad in dotdots:
+            with self.assertRaises(ValueError) as cm:
+                parse_uri(bad)
+            self.assertEqual(str(cm.exception), "bad path component: b'..'")
+        # '..' is allowed, just not as a path component:
+        self.assertEqual(parse_uri(b'/hello..'),
+            ('/hello..', [], ['hello..'], None)
+        )
+        self.assertEqual(parse_uri(b'/..hello'),
+            ('/..hello', [], ['..hello'], None)
+        )
+        self.assertEqual(parse_uri(b'/hello..world'),
+            ('/hello..world', [], ['hello..world'], None)
+        )
+        self.assertEqual(parse_uri(b'/...'),
+            ('/...', [], ['...'], None)
+        )
 
         # Empty path component:
         double_slashers = (

@@ -8,6 +8,24 @@ Changelog
 
 `Download Degu 0.19`_
 
+Bug fixes:
+
+    *   `lp:1856935`_ --- To prevent directory traversal attacks and similar
+        mischief, the Degu server now disallows ``'..'`` in request path
+        components.
+
+        For example, these URI will now be rejected (connection will be
+        closed)::
+
+            /..
+            /foo/../bar
+
+        However, ``'..'`` can occur as a sub-string, just not as the entirety of
+        a path component.  For example, these URI are still fine::
+
+            /hello..world
+            /foo/bar..
+
 
 New API additions:
 
@@ -2011,6 +2029,7 @@ Two things motivated these breaking API changes:
 .. _`Download Degu 0.6`: https://launchpad.net/degu/+milestone/0.6
 .. _`Download Degu 0.5`: https://launchpad.net/degu/+milestone/0.5
 
+.. _`lp:1856935`: https://bugs.launchpad.net/degu/+bug/1856935
 .. _`lp:1590459`: https://bugs.launchpad.net/degu/+bug/1590459
 
 .. _`HTTPConnection.request()`: https://docs.python.org/3/library/http.client.html#http.client.HTTPConnection.request

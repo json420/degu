@@ -167,6 +167,7 @@ _DEGU_SRC_CONSTANT(BYTES_SP, "bytes ")
 _DEGU_SRC_CONSTANT(MINUS, "-")
 _DEGU_SRC_CONSTANT(SEMICOLON, ";")
 _DEGU_SRC_CONSTANT(EQUALS, "=")
+_DEGU_SRC_CONSTANT(DOTDOT, "..")
 
 
 /******************************************************************************
@@ -1789,6 +1790,10 @@ _check_method(PyObject *obj, DeguRequest *dr)
 static inline PyObject *
 _parse_path_component(DeguSrc src)
 {
+    if (_equal(src, DOTDOT)) {
+        _value_error("bad path component: %R", src);
+        return NULL;
+    }
     return _decode(src, PATH_MASK, "bad bytes in path component: %R");
 }
 
