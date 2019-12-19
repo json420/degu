@@ -1751,16 +1751,9 @@ class TestParsingFunctions_Py(BackendTestCase):
         self.assertIsNone(r.query)
 
         # Directory traversal:
-        # FIXME: should raise value error!
-        r = parse_request(b'GET /foo/../bar HTTP/1.1', rfile)
-        self.assertIs(type(r), Request)
-        self.assertEqual(r.method, 'GET')
-        self.assertEqual(r.uri, '/foo/../bar')
-        self.assertEqual(r.headers, {})
-        self.assertIsNone(r.body)
-        self.assertEqual(r.mount, [])
-        self.assertEqual(r.path, ['foo', '..', 'bar'])
-        self.assertIsNone(r.query)
+        with self.assertRaises(ValueError) as cm:
+            parse_request(b'GET /foo/../bar HTTP/1.1', rfile)
+        self.assertEqual(str(cm.exception), "bad URI path component: b'..'")
 
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), Request)
@@ -3177,9 +3170,12 @@ class TestFunctions_Py(BackendTestCase):
             b'/foo/..',
             b'/foo/bar/..',
         )
-        # FIXME: should raise value error!
         for bad in dotdots:
-            parse_uri(bad)
+            with self.assertRaises(ValueError) as cm:
+                parse_uri(bad)
+            self.assertEqual(str(cm.exception),
+                "bad URI path component: b'..'"
+            )
 
         # Empty path component:
         double_slashers = (
