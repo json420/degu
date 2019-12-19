@@ -1753,7 +1753,7 @@ class TestParsingFunctions_Py(BackendTestCase):
         # Directory traversal:
         with self.assertRaises(ValueError) as cm:
             parse_request(b'GET /foo/../bar HTTP/1.1', rfile)
-        self.assertEqual(str(cm.exception), "bad URI path component: b'..'")
+        self.assertEqual(str(cm.exception), "bad path component: b'..'")
 
         r = parse_request(b'GET / HTTP/1.1\r\nRange: bytes=17-20', rfile)
         self.assertIs(type(r), Request)
@@ -3173,9 +3173,7 @@ class TestFunctions_Py(BackendTestCase):
         for bad in dotdots:
             with self.assertRaises(ValueError) as cm:
                 parse_uri(bad)
-            self.assertEqual(str(cm.exception),
-                "bad URI path component: b'..'"
-            )
+            self.assertEqual(str(cm.exception), "bad path component: b'..'")
 
         # Empty path component:
         double_slashers = (

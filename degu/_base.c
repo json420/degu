@@ -1791,7 +1791,7 @@ static inline PyObject *
 _parse_path_component(DeguSrc src)
 {
     if (_equal(src, DOTDOT)) {
-        _value_error("bad URI path component: %R", src);
+        _value_error("bad path component: %R", src);
         return NULL;
     }
     return _decode(src, PATH_MASK, "bad bytes in path component: %R");
