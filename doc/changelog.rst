@@ -26,9 +26,6 @@ Bug fixes:
             /hello..world
             /foo/bar..
 
-            
-    
-
 
 New API additions:
 
