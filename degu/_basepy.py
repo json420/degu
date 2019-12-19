@@ -605,6 +605,8 @@ def parse_method(src):
 
 
 def _parse_path_component(src):
+    if src == b'..':
+        raise ValueError('bad URI path component: {!r}'.format(src))
     if PATH.issuperset(src):
         return src.decode('ascii')
     raise ValueError('bad bytes in path component: {!r}'.format(src))
