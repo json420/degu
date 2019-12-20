@@ -529,6 +529,14 @@ Header values
 
         The *stop* value passed to the constructor.
 
+    .. attribute:: length
+
+        The content length being requested by the range.
+
+        This convenience attribute is equal the stop minus the start.
+
+        .. versionadded:: 0.19
+
     .. method:: __str__()
 
         Render the Range header value as a ``str``.
