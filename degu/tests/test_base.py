@@ -404,6 +404,14 @@ class BackendTestCase(TestCase):
     def Request(self):
         return self.getattr('Request')
 
+    @property
+    def Range(self):
+        return self.getattr('Range')
+
+    @property
+    def ContentRange(self):
+        return self.getattr('ContentRange')
+
     def mkreq(self, uri, headers=None, body=None, shift=0):
         return mkreq(uri, headers, body, shift, cls=self.Request)
 
@@ -702,10 +710,6 @@ class TestRequest_C(TestRequest_Py):
 
 
 class TestRange_Py(BackendTestCase):
-    @property
-    def Range(self):
-        return self.getattr('Range')
-
     def test_init(self):
         self.check_init_args(self.Range, 2, 'stop')
 
@@ -957,16 +961,25 @@ class TestRange_Py(BackendTestCase):
                     t != o
                 self.assertEqual(str(cm.exception), msg)
 
+    def test_content_length(self):
+        r = self.Range(7, 10)
+        self.assertEqual(r.content_length(11), 3)
+        self.assertEqual(r.content_length(10), 3)
+        self.assertEqual(r.content_length(9), 2)
+        self.assertEqual(r.content_length(8), 1)
+
+    def test_content_range(self):
+        r = self.Range(7, 10)
+        self.assertEqual(r.content_range(11), self.ContentRange(7, 10, 11))
+        self.assertEqual(r.content_range(10), self.ContentRange(7, 10, 10))
+        self.assertEqual(r.content_range(9), self.ContentRange(7, 9, 9))
+        self.assertEqual(r.content_range(8), self.ContentRange(7, 8, 8))
 
 class TestRange_C(TestRange_Py):
     backend = _base
 
 
 class TestContentRange_Py(BackendTestCase):
-    @property
-    def ContentRange(self):
-        return self.getattr('ContentRange')
-
     def test_init(self):
         self.check_init_args(self.ContentRange, 3, 'total')
 
