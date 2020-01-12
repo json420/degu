@@ -324,6 +324,15 @@ typedef struct {
 
 static PyObject * _Range_New(uint64_t, uint64_t);
 
+static PyObject * Range_content_length(Range *, PyObject *);
+static PyObject * Range_content_range(Range *, PyObject *);
+
+static PyMethodDef Range_methods[] = {
+    {"content_length", (PyCFunction)Range_content_length, METH_VARARGS, NULL},
+    {"content_range", (PyCFunction)Range_content_range, METH_VARARGS, NULL},
+    {NULL}
+};
+
 static PyMemberDef Range_members[] = {
     {"start",  T_ULONGLONG, offsetof(Range, start),  READONLY, NULL},
     {"stop",   T_ULONGLONG, offsetof(Range, stop),   READONLY, NULL},
@@ -365,7 +374,7 @@ static PyTypeObject RangeType = {
     .tp_weaklistoffset = 0,
     .tp_iter           = NULL,
     .tp_iternext       = NULL,
-    .tp_methods        = NULL,
+    .tp_methods        = Range_methods,
     .tp_members        = Range_members,
     .tp_getset         = NULL,
     .tp_base           = NULL,
