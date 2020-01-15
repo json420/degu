@@ -149,14 +149,14 @@ class FilesApp:
             status = 206
             reason = 'Partial Content'
             headers = {
-                'content-length': r.length,
-                'content-range': api.ContentRange(r.start, r.stop, size),
+                'content-length': r.content_length(size),
+                'content-range': r.content_range(size),
             }
             if fp is None:
                 body = None
             else:
                 fp.seek(r.start)
-                body = api.Body(fp, r.length)
+                body = api.Body(fp, r.content_length(size))
         (ct, enc) = guess_type(name)
         if ct is not None:
             headers['content-type'] = ct
