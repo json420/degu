@@ -770,7 +770,6 @@ _Range_New(uint64_t start, uint64_t stop)
     }
     self->start = start;
     self->stop = stop;
-    self->length = self->stop - self->start;
     return (PyObject *)self;
 }
 
@@ -812,7 +811,6 @@ Range_init(Range *self, PyObject *args, PyObject *kw)
     }
     self->start = (uint64_t)start;
     self->stop = (uint64_t)stop;
-    self->length = self->stop - self->start;
     return 0;
 }
 
