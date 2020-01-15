@@ -329,7 +329,10 @@ class Range:
 
     def _clamped_stop(self, total):
         _validate_length('total', total)
-        assert self._start < total
+        if self._start >= total:
+            raise ValueError(
+                '{!r} out of bounds (total={!r})'.format(self, total)
+            )
         return min(self._stop, total)
 
     def content_length(self, total):

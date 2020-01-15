@@ -967,6 +967,11 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(r.content_length(10), 3)
         self.assertEqual(r.content_length(9), 2)
         self.assertEqual(r.content_length(8), 1)
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(7)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=7)'
+        )
 
     def test_content_range(self):
         r = self.Range(7, 10)
@@ -974,6 +979,11 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(r.content_range(10), self.ContentRange(7, 10, 10))
         self.assertEqual(r.content_range(9), self.ContentRange(7, 9, 9))
         self.assertEqual(r.content_range(8), self.ContentRange(7, 8, 8))
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(7)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=7)'
+        )
 
 class TestRange_C(TestRange_Py):
     backend = _base
