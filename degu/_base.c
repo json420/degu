@@ -883,6 +883,12 @@ Range_content_length(Range *self, PyObject *args)
         return NULL; 
     }
     const uint64_t total = (uint64_t)_total;
+    if (total <= self->start) {
+        PyErr_Format(PyExc_ValueError,
+            "%R out of bounds (total=%llu)", self, total
+        );
+        return NULL;
+    }
     const uint64_t stop = (total < self->stop) ? total : self->stop;
     return PyLong_FromUnsignedLongLong(stop - self->start);
 }
