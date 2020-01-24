@@ -133,8 +133,8 @@ def format_response(status, reason, headers):
 
 
 class TempPKI(_PKI):
-    def __init__(self, client_pki=True, bits=1024):
-        # To make unit testing faster, we use 1024 bit keys by default, but this
+    def __init__(self, client_pki=True, bits=2048):
+        # To make unit testing faster, we use 2048 bit keys by default, but this
         # is not the size you should use in production
         ssldir = tempfile.mkdtemp(prefix='TempPKI.')
         super().__init__(ssldir)

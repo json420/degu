@@ -235,7 +235,7 @@ Helper functions
 :class:`TempPKI`
 ----------------
 
-.. class:: TempPKI(client_pki=True, bits=1024)
+.. class:: TempPKI(client_pki=True, bits=2048)
 
     Creates a throw-away SSL certificate chain.
 
