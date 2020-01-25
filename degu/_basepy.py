@@ -323,6 +323,20 @@ class Range:
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def _clamped_stop(self, total):
+        _validate_length('total', total)
+        if self._start >= total:
+            raise ValueError(
+                '{!r} out of bounds (total={!r})'.format(self, total)
+            )
+        return min(self._stop, total)
+
+    def content_length(self, total):
+        return self._clamped_stop(total) - self._start
+
+    def content_range(self, total):
+        return ContentRange(self._start, self._clamped_stop(total), total)
+
 
 class ContentRange:
     __slots__ = ('_start', '_stop', '_total')

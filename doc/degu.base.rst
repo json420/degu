@@ -539,6 +539,75 @@ Header values
         >>> str(Range(50, 100))
         'bytes=50-99'
 
+    .. method:: content_length(total)
+
+        Build Content-Length header value to return to client.
+
+        When *total* is greater than or equal to :attr:`Range.stop`, the content
+        length expressed by the range is returned:
+
+        >>> from degu.base import Range
+        >>> r = Range(5, 15)
+        >>> r.content_length(20)
+        10
+        >>> r.content_length(15)
+        10
+
+        When *total* is less than :attr:`Range.stop` (meaning the client
+        requested past the end of the resource), the stop value is clamped to
+        *total*:
+
+        >>> r.content_length(14)
+        9
+        >>> r.content_length(6)
+        1
+
+        Finally, if *total* is less than or equal to :attr:`Range.start`, a
+        ``ValueError`` is raised:
+
+        >>> r.content_length(5) # doctest: -IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last):
+          ...
+        ValueError: Range(5, 15) out of bounds (total=5)
+
+        .. versionadded:: 0.19
+
+    .. method:: content_range(total)
+
+        Build Content-Range header value to return to client.
+
+        This method returns a :class:`ContentRange` instance.
+
+        When *total* is greater than or equal to :attr:`Range.stop`, the
+        stop value requested by the client is used:
+
+        >>> from degu.base import Range
+        >>> r = Range(5, 15)
+        >>> r.content_range(20)
+        ContentRange(5, 15, 20)
+        >>> r.content_range(15)
+        ContentRange(5, 15, 15)
+
+        When *total* is less than :attr:`Range.stop` (meaning the client
+        requested past the end of the resource), the stop value is clamped to
+        *total*:
+
+        >>> r.content_range(14)
+        ContentRange(5, 14, 14)
+        >>> r.content_range(6)
+        ContentRange(5, 6, 6)
+
+        Finally, if *total* is less than or equal to :attr:`Range.start`, a
+        ``ValueError`` is raised:
+
+        >>> r.content_range(5) # doctest: -IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last):
+          ...
+        ValueError: Range(5, 15) out of bounds (total=5)
+
+        .. versionadded:: 0.19
+
+
 
 :class:`ContentRange`
 '''''''''''''''''''''

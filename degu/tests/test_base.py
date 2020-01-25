@@ -404,6 +404,14 @@ class BackendTestCase(TestCase):
     def Request(self):
         return self.getattr('Request')
 
+    @property
+    def Range(self):
+        return self.getattr('Range')
+
+    @property
+    def ContentRange(self):
+        return self.getattr('ContentRange')
+
     def mkreq(self, uri, headers=None, body=None, shift=0):
         return mkreq(uri, headers, body, shift, cls=self.Request)
 
@@ -702,10 +710,6 @@ class TestRequest_C(TestRequest_Py):
 
 
 class TestRange_Py(BackendTestCase):
-    @property
-    def Range(self):
-        return self.getattr('Range')
-
     def test_init(self):
         self.check_init_args(self.Range, 2, 'stop')
 
@@ -955,16 +959,69 @@ class TestRange_Py(BackendTestCase):
                     t != o
                 self.assertEqual(str(cm.exception), msg)
 
+    def test_content_length(self):
+        r = self.Range(7, 10)
+        with self.assertRaises(ValueError) as cm:
+            r.content_length(MAX_LENGTH + 1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= total <= {}; got {}'.format(MAX_LENGTH, MAX_LENGTH + 1)
+        )
+        self.assertEqual(r.content_length(MAX_LENGTH), 3)
+        self.assertEqual(r.content_length(11), 3)
+        self.assertEqual(r.content_length(10), 3)
+        self.assertEqual(r.content_length(9), 2)
+        self.assertEqual(r.content_length(8), 1)
+        with self.assertRaises(ValueError) as cm:
+            r.content_length(7)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=7)'
+        )
+        with self.assertRaises(ValueError) as cm:
+            r.content_length(0)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=0)'
+        )
+        with self.assertRaises(ValueError) as cm:
+            r.content_length(-1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= total <= {}; got -1'.format(MAX_LENGTH)
+        )
+
+    def test_content_range(self):
+        r = self.Range(7, 10)
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(MAX_LENGTH + 1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= total <= {}; got {}'.format(MAX_LENGTH, MAX_LENGTH + 1)
+        )
+        self.assertEqual(r.content_range(MAX_LENGTH),
+            self.ContentRange(7, 10, MAX_LENGTH)
+        )
+        self.assertEqual(r.content_range(11), self.ContentRange(7, 10, 11))
+        self.assertEqual(r.content_range(10), self.ContentRange(7, 10, 10))
+        self.assertEqual(r.content_range(9), self.ContentRange(7, 9, 9))
+        self.assertEqual(r.content_range(8), self.ContentRange(7, 8, 8))
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(7)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=7)'
+        )
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(0)
+        self.assertEqual(str(cm.exception),
+            'Range(7, 10) out of bounds (total=0)'
+        )
+        with self.assertRaises(ValueError) as cm:
+            r.content_range(-1)
+        self.assertEqual(str(cm.exception),
+            'need 0 <= total <= {}; got -1'.format(MAX_LENGTH)
+        )
 
 class TestRange_C(TestRange_Py):
     backend = _base
 
 
 class TestContentRange_Py(BackendTestCase):
-    @property
-    def ContentRange(self):
-        return self.getattr('ContentRange')
-
     def test_init(self):
         self.check_init_args(self.ContentRange, 3, 'total')
 

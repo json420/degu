@@ -32,6 +32,14 @@ New API additions:
     *   The :class:`degu.applib.FilesApp` application was added, a minimal
         file serving application
 
+    *   The :class:`degu.base.Range` class has two new convenience methods for
+        server applications to use when constructing the response header values:
+
+        *  :meth:`degu.base.Range.content_length()`
+
+        *  :meth:`degu.base.Range.content_range()`
+
+
 
 
 .. _version-0.18:

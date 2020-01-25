@@ -872,6 +872,48 @@ Range_richcompare(Range *self, PyObject *other, int op)
     return NULL;
 }
 
+static PyObject *
+Range_content_length(Range *self, PyObject *args)
+{
+    if (! _check_args("Range.content_length", args, 1)) {
+        return NULL;
+    }
+    const int64_t _total = _get_length("total", PyTuple_GET_ITEM(args, 0));
+    if (_total < 0) {
+        return NULL; 
+    }
+    const uint64_t total = (uint64_t)_total;
+    if (total <= self->start) {
+        PyErr_Format(PyExc_ValueError,
+            "%R out of bounds (total=%llu)", self, total
+        );
+        return NULL;
+    }
+    const uint64_t stop = (total < self->stop) ? total : self->stop;
+    return PyLong_FromUnsignedLongLong(stop - self->start);
+}
+
+static PyObject *
+Range_content_range(Range *self, PyObject *args)
+{
+    if (! _check_args("Range.content_range", args, 1)) {
+        return NULL;
+    }
+    const int64_t _total = _get_length("total", PyTuple_GET_ITEM(args, 0));
+    if (_total < 0) {
+        return NULL; 
+    }
+    const uint64_t total = (uint64_t)_total;
+    if (total <= self->start) {
+        PyErr_Format(PyExc_ValueError,
+            "%R out of bounds (total=%llu)", self, total
+        );
+        return NULL;
+    }
+    const uint64_t stop = (total < self->stop) ? total : self->stop;
+    return _ContentRange_New(self->start, stop, total);
+}
+
 
 /******************************************************************************
  * ContentRange object.
