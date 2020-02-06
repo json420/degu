@@ -742,10 +742,9 @@ class TestRange_Py(BackendTestCase):
                 'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
             )
 
-        # start > max64, stop > max64:
-        max64 = 2**64 - 1
+        # start > MAX_UINT64, stop > MAX_UINT64:
         for offset in [1, 2, 3]:
-            bad = max64 + offset
+            bad = MAX_UINT64 + offset
             with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
             self.assertEqual(str(cm.exception),
@@ -757,9 +756,8 @@ class TestRange_Py(BackendTestCase):
                 'need 0 <= stop <= 9999999999999999; got {!r}'.format(bad)
             )
 
-        # start > max_length, stop > max_length:
-        max_length = int('9' * 16)
-        for bad in [max_length + 1, max_length + 2, max64]:
+        # start > MAX_LENGTH, stop > MAX_LENGTH:
+        for bad in [MAX_LENGTH + 1, MAX_LENGTH + 2, MAX_UINT64]:
             with self.assertRaises(ValueError) as cm:
                 self.Range(bad, 21)
             self.assertEqual(str(cm.exception),
@@ -796,11 +794,11 @@ class TestRange_Py(BackendTestCase):
         self.assertEqual(repr(r), 'Range(16, 21)')
         self.assertEqual(str(r), 'bytes=16-20')
 
-        r = self.Range(0, max_length)
+        r = self.Range(0, MAX_LENGTH)
         self.assertIs(type(r.start), int)
         self.assertIs(type(r.stop), int)
         self.assertEqual(r.start, 0)
-        self.assertEqual(r.stop, max_length)
+        self.assertEqual(r.stop, MAX_LENGTH)
         self.assertEqual(repr(r), 'Range(0, 9999999999999999)')
         self.assertEqual(str(r),  'bytes=0-9999999999999998')
 
@@ -810,7 +808,7 @@ class TestRange_Py(BackendTestCase):
         else:
             delmsg = "can't delete attribute"
         for i in range(1000):
-            stop = random.randrange(1, max_length + 1)
+            stop = random.randrange(1, MAX_LENGTH + 1)
             start = random.randrange(0, stop)
             stop_cnt = sys.getrefcount(stop)
             start_cnt = sys.getrefcount(start)
@@ -3528,10 +3526,8 @@ class TestBody_Py(BodyBackendTestCase):
 
     def test_init(self):
         Body = self.Body
-        # Bad content_length value:
-        max_uint64 = 2**64 - 1
-        max_length = 9999999999999999
 
+        # Bad content_length value:
         for rfile in self.iter_rfiles(os.urandom(16)):
             self.assertEqual(sys.getrefcount(rfile), 2)
             # Bad content_length type:
@@ -3549,7 +3545,7 @@ class TestBody_Py(BodyBackendTestCase):
             self.assertEqual(sys.getrefcount(rfile), 2)
 
         for rfile in self.iter_rfiles(os.urandom(16)):
-            for bad in (-max_uint64, -max_length, -17, -1, max_length + 1, max_uint64 + 1):
+            for bad in (-MAX_UINT64, -MAX_LENGTH, -17, -1, MAX_LENGTH + 1, MAX_UINT64 + 1):
                 with self.assertRaises(ValueError) as cm:
                     Body(rfile, bad)
                 self.assertEqual(str(cm.exception),
@@ -3559,7 +3555,7 @@ class TestBody_Py(BodyBackendTestCase):
         for rfile in self.iter_rfiles(os.urandom(16)):
             name = ('reader' if type(rfile) is self.SocketWrapper else 'rfile')
             # All good:
-            for good in (0, 1, 17, 34969, max_length):
+            for good in (0, 1, 17, 34969, MAX_LENGTH):
                 body = Body(rfile, good)
                 self.assertEqual(body.state, self.BODY_READY)
                 self.assertIs(body.rfile, rfile)
