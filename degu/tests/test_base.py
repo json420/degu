@@ -2057,6 +2057,7 @@ class TestParsingFunctions_Py(BackendTestCase):
             assert type(allowed) is frozenset
             assert type(min_len) is int and min_len > 0
             assert type(max_len) is int and max_len > min_len
+            allowed = tuple(allowed)
             for size in range(min_len, max_len):
                 yield bytes(random.sample(allowed, size))
 
@@ -3455,8 +3456,9 @@ class TestFunctions_C(TestFunctions_Py):
                 with self.assertRaises(ValueError) as cm:
                     func(bad2)
                 self.assertEqual(str(cm.exception), exc, func.__module__)
+        name = tuple(_basepy.NAME)
         for i in range(5000):
-            good = bytes(random.sample(_basepy.NAME, 32))
+            good = bytes(random.sample(name, 32))
             for func in functions:
                 ret = func(good)
                 self.assertIsInstance(ret, str)
