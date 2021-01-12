@@ -99,12 +99,10 @@ _max = max(rates)
 _mean = statistics.mean(rates)
 _min = min(rates)
 _stdev = statistics.stdev(rates)
-pyinfo = '{}; {}; {} ({} {})'.format(
+pyinfo = '{}; {}; {}'.format(
     platform.python_version(),
     platform.machine(),
     platform.system(),
-    platform.dist()[0],
-    platform.dist()[1],
 )
 family = ('AF_UNIX' if args.unix else 'AF_INET6')
 if args.json:
