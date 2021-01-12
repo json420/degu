@@ -129,20 +129,16 @@ if os.environ.get('DEGU_INSTRUMENT_BUILD') == 'true':
         '-g3',
         '-fno-omit-frame-pointer',
         '-fsanitize=address',
+        '-fsanitize=undefined',
+        '-fsanitize=shift',
+        '-fsanitize=integer-divide-by-zero',
+        '-fsanitize=unreachable',
+        '-fsanitize=vla-bound',
+        '-fsanitize=null',
+        '-fsanitize=return',
+        '-fsanitize=signed-integer-overflow',
     ])
-    ext_kw['libraries'] = ['asan']
-    if platform.dist()[1] >= '15.04':
-        ext_kw['extra_compile_args'].extend([
-            '-fsanitize=undefined',
-            '-fsanitize=shift',
-            '-fsanitize=integer-divide-by-zero',
-            '-fsanitize=unreachable',
-            '-fsanitize=vla-bound',
-            '-fsanitize=null',
-            '-fsanitize=return',
-            '-fsanitize=signed-integer-overflow',
-        ])
-        ext_kw['libraries'].append('ubsan')
+    ext_kw['libraries'] = ['asan', 'ubsan']
 
 
 setup(
