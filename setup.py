@@ -25,9 +25,10 @@
 Install `degu`.
 """
 
+MIN_PY = (3, 8)
 import sys
-if sys.version_info < (3, 4):
-    sys.exit('ERROR: degu requires Python 3.4 or newer')
+if sys.version_info < MIN_PY:
+    sys.exit('ERROR: degu requires Python {}.{} or newer'.format(*MIN_PY))
 
 import os
 from os import path
