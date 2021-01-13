@@ -67,14 +67,6 @@
 
 #define ROUTER_MAX_DEPTH 10
 
-#if PY_MINOR_VERSION >= 5
-    #define _TP_AS_ASYNC .tp_as_async
-    #define _M_SLOTS .m_slots
-#else
-    #define _TP_AS_ASYNC .tp_reserved
-    #define _M_SLOTS .m_reload
-#endif
-
 
 /******************************************************************************
  * Error handling macros (they require an "error" label in the function).
@@ -353,7 +345,7 @@ static PyTypeObject RangeType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)Range_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -430,7 +422,7 @@ static PyTypeObject ContentRangeType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)ContentRange_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -523,7 +515,7 @@ static PyTypeObject RequestType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)Request_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -645,7 +637,7 @@ static PyTypeObject SocketWrapperType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -761,7 +753,7 @@ static PyTypeObject BodyType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)Body_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -854,7 +846,7 @@ static PyTypeObject ChunkedBodyType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)ChunkedBody_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -939,7 +931,7 @@ static PyTypeObject BodyIterType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)BodyIter_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1022,7 +1014,7 @@ static PyTypeObject ChunkedBodyIterType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)ChunkedBodyIter_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1130,7 +1122,7 @@ static PyTypeObject ConnectionType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1214,7 +1206,7 @@ static PyTypeObject SessionType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = (reprfunc)Session_repr,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1285,7 +1277,7 @@ static PyTypeObject RouterType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
@@ -1356,7 +1348,7 @@ static PyTypeObject ProxyAppType = {
     .tp_vectorcall_offset = 0,
     .tp_getattr        = NULL,
     .tp_setattr        = NULL,
-    _TP_AS_ASYNC       = NULL,
+    .tp_as_async       = NULL,
     .tp_repr           = NULL,
     .tp_as_number      = NULL,
     .tp_as_sequence    = NULL,
